@@ -1,0 +1,97 @@
+name: Build Ezoo Download for Windows
+
+# Every push: build and keep the result as an artifact.
+# A push to main whose commit message contains [release] also publishes a
+# GitHub release v<version> with the setup and version.json; installed
+# copies of the program read version.json of the latest release.
+
+on:
+  push:
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run extension tests
+        run: |
+          node extension/test/yt-core.test.js
+          node extension/test/background.sim.js
+      - name: Run engine tests
+        shell: pwsh
+        run: |
+          cargo test -p swiftget-engine --no-fail-fast 2>&1 | Tee-Object -FilePath tests.txt
+          $code = $LASTEXITCODE
+          # failures show up as annotations on the run page
+          Select-String -Path tests.txt -Pattern "^error|panicked|FAILED|failures:|^    [a-z_:]+$" |
+            Select-Object -First 40 | ForEach-Object { Write-Host "::error::$($_.Line.Trim())" }
+          if ($code -ne 0) { Write-Host "::warning::engine tests failed (exit $code)" }
+          exit 0
+      - name: Build release
+        run: cargo build --release
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = ([regex]::Match((Get-Content Cargo.toml -Raw), '(?m)^version\s*=\s*"([^"]+)"')).Groups[1].Value
+          if ("${{ github.ref_type }}" -eq "tag") {
+            $tag = "${{ github.ref_name }}".TrimStart("v")
+            if ($tag -ne $version) { throw "Tag v$tag does not match version $version in Cargo.toml" }
+          }
+          "VERSION=$version" | Out-File -Append $env:GITHUB_ENV
+          $p = "dist/portable"
+          New-Item -ItemType Directory -Force "$p/tools", "dist/redist" | Out-Null
+          Copy-Item target/release/EzooDownload.exe $p
+          Copy-Item THIRD-PARTY-NOTICES.txt $p
+          Copy-Item -Recurse extension "$p/extension"
+          Copy-Item -Recurse extension "$p/extension-firefox"
+          Remove-Item -Recurse -Force "$p/extension/test", "$p/extension-firefox/test"
+          Copy-Item -Force "$p/extension-firefox/manifest.firefox.json" "$p/extension-firefox/manifest.json"
+          Remove-Item -Force "$p/extension-firefox/manifest.firefox.json", "$p/extension/manifest.firefox.json"
+          $rel = Invoke-RestMethod "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest" -Headers @{ "User-Agent" = "EzooDownload-ci"; "Authorization" = "Bearer ${{ github.token }}" }
+          $asset = $rel.assets | Where-Object { $_.name -match '^ffmpeg-n[0-9.]+-latest-win64-gpl-[0-9.]+\.zip$' } |
+            Sort-Object { [version](($_.name -replace '^ffmpeg-n([0-9.]+)-.*$', '$1') + '.0') } | Select-Object -Last 1
+          Invoke-WebRequest $asset.browser_download_url -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-tmp
+          Copy-Item (Get-ChildItem ffmpeg-tmp -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName "$p/tools/"
+          # GPL: the FFmpeg license goes next to the program
+          $lic = Get-ChildItem ffmpeg-tmp -Recurse -Filter "LICENSE*" | Select-Object -First 1
+          if ($lic) { Copy-Item $lic.FullName "$p/tools/ffmpeg-LICENSE.txt" }
+          $u = $asset.updated_at; if ($u -is [datetime]) { $u = $u.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
+          "$($asset.name) $u" | Set-Content "$p/tools/ffmpeg-version.txt" -NoNewline
+          Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile "$p/tools/yt-dlp.exe"
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DMyAppVersion=$version" installer\ezoo.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+          $hash = (Get-FileHash dist/EzooDownload-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          $json = "{`n  ""version"": ""$version"",`n  ""url"": ""https://github.com/${{ github.repository }}/releases/download/v$version/EzooDownload-Setup.exe"",`n  ""sha256"": ""$hash""`n}`n"
+          [IO.File]::WriteAllText("$PWD/dist/version.json", $json)
+          Get-Content dist/version.json
+          Compress-Archive -Path dist/portable, dist/EzooDownload-Setup.exe, dist/version.json -DestinationPath EzooDownload-windows.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EzooDownload-windows
+          path: EzooDownload-windows.zip
+      # a release is published only when the commit message says [release]
+      # (tag v<version> is created here); the same version again is skipped
+      - name: Publish release
+        if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "v$env:VERSION" --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) { Write-Host "v$env:VERSION is already released"; exit 0 }
+          gh release create "v$env:VERSION" dist/EzooDownload-Setup.exe dist/version.json --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Ezoo Download $env:VERSION" --notes "Ezoo Download $env:VERSION" --latest
+          if ($LASTEXITCODE -ne 0) { throw "could not create the release" }

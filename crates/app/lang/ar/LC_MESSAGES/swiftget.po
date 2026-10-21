@@ -1,0 +1,1256 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: ar\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "{} downloads selected"
+msgstr "تم تحديد {} تحميلات"
+
+msgid "Open"
+msgstr "فتح"
+
+msgid "Show download progress"
+msgstr "عرض تقدّم التحميل"
+
+msgid "Open with…"
+msgstr "فتح باستخدام…"
+
+msgid "Open folder"
+msgstr "فتح المجلد"
+
+msgid "Resume download"
+msgstr "استئناف التحميل"
+
+msgid "Stop download"
+msgstr "إيقاف التحميل"
+
+msgid "Redownload"
+msgstr "إعادة التحميل"
+
+msgid "Refresh download address…"
+msgstr "تحديث رابط التحميل…"
+
+msgid "Move / Rename…"
+msgstr "نقل / إعادة تسمية…"
+
+msgid "Move to queue"
+msgstr "نقل إلى قائمة الانتظار"
+
+msgid "Delete from queue"
+msgstr "حذف من قائمة الانتظار"
+
+msgid "Copy address"
+msgstr "نسخ الرابط"
+
+msgid "Check file (SHA-256)"
+msgstr "فحص الملف (SHA-256)"
+
+msgid "Properties"
+msgstr "الخصائص"
+
+msgid "Remove"
+msgstr "حذف"
+
+msgid "Start queue"
+msgstr "بدء قائمة الانتظار"
+
+msgid "Stop queue"
+msgstr "إيقاف قائمة الانتظار"
+
+msgid "Edit queue / schedule…"
+msgstr "تعديل القائمة / الجدولة…"
+
+msgid "New queue…"
+msgstr "قائمة انتظار جديدة…"
+
+msgid "Delete queue"
+msgstr "حذف القائمة"
+
+msgid "Add category…"
+msgstr "إضافة تصنيف…"
+
+msgid "Delete category"
+msgstr "حذف التصنيف"
+
+msgid "Properties…"
+msgstr "الخصائص…"
+
+msgid "Ezoo Download"
+msgstr "Ezoo Download"
+
+msgid "Tasks"
+msgstr "المهام"
+
+msgid "Add new download…"
+msgstr "إضافة تحميل جديد…"
+
+msgid "Add batch download…"
+msgstr "إضافة مجموعة تحميلات…"
+
+msgid "Add batch download from clipboard"
+msgstr "إضافة مجموعة تحميلات من الحافظة"
+
+msgid "Run site grabber…"
+msgstr "تشغيل جامع المواقع…"
+
+msgid "Download a playlist…"
+msgstr "تحميل قائمة تشغيل…"
+
+msgid "Export"
+msgstr "تصدير"
+
+msgid "To download list file (.ef2)…"
+msgstr "إلى ملف قائمة تحميل (.ef2)…"
+
+msgid "To text file…"
+msgstr "إلى ملف نصي…"
+
+msgid "Import"
+msgstr "استيراد"
+
+msgid "From download list file (.ef2)…"
+msgstr "من ملف قائمة تحميل (.ef2)…"
+
+msgid "From text file…"
+msgstr "من ملف نصي…"
+
+msgid "Open download folder"
+msgstr "فتح مجلد التحميل"
+
+msgid "Exit"
+msgstr "خروج"
+
+msgid "File"
+msgstr "ملف"
+
+msgid "Download now"
+msgstr "تحميل الآن"
+
+msgid "Select all   Ctrl+A"
+msgstr "تحديد الكل   Ctrl+A"
+
+msgid "Downloads"
+msgstr "التحميلات"
+
+msgid "Resume all"
+msgstr "استئناف الكل"
+
+msgid "Stop all"
+msgstr "إيقاف الكل"
+
+msgid "Delete all completed"
+msgstr "حذف كل المكتمل"
+
+msgid "Find…   Ctrl+F"
+msgstr "بحث…   Ctrl+F"
+
+msgid "Find next   F3"
+msgstr "البحث عن التالي   F3"
+
+msgid "Speed Limiter"
+msgstr "محدد السرعة"
+
+msgid "Turn on"
+msgstr "تشغيل"
+
+msgid "Turn off"
+msgstr "إيقاف"
+
+msgid "Settings…"
+msgstr "الإعدادات…"
+
+msgid "When all downloads finish"
+msgstr "عند انتهاء كل التحميلات"
+
+msgid "Do nothing"
+msgstr "لا تفعل شيئاً"
+
+msgid "Shut down the computer"
+msgstr "إيقاف تشغيل الكمبيوتر"
+
+msgid "Sleep"
+msgstr "سكون"
+
+msgid "Hibernate"
+msgstr "إسبات"
+
+msgid "Exit Ezoo Download"
+msgstr "الخروج من Ezoo Download"
+
+msgid "Scheduler…"
+msgstr "المجدول…"
+
+msgid "Options…"
+msgstr "الخيارات…"
+
+msgid "View"
+msgstr "عرض"
+
+msgid "Show categories"
+msgstr "إظهار التصنيفات"
+
+msgid "Arrange files"
+msgstr "ترتيب الملفات"
+
+msgid "By order of addition"
+msgstr "حسب ترتيب الإضافة"
+
+msgid "File name"
+msgstr "اسم الملف"
+
+msgid "Size"
+msgstr "الحجم"
+
+msgid "Status"
+msgstr "الحالة"
+
+msgid "Time left"
+msgstr "الوقت المتبقي"
+
+msgid "Transfer rate"
+msgstr "سرعة النقل"
+
+msgid "Last try date"
+msgstr "تاريخ آخر محاولة"
+
+msgid "Description"
+msgstr "الوصف"
+
+msgid "Save to"
+msgstr "الحفظ في"
+
+msgid "Referer"
+msgstr "المُحيل (Referer)"
+
+msgid "Parent web page"
+msgstr "صفحة الويب الأصلية"
+
+msgid "Toolbar"
+msgstr "شريط الأدوات"
+
+msgid "Large buttons"
+msgstr "أزرار كبيرة"
+
+msgid "Small buttons"
+msgstr "أزرار صغيرة"
+
+msgid "Columns…"
+msgstr "الأعمدة…"
+
+msgid "Language"
+msgstr "اللغة"
+
+msgid "Theme"
+msgstr "المظهر"
+
+msgid "Light"
+msgstr "فاتح"
+
+msgid "Dark"
+msgstr "داكن"
+
+msgid "Ocean blue"
+msgstr "أزرق المحيط"
+
+msgid "Midnight purple"
+msgstr "بنفسجي ليلي"
+
+msgid "Help"
+msgstr "مساعدة"
+
+msgid "Add Ezoo Download to my browser…"
+msgstr "إضافة Ezoo Download إلى متصفحي…"
+
+msgid "Tip of the day…"
+msgstr "نصيحة اليوم…"
+
+msgid "Check for updates (video downloader)"
+msgstr "البحث عن تحديثات (أداة الفيديو)"
+
+msgid "Tell a friend"
+msgstr "أخبر صديقاً"
+
+msgid "About Ezoo Download"
+msgstr "حول Ezoo Download"
+
+msgid "Add URL"
+msgstr "إضافة رابط"
+
+msgid "Add Batch"
+msgstr "إضافة مجموعة"
+
+msgid "Resume"
+msgstr "استئناف"
+
+msgid "Stop"
+msgstr "إيقاف"
+
+msgid "Stop All"
+msgstr "إيقاف الكل"
+
+msgid "Delete"
+msgstr "حذف"
+
+msgid "Delete Done"
+msgstr "حذف المكتمل"
+
+msgid "Options"
+msgstr "الخيارات"
+
+msgid "Scheduler"
+msgstr "المجدول"
+
+msgid "Limiter: On"
+msgstr "المحدد: يعمل"
+
+msgid "Limiter: Off"
+msgstr "المحدد: متوقف"
+
+msgid "Start Queue"
+msgstr "بدء القائمة"
+
+msgid "Stop Queue"
+msgstr "إيقاف القائمة"
+
+msgid "Grabber"
+msgstr "الجامع"
+
+msgid "Playlist"
+msgstr "قائمة تشغيل"
+
+msgid "Filter the list…"
+msgstr "تصفية القائمة…"
+
+msgid "Categories"
+msgstr "التصنيفات"
+
+msgid "All Downloads"
+msgstr "كل التحميلات"
+
+msgid "Unfinished"
+msgstr "غير مكتملة"
+
+msgid "Finished"
+msgstr "مكتملة"
+
+msgid "Queues"
+msgstr "قوائم الانتظار"
+
+msgid "{} (running)"
+msgstr "{} (يعمل)"
+
+msgid "New queue"
+msgstr "قائمة جديدة"
+
+msgid "Edit"
+msgstr "تعديل"
+
+msgid "File Name"
+msgstr "اسم الملف"
+
+msgid "Q"
+msgstr "ق"
+
+msgid "Last Try Date"
+msgstr "آخر محاولة"
+
+msgid "Date Added"
+msgstr "تاريخ الإضافة"
+
+msgid "Save To"
+msgstr "الحفظ في"
+
+msgid "Parent Web Page"
+msgstr "صفحة الويب الأصلية"
+
+msgid "Nothing matches “{}”."
+msgstr "لا يوجد ما يطابق “{}”."
+
+msgid "No downloads here.\nClick “Add URL”, copy a link, or download something in your browser."
+msgstr "لا توجد تحميلات هنا.\nاضغط “إضافة رابط”، أو انسخ رابطاً، أو حمّل أي شيء من المتصفح."
+
+msgid "Download File Info"
+msgstr "معلومات ملف التحميل"
+
+msgid "URL"
+msgstr "الرابط"
+
+msgid "https://example.com/file"
+msgstr "https://example.com/file"
+
+msgid "Check"
+msgstr "فحص"
+
+msgid "Category"
+msgstr "التصنيف"
+
+msgid "Save As"
+msgstr "حفظ باسم"
+
+msgid "Remember this path for \"{}\" category"
+msgstr "تذكّر هذا المسار لتصنيف \"{}\""
+
+msgid "optional note"
+msgstr "ملاحظة اختيارية"
+
+msgid "Use authorization"
+msgstr "استخدام تسجيل الدخول"
+
+msgid "Login"
+msgstr "اسم المستخدم"
+
+msgid "Password"
+msgstr "كلمة المرور"
+
+msgid "Checking the address…"
+msgstr "جارٍ فحص الرابط…"
+
+msgid "Connections"
+msgstr "الاتصالات"
+
+msgid "Queue"
+msgstr "قائمة الانتظار"
+
+msgid "Download Later"
+msgstr "تحميل لاحقاً"
+
+msgid "Start Download"
+msgstr "بدء التحميل"
+
+msgid "Cancel"
+msgstr "إلغاء"
+
+msgid "Add batch download"
+msgstr "إضافة مجموعة تحميلات"
+
+msgid "List of links"
+msgstr "قائمة روابط"
+
+msgid "Address with a pattern (*)"
+msgstr "رابط بنمط (*)"
+
+msgid "Paste the links, one per line. They download one after another in the queue you choose."
+msgstr "الصق الروابط، رابط في كل سطر. ستُحمَّل واحداً تلو الآخر في القائمة التي تختارها."
+
+msgid "Paste from clipboard"
+msgstr "لصق من الحافظة"
+
+msgid "Type an address with a * where the number (or letter) goes, for example\nhttps://www.site.com/pictures/img*.jpg"
+msgstr "اكتب رابطاً فيه * مكان الرقم (أو الحرف)، مثلاً\nhttps://www.site.com/pictures/img*.jpg"
+
+msgid "https://www.site.com/pictures/img*.jpg"
+msgstr "https://www.site.com/pictures/img*.jpg"
+
+msgid "Letters (a-z) instead of numbers"
+msgstr "حروف (a-z) بدلاً من الأرقام"
+
+msgid "From"
+msgstr "من"
+
+msgid "To"
+msgstr "إلى"
+
+msgid "Wildcard size"
+msgstr "عدد الخانات"
+
+msgid "Wildcard size 3 makes 001, 002 … 010."
+msgstr "عدد الخانات 3 يعطي 001، 002 … 010."
+
+msgid "optional"
+msgstr "اختياري"
+
+msgid "Save all to"
+msgstr "حفظ الكل في"
+
+msgid "automatic (by file type)"
+msgstr "تلقائي (حسب نوع الملف)"
+
+msgid "Start the queue now"
+msgstr "بدء القائمة الآن"
+
+msgid "Add"
+msgstr "إضافة"
+
+msgid "Download status"
+msgstr "حالة التحميل"
+
+msgid "Options on completion"
+msgstr "خيارات عند الاكتمال"
+
+msgid "File size"
+msgstr "حجم الملف"
+
+msgid "Downloaded"
+msgstr "تم تحميل"
+
+msgid "Resume capability"
+msgstr "إمكانية الاستئناف"
+
+msgid "Use speed limiter for this download"
+msgstr "استخدام محدد السرعة لهذا التحميل"
+
+msgid "Maximum download speed (KB/s)"
+msgstr "أقصى سرعة تحميل (كيلوبايت/ث)"
+
+msgid "{} MB/s"
+msgstr "{} ميجا/ث"
+
+msgid "{} KB/s"
+msgstr "{} كيلو/ث"
+
+msgid "Changes apply right away, even while downloading."
+msgstr "التغييرات تُطبَّق فوراً حتى أثناء التحميل."
+
+msgid "When this download completes:"
+msgstr "عند اكتمال هذا التحميل:"
+
+msgid "Do nothing (keep the computer on)"
+msgstr "لا شيء (يظل الكمبيوتر يعمل)"
+
+msgid "Force programs to close when shutting down"
+msgstr "إغلاق البرامج إجبارياً عند الإيقاف"
+
+msgid "Show the \"Download complete\" window"
+msgstr "إظهار نافذة \"اكتمل التحميل\""
+
+msgid "You get 30 seconds to cancel before the computer shuts down, sleeps or hibernates."
+msgstr "لديك 30 ثانية للإلغاء قبل إيقاف الكمبيوتر أو السكون أو الإسبات."
+
+msgid "<< Hide details"
+msgstr "<< إخفاء التفاصيل"
+
+msgid "Show details >>"
+msgstr "إظهار التفاصيل >>"
+
+msgid "Pause"
+msgstr "إيقاف مؤقت"
+
+msgid "Close"
+msgstr "إغلاق"
+
+msgid "Start positions and download progress by connections"
+msgstr "مواضع البدء وتقدّم التحميل لكل اتصال"
+
+msgid "N."
+msgstr "رقم"
+
+msgid "Info"
+msgstr "معلومات"
+
+msgid "Download complete"
+msgstr "اكتمل التحميل"
+
+msgid "Address"
+msgstr "الرابط"
+
+msgid "Saved as"
+msgstr "تم الحفظ باسم"
+
+msgid "Don't show this again"
+msgstr "لا تظهر هذا مرة أخرى"
+
+msgid "Columns"
+msgstr "الأعمدة"
+
+msgid "Show these columns in the download list:"
+msgstr "إظهار هذه الأعمدة في قائمة التحميل:"
+
+msgid "File Name (always shown)"
+msgstr "اسم الملف (يظهر دائماً)"
+
+msgid "Q (queue number)"
+msgstr "ق (رقم قائمة الانتظار)"
+
+msgid "Reset"
+msgstr "استعادة الافتراضي"
+
+msgid "OK"
+msgstr "موافق"
+
+msgid "Add category"
+msgstr "إضافة تصنيف"
+
+msgid "Category properties"
+msgstr "خصائص التصنيف"
+
+msgid "Category name"
+msgstr "اسم التصنيف"
+
+msgid "e.g. Courses"
+msgstr "مثلاً: كورسات"
+
+msgid "File types"
+msgstr "أنواع الملفات"
+
+msgid "mp4 mkv avi (separated by spaces)"
+msgstr "mp4 mkv avi (بينها مسافات)"
+
+msgid "Sites"
+msgstr "المواقع"
+
+msgid "udemy.com *.coursera.org (optional)"
+msgstr "udemy.com *.coursera.org (اختياري)"
+
+msgid "Save files to"
+msgstr "حفظ الملفات في"
+
+msgid "automatic (Downloads\\{})"
+msgstr "تلقائي (Downloads\\{})"
+
+msgid "Files with these extensions, or from these sites, are put into this category and saved to its folder."
+msgstr "الملفات بهذه الامتدادات، أو من هذه المواقع، توضع في هذا التصنيف وتُحفظ في مجلده."
+
+msgid "Find file"
+msgstr "بحث عن ملف"
+
+msgid "Find what"
+msgstr "البحث عن"
+
+msgid "Look in"
+msgstr "البحث في"
+
+msgid "Address, referer and parent web page"
+msgstr "الرابط والمُحيل وصفحة الويب الأصلية"
+
+msgid "Match case"
+msgstr "مطابقة حالة الأحرف"
+
+msgid "Match whole string"
+msgstr "مطابقة النص كاملاً"
+
+msgid "Find Next"
+msgstr "بحث عن التالي"
+
+msgid "File Properties – {}"
+msgstr "خصائص الملف – {}"
+
+msgid "Type"
+msgstr "النوع"
+
+msgid "Date added"
+msgstr "تاريخ الإضافة"
+
+msgid "Use authorization (server login)"
+msgstr "استخدام تسجيل الدخول (للخادم)"
+
+msgid "Result: {}"
+msgstr "النتيجة: {}"
+
+msgid "Duplicate download link"
+msgstr "رابط تحميل مكرر"
+
+msgid "This address is already in the download list:"
+msgstr "هذا الرابط موجود بالفعل في قائمة التحميل:"
+
+msgid "Add it with a new name (numbered)"
+msgstr "إضافته باسم جديد (مرقّم)"
+
+msgid "Add it and replace the old download (overwrite the file)"
+msgstr "إضافته واستبدال التحميل القديم (الكتابة فوق الملف)"
+
+msgid "If it is finished show it, if not resume it"
+msgstr "إذا كان مكتملاً اعرضه، وإن لم يكن استأنفه"
+
+msgid "Remember my choice (Options > Downloads)"
+msgstr "تذكّر اختياري (الخيارات > التحميلات)"
+
+msgid "All downloads are finished."
+msgstr "انتهت كل التحميلات."
+
+msgid "Ezoo Download will {} in {} seconds."
+msgstr "سيقوم Ezoo Download بـ{} خلال {} ثانية."
+
+msgid "Now"
+msgstr "الآن"
+
+msgid "Queue name"
+msgstr "اسم القائمة"
+
+msgid "Schedule"
+msgstr "الجدولة"
+
+msgid "Files in the queue"
+msgstr "الملفات في القائمة"
+
+msgid "Start the queue automatically"
+msgstr "بدء القائمة تلقائياً"
+
+msgid "Start time (HH:MM)"
+msgstr "وقت البدء (HH:MM)"
+
+msgid "Daily"
+msgstr "يومياً"
+
+msgid "Once at (YYYY-MM-DD)"
+msgstr "مرة واحدة في (YYYY-MM-DD)"
+
+msgid "Mon"
+msgstr "الإثنين"
+
+msgid "Tue"
+msgstr "الثلاثاء"
+
+msgid "Wed"
+msgstr "الأربعاء"
+
+msgid "Thu"
+msgstr "الخميس"
+
+msgid "Fri"
+msgstr "الجمعة"
+
+msgid "Sat"
+msgstr "السبت"
+
+msgid "Sun"
+msgstr "الأحد"
+
+msgid "Start the queue when Ezoo Download starts"
+msgstr "بدء القائمة عند تشغيل Ezoo Download"
+
+msgid "Stop the queue at"
+msgstr "إيقاف القائمة في"
+
+msgid "When the queue is done"
+msgstr "عند انتهاء القائمة"
+
+msgid "For Sleep you may need to allow wake timers in the Windows power options, so the computer can wake up for the next start."
+msgstr "مع السكون قد تحتاج للسماح بمؤقتات التنبيه في خيارات الطاقة بويندوز، ليستيقظ الكمبيوتر للبدء التالي."
+
+msgid "Move up"
+msgstr "تحريك لأعلى"
+
+msgid "Move down"
+msgstr "تحريك لأسفل"
+
+msgid "Files download in this order. Add files with right click > Move to queue, Add Batch, or \"Download Later\"."
+msgstr "تُحمَّل الملفات بهذا الترتيب. أضف ملفات بكليك يمين > نقل إلى قائمة الانتظار، أو إضافة مجموعة، أو \"تحميل لاحقاً\"."
+
+msgid "Download"
+msgstr "تحميل"
+
+msgid "files at the same time"
+msgstr "ملفات في نفس الوقت"
+
+msgid "Number of retries for each file if downloading failed"
+msgstr "عدد المحاولات لكل ملف إذا فشل التحميل"
+
+msgid "Save all files of this queue to"
+msgstr "حفظ كل ملفات هذه القائمة في"
+
+msgid "Open each file when it has finished downloading"
+msgstr "فتح كل ملف عند انتهاء تحميله"
+
+msgid "Start now"
+msgstr "ابدأ الآن"
+
+msgid "Apply"
+msgstr "تطبيق"
+
+msgid "Download all links"
+msgstr "تحميل كل الروابط"
+
+msgid "Site Grabber"
+msgstr "جامع المواقع"
+
+msgid "Start page"
+msgstr "صفحة البداية"
+
+msgid "https://example.com/gallery/"
+msgstr "https://example.com/gallery/"
+
+msgid "Start exploring"
+msgstr "بدء الاستكشاف"
+
+msgid "Get"
+msgstr "جلب"
+
+msgid "All files (not web pages)"
+msgstr "كل الملفات (عدا صفحات الويب)"
+
+msgid "All images"
+msgstr "كل الصور"
+
+msgid "All videos"
+msgstr "كل الفيديوهات"
+
+msgid "All music / audio"
+msgstr "كل الموسيقى / الصوت"
+
+msgid "Archives and programs"
+msgstr "الملفات المضغوطة والبرامج"
+
+msgid "Documents (PDF, Office)"
+msgstr "المستندات (PDF، أوفيس)"
+
+msgid "Custom file types"
+msgstr "أنواع ملفات مخصصة"
+
+msgid "jpg png mp4 (custom types)"
+msgstr "jpg png mp4 (أنواع مخصصة)"
+
+msgid "Levels to explore"
+msgstr "مستويات الاستكشاف"
+
+msgid "Pages at the same time"
+msgstr "صفحات في نفس الوقت"
+
+msgid "Other sites too"
+msgstr "مواقع أخرى أيضاً"
+
+msgid "Don't go to parent folders"
+msgstr "عدم الصعود للمجلدات الأعلى"
+
+msgid "Show"
+msgstr "عرض"
+
+msgid "All types"
+msgstr "كل الأنواع"
+
+msgid "Images"
+msgstr "الصور"
+
+msgid "Videos"
+msgstr "الفيديوهات"
+
+msgid "Music"
+msgstr "الموسيقى"
+
+msgid "Archives / programs"
+msgstr "مضغوطة / برامج"
+
+msgid "Documents"
+msgstr "المستندات"
+
+msgid "Web pages"
+msgstr "صفحات الويب"
+
+msgid "Filter by name or address…"
+msgstr "تصفية بالاسم أو الرابط…"
+
+msgid "Check all"
+msgstr "تحديد الكل"
+
+msgid "Uncheck all"
+msgstr "إلغاء تحديد الكل"
+
+msgid "Link text"
+msgstr "نص الرابط"
+
+msgid "No links on this page."
+msgstr "لا توجد روابط في هذه الصفحة."
+
+msgid "Exploring…"
+msgstr "جارٍ الاستكشاف…"
+
+msgid "Type a start page and click \"Start exploring\"."
+msgstr "اكتب صفحة البداية واضغط \"بدء الاستكشاف\"."
+
+msgid "Use link texts as descriptions"
+msgstr "استخدام نص الرابط كوصف"
+
+msgid "Download checked"
+msgstr "تحميل المحدد"
+
+msgid "Tip of the day"
+msgstr "نصيحة اليوم"
+
+msgid "Did you know…"
+msgstr "هل تعلم…"
+
+msgid "Show tips at startup"
+msgstr "إظهار النصائح عند البدء"
+
+msgid "Next tip"
+msgstr "النصيحة التالية"
+
+msgid "Refresh download address"
+msgstr "تحديث رابط التحميل"
+
+msgid "1. Open the web page where you got this file.\n2. Click the download link there again (or start the video).\n3. Ezoo Download takes the new address and continues from where it stopped."
+msgstr "1. افتح صفحة الويب التي حصلت منها على هذا الملف.\n2. اضغط رابط التحميل هناك مرة أخرى (أو شغّل الفيديو).\n3. يأخذ Ezoo Download الرابط الجديد ويكمل من حيث توقف."
+
+msgid "Open the page"
+msgstr "فتح الصفحة"
+
+msgid "Waiting for the new address from the browser…"
+msgstr "في انتظار الرابط الجديد من المتصفح…"
+
+msgid "Or paste the new address here:"
+msgstr "أو الصق الرابط الجديد هنا:"
+
+msgid "https://…"
+msgstr "https://…"
+
+msgid "Use it"
+msgstr "استخدامه"
+
+msgid "Stop waiting"
+msgstr "إيقاف الانتظار"
+
+msgid "Play"
+msgstr "تشغيل"
+
+msgid "Ezoo Download – Options"
+msgstr "Ezoo Download – الخيارات"
+
+msgid "General"
+msgstr "عام"
+
+msgid "File Types"
+msgstr "أنواع الملفات"
+
+msgid "Connection"
+msgstr "الاتصال"
+
+msgid "Proxy / Server"
+msgstr "البروكسي / الخادم"
+
+msgid "Site Logins"
+msgstr "حسابات المواقع"
+
+msgid "Sounds"
+msgstr "الأصوات"
+
+msgid "Launch Ezoo Download on Windows startup"
+msgstr "تشغيل Ezoo Download مع بدء ويندوز"
+
+msgid "Keep running next to the clock when the window is closed"
+msgstr "الاستمرار بجانب الساعة عند إغلاق النافذة"
+
+msgid "Watch the clipboard for download links"
+msgstr "مراقبة الحافظة لروابط التحميل"
+
+msgid "Automatically start downloading links placed in the clipboard"
+msgstr "بدء تحميل الروابط المنسوخة للحافظة تلقائياً"
+
+msgid "Show \"Tip of the day\" at startup"
+msgstr "إظهار \"نصيحة اليوم\" عند البدء"
+
+msgid "On double click on a download"
+msgstr "عند النقر المزدوج على تحميل"
+
+msgid "Open the file / progress window"
+msgstr "فتح الملف / نافذة التقدم"
+
+msgid "Show properties"
+msgstr "إظهار الخصائص"
+
+msgid "Browser integration"
+msgstr "التكامل مع المتصفح"
+
+msgid "Chrome and Edge: load the \"extension\" folder in chrome://extensions (Developer mode > Load unpacked). Downloads, videos and the right click menu then go to Ezoo Download."
+msgstr "كروم وإيدج: حمّل مجلد \"extension\" من chrome://extensions (وضع المطوّر > Load unpacked). بعدها تذهب التحميلات والفيديوهات وقائمة الكليك يمين إلى Ezoo Download."
+
+msgid "Hold this key to let the browser download by itself"
+msgstr "اضغط هذا المفتاح ليحمّل المتصفح بنفسه"
+
+msgid "Alt"
+msgstr "Alt"
+
+msgid "Ctrl"
+msgstr "Ctrl"
+
+msgid "Shift"
+msgstr "Shift"
+
+msgid "None"
+msgstr "لا شيء"
+
+msgid "Hold this key to force Ezoo Download to take a link"
+msgstr "اضغط هذا المفتاح لإجبار Ezoo Download على أخذ الرابط"
+
+msgid "Browser extension port"
+msgstr "منفذ إضافة المتصفح"
+
+msgid "Automatically start downloading these file types (from the browser):"
+msgstr "بدء تحميل أنواع الملفات هذه تلقائياً (من المتصفح):"
+
+msgid "Default"
+msgstr "الافتراضي"
+
+msgid "Don't start downloading automatically from these sites:"
+msgstr "عدم بدء التحميل تلقائياً من هذه المواقع:"
+
+msgid "*.update.microsoft.com  windowsupdate.com"
+msgstr "*.update.microsoft.com  windowsupdate.com"
+
+msgid "Don't start downloading these addresses (one per line, * allowed):"
+msgstr "عدم بدء تحميل هذه الروابط (رابط في كل سطر، * مسموح):"
+
+msgid "Show the \"Download this video\" panel on web players"
+msgstr "إظهار زر \"تحميل هذا الفيديو\" على مشغلات الفيديو"
+
+msgid "Don't show it on these sites"
+msgstr "عدم إظهاره في هذه المواقع"
+
+msgid "Smallest video (KB)"
+msgstr "أصغر فيديو (كيلوبايت)"
+
+msgid "Smallest audio (KB)"
+msgstr "أصغر صوت (كيلوبايت)"
+
+msgid "Main download folder"
+msgstr "مجلد التحميل الرئيسي"
+
+msgid "Browse…"
+msgstr "استعراض…"
+
+msgid "Sort files into folders by category (Video, Music, Programs, Compressed, Documents, Images…)"
+msgstr "ترتيب الملفات في مجلدات حسب التصنيف (فيديو، موسيقى، برامج، مضغوطة، مستندات، صور…)"
+
+msgid "Each category's own folder and file types: right click it in the sidebar > Properties."
+msgstr "مجلد كل تصنيف وأنواع ملفاته: كليك يمين عليه في الشريط الجانبي > الخصائص."
+
+msgid "Forget remembered category paths"
+msgstr "نسيان مسارات التصنيفات المحفوظة"
+
+msgid "Temporary folder (parts while downloading)"
+msgstr "المجلد المؤقت (الأجزاء أثناء التحميل)"
+
+msgid "next to the file (default)"
+msgstr "بجانب الملف (افتراضي)"
+
+msgid "Tip: a temporary folder on another drive than the download folder makes joining the parts faster."
+msgstr "نصيحة: وضع المجلد المؤقت على قرص غير قرص التحميل يجعل تجميع الأجزاء أسرع."
+
+msgid "Show the \"Download File Info\" window for downloads from the browser"
+msgstr "إظهار نافذة \"معلومات ملف التحميل\" للتحميلات من المتصفح"
+
+msgid "Start downloading immediately while showing \"Download File Info\""
+msgstr "بدء التحميل فوراً أثناء عرض \"معلومات ملف التحميل\""
+
+msgid "Show the download progress window"
+msgstr "إظهار نافذة تقدّم التحميل"
+
+msgid "Normally"
+msgstr "عادي"
+
+msgid "Minimized"
+msgstr "مصغّرة"
+
+msgid "Don't show"
+msgstr "عدم الإظهار"
+
+msgid "If a duplicate link is added"
+msgstr "عند إضافة رابط مكرر"
+
+msgid "Ask me"
+msgstr "اسألني"
+
+msgid "Add it with a numbered file name"
+msgstr "إضافته باسم ملف مرقّم"
+
+msgid "Add it and replace the old download"
+msgstr "إضافته واستبدال التحميل القديم"
+
+msgid "Show the finished one / resume the unfinished one"
+msgstr "عرض المكتمل / استئناف غير المكتمل"
+
+msgid "Give finished files the date from the server"
+msgstr "إعطاء الملفات المكتملة تاريخها من الخادم"
+
+msgid "Check every finished file for viruses with this program"
+msgstr "فحص كل ملف مكتمل من الفيروسات بهذا البرنامج"
+
+msgid "C:\\Program Files\\Windows Defender\\MpCmdRun.exe"
+msgstr "C:\\Program Files\\Windows Defender\\MpCmdRun.exe"
+
+msgid "Command line parameters"
+msgstr "معاملات سطر الأوامر"
+
+msgid "-Scan -ScanType 3 -File [File]"
+msgstr "-Scan -ScanType 3 -File [File]"
+
+msgid "[File] is replaced by the downloaded file."
+msgstr "يُستبدل [File] بالملف المُحمَّل."
+
+msgid "User-Agent for downloads added by hand"
+msgstr "User-Agent للتحميلات المضافة يدوياً"
+
+msgid "Connection type / speed"
+msgstr "نوع / سرعة الاتصال"
+
+msgid "Low speed (modem, mobile)"
+msgstr "سرعة منخفضة (مودم، موبايل)"
+
+msgid "Medium speed (DSL)"
+msgstr "سرعة متوسطة (DSL)"
+
+msgid "High speed (fiber, cable, LAN)"
+msgstr "سرعة عالية (ألياف، كابل، شبكة محلية)"
+
+msgid "Default max. connections number"
+msgstr "أقصى عدد اتصالات افتراضي"
+
+msgid "Downloads at the same time (0 = no limit)"
+msgstr "تحميلات في نفس الوقت (0 = بلا حد)"
+
+msgid "Retries on error"
+msgstr "المحاولات عند الخطأ"
+
+msgid "Exceptions: servers with their own number of connections"
+msgstr "استثناءات: خوادم بعدد اتصالات خاص بها"
+
+msgid "Server"
+msgstr "الخادم"
+
+msgid "example.com"
+msgstr "example.com"
+
+msgid "Download limits"
+msgstr "حدود التحميل"
+
+msgid "Download no more than"
+msgstr "لا تحمّل أكثر من"
+
+msgid "MB every"
+msgstr "ميجابايت كل"
+
+msgid "hours"
+msgstr "ساعة"
+
+msgid "No proxy"
+msgstr "بدون بروكسي"
+
+msgid "Use the system settings (like your browser)"
+msgstr "استخدام إعدادات النظام (مثل المتصفح)"
+
+msgid "Manual proxy configuration (HTTP / HTTPS)"
+msgstr "إعداد بروكسي يدوي (HTTP / HTTPS)"
+
+msgid "Proxy address"
+msgstr "عنوان البروكسي"
+
+msgid "proxy.example.com"
+msgstr "proxy.example.com"
+
+msgid "Port"
+msgstr "المنفذ"
+
+msgid "User name"
+msgstr "اسم المستخدم"
+
+msgid "Don't use the proxy for"
+msgstr "عدم استخدام البروكسي لـ"
+
+msgid "localhost 127.0.0.1 *.local"
+msgstr "localhost 127.0.0.1 *.local"
+
+msgid "Addresses separated by spaces. SOCKS proxies: use the system settings."
+msgstr "العناوين بينها مسافات. بروكسي SOCKS: استخدم إعدادات النظام."
+
+msgid "User names and passwords for sites that ask for them:"
+msgstr "أسماء المستخدمين وكلمات المرور للمواقع التي تطلبها:"
+
+msgid "Site / path"
+msgstr "الموقع / المسار"
+
+msgid "example.com/members"
+msgstr "example.com/members"
+
+msgid "Add / Update"
+msgstr "إضافة / تحديث"
+
+msgid "Saved in the settings file of your Windows user account."
+msgstr "تُحفظ في ملف إعدادات حساب ويندوز الخاص بك."
+
+msgid "Play sounds"
+msgstr "تشغيل الأصوات"
+
+msgid "Download failed"
+msgstr "فشل التحميل"
+
+msgid "Queue started"
+msgstr "بدأت القائمة"
+
+msgid "Queue finished"
+msgstr "انتهت القائمة"
+
+msgid ".wav files. Empty = no sound for that event."
+msgstr "ملفات ‎.wav‎. فارغ = بلا صوت لهذا الحدث."
+
+msgid "Turn the speed limiter on"
+msgstr "تشغيل محدد السرعة"
+
+msgid "Always turn on the speed limiter when Ezoo Download starts"
+msgstr "تشغيل محدد السرعة دائماً عند بدء Ezoo Download"
+
+msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
+msgstr "يمكن أن يكون لكل تحميل حد خاص: نافذة تقدّمه > تبويب محدد السرعة."
+
+msgid "Download a playlist"
+msgstr "تحميل قائمة تشغيل"
+
+msgid "Paste the address of a playlist:"
+msgstr "الصق رابط قائمة التشغيل:"
+
+msgid "https://www.youtube.com/playlist?list=…"
+msgstr "https://www.youtube.com/playlist?list=…"
+
+msgid "Getting the list…"
+msgstr "جارٍ جلب القائمة…"
+
+msgid "Get videos"
+msgstr "جلب الفيديوهات"
+
+msgid "Video"
+msgstr "الفيديو"
+
+msgid "Length"
+msgstr "المدة"
+
+msgid "Getting the videos of the playlist…"
+msgstr "جارٍ جلب فيديوهات القائمة…"
+
+msgid "The videos of the playlist show up here."
+msgstr "ستظهر فيديوهات القائمة هنا."
+
+msgid "Quality"
+msgstr "الجودة"
+
+msgid "Best quality (MP4)"
+msgstr "أفضل جودة (MP4)"
+
+msgid "1080p"
+msgstr "1080p"
+
+msgid "720p"
+msgstr "720p"
+
+msgid "480p"
+msgstr "480p"
+
+msgid "360p"
+msgstr "360p"
+
+msgid "Audio only (M4A)"
+msgstr "صوت فقط (M4A)"
+
+msgid "Files at the same time"
+msgstr "ملفات في نفس الوقت"
+
+msgid "Number the files"
+msgstr "ترقيم الملفات"
+
+msgid "Not installed on this computer"
+msgstr "غير مثبّت على هذا الكمبيوتر"
+
+msgid "Add Ezoo Download to your browser"
+msgstr "إضافة Ezoo Download إلى متصفحك"
+
+msgid "Click your browser:"
+msgstr "اضغط على متصفحك:"
+
+msgid "Almost done:"
+msgstr "خطوة أخيرة:"
+
+msgid "Copy folder path"
+msgstr "نسخ مسار المجلد"
+
+msgid "Version {}"
+msgstr "الإصدار {}"
+
+msgid "Coded by Ahmed Ezzat"
+msgstr "Coded by Ahmed Ezzat"

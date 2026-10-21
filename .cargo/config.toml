@@ -1,0 +1,11 @@
+# The C/C++ runtime (vcruntime140.dll and friends) is built into
+# EzooDownload.exe, so the program runs even on computers without the
+# "Visual C++ Redistributable".
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.i686-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

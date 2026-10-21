@@ -1,0 +1,17 @@
+Ezoo Download uses the following open source components.
+
+Slint (user interface toolkit) - https://slint.dev
+  Used under the Slint Royalty-free Desktop, Mobile, and Web Applications License 2.0.
+
+yt-dlp - https://github.com/yt-dlp/yt-dlp
+  The Unlicense (public domain).
+
+FFmpeg - https://github.com/FFmpeg/FFmpeg
+  The FFmpeg program in the "tools" folder is an unmodified build from
+  https://github.com/BtbN/FFmpeg-Builds licensed under the GNU General Public
+  License version 3 (see ffmpeg-LICENSE.txt in the "tools" folder).
+  Its source code is available at https://github.com/FFmpeg/FFmpeg.
+
+Rust crates (tokio, reqwest, serde, chrono, tiny_http, arboard, rfd, tray-icon,
+regex, sha2, aes, cbc, url, directories, filetime and their dependencies)
+  MIT and/or Apache-2.0 licenses.

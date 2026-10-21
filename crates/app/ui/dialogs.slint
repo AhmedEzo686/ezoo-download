@@ -1,0 +1,3175 @@
+// Ezoo Download – the classic download manager's extra windows:
+// Options, Scheduler (queues), File Properties, Columns, Category properties,
+// Find, Duplicate link, Shutdown countdown, Site Grabber / Download all
+// links, Tip of the day and Refresh download address.
+
+import { Button, LineEdit, SpinBox, CheckBox, ComboBox, ListView, TextEdit, ScrollView, AboutSlint } from "std-widgets.slint";
+import { Cols, PairRow, LinkRow, QueueRow, DownloadRow, Theme, ThemedWindow, TypeIcon, BigTypeIcon, HeaderCell, Cell, Glyph } from "common.slint";
+
+// ------------------------------------------------------------------ small parts
+
+component Label inherits Text {
+    vertical-alignment: center;
+    color: Theme.text;
+    font-size: 12px;
+}
+
+component Hint inherits Text {
+    color: Theme.muted;
+    font-size: 11px;
+    wrap: word-wrap;
+}
+
+component Section inherits Text {
+    color: Theme.accent;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+// a round option button (one of several)
+component Radio inherits Rectangle {
+    in property <string> text;
+    in property <bool> checked;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 22px;
+    min-width: lbl.preferred-width + 24px;
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+    Rectangle {
+        x: 0;
+        y: (parent.height - 14px) / 2;
+        width: 14px;
+        height: 14px;
+        border-radius: 7px;
+        border-width: 1px;
+        border-color: root.checked ? Theme.accent : Theme.muted;
+        background: Theme.input-bg;
+        if root.checked: Rectangle {
+            x: 3.5px;
+            y: 3.5px;
+            width: 7px;
+            height: 7px;
+            border-radius: 3.5px;
+            background: Theme.accent;
+        }
+    }
+    lbl := Text {
+        x: 20px;
+        height: parent.height;
+        text: root.text;
+        vertical-alignment: center;
+        font-size: 12px;
+        color: root.enabled ? Theme.text : Theme.muted;
+    }
+}
+
+// vertical tab list on the left of the Options window
+component SideTab inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    height: 28px;
+    background: root.active ? Theme.select : ta.has-hover ? Theme.hover : transparent;
+    border-width: root.active ? 1px : 0px;
+    border-color: Theme.select-line;
+    ta := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+    Text {
+        x: 10px;
+        height: parent.height;
+        text: root.text;
+        vertical-alignment: center;
+        font-size: 12px;
+        font-weight: root.active ? 600 : 400;
+        color: Theme.text;
+    }
+}
+
+// horizontal tab button
+component TabBtn inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    height: 26px;
+    width: tl.preferred-width + 24px;
+    background: root.active ? Theme.panel : ta.has-hover ? Theme.hover : Theme.window;
+    border-width: 1px;
+    border-color: Theme.line;
+    ta := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+    tl := Text {
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        font-size: 12px;
+        font-weight: root.active ? 600 : 400;
+        color: Theme.text;
+    }
+}
+
+// a small list with selection (logins, server exceptions, queue files)
+component PairList inherits Rectangle {
+    in property <[PairRow]> rows;
+    in property <string> head-a;
+    in property <string> head-b;
+    in property <string> head-c;
+    in property <length> width-b: 140px;
+    in property <length> width-c: 0px;
+    in-out property <int> current: -1;
+    callback picked(int);
+    background: Theme.panel;
+    border-width: 1px;
+    border-color: Theme.line;
+    VerticalLayout {
+        padding: 1px;
+        Rectangle {
+            height: 22px;
+            background: @linear-gradient(180deg, Theme.header-top 0%, Theme.header-bottom 100%);
+            HorizontalLayout {
+                HeaderCell {
+                    text: root.head-a;
+                    horizontal-stretch: 1;
+                }
+                if root.head-b != "": HeaderCell {
+                    text: root.head-b;
+                    width: root.width-b;
+                }
+                if root.head-c != "": HeaderCell {
+                    text: root.head-c;
+                    width: root.width-c;
+                }
+            }
+        }
+        ListView {
+            vertical-stretch: 1;
+            for r[i] in root.rows: Rectangle {
+                height: 21px;
+                background: i == root.current ? Theme.select : rt.has-hover ? Theme.hover : transparent;
+                rt := TouchArea {
+                    clicked => {
+                        root.current = i;
+                        root.picked(i);
+                    }
+                }
+                HorizontalLayout {
+                    padding-left: 6px;
+                    Cell {
+                        text: r.a;
+                        horizontal-stretch: 1;
+                    }
+                    if root.head-b != "": Cell {
+                        text: "  " + r.b;
+                        width: root.width-b;
+                    }
+                    if root.head-c != "": Cell {
+                        text: "  " + r.c;
+                        width: root.width-c;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ View > Columns
+
+export component ColumnsDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Columns");
+    preferred-width: 320px;
+    in-out property <Cols> cols;
+    callback save();
+    callback reset();
+    callback cancel();
+    VerticalLayout {
+        padding: 14px;
+        spacing: 6px;
+        Label {
+            text: @tr("Show these columns in the download list:");
+        }
+        Text {
+            text: @tr("File Name (always shown)");
+            color: Theme.muted;
+            font-size: 12px;
+        }
+        CheckBox {
+            text: @tr("Q (queue number)");
+            checked: root.cols.q;
+            toggled => {
+                root.cols.q = self.checked;
+            }
+        }
+        CheckBox {
+            text: @tr("Size");
+            checked: root.cols.size;
+            toggled => {
+                root.cols.size = self.checked;
+            }
+        }
+        CheckBox {
+            text: @tr("Status");
+            checked: root.cols.status;
+            toggled => {
+                root.cols.status = self.checked;
+            }
+        }
+        CheckBox {
+            text: @tr("Time left");
+            checked: root.cols.eta;
+            toggled => {
+                root.cols.eta = self.checked;
+            }
+        }
+        CheckBox {
+            text: @tr("Transfer rate");
+            checked: root.cols.speed;
+            toggled => {
+                root.cols.speed = self.checked;
+            }
+        }
+        CheckBox {
+            text: @tr("Last Try Date");
+            checked: root.cols.last;
+            toggled => {
+                root.cols.last = self.checked;
+            }
+        }
+        CheckBox {
+            text: @tr("Description");
+            checked: root.cols.desc;
+            toggled => {
+                root.cols.desc = self.checked;
+            }
+        }
+        CheckBox {
+            text: @tr("Date Added");
+            checked: root.cols.added;
+            toggled => {
+                root.cols.added = self.checked;
+            }
+        }
+        CheckBox {
+            text: @tr("Save To");
+            checked: root.cols.saveto;
+            toggled => {
+                root.cols.saveto = self.checked;
+            }
+        }
+        CheckBox {
+            text: @tr("Referer");
+            checked: root.cols.referer;
+            toggled => {
+                root.cols.referer = self.checked;
+            }
+        }
+        CheckBox {
+            text: @tr("Parent Web Page");
+            checked: root.cols.parent;
+            toggled => {
+                root.cols.parent = self.checked;
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            padding-top: 8px;
+            Button {
+                text: @tr("Reset");
+                clicked => {
+                    root.reset();
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("OK");
+                primary: true;
+                clicked => {
+                    root.save();
+                }
+            }
+            Button {
+                text: @tr("Cancel");
+                clicked => {
+                    root.cancel();
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ category properties
+
+export component CategoryDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: root.is-new ? @tr("Add category") : @tr("Category properties");
+    preferred-width: 520px;
+    in property <bool> is-new;
+    in property <bool> builtin;
+    in-out property <string> name;
+    in-out property <string> exts;
+    in-out property <string> sites;
+    in-out property <string> folder;
+    in property <string> message;
+    callback browse();
+    callback save();
+    callback cancel();
+    VerticalLayout {
+        padding: 14px;
+        spacing: 8px;
+        GridLayout {
+            spacing: 8px;
+            Row {
+                Label {
+                    text: @tr("Category name");
+                }
+                LineEdit {
+                    text <=> root.name;
+                    enabled: !root.builtin;
+                    placeholder-text: @tr("e.g. Courses");
+                }
+            }
+            Row {
+                Label {
+                    text: @tr("File types");
+                }
+                LineEdit {
+                    text <=> root.exts;
+                    placeholder-text: @tr("mp4 mkv avi (separated by spaces)");
+                }
+            }
+            Row {
+                Label {
+                    text: @tr("Sites");
+                }
+                LineEdit {
+                    text <=> root.sites;
+                    placeholder-text: @tr("udemy.com *.coursera.org (optional)");
+                }
+            }
+            Row {
+                Label {
+                    text: @tr("Save files to");
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    LineEdit {
+                        text <=> root.folder;
+                        horizontal-stretch: 1;
+                        placeholder-text: @tr("automatic (Downloads\\{})", root.name);
+                    }
+                    Button {
+                        text: "…";
+                        clicked => {
+                            root.browse();
+                        }
+                    }
+                }
+            }
+        }
+        Hint {
+            text: @tr("Files with these extensions, or from these sites, are put into this category and saved to its folder.");
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root.message;
+                color: Theme.err;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("OK");
+                primary: true;
+                clicked => {
+                    root.save();
+                }
+            }
+            Button {
+                text: @tr("Cancel");
+                clicked => {
+                    root.cancel();
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ Find (Ctrl+F)
+
+export component FindDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Find file");
+    preferred-width: 440px;
+    in-out property <string> text;
+    in-out property <bool> in-name: true;
+    in-out property <bool> in-desc: true;
+    in-out property <bool> in-address: false;
+    in-out property <bool> match-case;
+    in-out property <bool> whole;
+    in property <string> message;
+    callback find-next();
+    callback close-window();
+    VerticalLayout {
+        padding: 14px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 8px;
+            Label {
+                text: @tr("Find what");
+            }
+            LineEdit {
+                text <=> root.text;
+                horizontal-stretch: 1;
+                accepted(t) => {
+                    root.find-next();
+                }
+            }
+        }
+        Section {
+            text: @tr("Look in");
+        }
+        CheckBox {
+            text: @tr("File name");
+            checked <=> root.in-name;
+        }
+        CheckBox {
+            text: @tr("Description");
+            checked <=> root.in-desc;
+        }
+        CheckBox {
+            text: @tr("Address, referer and parent web page");
+            checked <=> root.in-address;
+        }
+        HorizontalLayout {
+            spacing: 14px;
+            CheckBox {
+                text: @tr("Match case");
+                checked <=> root.match-case;
+            }
+            CheckBox {
+                text: @tr("Match whole string");
+                checked <=> root.whole;
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root.message;
+                color: Theme.muted;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("Find Next");
+                primary: true;
+                clicked => {
+                    root.find-next();
+                }
+            }
+            Button {
+                text: @tr("Close");
+                clicked => {
+                    root.close-window();
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ File properties
+
+export component PropertiesDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("File Properties – {}", root.file-name);
+    preferred-width: 600px;
+    in property <string> file-name;
+    in property <string> kind: "general";
+    in property <string> ext;
+    in property <string> type-text;
+    in property <string> status;
+    in property <string> size;
+    in property <string> added;
+    in property <string> last-try;
+    in property <string> result;
+    in property <bool> done;
+    in-out property <string> save-to;
+    in-out property <string> url;
+    in-out property <string> referer;
+    in-out property <string> description;
+    in-out property <bool> use-login;
+    in-out property <string> user;
+    in-out property <string> password;
+    in property <string> message;
+    callback browse();
+    callback open-file();
+    callback save();
+    callback cancel();
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 14px;
+            BigTypeIcon {
+                kind: root.kind;
+                ext: root.ext;
+            }
+            GridLayout {
+                spacing-horizontal: 12px;
+                spacing-vertical: 4px;
+                horizontal-stretch: 1;
+                Row {
+                    Label {
+                        text: @tr("Type");
+                        color: Theme.muted;
+                    }
+                    Label {
+                        text: root.type-text;
+                    }
+                }
+                Row {
+                    Label {
+                        text: @tr("Status");
+                        color: Theme.muted;
+                    }
+                    Label {
+                        text: root.status;
+                        color: root.done ? Theme.ok : Theme.text;
+                    }
+                }
+                Row {
+                    Label {
+                        text: @tr("Size");
+                        color: Theme.muted;
+                    }
+                    Label {
+                        text: root.size;
+                    }
+                }
+                Row {
+                    Label {
+                        text: @tr("Date added");
+                        color: Theme.muted;
+                    }
+                    Label {
+                        text: root.added;
+                    }
+                }
+                Row {
+                    Label {
+                        text: @tr("Last try date");
+                        color: Theme.muted;
+                    }
+                    Label {
+                        text: root.last-try;
+                    }
+                }
+            }
+        }
+        GridLayout {
+            spacing: 8px;
+            Row {
+                Label {
+                    text: @tr("Save To");
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    LineEdit {
+                        text <=> root.save-to;
+                        horizontal-stretch: 1;
+                    }
+                    Button {
+                        text: "…";
+                        clicked => {
+                            root.browse();
+                        }
+                    }
+                }
+            }
+            Row {
+                Label {
+                    text: @tr("Address");
+                }
+                LineEdit {
+                    text <=> root.url;
+                    enabled: !root.done;
+                }
+            }
+            Row {
+                Label {
+                    text: @tr("Referer");
+                }
+                LineEdit {
+                    text <=> root.referer;
+                }
+            }
+            Row {
+                Label {
+                    text: @tr("Description");
+                }
+                LineEdit {
+                    text <=> root.description;
+                }
+            }
+        }
+        CheckBox {
+            text: @tr("Use authorization (server login)");
+            checked <=> root.use-login;
+        }
+        if root.use-login: HorizontalLayout {
+            spacing: 8px;
+            Label {
+                text: @tr("Login");
+            }
+            LineEdit {
+                text <=> root.user;
+                horizontal-stretch: 1;
+            }
+            Label {
+                text: @tr("Password");
+            }
+            LineEdit {
+                text <=> root.password;
+                input-type: InputType.password;
+                horizontal-stretch: 1;
+            }
+        }
+        if root.result != "": Rectangle {
+            height: 32px;
+            border-width: 1px;
+            border-color: Theme.line;
+            background: Theme.panel;
+            Text {
+                x: 8px;
+                width: parent.width - 16px;
+                height: parent.height;
+                text: @tr("Result: {}", root.result);
+                vertical-alignment: center;
+                overflow: elide;
+                font-size: 11px;
+                color: root.done ? Theme.ok : Theme.err;
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Button {
+                text: @tr("Open");
+                enabled: root.done;
+                clicked => {
+                    root.open-file();
+                }
+            }
+            Text {
+                text: root.message;
+                color: Theme.err;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                wrap: word-wrap;
+            }
+            Button {
+                text: @tr("OK");
+                primary: true;
+                clicked => {
+                    root.save();
+                }
+            }
+            Button {
+                text: @tr("Cancel");
+                clicked => {
+                    root.cancel();
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ duplicate link
+
+export component DuplicateDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Duplicate download link");
+    preferred-width: 520px;
+    in property <string> file-name;
+    in property <string> existing-status;
+    in-out property <int> choice: 1;
+    in-out property <bool> remember;
+    callback ok();
+    callback cancel();
+    VerticalLayout {
+        padding: 16px;
+        spacing: 8px;
+        Label {
+            text: @tr("This address is already in the download list:");
+        }
+        Text {
+            text: root.file-name + "  (" + root.existing-status + ")";
+            font-weight: 600;
+            color: Theme.accent;
+            overflow: elide;
+        }
+        Rectangle {
+            height: 4px;
+        }
+        Radio {
+            text: @tr("Add it with a new name (numbered)");
+            checked: root.choice == 1;
+            clicked => {
+                root.choice = 1;
+            }
+        }
+        Radio {
+            text: @tr("Add it and replace the old download (overwrite the file)");
+            checked: root.choice == 2;
+            clicked => {
+                root.choice = 2;
+            }
+        }
+        Radio {
+            text: @tr("If it is finished show it, if not resume it");
+            checked: root.choice == 3;
+            clicked => {
+                root.choice = 3;
+            }
+        }
+        CheckBox {
+            text: @tr("Remember my choice (Options > Downloads)");
+            checked <=> root.remember;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            Button {
+                text: @tr("OK");
+                primary: true;
+                clicked => {
+                    root.ok();
+                }
+            }
+            Button {
+                text: @tr("Cancel");
+                clicked => {
+                    root.cancel();
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ shut down / sleep countdown
+
+export component CountdownDialog inherits ThemedWindow {
+    title: @tr("Ezoo Download");
+    preferred-width: 420px;
+    always-on-top: true;
+    in property <string> action-text: "shut down the computer";
+    in property <int> seconds-left: 30;
+    in property <int> seconds-total: 30;
+    callback now();
+    callback stop();
+    VerticalLayout {
+        padding: 18px;
+        spacing: 12px;
+        Text {
+            text: @tr("All downloads are finished.");
+            font-size: 14px;
+            font-weight: 700;
+            color: Theme.ok;
+        }
+        Label {
+            text: @tr("Ezoo Download will {} in {} seconds.", root.action-text, root.seconds-left);
+            wrap: word-wrap;
+        }
+        Rectangle {
+            height: 10px;
+            border-radius: 5px;
+            background: Theme.bar-bg;
+            Rectangle {
+                x: 0;
+                height: parent.height;
+                border-radius: 5px;
+                width: parent.width * (root.seconds-total > 0 ? root.seconds-left / root.seconds-total : 0);
+                background: Theme.warn;
+                animate width {
+                    duration: 900ms;
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            Button {
+                text: @tr("Now");
+                clicked => {
+                    root.now();
+                }
+            }
+            Button {
+                text: @tr("Stop");
+                primary: true;
+                clicked => {
+                    root.stop();
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ Scheduler (queues)
+
+export component SchedulerDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Scheduler");
+    preferred-width: 820px;
+    preferred-height: 560px;
+    in property <[QueueRow]> queues;
+    in-out property <int> current: 0;
+    in-out property <int> tab: 0;
+    in property <bool> is-main;
+    in property <bool> running;
+    // queue fields
+    in-out property <string> name;
+    in-out property <bool> start-enabled;
+    in-out property <string> start-time;
+    in-out property <bool> once;
+    in-out property <string> once-date;
+    in-out property <bool> d0;
+    in-out property <bool> d1;
+    in-out property <bool> d2;
+    in-out property <bool> d3;
+    in-out property <bool> d4;
+    in-out property <bool> d5;
+    in-out property <bool> d6;
+    in-out property <bool> on-startup;
+    in-out property <bool> stop-enabled;
+    in-out property <string> stop-time;
+    in-out property <int> parallel: 1;
+    in-out property <int> retries;
+    in-out property <string> folder;
+    in-out property <int> when-done;
+    in-out property <bool> open-when-done;
+    in property <[PairRow]> files;
+    in-out property <int> file-current: -1;
+    in property <string> message;
+    callback pick-queue(int);
+    callback new-queue();
+    callback delete-queue();
+    callback browse();
+    callback file-up();
+    callback file-down();
+    callback file-remove();
+    callback start-now();
+    callback stop-queue();
+    callback apply();
+    callback close-window();
+
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 10px;
+        VerticalLayout {
+            width: 210px;
+            spacing: 6px;
+            Rectangle {
+                vertical-stretch: 1;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                ListView {
+                    for q[i] in root.queues: Rectangle {
+                        height: 24px;
+                        background: i == root.current ? Theme.select : qa.has-hover ? Theme.hover : transparent;
+                        qa := TouchArea {
+                            clicked => {
+                                root.pick-queue(i);
+                            }
+                        }
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            spacing: 6px;
+                            VerticalLayout {
+                                alignment: center;
+                                Glyph {
+                                    kind: q.running ? "play" : "clock";
+                                    tint: q.running ? Theme.ok : Theme.accent;
+                                }
+                            }
+                            Cell {
+                                text: q.name;
+                                horizontal-stretch: 1;
+                            }
+                            Cell {
+                                text: q.count > 0 ? q.count + "  " : "";
+                                color: Theme.muted;
+                            }
+                        }
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                Button {
+                    text: @tr("New queue");
+                    horizontal-stretch: 1;
+                    clicked => {
+                        root.new-queue();
+                    }
+                }
+                Button {
+                    text: @tr("Delete");
+                    enabled: !root.is-main;
+                    clicked => {
+                        root.delete-queue();
+                    }
+                }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 8px;
+            HorizontalLayout {
+                spacing: 8px;
+                Label {
+                    text: @tr("Queue name");
+                }
+                LineEdit {
+                    text <=> root.name;
+                    horizontal-stretch: 1;
+                }
+            }
+            HorizontalLayout {
+                spacing: 2px;
+                TabBtn {
+                    text: @tr("Schedule");
+                    active: root.tab == 0;
+                    clicked => {
+                        root.tab = 0;
+                    }
+                }
+                TabBtn {
+                    text: @tr("Files in the queue");
+                    active: root.tab == 1;
+                    clicked => {
+                        root.tab = 1;
+                    }
+                }
+                TabBtn {
+                    text: @tr("Options");
+                    active: root.tab == 2;
+                    clicked => {
+                        root.tab = 2;
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+            }
+            Rectangle {
+                vertical-stretch: 1;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                if root.tab == 0: VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+                    alignment: start;
+                    CheckBox {
+                        text: @tr("Start the queue automatically");
+                        checked <=> root.start-enabled;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Start time (HH:MM)");
+                        }
+                        LineEdit {
+                            width: 90px;
+                            text <=> root.start-time;
+                            enabled: root.start-enabled;
+                            placeholder-text: "02:00";
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 14px;
+                        Radio {
+                            text: @tr("Daily");
+                            checked: !root.once;
+                            enabled: root.start-enabled;
+                            clicked => {
+                                root.once = false;
+                            }
+                        }
+                        Radio {
+                            text: @tr("Once at (YYYY-MM-DD)");
+                            checked: root.once;
+                            enabled: root.start-enabled;
+                            clicked => {
+                                root.once = true;
+                            }
+                        }
+                        LineEdit {
+                            width: 120px;
+                            text <=> root.once-date;
+                            enabled: root.start-enabled && root.once;
+                            placeholder-text: "2026-12-31";
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    if !root.once: HorizontalLayout {
+                        spacing: 4px;
+                        CheckBox {
+                            text: @tr("Mon");
+                            checked <=> root.d0;
+                        }
+                        CheckBox {
+                            text: @tr("Tue");
+                            checked <=> root.d1;
+                        }
+                        CheckBox {
+                            text: @tr("Wed");
+                            checked <=> root.d2;
+                        }
+                        CheckBox {
+                            text: @tr("Thu");
+                            checked <=> root.d3;
+                        }
+                        CheckBox {
+                            text: @tr("Fri");
+                            checked <=> root.d4;
+                        }
+                        CheckBox {
+                            text: @tr("Sat");
+                            checked <=> root.d5;
+                        }
+                        CheckBox {
+                            text: @tr("Sun");
+                            checked <=> root.d6;
+                        }
+                    }
+                    CheckBox {
+                        text: @tr("Start the queue when Ezoo Download starts");
+                        checked <=> root.on-startup;
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.grid;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        CheckBox {
+                            text: @tr("Stop the queue at");
+                            checked <=> root.stop-enabled;
+                        }
+                        LineEdit {
+                            width: 90px;
+                            text <=> root.stop-time;
+                            enabled: root.stop-enabled;
+                            placeholder-text: "08:00";
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.grid;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("When the queue is done");
+                        }
+                        ComboBox {
+                            model: [@tr("Do nothing"), @tr("Exit Ezoo Download"), @tr("Sleep"), @tr("Shut down the computer"), @tr("Hibernate")];
+                            current-index <=> root.when-done;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    Hint {
+                        text: @tr("For Sleep you may need to allow wake timers in the Windows power options, so the computer can wake up for the next start.");
+                    }
+                }
+                if root.tab == 1: VerticalLayout {
+                    padding: 10px;
+                    spacing: 8px;
+                    PairList {
+                        vertical-stretch: 1;
+                        rows: root.files;
+                        current <=> root.file-current;
+                        head-a: @tr("File name");
+                        head-b: @tr("Size");
+                        head-c: @tr("Status");
+                        width-b: 90px;
+                        width-c: 110px;
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Button {
+                            text: @tr("Move up");
+                            enabled: root.file-current > 0;
+                            clicked => {
+                                root.file-up();
+                            }
+                        }
+                        Button {
+                            text: @tr("Move down");
+                            enabled: root.file-current >= 0 && root.file-current < root.files.length - 1;
+                            clicked => {
+                                root.file-down();
+                            }
+                        }
+                        Button {
+                            text: @tr("Delete from queue");
+                            enabled: root.file-current >= 0;
+                            clicked => {
+                                root.file-remove();
+                            }
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    Hint {
+                        text: @tr("Files download in this order. Add files with right click > Move to queue, Add Batch, or \"Download Later\".");
+                    }
+                }
+                if root.tab == 2: VerticalLayout {
+                    padding: 12px;
+                    spacing: 10px;
+                    alignment: start;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Download");
+                        }
+                        SpinBox {
+                            minimum: 1;
+                            maximum: 32;
+                            value <=> root.parallel;
+                        }
+                        Label {
+                            text: @tr("files at the same time");
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Number of retries for each file if downloading failed");
+                        }
+                        SpinBox {
+                            minimum: 0;
+                            maximum: 50;
+                            value <=> root.retries;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    Label {
+                        text: @tr("Save all files of this queue to");
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        LineEdit {
+                            text <=> root.folder;
+                            placeholder-text: @tr("automatic (by file type)");
+                            horizontal-stretch: 1;
+                        }
+                        Button {
+                            text: "…";
+                            clicked => {
+                                root.browse();
+                            }
+                        }
+                    }
+                    CheckBox {
+                        text: @tr("Open each file when it has finished downloading");
+                        checked <=> root.open-when-done;
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.message;
+                    color: Theme.err;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                    wrap: word-wrap;
+                }
+                Button {
+                    text: @tr("Start now");
+                    enabled: !root.running;
+                    clicked => {
+                        root.start-now();
+                    }
+                }
+                Button {
+                    text: @tr("Stop");
+                    enabled: root.running;
+                    clicked => {
+                        root.stop-queue();
+                    }
+                }
+                Button {
+                    text: @tr("Apply");
+                    primary: true;
+                    clicked => {
+                        root.apply();
+                    }
+                }
+                Button {
+                    text: @tr("Close");
+                    clicked => {
+                        root.close-window();
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ Site Grabber / Download all links
+
+export component GrabberDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: root.links-mode ? @tr("Download all links") : @tr("Site Grabber");
+    preferred-width: 860px;
+    preferred-height: 600px;
+    // true: links handed over by the browser (no exploring)
+    in property <bool> links-mode;
+    in-out property <string> start-url;
+    in-out property <int> template: 0;
+    in-out property <string> exts;
+    in-out property <int> depth: 1;
+    in-out property <bool> other-sites;
+    in-out property <bool> no-parent: true;
+    in-out property <int> parallel: 4;
+    in property <bool> exploring;
+    in property <string> progress-text;
+    in property <[LinkRow]> links;
+    in-out property <string> filter;
+    in-out property <int> type-filter: 0;
+    in-out property <string> folder;
+    in property <[string]> queue-names: ["Main download queue"];
+    in-out property <int> queue-index: 0;
+    in-out property <bool> start-now: true;
+    in-out property <bool> use-text: true;
+    in property <string> checked-text;
+    in property <string> message;
+    callback template-changed(int);
+    callback explore();
+    callback stop-explore();
+    callback toggle(int);
+    callback check-all(bool);
+    callback filter-changed();
+    callback browse();
+    callback download();
+    callback close-window();
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        if !root.links-mode: Rectangle {
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            VerticalLayout {
+                padding: 10px;
+                spacing: 8px;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Label {
+                        text: @tr("Start page");
+                    }
+                    LineEdit {
+                        text <=> root.start-url;
+                        placeholder-text: @tr("https://example.com/gallery/");
+                        horizontal-stretch: 1;
+                    }
+                    if !root.exploring: Button {
+                        text: @tr("Start exploring");
+                        primary: true;
+                        clicked => {
+                            root.explore();
+                        }
+                    }
+                    if root.exploring: Button {
+                        text: @tr("Stop");
+                        clicked => {
+                            root.stop-explore();
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Label {
+                        text: @tr("Get");
+                    }
+                    ComboBox {
+                        width: 230px;
+                        model: [@tr("All files (not web pages)"), @tr("All images"), @tr("All videos"), @tr("All music / audio"), @tr("Archives and programs"), @tr("Documents (PDF, Office)"), @tr("Custom file types")];
+                        current-index <=> root.template;
+                        selected(v) => {
+                            root.template-changed(root.template);
+                        }
+                    }
+                    LineEdit {
+                        text <=> root.exts;
+                        enabled: root.template == 6;
+                        placeholder-text: @tr("jpg png mp4 (custom types)");
+                        horizontal-stretch: 1;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Label {
+                        text: @tr("Levels to explore");
+                    }
+                    SpinBox {
+                        width: 90px;
+                        minimum: 0;
+                        maximum: 10;
+                        value <=> root.depth;
+                    }
+                    Label {
+                        text: @tr("Pages at the same time");
+                    }
+                    SpinBox {
+                        width: 90px;
+                        minimum: 1;
+                        maximum: 10;
+                        value <=> root.parallel;
+                    }
+                    CheckBox {
+                        text: @tr("Other sites too");
+                        checked <=> root.other-sites;
+                    }
+                    CheckBox {
+                        text: @tr("Don't go to parent folders");
+                        checked <=> root.no-parent;
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                }
+                Text {
+                    text: root.progress-text;
+                    font-size: 11px;
+                    color: root.exploring ? Theme.accent : Theme.muted;
+                    overflow: elide;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Label {
+                text: @tr("Show");
+            }
+            ComboBox {
+                width: 150px;
+                model: [@tr("All types"), @tr("Images"), @tr("Videos"), @tr("Music"), @tr("Archives / programs"), @tr("Documents"), @tr("Web pages")];
+                current-index <=> root.type-filter;
+                selected(v) => {
+                    root.filter-changed();
+                }
+            }
+            LineEdit {
+                text <=> root.filter;
+                placeholder-text: @tr("Filter by name or address…");
+                horizontal-stretch: 1;
+                edited(t) => {
+                    root.filter-changed();
+                }
+            }
+            Button {
+                text: @tr("Check all");
+                clicked => {
+                    root.check-all(true);
+                }
+            }
+            Button {
+                text: @tr("Uncheck all");
+                clicked => {
+                    root.check-all(false);
+                }
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            VerticalLayout {
+                padding: 1px;
+                Rectangle {
+                    height: 22px;
+                    background: @linear-gradient(180deg, Theme.header-top 0%, Theme.header-bottom 100%);
+                    HorizontalLayout {
+                        HeaderCell {
+                            text: "";
+                            width: 54px;
+                        }
+                        HeaderCell {
+                            text: @tr("File name");
+                            width: 260px;
+                        }
+                        HeaderCell {
+                            text: @tr("Type");
+                            width: 60px;
+                        }
+                        HeaderCell {
+                            text: @tr("Link text");
+                            width: 170px;
+                        }
+                        HeaderCell {
+                            text: @tr("Address");
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+                ListView {
+                    vertical-stretch: 1;
+                    for l[i] in root.links: Rectangle {
+                        height: 22px;
+                        background: la.has-hover ? Theme.hover : transparent;
+                        la := TouchArea {
+                            clicked => {
+                                root.toggle(i);
+                            }
+                        }
+                        HorizontalLayout {
+                            padding-left: 6px;
+                            spacing: 4px;
+                            Rectangle {
+                                width: 24px;
+                                Rectangle {
+                                    y: (parent.height - 14px) / 2;
+                                    width: 14px;
+                                    height: 14px;
+                                    border-width: 1px;
+                                    border-radius: 2px;
+                                    border-color: l.checked ? Theme.accent : Theme.muted;
+                                    background: l.checked ? Theme.accent : Theme.input-bg;
+                                    if l.checked: Glyph {
+                                        x: 1px;
+                                        y: 1px;
+                                        width: 12px;
+                                        height: 12px;
+                                        kind: "check";
+                                        tint: white;
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                width: 20px;
+                                TypeIcon {
+                                    kind: l.kind;
+                                    width: 16px;
+                                    height: 16px;
+                                    y: (parent.height - 16px) / 2;
+                                }
+                            }
+                            Cell {
+                                text: l.name;
+                                width: 256px;
+                            }
+                            Cell {
+                                text: l.ext;
+                                width: 56px;
+                                color: Theme.muted;
+                            }
+                            Cell {
+                                text: l.text;
+                                width: 166px;
+                                color: Theme.muted;
+                            }
+                            Cell {
+                                text: l.url;
+                                horizontal-stretch: 1;
+                                color: Theme.accent;
+                                font-size: 11px;
+                            }
+                        }
+                    }
+                }
+            }
+            if root.links.length == 0: Text {
+                y: 80px;
+                width: parent.width;
+                horizontal-alignment: center;
+                text: root.links-mode ? @tr("No links on this page.") : root.exploring ? @tr("Exploring…") : @tr("Type a start page and click \"Start exploring\".");
+                color: Theme.muted;
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Label {
+                text: @tr("Save to");
+            }
+            LineEdit {
+                text <=> root.folder;
+                placeholder-text: @tr("automatic (by file type)");
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: "…";
+                clicked => {
+                    root.browse();
+                }
+            }
+            Label {
+                text: @tr("Queue");
+            }
+            ComboBox {
+                model: root.queue-names;
+                current-index <=> root.queue-index;
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            CheckBox {
+                text: @tr("Use link texts as descriptions");
+                checked <=> root.use-text;
+            }
+            CheckBox {
+                text: @tr("Start the queue now");
+                checked <=> root.start-now;
+            }
+            Text {
+                text: root.message != "" ? root.message : root.checked-text;
+                color: root.message != "" ? Theme.err : Theme.muted;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                horizontal-alignment: right;
+            }
+            Button {
+                text: @tr("Download checked");
+                primary: true;
+                clicked => {
+                    root.download();
+                }
+            }
+            Button {
+                text: @tr("Close");
+                clicked => {
+                    root.close-window();
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ Tip of the day
+
+export component TipDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Tip of the day");
+    preferred-width: 480px;
+    in property <string> tip;
+    in property <string> counter;
+    in-out property <bool> show-on-start: true;
+    callback next();
+    callback close-window();
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 14px;
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                background: @linear-gradient(135deg, #8b5cf6 0%, #2563eb 100%);
+                Glyph {
+                    x: 10px;
+                    y: 10px;
+                    width: 24px;
+                    height: 24px;
+                    kind: "bulb";
+                }
+            }
+            VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 1;
+                Text {
+                    text: @tr("Did you know…");
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: Theme.text;
+                }
+                Text {
+                    text: root.tip;
+                    wrap: word-wrap;
+                    color: Theme.text;
+                    font-size: 12px;
+                    min-height: 70px;
+                }
+                Text {
+                    text: root.counter;
+                    color: Theme.muted;
+                    font-size: 11px;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            CheckBox {
+                text: @tr("Show tips at startup");
+                checked <=> root.show-on-start;
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("Next tip");
+                clicked => {
+                    root.next();
+                }
+            }
+            Button {
+                text: @tr("Close");
+                primary: true;
+                clicked => {
+                    root.close-window();
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ Refresh download address
+
+export component RefreshDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Refresh download address");
+    preferred-width: 520px;
+    in property <string> file-name;
+    in property <string> page;
+    in property <bool> waiting: true;
+    in-out property <string> new-url;
+    callback open-page();
+    callback use-url();
+    callback stop-waiting();
+    VerticalLayout {
+        padding: 16px;
+        spacing: 10px;
+        Text {
+            text: root.file-name;
+            font-weight: 700;
+            color: Theme.accent;
+            overflow: elide;
+        }
+        Label {
+            text: @tr("1. Open the web page where you got this file.\n2. Click the download link there again (or start the video).\n3. Ezoo Download takes the new address and continues from where it stopped.");
+            wrap: word-wrap;
+        }
+        if root.page != "": HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root.page;
+                color: Theme.muted;
+                font-size: 11px;
+                overflow: elide;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+            }
+            Button {
+                text: @tr("Open the page");
+                clicked => {
+                    root.open-page();
+                }
+            }
+        }
+        Hint {
+            text: root.waiting ? @tr("Waiting for the new address from the browser…") : "";
+        }
+        Label {
+            text: @tr("Or paste the new address here:");
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            LineEdit {
+                text <=> root.new-url;
+                horizontal-stretch: 1;
+                placeholder-text: @tr("https://…");
+            }
+            Button {
+                text: @tr("Use it");
+                enabled: root.new-url != "";
+                clicked => {
+                    root.use-url();
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            Button {
+                text: @tr("Stop waiting");
+                clicked => {
+                    root.stop-waiting();
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ Options
+
+component SoundRow inherits HorizontalLayout {
+    in property <string> label;
+    in-out property <string> path;
+    callback browse();
+    callback play();
+    spacing: 6px;
+    Label {
+        text: root.label;
+        width: 150px;
+    }
+    LineEdit {
+        text <=> root.path;
+        horizontal-stretch: 1;
+    }
+    Button {
+        text: "…";
+        clicked => {
+            root.browse();
+        }
+    }
+    Button {
+        text: @tr("Play");
+        clicked => {
+            root.play();
+        }
+    }
+}
+
+export component SettingsDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Ezoo Download – Options");
+    preferred-width: 820px;
+    preferred-height: 600px;
+
+    in-out property <int> tab: 0;
+    // General
+    in-out property <int> language;
+    in-out property <int> theme;
+    in-out property <bool> start-with-windows;
+    in-out property <bool> close-to-tray;
+    in-out property <bool> clipboard;
+    in-out property <bool> auto-clipboard;
+    in-out property <int> double-click;
+    in-out property <bool> show-tips;
+    in-out property <int> port;
+    in-out property <int> skip-key;
+    in-out property <int> force-key;
+    in property <string> extension-path;
+    // File types
+    in-out property <string> capture-exts;
+    in-out property <string> skip-sites;
+    in-out property <string> skip-addresses;
+    in-out property <bool> panel-enabled;
+    in-out property <string> panel-skip-sites;
+    in-out property <int> panel-min-video;
+    in-out property <int> panel-min-audio;
+    // Save To
+    in-out property <string> download-dir;
+    in-out property <bool> category-folders;
+    in-out property <string> temp-dir;
+    // Downloads
+    in-out property <bool> show-start-dialog;
+    in-out property <bool> start-while-info;
+    in-out property <bool> complete-dialog;
+    in-out property <int> progress-mode;
+    in-out property <int> duplicate-action;
+    in-out property <bool> set-file-date;
+    in-out property <bool> virus-scan;
+    in-out property <string> virus-program;
+    in-out property <string> virus-args;
+    in-out property <string> user-agent;
+    // Connection
+    in-out property <int> connection-type;
+    in-out property <int> connections;
+    in-out property <int> max-active;
+    in-out property <int> retries;
+    in property <[PairRow]> server-rows;
+    in-out property <int> server-current: -1;
+    in-out property <string> server-host;
+    in-out property <int> server-conns: 2;
+    in-out property <bool> quota-on;
+    in-out property <int> quota-mb;
+    in-out property <int> quota-hours;
+    in property <string> quota-used;
+    // Proxy
+    in-out property <int> proxy-mode;
+    in-out property <string> proxy-host;
+    in-out property <int> proxy-port;
+    in-out property <string> proxy-user;
+    in-out property <string> proxy-password;
+    in-out property <string> proxy-bypass;
+    // Site logins
+    in property <[PairRow]> login-rows;
+    in-out property <int> login-current: -1;
+    in-out property <string> login-site;
+    in-out property <string> login-user;
+    in-out property <string> login-password;
+    // Sounds
+    in-out property <bool> sounds-on;
+    in-out property <string> sound-complete;
+    in-out property <string> sound-failed;
+    in-out property <string> sound-qstart;
+    in-out property <string> sound-qdone;
+    // Speed limiter
+    in-out property <bool> limiter-on;
+    in-out property <int> speed-limit;
+    in-out property <bool> limiter-startup;
+    in property <string> message;
+
+    callback browse(string);
+    callback play(string);
+    callback reset-paths();
+    callback default-exts();
+    callback server-add();
+    callback server-remove();
+    callback login-add();
+    callback login-remove();
+    callback login-pick(int);
+    callback open-extension-folder();
+    callback save();
+    callback cancel();
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 8px;
+        HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 8px;
+            Rectangle {
+                width: 150px;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                VerticalLayout {
+                    padding: 3px;
+                    alignment: start;
+                    for t[i] in [@tr("General"), @tr("File Types"), @tr("Save To"), @tr("Downloads"), @tr("Connection"), @tr("Proxy / Server"), @tr("Site Logins"), @tr("Sounds"), @tr("Speed Limiter")]: SideTab {
+                        text: t;
+                        active: root.tab == i;
+                        clicked => {
+                            root.tab = i;
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+
+                // ---------------- General
+                if root.tab == 0: VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+                    alignment: start;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Language");
+                        }
+                        ComboBox {
+                            width: 200px;
+                            model: ["English", "العربية"];
+                            current-index <=> root.language;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Theme");
+                        }
+                        ComboBox {
+                            width: 200px;
+                            model: [@tr("Light"), @tr("Dark"), @tr("Ocean blue"), @tr("Midnight purple")];
+                            current-index <=> root.theme;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    CheckBox {
+                        text: @tr("Launch Ezoo Download on Windows startup");
+                        checked <=> root.start-with-windows;
+                    }
+                    CheckBox {
+                        text: @tr("Keep running next to the clock when the window is closed");
+                        checked <=> root.close-to-tray;
+                    }
+                    CheckBox {
+                        text: @tr("Watch the clipboard for download links");
+                        checked <=> root.clipboard;
+                    }
+                    CheckBox {
+                        text: @tr("Automatically start downloading links placed in the clipboard");
+                        checked <=> root.auto-clipboard;
+                        enabled: root.clipboard;
+                    }
+                    CheckBox {
+                        text: @tr("Show \"Tip of the day\" at startup");
+                        checked <=> root.show-tips;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("On double click on a download");
+                        }
+                        ComboBox {
+                            width: 230px;
+                            model: [@tr("Open the file / progress window"), @tr("Show properties")];
+                            current-index <=> root.double-click;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.grid;
+                    }
+                    Section {
+                        text: @tr("Browser integration");
+                    }
+                    Hint {
+                        text: @tr("Chrome and Edge: load the \"extension\" folder in chrome://extensions (Developer mode > Load unpacked). Downloads, videos and the right click menu then go to Ezoo Download.");
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Button {
+                            text: @tr("Add Ezoo Download to my browser…");
+                            clicked => {
+                                root.open-extension-folder();
+                            }
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Hold this key to let the browser download by itself");
+                        }
+                        ComboBox {
+                            width: 100px;
+                            model: [@tr("Alt"), @tr("Ctrl"), @tr("Shift"), @tr("None")];
+                            current-index <=> root.skip-key;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Hold this key to force Ezoo Download to take a link");
+                        }
+                        ComboBox {
+                            width: 100px;
+                            model: [@tr("Alt"), @tr("Ctrl"), @tr("Shift"), @tr("None")];
+                            current-index <=> root.force-key;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Browser extension port");
+                        }
+                        SpinBox {
+                            minimum: 1024;
+                            maximum: 65535;
+                            value <=> root.port;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                // ---------------- File Types
+                if root.tab == 1: VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+                    Label {
+                        text: @tr("Automatically start downloading these file types (from the browser):");
+                    }
+                    TextEdit {
+                        text <=> root.capture-exts;
+                        min-height: 80px;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        alignment: end;
+                        Button {
+                            text: @tr("Default");
+                            clicked => {
+                                root.default-exts();
+                            }
+                        }
+                    }
+                    Label {
+                        text: @tr("Don't start downloading automatically from these sites:");
+                    }
+                    LineEdit {
+                        text <=> root.skip-sites;
+                        placeholder-text: @tr("*.update.microsoft.com  windowsupdate.com");
+                    }
+                    Label {
+                        text: @tr("Don't start downloading these addresses (one per line, * allowed):");
+                    }
+                    TextEdit {
+                        text <=> root.skip-addresses;
+                        min-height: 60px;
+                        font-size: 12px;
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.grid;
+                    }
+                    CheckBox {
+                        text: @tr("Show the \"Download this video\" panel on web players");
+                        checked <=> root.panel-enabled;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Don't show it on these sites");
+                        }
+                        LineEdit {
+                            text <=> root.panel-skip-sites;
+                            enabled: root.panel-enabled;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Smallest video (KB)");
+                        }
+                        SpinBox {
+                            width: 110px;
+                            minimum: 0;
+                            maximum: 100000;
+                            value <=> root.panel-min-video;
+                            enabled: root.panel-enabled;
+                        }
+                        Label {
+                            text: @tr("Smallest audio (KB)");
+                        }
+                        SpinBox {
+                            width: 110px;
+                            minimum: 0;
+                            maximum: 100000;
+                            value <=> root.panel-min-audio;
+                            enabled: root.panel-enabled;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                // ---------------- Save To
+                if root.tab == 2: VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+                    alignment: start;
+                    Label {
+                        text: @tr("Main download folder");
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        LineEdit {
+                            text <=> root.download-dir;
+                            horizontal-stretch: 1;
+                        }
+                        Button {
+                            text: @tr("Browse…");
+                            clicked => {
+                                root.browse("download");
+                            }
+                        }
+                    }
+                    CheckBox {
+                        text: @tr("Sort files into folders by category (Video, Music, Programs, Compressed, Documents, Images…)");
+                        checked <=> root.category-folders;
+                    }
+                    Hint {
+                        text: @tr("Each category's own folder and file types: right click it in the sidebar > Properties.");
+                    }
+                    Button {
+                        text: @tr("Forget remembered category paths");
+                        clicked => {
+                            root.reset-paths();
+                        }
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.grid;
+                    }
+                    Label {
+                        text: @tr("Temporary folder (parts while downloading)");
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        LineEdit {
+                            text <=> root.temp-dir;
+                            placeholder-text: @tr("next to the file (default)");
+                            horizontal-stretch: 1;
+                        }
+                        Button {
+                            text: @tr("Browse…");
+                            clicked => {
+                                root.browse("temp");
+                            }
+                        }
+                    }
+                    Hint {
+                        text: @tr("Tip: a temporary folder on another drive than the download folder makes joining the parts faster.");
+                    }
+                }
+
+                // ---------------- Downloads
+                if root.tab == 3: VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+                    alignment: start;
+                    CheckBox {
+                        text: @tr("Show the \"Download File Info\" window for downloads from the browser");
+                        checked <=> root.show-start-dialog;
+                    }
+                    CheckBox {
+                        text: @tr("Start downloading immediately while showing \"Download File Info\"");
+                        checked <=> root.start-while-info;
+                    }
+                    CheckBox {
+                        text: @tr("Show the \"Download complete\" window");
+                        checked <=> root.complete-dialog;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Show the download progress window");
+                        }
+                        ComboBox {
+                            width: 160px;
+                            model: [@tr("Normally"), @tr("Minimized"), @tr("Don't show")];
+                            current-index <=> root.progress-mode;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("If a duplicate link is added");
+                        }
+                        ComboBox {
+                            width: 330px;
+                            model: [@tr("Ask me"), @tr("Add it with a numbered file name"), @tr("Add it and replace the old download"), @tr("Show the finished one / resume the unfinished one")];
+                            current-index <=> root.duplicate-action;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    CheckBox {
+                        text: @tr("Give finished files the date from the server");
+                        checked <=> root.set-file-date;
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.grid;
+                    }
+                    CheckBox {
+                        text: @tr("Check every finished file for viruses with this program");
+                        checked <=> root.virus-scan;
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        LineEdit {
+                            text <=> root.virus-program;
+                            enabled: root.virus-scan;
+                            placeholder-text: @tr("C:\\Program Files\\Windows Defender\\MpCmdRun.exe");
+                            horizontal-stretch: 1;
+                        }
+                        Button {
+                            text: "…";
+                            enabled: root.virus-scan;
+                            clicked => {
+                                root.browse("virus");
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Command line parameters");
+                        }
+                        LineEdit {
+                            text <=> root.virus-args;
+                            enabled: root.virus-scan;
+                            placeholder-text: @tr("-Scan -ScanType 3 -File [File]");
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    Hint {
+                        text: @tr("[File] is replaced by the downloaded file.");
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.grid;
+                    }
+                    Label {
+                        text: @tr("User-Agent for downloads added by hand");
+                    }
+                    LineEdit {
+                        text <=> root.user-agent;
+                    }
+                }
+
+                // ---------------- Connection
+                if root.tab == 4: VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+                    GridLayout {
+                        spacing: 8px;
+                        Row {
+                            Label {
+                                text: @tr("Connection type / speed");
+                            }
+                            ComboBox {
+                                model: [@tr("Low speed (modem, mobile)"), @tr("Medium speed (DSL)"), @tr("High speed (fiber, cable, LAN)")];
+                                current-index <=> root.connection-type;
+                            }
+                        }
+                        Row {
+                            Label {
+                                text: @tr("Default max. connections number");
+                            }
+                            SpinBox {
+                                minimum: 1;
+                                maximum: 32;
+                                value <=> root.connections;
+                            }
+                        }
+                        Row {
+                            Label {
+                                text: @tr("Downloads at the same time (0 = no limit)");
+                            }
+                            SpinBox {
+                                minimum: 0;
+                                maximum: 100;
+                                value <=> root.max-active;
+                            }
+                        }
+                        Row {
+                            Label {
+                                text: @tr("Retries on error");
+                            }
+                            SpinBox {
+                                minimum: 0;
+                                maximum: 100;
+                                value <=> root.retries;
+                            }
+                        }
+                    }
+                    Section {
+                        text: @tr("Exceptions: servers with their own number of connections");
+                    }
+                    PairList {
+                        height: 110px;
+                        rows: root.server-rows;
+                        current <=> root.server-current;
+                        head-a: @tr("Server");
+                        head-b: @tr("Connections");
+                        width-b: 110px;
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        LineEdit {
+                            text <=> root.server-host;
+                            placeholder-text: @tr("example.com");
+                            horizontal-stretch: 1;
+                        }
+                        SpinBox {
+                            width: 90px;
+                            minimum: 1;
+                            maximum: 32;
+                            value <=> root.server-conns;
+                        }
+                        Button {
+                            text: @tr("Add");
+                            clicked => {
+                                root.server-add();
+                            }
+                        }
+                        Button {
+                            text: @tr("Delete");
+                            enabled: root.server-current >= 0;
+                            clicked => {
+                                root.server-remove();
+                            }
+                        }
+                    }
+                    Section {
+                        text: @tr("Download limits");
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        CheckBox {
+                            text: @tr("Download no more than");
+                            checked <=> root.quota-on;
+                        }
+                        SpinBox {
+                            width: 110px;
+                            minimum: 1;
+                            maximum: 10000000;
+                            value <=> root.quota-mb;
+                            enabled: root.quota-on;
+                        }
+                        Label {
+                            text: @tr("MB every");
+                        }
+                        SpinBox {
+                            width: 80px;
+                            minimum: 1;
+                            maximum: 720;
+                            value <=> root.quota-hours;
+                            enabled: root.quota-on;
+                        }
+                        Label {
+                            text: @tr("hours");
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    Hint {
+                        text: root.quota-used;
+                    }
+                }
+
+                // ---------------- Proxy
+                if root.tab == 5: VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+                    alignment: start;
+                    Radio {
+                        text: @tr("No proxy");
+                        checked: root.proxy-mode == 0;
+                        clicked => {
+                            root.proxy-mode = 0;
+                        }
+                    }
+                    Radio {
+                        text: @tr("Use the system settings (like your browser)");
+                        checked: root.proxy-mode == 1;
+                        clicked => {
+                            root.proxy-mode = 1;
+                        }
+                    }
+                    Radio {
+                        text: @tr("Manual proxy configuration (HTTP / HTTPS)");
+                        checked: root.proxy-mode == 2;
+                        clicked => {
+                            root.proxy-mode = 2;
+                        }
+                    }
+                    GridLayout {
+                        spacing: 8px;
+                        Row {
+                            Label {
+                                text: @tr("Proxy address");
+                            }
+                            HorizontalLayout {
+                                spacing: 6px;
+                                LineEdit {
+                                    text <=> root.proxy-host;
+                                    enabled: root.proxy-mode == 2;
+                                    placeholder-text: @tr("proxy.example.com");
+                                    horizontal-stretch: 1;
+                                }
+                                Label {
+                                    text: @tr("Port");
+                                }
+                                SpinBox {
+                                    width: 100px;
+                                    minimum: 1;
+                                    maximum: 65535;
+                                    value <=> root.proxy-port;
+                                    enabled: root.proxy-mode == 2;
+                                }
+                            }
+                        }
+                        Row {
+                            Label {
+                                text: @tr("User name");
+                            }
+                            LineEdit {
+                                text <=> root.proxy-user;
+                                enabled: root.proxy-mode == 2;
+                            }
+                        }
+                        Row {
+                            Label {
+                                text: @tr("Password");
+                            }
+                            LineEdit {
+                                text <=> root.proxy-password;
+                                input-type: InputType.password;
+                                enabled: root.proxy-mode == 2;
+                            }
+                        }
+                        Row {
+                            Label {
+                                text: @tr("Don't use the proxy for");
+                            }
+                            LineEdit {
+                                text <=> root.proxy-bypass;
+                                enabled: root.proxy-mode == 2;
+                                placeholder-text: @tr("localhost 127.0.0.1 *.local");
+                            }
+                        }
+                    }
+                    Hint {
+                        text: @tr("Addresses separated by spaces. SOCKS proxies: use the system settings.");
+                    }
+                }
+
+                // ---------------- Site logins
+                if root.tab == 6: VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+                    Label {
+                        text: @tr("User names and passwords for sites that ask for them:");
+                    }
+                    PairList {
+                        vertical-stretch: 1;
+                        rows: root.login-rows;
+                        current <=> root.login-current;
+                        head-a: @tr("Site / path");
+                        head-b: @tr("User name");
+                        width-b: 180px;
+                        picked(i) => {
+                            root.login-pick(i);
+                        }
+                    }
+                    GridLayout {
+                        spacing: 8px;
+                        Row {
+                            Label {
+                                text: @tr("Site / path");
+                            }
+                            LineEdit {
+                                text <=> root.login-site;
+                                placeholder-text: @tr("example.com/members");
+                            }
+                        }
+                        Row {
+                            Label {
+                                text: @tr("User name");
+                            }
+                            LineEdit {
+                                text <=> root.login-user;
+                            }
+                        }
+                        Row {
+                            Label {
+                                text: @tr("Password");
+                            }
+                            LineEdit {
+                                text <=> root.login-password;
+                                input-type: InputType.password;
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: end;
+                        Button {
+                            text: @tr("Add / Update");
+                            clicked => {
+                                root.login-add();
+                            }
+                        }
+                        Button {
+                            text: @tr("Remove");
+                            enabled: root.login-current >= 0;
+                            clicked => {
+                                root.login-remove();
+                            }
+                        }
+                    }
+                    Hint {
+                        text: @tr("Saved in the settings file of your Windows user account.");
+                    }
+                }
+
+                // ---------------- Sounds
+                if root.tab == 7: VerticalLayout {
+                    padding: 14px;
+                    spacing: 10px;
+                    alignment: start;
+                    CheckBox {
+                        text: @tr("Play sounds");
+                        checked <=> root.sounds-on;
+                    }
+                    SoundRow {
+                        label: @tr("Download complete");
+                        path <=> root.sound-complete;
+                        browse => {
+                            root.browse("sound:complete");
+                        }
+                        play => {
+                            root.play("complete");
+                        }
+                    }
+                    SoundRow {
+                        label: @tr("Download failed");
+                        path <=> root.sound-failed;
+                        browse => {
+                            root.browse("sound:failed");
+                        }
+                        play => {
+                            root.play("failed");
+                        }
+                    }
+                    SoundRow {
+                        label: @tr("Queue started");
+                        path <=> root.sound-qstart;
+                        browse => {
+                            root.browse("sound:qstart");
+                        }
+                        play => {
+                            root.play("qstart");
+                        }
+                    }
+                    SoundRow {
+                        label: @tr("Queue finished");
+                        path <=> root.sound-qdone;
+                        browse => {
+                            root.browse("sound:qdone");
+                        }
+                        play => {
+                            root.play("qdone");
+                        }
+                    }
+                    Hint {
+                        text: @tr(".wav files. Empty = no sound for that event.");
+                    }
+                }
+
+                // ---------------- Speed limiter
+                if root.tab == 8: VerticalLayout {
+                    padding: 14px;
+                    spacing: 10px;
+                    alignment: start;
+                    CheckBox {
+                        text: @tr("Turn the speed limiter on");
+                        checked <=> root.limiter-on;
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Maximum download speed (KB/s)");
+                        }
+                        SpinBox {
+                            minimum: 1;
+                            maximum: 1000000;
+                            value <=> root.speed-limit;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    CheckBox {
+                        text: @tr("Always turn on the speed limiter when Ezoo Download starts");
+                        checked <=> root.limiter-startup;
+                    }
+                    Hint {
+                        text: @tr("Every download can also have its own limit: its progress window > Speed Limiter tab.");
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            Text {
+                text: root.message;
+                color: Theme.err;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("OK");
+                primary: true;
+                clicked => {
+                    root.save();
+                }
+            }
+            Button {
+                text: @tr("Cancel");
+                clicked => {
+                    root.cancel();
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ YouTube playlist
+
+export component PlaylistDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Download a playlist");
+    preferred-width: 780px;
+    preferred-height: 600px;
+    in-out property <string> url;
+    in property <bool> busy;
+    in property <string> status;
+    in property <string> playlist-title;
+    in property <[LinkRow]> entries;
+    in-out property <int> quality: 0;
+    in-out property <string> folder;
+    in-out property <int> parallel: 2;
+    in-out property <bool> numbered: true;
+    in-out property <bool> start-now: true;
+    in property <string> checked-text;
+    in property <string> message;
+    callback fetch();
+    callback toggle(int);
+    callback check-all(bool);
+    callback browse();
+    callback download();
+    callback close-window();
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        Label {
+            text: @tr("Paste the address of a playlist:");
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            LineEdit {
+                text <=> root.url;
+                placeholder-text: @tr("https://www.youtube.com/playlist?list=…");
+                horizontal-stretch: 1;
+                accepted(t) => {
+                    root.fetch();
+                }
+            }
+            Button {
+                text: root.busy ? @tr("Getting the list…") : @tr("Get videos");
+                primary: true;
+                enabled: !root.busy && root.url != "";
+                clicked => {
+                    root.fetch();
+                }
+            }
+        }
+        Text {
+            text: root.status;
+            font-size: 11px;
+            color: Theme.muted;
+            overflow: elide;
+        }
+        if root.playlist-title != "": Text {
+            text: root.playlist-title;
+            font-size: 14px;
+            font-weight: 700;
+            color: Theme.text;
+            overflow: elide;
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("Check all");
+                clicked => {
+                    root.check-all(true);
+                }
+            }
+            Button {
+                text: @tr("Uncheck all");
+                clicked => {
+                    root.check-all(false);
+                }
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            VerticalLayout {
+                padding: 1px;
+                Rectangle {
+                    height: 22px;
+                    background: @linear-gradient(180deg, Theme.header-top 0%, Theme.header-bottom 100%);
+                    HorizontalLayout {
+                        HeaderCell {
+                            text: "";
+                            width: 34px;
+                        }
+                        HeaderCell {
+                            text: "#";
+                            width: 40px;
+                        }
+                        HeaderCell {
+                            text: @tr("Video");
+                            horizontal-stretch: 1;
+                        }
+                        HeaderCell {
+                            text: @tr("Length");
+                            width: 80px;
+                        }
+                    }
+                }
+                ListView {
+                    vertical-stretch: 1;
+                    for e[i] in root.entries: Rectangle {
+                        height: 24px;
+                        background: ea.has-hover ? Theme.hover : transparent;
+                        ea := TouchArea {
+                            clicked => {
+                                root.toggle(i);
+                            }
+                        }
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            spacing: 4px;
+                            Rectangle {
+                                width: 26px;
+                                Rectangle {
+                                    y: (parent.height - 14px) / 2;
+                                    width: 14px;
+                                    height: 14px;
+                                    border-width: 1px;
+                                    border-radius: 2px;
+                                    border-color: e.checked ? Theme.accent : Theme.muted;
+                                    background: e.checked ? Theme.accent : Theme.input-bg;
+                                    if e.checked: Glyph {
+                                        x: 1px;
+                                        y: 1px;
+                                        width: 12px;
+                                        height: 12px;
+                                        kind: "check";
+                                        tint: white;
+                                    }
+                                }
+                            }
+                            Cell {
+                                text: e.text;
+                                width: 36px;
+                                color: Theme.muted;
+                            }
+                            Cell {
+                                text: e.name;
+                                horizontal-stretch: 1;
+                            }
+                            Cell {
+                                text: e.ext;
+                                width: 76px;
+                                color: Theme.muted;
+                                horizontal-alignment: right;
+                            }
+                        }
+                    }
+                }
+            }
+            if root.entries.length == 0: Text {
+                y: 70px;
+                width: parent.width;
+                horizontal-alignment: center;
+                text: root.busy ? @tr("Getting the videos of the playlist…") : @tr("The videos of the playlist show up here.");
+                color: Theme.muted;
+            }
+        }
+        GridLayout {
+            spacing: 8px;
+            Row {
+                Label {
+                    text: @tr("Quality");
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    ComboBox {
+                        width: 240px;
+                        model: [@tr("Best quality (MP4)"), @tr("1080p"), @tr("720p"), @tr("480p"), @tr("360p"), @tr("Audio only (M4A)")];
+                        current-index <=> root.quality;
+                    }
+                    Label {
+                        text: @tr("Files at the same time");
+                    }
+                    SpinBox {
+                        width: 90px;
+                        minimum: 1;
+                        maximum: 8;
+                        value <=> root.parallel;
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                }
+            }
+            Row {
+                Label {
+                    text: @tr("Save to");
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    LineEdit {
+                        text <=> root.folder;
+                        horizontal-stretch: 1;
+                    }
+                    Button {
+                        text: "…";
+                        clicked => {
+                            root.browse();
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            CheckBox {
+                text: @tr("Number the files");
+                checked <=> root.numbered;
+            }
+            CheckBox {
+                text: @tr("Start now");
+                checked <=> root.start-now;
+            }
+            Text {
+                text: root.message != "" ? root.message : root.checked-text;
+                color: root.message != "" ? Theme.err : Theme.muted;
+                vertical-alignment: center;
+                horizontal-alignment: right;
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("Download");
+                primary: true;
+                enabled: root.entries.length > 0;
+                clicked => {
+                    root.download();
+                }
+            }
+            Button {
+                text: @tr("Close");
+                clicked => {
+                    root.close-window();
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ add the extension to a browser
+
+export struct BrowserRow {
+    name: string,
+    // accent color of its card
+    tint: color,
+    installed: bool,
+    // "Add from the store" / "Add (developer mode)"
+    action: string,
+}
+
+component BrowserCard inherits Rectangle {
+    in property <BrowserRow> data;
+    callback add();
+    height: 150px;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: ta.has-hover ? root.data.tint : Theme.line;
+    background: ta.has-hover ? Theme.hover : Theme.panel;
+    opacity: root.data.installed ? 1.0 : 0.55;
+    ta := TouchArea {
+        clicked => {
+            root.add();
+        }
+    }
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        alignment: center;
+        HorizontalLayout {
+            alignment: center;
+            Rectangle {
+                width: 52px;
+                height: 52px;
+                border-radius: 26px;
+                background: @linear-gradient(135deg, root.data.tint 0%, root.data.tint.darker(40%) 100%);
+                // a globe: the browser
+                Path {
+                    x: 10px;
+                    y: 10px;
+                    width: 32px;
+                    height: 32px;
+                    viewbox-width: 32;
+                    viewbox-height: 32;
+                    stroke: white;
+                    stroke-width: 1.6px;
+                    fill: transparent;
+                    commands: "M 16 3 A 13 13 0 1 1 15.99 3 Z M 3 16 L 29 16 M 16 3 C 9 9 9 23 16 29 M 16 3 C 23 9 23 23 16 29";
+                }
+                Rectangle {
+                    x: 34px;
+                    y: 34px;
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 10px;
+                    background: #2e9e4f;
+                    border-width: 2px;
+                    border-color: Theme.panel;
+                    Glyph {
+                        x: 2px;
+                        y: 2px;
+                        kind: "down";
+                        tint: white;
+                    }
+                }
+            }
+        }
+        Text {
+            text: root.data.name;
+            horizontal-alignment: center;
+            font-size: 14px;
+            font-weight: 700;
+            color: Theme.text;
+        }
+        Text {
+            text: root.data.installed ? root.data.action : @tr("Not installed on this computer");
+            horizontal-alignment: center;
+            font-size: 11px;
+            color: root.data.installed ? Theme.accent : Theme.muted;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component BrowserDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Add Ezoo Download to your browser");
+    preferred-width: 720px;
+    in property <[BrowserRow]> browsers;
+    in property <string> steps;
+    in property <string> folder;
+    callback add(int);
+    callback open-folder();
+    callback copy-folder();
+    callback close-window();
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        Text {
+            text: @tr("Click your browser:");
+            font-size: 14px;
+            font-weight: 700;
+            color: Theme.text;
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            for b[i] in root.browsers: BrowserCard {
+                horizontal-stretch: 1;
+                data: b;
+                add => {
+                    root.add(i);
+                }
+            }
+        }
+        if root.steps != "": Rectangle {
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.accent;
+            border-radius: 6px;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 6px;
+                Section {
+                    text: @tr("Almost done:");
+                }
+                Text {
+                    text: root.steps;
+                    wrap: word-wrap;
+                    font-size: 12px;
+                    color: Theme.text;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root.folder;
+                font-size: 11px;
+                color: Theme.muted;
+                overflow: elide;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("Copy folder path");
+                clicked => {
+                    root.copy-folder();
+                }
+            }
+            Button {
+                text: @tr("Open folder");
+                clicked => {
+                    root.open-folder();
+                }
+            }
+            Button {
+                text: @tr("Close");
+                primary: true;
+                clicked => {
+                    root.close-window();
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ About
+
+export component AboutDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("About Ezoo Download");
+    preferred-width: 420px;
+    in property <string> version;
+    callback open-link(string);
+    callback close-window();
+    VerticalLayout {
+        padding: 22px;
+        spacing: 10px;
+        HorizontalLayout {
+            alignment: center;
+            Image {
+                source: @image-url("icon.png");
+                width: 72px;
+                height: 72px;
+            }
+        }
+        Text {
+            text: "Ezoo Download";
+            horizontal-alignment: center;
+            font-size: 20px;
+            font-weight: 700;
+            color: Theme.text;
+        }
+        Text {
+            text: @tr("Version {}", root.version);
+            horizontal-alignment: center;
+            color: Theme.muted;
+        }
+        Text {
+            text: @tr("Coded by Ahmed Ezzat");
+            horizontal-alignment: center;
+            font-size: 13px;
+            color: Theme.text;
+        }
+        HorizontalLayout {
+            alignment: center;
+            spacing: 10px;
+            Button {
+                text: "YouTube";
+                clicked => {
+                    root.open-link("https://www.youtube.com/@Ezoo-Tech");
+                }
+            }
+            Button {
+                text: "Facebook";
+                clicked => {
+                    root.open-link("https://www.facebook.com/profile.php?id=61558130707674");
+                }
+            }
+        }
+        Rectangle {
+            height: 6px;
+        }
+        AboutSlint {
+            preferred-height: 90px;
+        }
+        HorizontalLayout {
+            alignment: end;
+            Button {
+                text: @tr("Close");
+                primary: true;
+                clicked => {
+                    root.close-window();
+                }
+            }
+        }
+    }
+}

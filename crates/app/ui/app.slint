@@ -1,0 +1,2735 @@
+// Ezoo Download – user interface (Slint)
+// Classic download-manager layout: menu bar, big icon toolbar, category and
+// queue tree, detailed list, one progress window per download. Four themes.
+
+import { Button, LineEdit, SpinBox, CheckBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
+import { DownloadRow, QueueRow, SegView, Cols, CatRow, PairRow, LinkRow, Theme, ThemedWindow, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph } from "common.slint";
+export { DownloadRow, QueueRow, SegView, Cols, CatRow, PairRow, LinkRow, Theme }
+export { BrowserRow } from "dialogs.slint";
+export { ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, BrowserDialog, AboutDialog } from "dialogs.slint";
+
+component DownloadItem inherits Rectangle {
+    in property <DownloadRow> data;
+    in property <bool> selected;
+    in property <[QueueRow]> queues;
+    in property <Cols> cols;
+    // how many downloads are selected (the menu then works on all of them)
+    in property <int> sel-count;
+    // click with Ctrl / Shift
+    callback pick(bool, bool);
+    // right click: keep a multiple selection that includes this row
+    callback right-pick();
+    // dragging with the mouse held down: rows below (+) or above (-) this one
+    callback drag(int);
+    property <int> drag-last;
+    callback activated();
+    callback action(string);
+    callback move-to-queue(int);
+    height: 24px;
+    background: root.selected ? Theme.select : ta.has-hover ? Theme.hover : transparent;
+    border-width: root.selected ? 1px : 0px;
+    border-color: Theme.select-line;
+    ta := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        double-clicked => {
+            root.activated();
+        }
+        moved => {
+            if (self.pressed && floor(self.mouse-y / root.height) != root.drag-last) {
+                root.drag-last = floor(self.mouse-y / root.height);
+                root.drag(root.drag-last);
+            }
+        }
+        pointer-event(ev) => {
+            if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                root.drag-last = 0;
+                root.pick(ev.modifiers.control, ev.modifiers.shift);
+            }
+            // right click: select the row and open the menu where the mouse is
+            if (ev.button == PointerEventButton.right && ev.kind == PointerEventKind.up) {
+                root.right-pick();
+                root.menu-x = self.mouse-x;
+                root.menu-y = self.mouse-y;
+                menu.show();
+            }
+        }
+    }
+    property <length> menu-x;
+    property <length> menu-y;
+    property <bool> done: root.data.state == 3;
+    property <bool> can-resume: root.data.state == 2 || root.data.state == 4;
+    property <bool> can-stop: root.data.state == 0 || root.data.state == 1;
+    menu := PopupWindow {
+        x: root.menu-x;
+        y: root.menu-y;
+        width: 260px;
+        height: menu-list.preferred-height;
+        Rectangle {
+            width: parent.width;
+            height: menu-list.preferred-height;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: 4px;
+            drop-shadow-blur: 10px;
+            drop-shadow-color: #00000055;
+            drop-shadow-offset-y: 3px;
+            menu-list := VerticalLayout {
+                padding: 4px;
+                spacing: 0px;
+                if root.sel-count > 1: MenuLabel {
+                    text: @tr("{} downloads selected", root.sel-count);
+                }
+                MenuEntry {
+                    text: root.done ? @tr("Open") : @tr("Show download progress");
+                    glyph: root.done ? "play" : "progress";
+                    bold: true;
+                    clicked => {
+                        root.activated();
+                    }
+                }
+                MenuEntry {
+                    text: @tr("Open with…");
+                    glyph: "openwith";
+                    enabled: root.done;
+                    clicked => {
+                        root.action("openwith");
+                    }
+                }
+                MenuEntry {
+                    text: @tr("Open folder");
+                    glyph: "folder";
+                    clicked => {
+                        root.action("folder");
+                    }
+                }
+                MenuSep { }
+                MenuEntry {
+                    text: @tr("Resume download");
+                    glyph: "play";
+                    glyph-color: #2e9e4f;
+                    enabled: root.can-resume || root.sel-count > 1;
+                    clicked => {
+                        root.action("resume");
+                    }
+                }
+                MenuEntry {
+                    text: @tr("Stop download");
+                    glyph: "pause";
+                    glyph-color: #e08a00;
+                    enabled: root.can-stop || root.sel-count > 1;
+                    clicked => {
+                        root.action("stop");
+                    }
+                }
+                MenuEntry {
+                    text: @tr("Redownload");
+                    glyph: "redo";
+                    clicked => {
+                        root.action("restart");
+                    }
+                }
+                MenuEntry {
+                    text: @tr("Refresh download address…");
+                    glyph: "refresh";
+                    enabled: !root.done;
+                    clicked => {
+                        root.action("refresh");
+                    }
+                }
+                MenuEntry {
+                    text: @tr("Move / Rename…");
+                    glyph: "edit";
+                    clicked => {
+                        root.action("move");
+                    }
+                }
+                MenuSep { }
+                MenuLabel {
+                    text: @tr("Move to queue");
+                }
+                for q in root.queues: MenuEntry {
+                    text: q.name;
+                    glyph: root.data.queue == q.id ? "check" : "";
+                    indent: true;
+                    clicked => {
+                        root.move-to-queue(q.id);
+                    }
+                }
+                MenuEntry {
+                    text: @tr("Delete from queue");
+                    indent: true;
+                    enabled: root.data.queue != "";
+                    clicked => {
+                        root.move-to-queue(-1);
+                    }
+                }
+                MenuSep { }
+                MenuEntry {
+                    text: @tr("Copy address");
+                    glyph: "copy";
+                    clicked => {
+                        root.action("copy");
+                    }
+                }
+                MenuEntry {
+                    text: @tr("Check file (SHA-256)");
+                    glyph: "hash";
+                    enabled: root.done;
+                    clicked => {
+                        root.action("sha256");
+                    }
+                }
+                MenuEntry {
+                    text: @tr("Properties");
+                    glyph: "info";
+                    clicked => {
+                        root.action("properties");
+                    }
+                }
+                MenuSep { }
+                MenuEntry {
+                    text: @tr("Remove");
+                    glyph: "close";
+                    glyph-color: #e0443b;
+                    clicked => {
+                        root.action("delete");
+                    }
+                }
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-left: 6px;
+        spacing: 0px;
+        Rectangle {
+            width: 32px;
+            TypeIcon {
+                kind: root.data.kind;
+                x: 4px;
+                y: (parent.height - 18px) / 2;
+            }
+        }
+        // clip: long right-to-left (Arabic) names must never spill over the icon
+        Rectangle {
+            horizontal-stretch: 1;
+            min-width: 120px;
+            clip: true;
+            Cell {
+                x: 0px;
+                width: parent.width;
+                height: parent.height;
+                text: root.data.name;
+                horizontal-alignment: left;
+            }
+        }
+        Rectangle {
+            width: 8px;
+        }
+        if root.cols.q: Cell {
+            text: root.data.queue;
+            width: 26px;
+            horizontal-alignment: center;
+            color: Theme.accent;
+        }
+        if root.cols.size: Cell {
+            text: root.data.size;
+            width: 82px;
+            horizontal-alignment: right;
+        }
+        if root.cols.status: Rectangle {
+            width: 110px;
+            // thin progress line under the status, for running downloads
+            if root.data.state == 1 || (root.data.state == 2 && root.data.progress > 0): Rectangle {
+                x: 10px;
+                y: parent.height - 5px;
+                width: parent.width - 20px;
+                height: 3px;
+                border-radius: 1.5px;
+                background: Theme.bar-bg;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * root.data.progress;
+                    height: parent.height;
+                    border-radius: 1.5px;
+                    background: root.data.state == 1 ? Theme.accent : Theme.warn;
+                    animate width {
+                        duration: 300ms;
+                        easing: ease-out;
+                    }
+                }
+            }
+            Cell {
+                width: parent.width;
+                height: parent.height - 2px;
+                text: root.data.status;
+                horizontal-alignment: center;
+                color: root.data.state == 3 ? Theme.ok : root.data.state == 4 ? Theme.err : root.data.state == 1 ? Theme.accent : Theme.text;
+            }
+        }
+        if root.cols.eta: Cell {
+            text: root.data.eta;
+            width: 74px;
+            horizontal-alignment: right;
+        }
+        if root.cols.speed: Cell {
+            text: root.data.speed;
+            width: 92px;
+            horizontal-alignment: right;
+        }
+        if root.cols.last: Cell {
+            text: root.data.last-try;
+            width: 118px;
+            horizontal-alignment: center;
+            color: Theme.muted;
+        }
+        if root.cols.desc: Cell {
+            text: "  " + root.data.description;
+            width: 170px;
+            color: Theme.muted;
+        }
+        if root.cols.added: Cell {
+            text: root.data.added;
+            width: 118px;
+            horizontal-alignment: center;
+            color: Theme.muted;
+        }
+        if root.cols.saveto: Cell {
+            text: "  " + root.data.save-to;
+            width: 190px;
+            color: Theme.muted;
+        }
+        if root.cols.referer: Cell {
+            text: "  " + root.data.referer;
+            width: 190px;
+            color: Theme.muted;
+        }
+        if root.cols.parent: Cell {
+            text: "  " + root.data.parent;
+            width: 190px;
+            color: Theme.muted;
+        }
+    }
+}
+
+// right click menu of the sidebar (categories and queues)
+component TreeMenu inherits PopupWindow {
+    in property <string> target;
+    in property <bool> is-queue;
+    in property <bool> builtin;
+    callback chosen(string);
+    width: 210px;
+    height: tm-list.preferred-height;
+    Rectangle {
+        width: parent.width;
+        height: tm-list.preferred-height;
+        background: Theme.panel;
+        border-width: 1px;
+        border-color: Theme.line;
+        border-radius: 4px;
+        drop-shadow-blur: 10px;
+        drop-shadow-color: #00000055;
+        drop-shadow-offset-y: 3px;
+        tm-list := VerticalLayout {
+            padding: 4px;
+            if root.is-queue: MenuEntry {
+                text: @tr("Start queue");
+                glyph: "play";
+                glyph-color: #2e9e4f;
+                clicked => {
+                    root.chosen("start");
+                }
+            }
+            if root.is-queue: MenuEntry {
+                text: @tr("Stop queue");
+                glyph: "stop";
+                glyph-color: #e0443b;
+                clicked => {
+                    root.chosen("stop");
+                }
+            }
+            if root.is-queue: MenuEntry {
+                text: @tr("Edit queue / schedule…");
+                glyph: "clock";
+                clicked => {
+                    root.chosen("edit");
+                }
+            }
+            if root.is-queue: MenuEntry {
+                text: @tr("New queue…");
+                glyph: "plus";
+                clicked => {
+                    root.chosen("new");
+                }
+            }
+            if root.is-queue: MenuEntry {
+                text: @tr("Delete queue");
+                glyph: "close";
+                glyph-color: #e0443b;
+                enabled: !root.builtin;
+                clicked => {
+                    root.chosen("delete");
+                }
+            }
+            if !root.is-queue: MenuEntry {
+                text: @tr("Add category…");
+                glyph: "plus";
+                clicked => {
+                    root.chosen("add");
+                }
+            }
+            if !root.is-queue && root.target != "": MenuEntry {
+                text: @tr("Delete category");
+                glyph: "close";
+                glyph-color: #e0443b;
+                enabled: !root.builtin;
+                clicked => {
+                    root.chosen("delete");
+                }
+            }
+            if !root.is-queue && root.target != "": MenuEntry {
+                text: @tr("Properties…");
+                glyph: "info";
+                clicked => {
+                    root.chosen("props");
+                }
+            }
+        }
+    }
+}
+
+// a sidebar item with its own right click menu
+component CtxTreeItem inherits TreeItem {
+    in property <bool> is-queue;
+    in property <bool> builtin;
+    in property <string> target;
+    callback chosen(string);
+    property <length> mx;
+    property <length> my;
+    context(x, y) => {
+        self.mx = x;
+        self.my = y;
+        pm.show();
+    }
+    pm := TreeMenu {
+        x: root.mx;
+        y: root.my;
+        target: root.target;
+        is-queue: root.is-queue;
+        builtin: root.builtin;
+        chosen(a) => {
+            root.chosen(a);
+        }
+    }
+}
+
+export component MainWindow inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Ezoo Download");
+    preferred-width: 1200px;
+    preferred-height: 660px;
+    min-width: 900px;
+    min-height: 440px;
+
+    in property <[DownloadRow]> rows;
+    in property <[QueueRow]> queues;
+    in property <[CatRow]> categories;
+    // counts: all, unfinished, finished
+    in property <string> count-all;
+    in property <string> count-unfinished;
+    in property <string> count-finished;
+    in-out property <int> selected-id: -1;
+    // "all", "cat:Video", "unfinished", "unf:Video", "finished", "fin:Video", "queue:3"
+    in-out property <string> view: "all";
+    in-out property <string> search;
+    in property <string> status-text;
+    in property <string> limiter-text;
+    in property <int> selected-state: -1;
+    // multiple selection: how many, and whether any can be resumed / stopped
+    in property <int> sel-count;
+    in property <bool> can-resume;
+    in property <bool> can-stop;
+    in property <int> current-queue: 1;
+    in property <bool> limiter-on;
+    in property <bool> hide-categories;
+    in property <string> sort-by: "date";
+    in property <bool> sort-desc: true;
+    // Downloads > When all downloads finish: 0 nothing, 1 shut down, 2 sleep, 3 exit, 4 hibernate
+    in property <int> all-done: 0;
+    in property <Cols> cols: { q: true, size: true, status: true, eta: true, speed: true, last: true, desc: true };
+    in property <bool> toolbar-small;
+    in property <string> language: "en";
+    in-out property <bool> open-all: true;
+    in-out property <bool> open-unf: false;
+    in-out property <bool> open-fin: false;
+    in-out property <bool> open-queues: true;
+
+    callback add-url();
+    callback add-batch();
+    callback add-batch-clipboard();
+    callback resume(int);
+    callback pause(int);
+    callback resume-all();
+    callback stop-all();
+    callback delete(int);
+    callback delete-completed();
+    callback open-settings(int);
+    callback open-scheduler();
+    callback open-limiter();
+    callback toggle-limiter();
+    callback start-queue(int);
+    callback stop-queue(int);
+    callback new-queue();
+    callback edit-queue(int);
+    callback delete-queue(int);
+    callback view-changed(string);
+    callback search-changed();
+    callback sort(string);
+    callback row-activated(int);
+    callback row-clicked(int, bool, bool);
+    callback row-right(int);
+    callback row-drag(int, int);
+    callback select-all();
+    callback row-action(int, string);
+    callback row-to-queue(int, int);
+    callback open-download-folder();
+    callback export-list(string);
+    callback import-list(string);
+    callback set-theme(int);
+    callback set-language(string);
+    callback toggle-categories();
+    callback set-toolbar-small(bool);
+    callback open-columns();
+    callback update-tools();
+    callback set-all-done(int);
+    callback add-category();
+    callback category-props(string);
+    callback delete-category(string);
+    callback find();
+    callback find-next();
+    callback grabber();
+    callback playlist();
+    callback browsers();
+    callback tips();
+    callback tell-friend();
+    callback about();
+    callback quit();
+
+    MenuBar {
+        Menu {
+            title: @tr("Tasks");
+            MenuItem {
+                title: @tr("Add new download…");
+                activated => {
+                    root.add-url();
+                }
+            }
+            MenuItem {
+                title: @tr("Add batch download…");
+                activated => {
+                    root.add-batch();
+                }
+            }
+            MenuItem {
+                title: @tr("Add batch download from clipboard");
+                activated => {
+                    root.add-batch-clipboard();
+                }
+            }
+            MenuItem {
+                title: @tr("Run site grabber…");
+                activated => {
+                    root.grabber();
+                }
+            }
+            MenuItem {
+                title: @tr("Download a playlist…");
+                activated => {
+                    root.playlist();
+                }
+            }
+            MenuSeparator { }
+            Menu {
+                title: @tr("Export");
+                MenuItem {
+                    title: @tr("To download list file (.ef2)…");
+                    activated => {
+                        root.export-list("ef2");
+                    }
+                }
+                MenuItem {
+                    title: @tr("To text file…");
+                    activated => {
+                        root.export-list("txt");
+                    }
+                }
+            }
+            Menu {
+                title: @tr("Import");
+                MenuItem {
+                    title: @tr("From download list file (.ef2)…");
+                    activated => {
+                        root.import-list("ef2");
+                    }
+                }
+                MenuItem {
+                    title: @tr("From text file…");
+                    activated => {
+                        root.import-list("txt");
+                    }
+                }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: @tr("Open download folder");
+                activated => {
+                    root.open-download-folder();
+                }
+            }
+            MenuItem {
+                title: @tr("Exit");
+                activated => {
+                    root.quit();
+                }
+            }
+        }
+        Menu {
+            title: @tr("File");
+            MenuItem {
+                title: @tr("Download now");
+                enabled: root.can-resume;
+                activated => {
+                    root.resume(root.selected-id);
+                }
+            }
+            MenuItem {
+                title: @tr("Stop download");
+                enabled: root.can-stop;
+                activated => {
+                    root.pause(root.selected-id);
+                }
+            }
+            MenuItem {
+                title: @tr("Remove");
+                enabled: root.selected-id >= 0;
+                activated => {
+                    root.delete(root.selected-id);
+                }
+            }
+            MenuItem {
+                title: @tr("Redownload");
+                enabled: root.selected-id >= 0;
+                activated => {
+                    root.row-action(root.selected-id, "restart");
+                }
+            }
+            MenuItem {
+                title: @tr("Refresh download address…");
+                enabled: root.selected-id >= 0 && root.selected-state != 3;
+                activated => {
+                    root.row-action(root.selected-id, "refresh");
+                }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: @tr("Open");
+                enabled: root.selected-state == 3;
+                activated => {
+                    root.row-action(root.selected-id, "open");
+                }
+            }
+            MenuItem {
+                title: @tr("Open with…");
+                enabled: root.selected-state == 3;
+                activated => {
+                    root.row-action(root.selected-id, "openwith");
+                }
+            }
+            MenuItem {
+                title: @tr("Open folder");
+                enabled: root.selected-id >= 0;
+                activated => {
+                    root.row-action(root.selected-id, "folder");
+                }
+            }
+            MenuItem {
+                title: @tr("Move / Rename…");
+                enabled: root.selected-id >= 0;
+                activated => {
+                    root.row-action(root.selected-id, "move");
+                }
+            }
+            MenuItem {
+                title: @tr("Copy address");
+                enabled: root.selected-id >= 0;
+                activated => {
+                    root.row-action(root.selected-id, "copy");
+                }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: @tr("Select all   Ctrl+A");
+                activated => {
+                    root.select-all();
+                }
+            }
+            MenuItem {
+                title: @tr("Properties");
+                enabled: root.selected-id >= 0;
+                activated => {
+                    root.row-action(root.selected-id, "properties");
+                }
+            }
+        }
+        Menu {
+            title: @tr("Downloads");
+            MenuItem {
+                title: @tr("Resume all");
+                activated => {
+                    root.resume-all();
+                }
+            }
+            MenuItem {
+                title: @tr("Stop all");
+                activated => {
+                    root.stop-all();
+                }
+            }
+            MenuItem {
+                title: @tr("Delete all completed");
+                activated => {
+                    root.delete-completed();
+                }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: @tr("Find…   Ctrl+F");
+                activated => {
+                    root.find();
+                }
+            }
+            MenuItem {
+                title: @tr("Find next   F3");
+                activated => {
+                    root.find-next();
+                }
+            }
+            MenuSeparator { }
+            Menu {
+                title: @tr("Start queue");
+                for q in root.queues: MenuItem {
+                    title: q.name;
+                    activated => {
+                        root.start-queue(q.id);
+                    }
+                }
+            }
+            Menu {
+                title: @tr("Stop queue");
+                for q in root.queues: MenuItem {
+                    title: q.name;
+                    activated => {
+                        root.stop-queue(q.id);
+                    }
+                }
+            }
+            Menu {
+                title: @tr("Speed Limiter");
+                MenuItem {
+                    title: @tr("Turn on");
+                    checkable: true;
+                    checked: root.limiter-on;
+                    activated => {
+                        if (!root.limiter-on) {
+                            root.toggle-limiter();
+                        }
+                    }
+                }
+                MenuItem {
+                    title: @tr("Turn off");
+                    checkable: true;
+                    checked: !root.limiter-on;
+                    activated => {
+                        if (root.limiter-on) {
+                            root.toggle-limiter();
+                        }
+                    }
+                }
+                MenuSeparator { }
+                MenuItem {
+                    title: @tr("Settings…");
+                    activated => {
+                        root.open-limiter();
+                    }
+                }
+            }
+            Menu {
+                title: @tr("When all downloads finish");
+                MenuItem {
+                    title: @tr("Do nothing");
+                    checkable: true;
+                    checked: root.all-done == 0;
+                    activated => {
+                        root.set-all-done(0);
+                    }
+                }
+                MenuItem {
+                    title: @tr("Shut down the computer");
+                    checkable: true;
+                    checked: root.all-done == 1;
+                    activated => {
+                        root.set-all-done(1);
+                    }
+                }
+                MenuItem {
+                    title: @tr("Sleep");
+                    checkable: true;
+                    checked: root.all-done == 2;
+                    activated => {
+                        root.set-all-done(2);
+                    }
+                }
+                MenuItem {
+                    title: @tr("Hibernate");
+                    checkable: true;
+                    checked: root.all-done == 4;
+                    activated => {
+                        root.set-all-done(4);
+                    }
+                }
+                MenuItem {
+                    title: @tr("Exit Ezoo Download");
+                    checkable: true;
+                    checked: root.all-done == 3;
+                    activated => {
+                        root.set-all-done(3);
+                    }
+                }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: @tr("Scheduler…");
+                activated => {
+                    root.open-scheduler();
+                }
+            }
+            MenuItem {
+                title: @tr("Options…");
+                activated => {
+                    root.open-settings(0);
+                }
+            }
+        }
+        Menu {
+            title: @tr("View");
+            MenuItem {
+                title: @tr("Show categories");
+                checkable: true;
+                checked: !root.hide-categories;
+                activated => {
+                    root.toggle-categories();
+                }
+            }
+            Menu {
+                title: @tr("Arrange files");
+                for a in [
+                    { key: "added", title: @tr("By order of addition") },
+                    { key: "name", title: @tr("File name") },
+                    { key: "size", title: @tr("Size") },
+                    { key: "status", title: @tr("Status") },
+                    { key: "eta", title: @tr("Time left") },
+                    { key: "speed", title: @tr("Transfer rate") },
+                    { key: "date", title: @tr("Last try date") },
+                    { key: "desc", title: @tr("Description") },
+                    { key: "saveto", title: @tr("Save to") },
+                    { key: "referer", title: @tr("Referer") },
+                    { key: "parent", title: @tr("Parent web page") }
+                ]: MenuItem {
+                    title: a.title;
+                    checkable: true;
+                    checked: root.sort-by == a.key;
+                    activated => {
+                        root.sort(a.key);
+                    }
+                }
+            }
+            Menu {
+                title: @tr("Toolbar");
+                MenuItem {
+                    title: @tr("Large buttons");
+                    checkable: true;
+                    checked: !root.toolbar-small;
+                    activated => {
+                        root.set-toolbar-small(false);
+                    }
+                }
+                MenuItem {
+                    title: @tr("Small buttons");
+                    checkable: true;
+                    checked: root.toolbar-small;
+                    activated => {
+                        root.set-toolbar-small(true);
+                    }
+                }
+            }
+            MenuItem {
+                title: @tr("Columns…");
+                activated => {
+                    root.open-columns();
+                }
+            }
+            Menu {
+                title: @tr("Language");
+                MenuItem {
+                    title: "English";
+                    checkable: true;
+                    checked: root.language == "en";
+                    activated => {
+                        root.set-language("en");
+                    }
+                }
+                MenuItem {
+                    title: "العربية";
+                    checkable: true;
+                    checked: root.language == "ar";
+                    activated => {
+                        root.set-language("ar");
+                    }
+                }
+            }
+            Menu {
+                title: @tr("Theme");
+                MenuItem {
+                    title: @tr("Light");
+                    checkable: true;
+                    checked: Theme.mode == 0;
+                    activated => {
+                        root.set-theme(0);
+                    }
+                }
+                MenuItem {
+                    title: @tr("Dark");
+                    checkable: true;
+                    checked: Theme.mode == 1;
+                    activated => {
+                        root.set-theme(1);
+                    }
+                }
+                MenuItem {
+                    title: @tr("Ocean blue");
+                    checkable: true;
+                    checked: Theme.mode == 2;
+                    activated => {
+                        root.set-theme(2);
+                    }
+                }
+                MenuItem {
+                    title: @tr("Midnight purple");
+                    checkable: true;
+                    checked: Theme.mode == 3;
+                    activated => {
+                        root.set-theme(3);
+                    }
+                }
+            }
+        }
+        Menu {
+            title: @tr("Help");
+            MenuItem {
+                title: @tr("Add Ezoo Download to my browser…");
+                activated => {
+                    root.browsers();
+                }
+            }
+            MenuItem {
+                title: @tr("Tip of the day…");
+                activated => {
+                    root.tips();
+                }
+            }
+            MenuItem {
+                title: @tr("Check for updates (video downloader)");
+                activated => {
+                    root.update-tools();
+                }
+            }
+            MenuItem {
+                title: @tr("Tell a friend");
+                activated => {
+                    root.tell-friend();
+                }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: @tr("About Ezoo Download");
+                activated => {
+                    root.about();
+                }
+            }
+        }
+    }
+
+    function category-menu(target: string, a: string) {
+        if (a == "add") {
+            root.add-category();
+        } else if (a == "delete") {
+            root.delete-category(target);
+        } else if (a == "props") {
+            root.category-props(target);
+        }
+    }
+    function queue-menu-action(q: int, a: string) {
+        if (a == "start") {
+            root.start-queue(q);
+        } else if (a == "stop") {
+            root.stop-queue(q);
+        } else if (a == "edit") {
+            root.edit-queue(q);
+        } else if (a == "new") {
+            root.new-queue();
+        } else if (a == "delete") {
+            root.delete-queue(q);
+        }
+    }
+
+    property <length> qmenu-x;
+    property <bool> qmenu-start: true;
+    queue-menu := PopupWindow {
+        x: root.qmenu-x;
+        y: 66px;
+        width: 220px;
+        height: qm-list.preferred-height;
+        Rectangle {
+            width: parent.width;
+            height: qm-list.preferred-height;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: 4px;
+            drop-shadow-blur: 10px;
+            drop-shadow-color: #00000055;
+            qm-list := VerticalLayout {
+                padding: 4px;
+                MenuLabel {
+                    text: root.qmenu-start ? @tr("Start queue") : @tr("Stop queue");
+                }
+                for q in root.queues: MenuEntry {
+                    text: q.name;
+                    glyph: q.running ? "play" : "";
+                    glyph-color: #2e9e4f;
+                    indent: true;
+                    clicked => {
+                        if (root.qmenu-start) {
+                            root.start-queue(q.id);
+                        } else {
+                            root.stop-queue(q.id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.modifiers.control && (event.text == "a" || event.text == "A")) {
+                root.select-all();
+                return accept;
+            }
+            if (event.text == Key.Delete && root.selected-id >= 0) {
+                root.delete(root.selected-id);
+                return accept;
+            }
+            if (event.text == Key.Return && root.selected-id >= 0) {
+                root.row-activated(root.selected-id);
+                return accept;
+            }
+            if (event.text == Key.F3) {
+                root.find-next();
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "f" || event.text == "F")) {
+                root.find();
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "n" || event.text == "N")) {
+                root.add-url();
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "b" || event.text == "B")) {
+                root.add-batch();
+                return accept;
+            }
+            reject
+        }
+
+        VerticalLayout {
+            // ---- toolbar
+            Rectangle {
+                height: root.toolbar-small ? 42px : 70px;
+                background: @linear-gradient(180deg, Theme.toolbar-top 0%, Theme.toolbar-bottom 100%);
+                HorizontalLayout {
+                    padding: 4px;
+                    padding-left: 6px;
+                    padding-right: 10px;
+                    spacing: 1px;
+                    ToolBtn {
+                        icon: "add";
+                        text: @tr("Add URL");
+                        small: root.toolbar-small;
+                        clicked => {
+                            root.add-url();
+                        }
+                    }
+                    ToolBtn {
+                        icon: "batch";
+                        text: @tr("Add Batch");
+                        small: root.toolbar-small;
+                        clicked => {
+                            root.add-batch();
+                        }
+                    }
+                    ToolSeparator { }
+                    ToolBtn {
+                        icon: "resume";
+                        text: @tr("Resume");
+                        small: root.toolbar-small;
+                        enabled: root.can-resume;
+                        clicked => {
+                            root.resume(root.selected-id);
+                        }
+                    }
+                    ToolBtn {
+                        icon: "stop";
+                        text: @tr("Stop");
+                        small: root.toolbar-small;
+                        enabled: root.can-stop;
+                        clicked => {
+                            root.pause(root.selected-id);
+                        }
+                    }
+                    ToolBtn {
+                        icon: "stopall";
+                        text: @tr("Stop All");
+                        small: root.toolbar-small;
+                        clicked => {
+                            root.stop-all();
+                        }
+                    }
+                    ToolSeparator { }
+                    ToolBtn {
+                        icon: "delete";
+                        text: @tr("Delete");
+                        small: root.toolbar-small;
+                        enabled: root.selected-id >= 0;
+                        clicked => {
+                            root.delete(root.selected-id);
+                        }
+                    }
+                    ToolBtn {
+                        icon: "deletedone";
+                        text: @tr("Delete Done");
+                        small: root.toolbar-small;
+                        clicked => {
+                            root.delete-completed();
+                        }
+                    }
+                    ToolSeparator { }
+                    ToolBtn {
+                        icon: "options";
+                        text: @tr("Options");
+                        small: root.toolbar-small;
+                        clicked => {
+                            root.open-settings(0);
+                        }
+                    }
+                    ToolBtn {
+                        icon: "scheduler";
+                        text: @tr("Scheduler");
+                        small: root.toolbar-small;
+                        clicked => {
+                            root.open-scheduler();
+                        }
+                    }
+                    ToolBtn {
+                        icon: "limiter";
+                        text: root.limiter-on ? @tr("Limiter: On") : @tr("Limiter: Off");
+                        small: root.toolbar-small;
+                        clicked => {
+                            root.toggle-limiter();
+                        }
+                    }
+                    ToolSeparator { }
+                    start-q := ToolBtn {
+                        icon: "startqueue";
+                        text: @tr("Start Queue");
+                        small: root.toolbar-small;
+                        width: root.toolbar-small ? 34px : 84px;
+                        clicked => {
+                            root.qmenu-start = true;
+                            root.qmenu-x = self.x;
+                            queue-menu.show();
+                        }
+                    }
+                    stop-q := ToolBtn {
+                        icon: "stopqueue";
+                        text: @tr("Stop Queue");
+                        small: root.toolbar-small;
+                        width: root.toolbar-small ? 34px : 84px;
+                        clicked => {
+                            root.qmenu-start = false;
+                            root.qmenu-x = self.x;
+                            queue-menu.show();
+                        }
+                    }
+                    ToolSeparator { }
+                    ToolBtn {
+                        icon: "grabber";
+                        text: @tr("Grabber");
+                        small: root.toolbar-small;
+                        clicked => {
+                            root.grabber();
+                        }
+                    }
+                    ToolBtn {
+                        icon: "playlist";
+                        text: @tr("Playlist");
+                        small: root.toolbar-small;
+                        clicked => {
+                            root.playlist();
+                        }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        LineEdit {
+                            width: 150px;
+                            placeholder-text: @tr("Filter the list…");
+                            text <=> root.search;
+                            edited(t) => {
+                                root.search-changed();
+                            }
+                        }
+                    }
+                }
+                Rectangle {
+                    x: 0;
+                    y: parent.height - 1px;
+                    width: parent.width;
+                    height: 1px;
+                    background: Theme.line;
+                }
+            }
+
+            HorizontalLayout {
+                vertical-stretch: 1;
+                padding: 4px;
+                spacing: 4px;
+                // ---- tree
+                if !root.hide-categories: Rectangle {
+                    width: 210px;
+                    background: Theme.panel;
+                    border-width: 1px;
+                    border-color: Theme.line;
+                    VerticalLayout {
+                        padding: 2px;
+                        Rectangle {
+                            height: 23px;
+                            background: Theme.window;
+                            Text {
+                                x: 6px;
+                                height: parent.height;
+                                text: @tr("Categories");
+                                vertical-alignment: center;
+                                font-size: 12px;
+                                font-weight: 600;
+                                color: Theme.text;
+                            }
+                        }
+                        Flickable {
+                            vertical-stretch: 1;
+                            VerticalLayout {
+                                alignment: start;
+                                CtxTreeItem {
+                                    text: @tr("All Downloads");
+                                    icon: "folder";
+                                    bold: true;
+                                    expandable: true;
+                                    expanded: root.open-all;
+                                    count: root.count-all;
+                                    selected: root.view == "all";
+                                    clicked => {
+                                        root.view = "all";
+                                        root.view-changed(root.view);
+                                    }
+                                    toggle => {
+                                        root.open-all = !root.open-all;
+                                    }
+                                    builtin: true;
+                                    chosen(a) => {
+                                        root.category-menu("", a);
+                                    }
+                                }
+                                if root.open-all: VerticalLayout {
+                                    for c in root.categories: CtxTreeItem {
+                                        text: c.label;
+                                        icon: c.kind;
+                                        indent: 1;
+                                        count: c.count;
+                                        target: c.name;
+                                        builtin: c.builtin;
+                                        selected: root.view == "cat:" + c.name;
+                                        clicked => {
+                                            root.view = "cat:" + c.name;
+                                            root.view-changed(root.view);
+                                        }
+                                        chosen(a) => {
+                                            root.category-menu(c.name, a);
+                                        }
+                                    }
+                                }
+                                TreeItem {
+                                    text: @tr("Unfinished");
+                                    icon: "unfinished";
+                                    expandable: true;
+                                    expanded: root.open-unf;
+                                    count: root.count-unfinished;
+                                    selected: root.view == "unfinished";
+                                    clicked => {
+                                        root.view = "unfinished";
+                                        root.view-changed(root.view);
+                                    }
+                                    toggle => {
+                                        root.open-unf = !root.open-unf;
+                                    }
+                                }
+                                if root.open-unf: VerticalLayout {
+                                    for c in root.categories: TreeItem {
+                                        text: c.label;
+                                        icon: c.kind;
+                                        indent: 1;
+                                        count: c.unfinished;
+                                        selected: root.view == "unf:" + c.name;
+                                        clicked => {
+                                            root.view = "unf:" + c.name;
+                                            root.view-changed(root.view);
+                                        }
+                                    }
+                                }
+                                TreeItem {
+                                    text: @tr("Finished");
+                                    icon: "finished";
+                                    expandable: true;
+                                    expanded: root.open-fin;
+                                    count: root.count-finished;
+                                    selected: root.view == "finished";
+                                    clicked => {
+                                        root.view = "finished";
+                                        root.view-changed(root.view);
+                                    }
+                                    toggle => {
+                                        root.open-fin = !root.open-fin;
+                                    }
+                                }
+                                if root.open-fin: VerticalLayout {
+                                    for c in root.categories: TreeItem {
+                                        text: c.label;
+                                        icon: c.kind;
+                                        indent: 1;
+                                        count: c.finished;
+                                        selected: root.view == "fin:" + c.name;
+                                        clicked => {
+                                            root.view = "fin:" + c.name;
+                                            root.view-changed(root.view);
+                                        }
+                                    }
+                                }
+                                TreeItem {
+                                    text: @tr("Queues");
+                                    icon: "folder";
+                                    bold: true;
+                                    expandable: true;
+                                    expanded: root.open-queues;
+                                    toggle => {
+                                        root.open-queues = !root.open-queues;
+                                    }
+                                    clicked => {
+                                        root.open-queues = !root.open-queues;
+                                    }
+                                }
+                                if root.open-queues: VerticalLayout {
+                                    for q in root.queues: CtxTreeItem {
+                                        is-queue: true;
+                                        builtin: q.id == 1;
+                                        target: q.name;
+                                        text: q.running ? @tr("{} (running)", q.name) : q.name;
+                                        icon: "queue";
+                                        indent: 1;
+                                        count: q.count > 0 ? q.count : "";
+                                        selected: root.view == "queue:" + q.id;
+                                        clicked => {
+                                            root.view = "queue:" + q.id;
+                                            root.view-changed(root.view);
+                                        }
+                                        toggle => {
+                                            root.edit-queue(q.id);
+                                        }
+                                        chosen(a) => {
+                                            root.queue-menu-action(q.id, a);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            padding: 4px;
+                            spacing: 4px;
+                            Button {
+                                text: @tr("New queue");
+                                horizontal-stretch: 1;
+                                clicked => {
+                                    root.new-queue();
+                                }
+                            }
+                            Button {
+                                text: @tr("Edit");
+                                clicked => {
+                                    root.edit-queue(root.current-queue);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ---- list
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: Theme.panel;
+                    border-width: 1px;
+                    border-color: Theme.line;
+                    VerticalLayout {
+                        padding: 1px;
+                        Rectangle {
+                            height: 24px;
+                            background: @linear-gradient(180deg, Theme.header-top 0%, Theme.header-bottom 100%);
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                HeaderCell {
+                                    text: "";
+                                    width: 32px;
+                                }
+                                HeaderCell {
+                                    text: @tr("File Name");
+                                    key: "name";
+                                    sort-by: root.sort-by;
+                                    sort-desc: root.sort-desc;
+                                    sort(k) => {
+                                        root.sort(k);
+                                    }
+                                    horizontal-stretch: 1;
+                                    min-width: 120px;
+                                }
+                                Rectangle {
+                                    width: 8px;
+                                }
+                                if root.cols.q: HeaderCell {
+                                    text: @tr("Q");
+                                    width: 26px;
+                                    align: center;
+                                }
+                                if root.cols.size: HeaderCell {
+                                    text: @tr("Size");
+                                    key: "size";
+                                    sort-by: root.sort-by;
+                                    sort-desc: root.sort-desc;
+                                    sort(k) => {
+                                        root.sort(k);
+                                    }
+                                    width: 82px;
+                                    align: right;
+                                }
+                                if root.cols.status: HeaderCell {
+                                    text: @tr("Status");
+                                    key: "status";
+                                    sort-by: root.sort-by;
+                                    sort-desc: root.sort-desc;
+                                    sort(k) => {
+                                        root.sort(k);
+                                    }
+                                    width: 110px;
+                                    align: center;
+                                }
+                                if root.cols.eta: HeaderCell {
+                                    text: @tr("Time left");
+                                    key: "eta";
+                                    sort-by: root.sort-by;
+                                    sort-desc: root.sort-desc;
+                                    sort(k) => {
+                                        root.sort(k);
+                                    }
+                                    width: 74px;
+                                    align: right;
+                                }
+                                if root.cols.speed: HeaderCell {
+                                    text: @tr("Transfer rate");
+                                    key: "speed";
+                                    sort-by: root.sort-by;
+                                    sort-desc: root.sort-desc;
+                                    sort(k) => {
+                                        root.sort(k);
+                                    }
+                                    width: 92px;
+                                    align: right;
+                                }
+                                if root.cols.last: HeaderCell {
+                                    text: @tr("Last Try Date");
+                                    key: "date";
+                                    sort-by: root.sort-by;
+                                    sort-desc: root.sort-desc;
+                                    sort(k) => {
+                                        root.sort(k);
+                                    }
+                                    width: 118px;
+                                    align: center;
+                                }
+                                if root.cols.desc: HeaderCell {
+                                    text: @tr("Description");
+                                    key: "desc";
+                                    sort-by: root.sort-by;
+                                    sort-desc: root.sort-desc;
+                                    sort(k) => {
+                                        root.sort(k);
+                                    }
+                                    width: 170px;
+                                }
+                                if root.cols.added: HeaderCell {
+                                    text: @tr("Date Added");
+                                    key: "added";
+                                    sort-by: root.sort-by;
+                                    sort-desc: root.sort-desc;
+                                    sort(k) => {
+                                        root.sort(k);
+                                    }
+                                    width: 118px;
+                                    align: center;
+                                }
+                                if root.cols.saveto: HeaderCell {
+                                    text: @tr("Save To");
+                                    key: "saveto";
+                                    sort-by: root.sort-by;
+                                    sort-desc: root.sort-desc;
+                                    sort(k) => {
+                                        root.sort(k);
+                                    }
+                                    width: 190px;
+                                }
+                                if root.cols.referer: HeaderCell {
+                                    text: @tr("Referer");
+                                    key: "referer";
+                                    sort-by: root.sort-by;
+                                    sort-desc: root.sort-desc;
+                                    sort(k) => {
+                                        root.sort(k);
+                                    }
+                                    width: 190px;
+                                }
+                                if root.cols.parent: HeaderCell {
+                                    text: @tr("Parent Web Page");
+                                    key: "parent";
+                                    sort-by: root.sort-by;
+                                    sort-desc: root.sort-desc;
+                                    sort(k) => {
+                                        root.sort(k);
+                                    }
+                                    width: 190px;
+                                }
+                            }
+                            Rectangle {
+                                x: 0;
+                                y: parent.height - 1px;
+                                width: parent.width;
+                                height: 1px;
+                                background: Theme.line;
+                            }
+                        }
+                        ListView {
+                            vertical-stretch: 1;
+                            for r in root.rows: DownloadItem {
+                                data: r;
+                                queues: root.queues;
+                                cols: root.cols;
+                                selected: r.sel;
+                                sel-count: root.sel-count;
+                                pick(ctrl, shift) => {
+                                    root.row-clicked(r.id, ctrl, shift);
+                                    keys.focus();
+                                }
+                                right-pick => {
+                                    root.row-right(r.id);
+                                }
+                                drag(offset) => {
+                                    root.row-drag(r.id, offset);
+                                }
+                                activated => {
+                                    root.row-activated(r.id);
+                                }
+                                action(a) => {
+                                    root.row-action(r.id, a);
+                                }
+                                move-to-queue(q) => {
+                                    root.row-to-queue(r.id, q);
+                                }
+                            }
+                        }
+                    }
+                    if root.rows.length == 0: Text {
+                        x: 0;
+                        y: 120px;
+                        width: parent.width;
+                        text: root.search != "" ? @tr("Nothing matches “{}”.", root.search) : @tr("No downloads here.\nClick “Add URL”, copy a link, or download something in your browser.");
+                        horizontal-alignment: center;
+                        color: Theme.muted;
+                    }
+                }
+            }
+
+            // ---- status bar
+            Rectangle {
+                height: 22px;
+                background: Theme.window;
+                Rectangle {
+                    width: parent.width;
+                    height: 1px;
+                    y: 0;
+                    background: Theme.line;
+                }
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    Text {
+                        text: root.status-text;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                        font-size: 11px;
+                        color: Theme.muted;
+                    }
+                    Text {
+                        text: root.limiter-text;
+                        vertical-alignment: center;
+                        font-size: 11px;
+                        color: root.limiter-on ? Theme.warn : Theme.muted;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------ dialogs
+
+// "Download File Info" – shown for every new download.
+export component AddDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Download File Info");
+    preferred-width: 640px;
+    min-width: 540px;
+
+    in-out property <string> url;
+    // full path: folder + file name
+    in-out property <string> save-as;
+    in-out property <string> description;
+    in-out property <int> connections: 32;
+    in-out property <int> category-index: 0;
+    in-out property <bool> remember-path;
+    in property <string> category-name: "General";
+    in property <string> kind: "general";
+    in property <string> ext;
+    in property <string> size-text;
+    in property <string> info;
+    in property <bool> probing;
+    in property <bool> info-error;
+    in property <[string]> queue-names: ["Main queue"];
+    in-out property <int> queue-index: 0;
+    in property <[string]> category-names: ["General", "Compressed", "Documents", "Music", "Programs", "Video", "Images"];
+    in-out property <bool> use-login;
+    in-out property <string> user;
+    in-out property <string> password;
+    // a warning about the address (web page, duplicate...)
+    in property <string> warning;
+
+    callback check-url();
+    callback category-changed(int);
+    callback browse();
+    callback start-now();
+    callback later();
+    callback cancel();
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 14px;
+            GridLayout {
+                spacing: 8px;
+                horizontal-stretch: 1;
+                Row {
+                    Text {
+                        text: @tr("URL");
+                        vertical-alignment: center;
+                        color: Theme.text;
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        LineEdit {
+                            text <=> root.url;
+                            placeholder-text: @tr("https://example.com/file");
+                            horizontal-stretch: 1;
+                            accepted(t) => {
+                                root.check-url();
+                            }
+                        }
+                        Button {
+                            text: @tr("Check");
+                            clicked => {
+                                root.check-url();
+                            }
+                        }
+                    }
+                }
+                Row {
+                    Text {
+                        text: @tr("Category");
+                        vertical-alignment: center;
+                        color: Theme.text;
+                    }
+                    HorizontalLayout {
+                        ComboBox {
+                            width: 200px;
+                            model: root.category-names;
+                            current-index <=> root.category-index;
+                            selected(v) => {
+                                root.category-changed(root.category-index);
+                            }
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+                Row {
+                    Text {
+                        text: @tr("Save As");
+                        vertical-alignment: center;
+                        color: Theme.text;
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        LineEdit {
+                            text <=> root.save-as;
+                            horizontal-stretch: 1;
+                        }
+                        Button {
+                            text: "…";
+                            clicked => {
+                                root.browse();
+                            }
+                        }
+                    }
+                }
+                Row {
+                    Rectangle { }
+                    CheckBox {
+                        text: @tr("Remember this path for \"{}\" category", root.category-name);
+                        checked <=> root.remember-path;
+                    }
+                }
+                Row {
+                    Text {
+                        text: @tr("Description");
+                        vertical-alignment: center;
+                        color: Theme.text;
+                    }
+                    LineEdit {
+                        text <=> root.description;
+                        placeholder-text: @tr("optional note");
+                    }
+                }
+            }
+            VerticalLayout {
+                width: 110px;
+                spacing: 6px;
+                alignment: start;
+                padding-top: 4px;
+                BigTypeIcon {
+                    kind: root.kind;
+                    ext: root.ext;
+                }
+                Text {
+                    text: root.size-text;
+                    horizontal-alignment: center;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: Theme.text;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            CheckBox {
+                text: @tr("Use authorization");
+                checked <=> root.use-login;
+            }
+            if root.use-login: Text {
+                text: @tr("Login");
+                vertical-alignment: center;
+                color: Theme.text;
+            }
+            if root.use-login: LineEdit {
+                text <=> root.user;
+                horizontal-stretch: 1;
+            }
+            if root.use-login: Text {
+                text: @tr("Password");
+                vertical-alignment: center;
+                color: Theme.text;
+            }
+            if root.use-login: LineEdit {
+                text <=> root.password;
+                input-type: InputType.password;
+                horizontal-stretch: 1;
+            }
+            if !root.use-login: Rectangle {
+                horizontal-stretch: 1;
+            }
+        }
+        if root.warning != "": HorizontalLayout {
+            spacing: 6px;
+            Glyph {
+                kind: "warn";
+            }
+            Text {
+                text: root.warning;
+                color: Theme.warn;
+                wrap: word-wrap;
+                font-size: 12px;
+                horizontal-stretch: 1;
+            }
+        }
+        Rectangle {
+            height: 32px;
+            border-width: 1px;
+            border-color: root.info-error ? Theme.err : Theme.line;
+            background: Theme.panel;
+            Text {
+                x: 10px;
+                width: parent.width - 20px;
+                height: parent.height;
+                vertical-alignment: center;
+                text: root.probing ? @tr("Checking the address…") : root.info;
+                color: root.info-error ? Theme.err : Theme.muted;
+                overflow: elide;
+                font-size: 12px;
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: @tr("Connections");
+                vertical-alignment: center;
+                color: Theme.text;
+            }
+            SpinBox {
+                width: 110px;
+                minimum: 1;
+                maximum: 32;
+                value <=> root.connections;
+            }
+            Rectangle {
+                width: 10px;
+            }
+            Text {
+                text: @tr("Queue");
+                vertical-alignment: center;
+                color: Theme.text;
+            }
+            ComboBox {
+                model: root.queue-names;
+                current-index <=> root.queue-index;
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            Button {
+                text: @tr("Download Later");
+                enabled: root.url != "";
+                clicked => {
+                    root.later();
+                }
+            }
+            Button {
+                text: @tr("Start Download");
+                primary: true;
+                enabled: root.url != "";
+                clicked => {
+                    root.start-now();
+                }
+            }
+            Button {
+                text: @tr("Cancel");
+                clicked => {
+                    root.cancel();
+                }
+            }
+        }
+    }
+}
+
+component TabButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked();
+    height: 26px;
+    width: label.preferred-width + 24px;
+    background: root.active ? Theme.panel : ta.has-hover ? Theme.hover : Theme.window;
+    border-width: 1px;
+    border-color: Theme.line;
+    ta := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        clicked => {
+            root.clicked();
+        }
+    }
+    label := Text {
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        font-size: 12px;
+        font-weight: root.active ? 600 : 400;
+        color: Theme.text;
+    }
+    if root.active: Rectangle {
+        x: 1px;
+        y: parent.height - 1px;
+        width: parent.width - 2px;
+        height: 2px;
+        background: Theme.panel;
+    }
+}
+
+export component BatchDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Add batch download");
+    preferred-width: 640px;
+    preferred-height: 520px;
+
+    // 0: list of links, 1: address with a * pattern
+    in-out property <int> mode: 0;
+    in-out property <string> links;
+    in-out property <string> folder;
+    in property <[string]> queue-names: ["Main queue"];
+    in-out property <int> queue-index: 0;
+    in-out property <bool> start-now: true;
+    in property <string> message;
+    // pattern
+    in-out property <string> pattern;
+    in-out property <bool> letters;
+    in-out property <string> from-text: "1";
+    in-out property <string> to-text: "10";
+    in-out property <int> wildcard-size: 1;
+    in-out property <string> user;
+    in-out property <string> password;
+    in property <string> preview;
+
+    callback paste();
+    callback browse();
+    callback pattern-changed();
+    callback ok();
+    callback cancel();
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 8px;
+        HorizontalLayout {
+            spacing: 2px;
+            TabButton {
+                text: @tr("List of links");
+                active: root.mode == 0;
+                clicked => {
+                    root.mode = 0;
+                }
+            }
+            TabButton {
+                text: @tr("Address with a pattern (*)");
+                active: root.mode == 1;
+                clicked => {
+                    root.mode = 1;
+                    root.pattern-changed();
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+        }
+        if root.mode == 0: VerticalLayout {
+            spacing: 8px;
+            vertical-stretch: 1;
+            Text {
+                text: @tr("Paste the links, one per line. They download one after another in the queue you choose.");
+                wrap: word-wrap;
+                color: Theme.text;
+            }
+            TextEdit {
+                text <=> root.links;
+                vertical-stretch: 1;
+                min-height: 200px;
+                font-size: 12px;
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                Button {
+                    text: @tr("Paste from clipboard");
+                    clicked => {
+                        root.paste();
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+            }
+        }
+        if root.mode == 1: VerticalLayout {
+            spacing: 8px;
+            vertical-stretch: 1;
+            Text {
+                text: @tr("Type an address with a * where the number (or letter) goes, for example\nhttps://www.site.com/pictures/img*.jpg");
+                wrap: word-wrap;
+                color: Theme.text;
+            }
+            LineEdit {
+                text <=> root.pattern;
+                placeholder-text: @tr("https://www.site.com/pictures/img*.jpg");
+                edited(t) => {
+                    root.pattern-changed();
+                }
+            }
+            HorizontalLayout {
+                spacing: 16px;
+                CheckBox {
+                    text: @tr("Letters (a-z) instead of numbers");
+                    checked <=> root.letters;
+                    toggled => {
+                        root.pattern-changed();
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: @tr("From");
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+                LineEdit {
+                    width: 80px;
+                    text <=> root.from-text;
+                    edited(t) => {
+                        root.pattern-changed();
+                    }
+                }
+                Text {
+                    text: @tr("To");
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+                LineEdit {
+                    width: 80px;
+                    text <=> root.to-text;
+                    edited(t) => {
+                        root.pattern-changed();
+                    }
+                }
+                Text {
+                    text: @tr("Wildcard size");
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+                SpinBox {
+                    width: 90px;
+                    minimum: 1;
+                    maximum: 10;
+                    value <=> root.wildcard-size;
+                    edited(v) => {
+                        root.pattern-changed();
+                    }
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
+                }
+            }
+            Text {
+                text: @tr("Wildcard size 3 makes 001, 002 … 010.");
+                color: Theme.muted;
+                font-size: 11px;
+            }
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: @tr("Login");
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+                LineEdit {
+                    text <=> root.user;
+                    placeholder-text: @tr("optional");
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: @tr("Password");
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+                LineEdit {
+                    text <=> root.password;
+                    input-type: InputType.password;
+                    horizontal-stretch: 1;
+                }
+            }
+            Rectangle {
+                vertical-stretch: 1;
+                min-height: 80px;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                Text {
+                    x: 8px;
+                    y: 6px;
+                    width: parent.width - 16px;
+                    text: root.preview;
+                    font-size: 11px;
+                    color: Theme.muted;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        GridLayout {
+            spacing: 8px;
+            Row {
+                Text {
+                    text: @tr("Queue");
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+                HorizontalLayout {
+                    ComboBox {
+                        model: root.queue-names;
+                        current-index <=> root.queue-index;
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                }
+            }
+            Row {
+                Text {
+                    text: @tr("Save all to");
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    LineEdit {
+                        text <=> root.folder;
+                        placeholder-text: @tr("automatic (by file type)");
+                        horizontal-stretch: 1;
+                    }
+                    Button {
+                        text: "…";
+                        clicked => {
+                            root.browse();
+                        }
+                    }
+                }
+            }
+        }
+        CheckBox {
+            text: @tr("Start the queue now");
+            checked <=> root.start-now;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root.message;
+                color: Theme.err;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("Add");
+                primary: true;
+                clicked => {
+                    root.ok();
+                }
+            }
+            Button {
+                text: @tr("Cancel");
+                clicked => {
+                    root.cancel();
+                }
+            }
+        }
+    }
+}
+
+// The per-download progress window (tabs like a classic download manager).
+export component DetailsDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: root.percent + " " + root.name;
+    width: 560px;
+
+    in property <string> name;
+    in property <string> percent;
+    in property <string> url;
+    in property <string> status;
+    in property <string> size;
+    in property <string> downloaded;
+    in property <string> speed;
+    in property <string> eta;
+    in property <string> resumable;
+    in property <bool> resumable-ok;
+    in property <string> error;
+    in property <string> kind: "general";
+    in property <float> progress;
+    in property <int> state;
+    in property <[SegView]> segs;
+    in-out property <bool> show-details: true;
+    in-out property <int> tab: 0;
+    // speed limiter tab
+    in-out property <bool> limit-on;
+    in-out property <int> limit-kb: 500;
+    // options on completion tab
+    in-out property <int> when-done: 0;
+    in-out property <bool> complete-dialog: true;
+    in-out property <bool> force-close;
+
+    callback pause();
+    callback resume();
+    callback cancel-download();
+    callback close-window();
+    callback limit-changed();
+    callback completion-changed();
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 0px;
+        HorizontalLayout {
+            spacing: 2px;
+            TabButton {
+                text: @tr("Download status");
+                active: root.tab == 0;
+                clicked => {
+                    root.tab = 0;
+                }
+            }
+            TabButton {
+                text: @tr("Speed Limiter");
+                active: root.tab == 1;
+                clicked => {
+                    root.tab = 1;
+                }
+            }
+            TabButton {
+                text: @tr("Options on completion");
+                active: root.tab == 2;
+                clicked => {
+                    root.tab = 2;
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+        }
+        Rectangle {
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            min-height: 196px;
+            if root.tab == 0: VerticalLayout {
+                padding: 10px;
+                spacing: 6px;
+                alignment: start;
+                HorizontalLayout {
+                    spacing: 8px;
+                    TypeIcon {
+                        kind: root.kind;
+                        width: 20px;
+                        height: 20px;
+                    }
+                    Text {
+                        text: root.url;
+                        font-size: 11px;
+                        overflow: elide;
+                        color: Theme.accent;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Theme.grid;
+                }
+                GridLayout {
+                    spacing-horizontal: 12px;
+                    spacing-vertical: 5px;
+                    Row {
+                        Text {
+                            text: @tr("Status");
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: root.status;
+                            color: root.state == 4 ? Theme.err : Theme.text;
+                        }
+                    }
+                    Row {
+                        Text {
+                            text: @tr("File size");
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: root.size;
+                            color: Theme.text;
+                        }
+                    }
+                    Row {
+                        Text {
+                            text: @tr("Downloaded");
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: root.downloaded;
+                            color: Theme.text;
+                        }
+                    }
+                    Row {
+                        Text {
+                            text: @tr("Transfer rate");
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: root.speed;
+                            color: Theme.text;
+                        }
+                    }
+                    Row {
+                        Text {
+                            text: @tr("Time left");
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: root.eta;
+                            color: Theme.text;
+                        }
+                    }
+                    Row {
+                        Text {
+                            text: @tr("Resume capability");
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: root.resumable;
+                            color: root.resumable-ok ? Theme.ok : Theme.err;
+                        }
+                    }
+                }
+                if root.error != "": Text {
+                    text: root.error;
+                    color: Theme.err;
+                    wrap: word-wrap;
+                    font-size: 11px;
+                }
+            }
+            if root.tab == 1: VerticalLayout {
+                padding: 14px;
+                spacing: 12px;
+                alignment: start;
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: @tr("Transfer rate");
+                        color: Theme.muted;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: root.speed;
+                        color: Theme.text;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+                CheckBox {
+                    text: @tr("Use speed limiter for this download");
+                    checked <=> root.limit-on;
+                    toggled => {
+                        root.limit-changed();
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: @tr("Maximum download speed (KB/s)");
+                        color: root.limit-on ? Theme.text : Theme.muted;
+                        vertical-alignment: center;
+                    }
+                    SpinBox {
+                        width: 140px;
+                        enabled: root.limit-on;
+                        minimum: 1;
+                        maximum: 1000000;
+                        step-size: 50;
+                        value <=> root.limit-kb;
+                        edited(v) => {
+                            root.limit-changed();
+                        }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    for kb in [128, 256, 512, 1024, 2048, 5120]: Button {
+                        text: kb >= 1024 ? @tr("{} MB/s", kb / 1024) : @tr("{} KB/s", kb);
+                        clicked => {
+                            root.limit-on = true;
+                            root.limit-kb = kb;
+                            root.limit-changed();
+                        }
+                    }
+                }
+                Text {
+                    text: @tr("Changes apply right away, even while downloading.");
+                    font-size: 11px;
+                    color: Theme.muted;
+                }
+            }
+            if root.tab == 2: VerticalLayout {
+                padding: 14px;
+                spacing: 12px;
+                alignment: start;
+                Text {
+                    text: @tr("When this download completes:");
+                    color: Theme.text;
+                }
+                ComboBox {
+                    width: 300px;
+                    model: [@tr("Do nothing (keep the computer on)"), @tr("Shut down the computer"), @tr("Sleep"), @tr("Exit Ezoo Download"), @tr("Hibernate")];
+                    current-index <=> root.when-done;
+                    selected(v) => {
+                        root.completion-changed();
+                    }
+                }
+                CheckBox {
+                    text: @tr("Force programs to close when shutting down");
+                    checked <=> root.force-close;
+                    enabled: root.when-done == 1;
+                    toggled => {
+                        root.completion-changed();
+                    }
+                }
+                CheckBox {
+                    text: @tr("Show the \"Download complete\" window");
+                    checked <=> root.complete-dialog;
+                    toggled => {
+                        root.completion-changed();
+                    }
+                }
+                Text {
+                    text: @tr("You get 30 seconds to cancel before the computer shuts down, sleeps or hibernates.");
+                    font-size: 11px;
+                    color: Theme.muted;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        Rectangle {
+            height: 8px;
+        }
+        Rectangle {
+            height: 18px;
+            border-width: 1px;
+            border-color: Theme.line;
+            background: Theme.bar-bg;
+            clip: true;
+            Rectangle {
+                x: 1px;
+                y: 1px;
+                height: parent.height - 2px;
+                width: (parent.width - 2px) * root.progress;
+                background: @linear-gradient(180deg, #4fd06a 0%, #1f9d3e 100%);
+                animate width {
+                    duration: 250ms;
+                    easing: ease-out;
+                }
+            }
+        }
+        Rectangle {
+            height: 8px;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Button {
+                text: root.show-details ? @tr("<< Hide details") : @tr("Show details >>");
+                clicked => {
+                    root.show-details = !root.show-details;
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            if root.state == 0 || root.state == 1: Button {
+                text: @tr("Pause");
+                clicked => {
+                    root.pause();
+                }
+            }
+            if root.state == 2 || root.state == 4: Button {
+                text: @tr("Resume");
+                primary: true;
+                clicked => {
+                    root.resume();
+                }
+            }
+            Button {
+                text: root.state == 3 ? @tr("Close") : @tr("Cancel");
+                clicked => {
+                    if (root.state == 3) {
+                        root.close-window();
+                    } else {
+                        root.cancel-download();
+                    }
+                }
+            }
+        }
+        if root.show-details: VerticalLayout {
+            spacing: 6px;
+            padding-top: 8px;
+            Text {
+                text: @tr("Start positions and download progress by connections");
+                font-size: 11px;
+                color: Theme.muted;
+            }
+            Rectangle {
+                height: 20px;
+                border-width: 1px;
+                border-color: Theme.line;
+                background: Theme.panel;
+                clip: true;
+                for s in root.segs: Rectangle {
+                    x: 1px + (parent.width - 2px) * s.start;
+                    y: 1px;
+                    width: (parent.width - 2px) * (s.done - s.start);
+                    height: parent.height - 2px;
+                    background: Theme.accent;
+                    animate width {
+                        duration: 250ms;
+                        easing: ease-out;
+                    }
+                }
+                for s in root.segs: Rectangle {
+                    x: 1px + (parent.width - 2px) * s.start;
+                    y: 0;
+                    width: 1px;
+                    height: parent.height;
+                    background: Theme.err;
+                }
+            }
+            Rectangle {
+                height: 150px;
+                background: Theme.panel;
+                border-width: 1px;
+                border-color: Theme.line;
+                VerticalLayout {
+                    padding: 1px;
+                    Rectangle {
+                        height: 22px;
+                        background: @linear-gradient(180deg, Theme.header-top 0%, Theme.header-bottom 100%);
+                        HorizontalLayout {
+                            HeaderCell {
+                                text: @tr("N.");
+                                width: 44px;
+                            }
+                            HeaderCell {
+                                text: @tr("Downloaded");
+                                width: 130px;
+                            }
+                            HeaderCell {
+                                text: @tr("Info");
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+                    ListView {
+                        vertical-stretch: 1;
+                        for s in root.segs: Rectangle {
+                            height: 19px;
+                            HorizontalLayout {
+                                Cell {
+                                    text: s.number;
+                                    width: 44px;
+                                    horizontal-alignment: center;
+                                }
+                                Cell {
+                                    text: s.downloaded;
+                                    width: 130px;
+                                    horizontal-alignment: right;
+                                }
+                                Cell {
+                                    text: "   " + s.info;
+                                    horizontal-stretch: 1;
+                                    color: s.busy ? Theme.accent : Theme.muted;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component CompleteDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front of the browser
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Download complete");
+    preferred-width: 540px;
+
+    in property <string> name;
+    in property <string> size;
+    in property <string> path;
+    in property <string> url;
+    in property <string> kind: "general";
+    in property <string> ext;
+    in-out property <bool> dont-show;
+
+    callback open-file();
+    callback open-with();
+    callback open-folder();
+    callback close-window();
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 16px;
+            BigTypeIcon {
+                kind: root.kind;
+                ext: root.ext;
+            }
+            VerticalLayout {
+                spacing: 6px;
+                horizontal-stretch: 1;
+                Text {
+                    text: @tr("Download complete");
+                    font-size: 15px;
+                    font-weight: 700;
+                    color: Theme.ok;
+                }
+                GridLayout {
+                    spacing: 6px;
+                    Row {
+                        Text {
+                            text: @tr("Address");
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: root.url;
+                            overflow: elide;
+                            font-size: 11px;
+                            color: Theme.accent;
+                        }
+                    }
+                    Row {
+                        Text {
+                            text: @tr("File size");
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: root.size;
+                            color: Theme.text;
+                        }
+                    }
+                    Row {
+                        Text {
+                            text: @tr("Saved as");
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: root.path;
+                            wrap: word-wrap;
+                            font-size: 11px;
+                            color: Theme.text;
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            CheckBox {
+                text: @tr("Don't show this again");
+                checked <=> root.dont-show;
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("Open");
+                primary: true;
+                clicked => {
+                    root.open-file();
+                }
+            }
+            Button {
+                text: @tr("Open with…");
+                clicked => {
+                    root.open-with();
+                }
+            }
+            Button {
+                text: @tr("Open folder");
+                clicked => {
+                    root.open-folder();
+                }
+            }
+            Button {
+                text: @tr("Close");
+                clicked => {
+                    root.close-window();
+                }
+            }
+        }
+    }
+}

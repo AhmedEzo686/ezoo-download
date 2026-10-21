@@ -1,0 +1,936 @@
+// Ezoo Download – shared look: data types, themes, icons and small widgets.
+
+import { Button, LineEdit, SpinBox, CheckBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
+
+export struct DownloadRow {
+    id: int,
+    name: string,
+    // file type icon: video, audio, archive, pdf, doc, sheet, slides, text, exe, apk, disc, image, general
+    kind: string,
+    category: string,
+    queue: string,
+    size: string,
+    status: string,
+    progress: float,
+    eta: string,
+    speed: string,
+    last-try: string,
+    description: string,
+    added: string,
+    // part of the multiple selection (Ctrl / Shift click, Ctrl+A)
+    sel: bool,
+    save-to: string,
+    referer: string,
+    parent: string,
+    // 0 queued, 1 running, 2 paused, 3 complete, 4 error
+    state: int,
+}
+
+// which list columns are visible (View > Columns)
+export struct Cols {
+    q: bool,
+    size: bool,
+    status: bool,
+    eta: bool,
+    speed: bool,
+    last: bool,
+    desc: bool,
+    added: bool,
+    saveto: bool,
+    referer: bool,
+    parent: bool,
+}
+
+// a category in the sidebar
+export struct CatRow {
+    name: string,
+    // the name in the current language
+    label: string,
+    // icon kind
+    kind: string,
+    count: string,
+    unfinished: string,
+    finished: string,
+    builtin: bool,
+}
+
+// one row of a simple two/three column list (logins, server exceptions...)
+export struct PairRow {
+    a: string,
+    b: string,
+    c: string,
+}
+
+// a file found by the site grabber / "download all links"
+export struct LinkRow {
+    checked: bool,
+    name: string,
+    kind: string,
+    ext: string,
+    text: string,
+    url: string,
+}
+
+export struct QueueRow {
+    id: int,
+    name: string,
+    count: int,
+    running: bool,
+}
+
+// one connection of a download (progress window)
+export struct SegView {
+    // this connection is receiving right now
+    busy: bool,
+    start: float,
+    done: float,
+    number: string,
+    downloaded: string,
+    info: string,
+}
+
+// ------------------------------------------------------------------ themes
+// 0 Light, 1 Dark, 2 Ocean, 3 Midnight
+
+export global Theme {
+    in-out property <int> mode: 0;
+    out property <bool> dark: mode == 1 || mode == 3;
+    out property <color> window: mode == 1 ? #1e1f22 : mode == 2 ? #e8f1fb : mode == 3 ? #15131d : #f0f0f0;
+    out property <color> panel: mode == 1 ? #26282c : mode == 2 ? #ffffff : mode == 3 ? #1d1a29 : #ffffff;
+    out property <color> toolbar-top: mode == 1 ? #2e3136 : mode == 2 ? #2f80ed : mode == 3 ? #2b2545 : #fdfdfd;
+    out property <color> toolbar-bottom: mode == 1 ? #24262a : mode == 2 ? #1b5fc4 : mode == 3 ? #1e1a33 : #e7ebf0;
+    out property <color> toolbar-text: mode == 1 ? #e8eaed : mode == 2 ? #ffffff : mode == 3 ? #ece9f6 : #1b1f24;
+    out property <color> toolbar-hover: mode == 1 ? #3a3e45 : mode == 2 ? #4a92f0 : mode == 3 ? #3a3260 : #e5f1fb;
+    out property <color> line: mode == 1 ? #3a3d42 : mode == 2 ? #c6d8ef : mode == 3 ? #352f4d : #d9dde3;
+    out property <color> grid: mode == 1 ? #2f3237 : mode == 2 ? #eaf2fc : mode == 3 ? #26223a : #eef0f3;
+    out property <color> header-top: mode == 1 ? #2e3136 : mode == 2 ? #f7fbff : mode == 3 ? #26223a : #ffffff;
+    out property <color> header-bottom: mode == 1 ? #282a2e : mode == 2 ? #e3eefb : mode == 3 ? #201c31 : #eef1f5;
+    out property <color> text: mode == 1 ? #e8eaed : mode == 2 ? #13243a : mode == 3 ? #ece9f6 : #1b1f24;
+    out property <color> muted: mode == 1 ? #9aa0a6 : mode == 2 ? #557090 : mode == 3 ? #a59fc0 : #5f6b78;
+    out property <color> accent: mode == 1 ? #5b9dff : mode == 2 ? #1565c0 : mode == 3 ? #a78bfa : #1f6feb;
+    out property <color> select: mode == 1 ? #264f78 : mode == 2 ? #cfe4ff : mode == 3 ? #3d3366 : #cce8ff;
+    out property <color> select-line: mode == 1 ? #3a6ea5 : mode == 2 ? #8dbcf5 : mode == 3 ? #5b4a99 : #99d1ff;
+    out property <color> hover: mode == 1 ? #2c3440 : mode == 2 ? #e3efff : mode == 3 ? #2a2541 : #e5f3ff;
+    out property <color> ok: dark ? #3fcf7a : #1f9d55;
+    out property <color> warn: #e08a00;
+    out property <color> err: dark ? #ff6b62 : #d23b32;
+    out property <color> bar-bg: dark ? #34373c : #e6e6e6;
+    out property <color> input-bg: dark ? #2b2d31 : #ffffff;
+}
+
+// Applies the light/dark look to the standard widgets of every window.
+export component ThemedWindow inherits Window {
+    property <bool> dark: Theme.dark;
+    changed dark => {
+        Palette.color-scheme = self.dark ? ColorScheme.dark : ColorScheme.light;
+    }
+    init => {
+        Palette.color-scheme = self.dark ? ColorScheme.dark : ColorScheme.light;
+    }
+    background: Theme.window;
+    icon: @image-url("icon.png");
+}
+
+// Small vector icons for menus, lists and buttons (fonts on Windows don't
+// have every symbol, so nothing here depends on a font).
+export component Glyph inherits Rectangle {
+    // play, progress, openwith, folder, pause, stop, redo, refresh, edit, check,
+    // copy, hash, info, close, clock, plus, warn, down, up, caret-down, caret-up,
+    // bulb, queue
+    in property <string> kind;
+    in property <color> tint: Theme.accent;
+    width: 16px;
+    height: 16px;
+    if root.kind == "play": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        fill: root.tint;
+        commands: "M 4 2.5 L 13 8 L 4 13.5 Z";
+    }
+    if root.kind == "progress": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 1.6px;
+        fill: transparent;
+        commands: "M 8 1.8 A 6.2 6.2 0 1 1 7.99 1.8 Z M 8 4.5 L 8 8 L 10.8 9.6";
+    }
+    if root.kind == "openwith": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 1.5px;
+        fill: transparent;
+        commands: "M 2 4 L 2 14 L 12 14 L 12 9 M 7 9 L 14 2 M 9 2 L 14 2 L 14 7";
+    }
+    if root.kind == "folder": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        fill: #f2b531;
+        stroke: #c98a10;
+        stroke-width: 1px;
+        commands: "M 1.5 3.5 L 6 3.5 L 7.5 5 L 14.5 5 L 14.5 13 L 1.5 13 Z";
+    }
+    if root.kind == "pause": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        fill: root.tint;
+        commands: "M 4 3 L 7 3 L 7 13 L 4 13 Z M 9 3 L 12 3 L 12 13 L 9 13 Z";
+    }
+    if root.kind == "stop": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        fill: root.tint;
+        commands: "M 3.5 3.5 L 12.5 3.5 L 12.5 12.5 L 3.5 12.5 Z";
+    }
+    if root.kind == "redo": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 1.7px;
+        fill: transparent;
+        commands: "M 13 8 A 5 5 0 1 1 10.5 3.7 M 9.5 1.5 L 11.5 4 L 8.8 5.6";
+    }
+    if root.kind == "refresh": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 1.5px;
+        fill: transparent;
+        commands: "M 2.5 7 A 5.5 5.5 0 0 1 12.8 5 M 13.5 9 A 5.5 5.5 0 0 1 3.2 11 M 13 2 L 13 5.2 L 9.8 5.2 M 3 14 L 3 10.8 L 6.2 10.8";
+    }
+    if root.kind == "edit": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 1.4px;
+        fill: transparent;
+        commands: "M 2.5 13.5 L 3.2 10.4 L 10.8 2.8 L 13.2 5.2 L 5.6 12.8 Z M 9.4 4.2 L 11.8 6.6";
+    }
+    if root.kind == "check": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 2px;
+        fill: transparent;
+        commands: "M 2.5 8.5 L 6.3 12 L 13.5 4";
+    }
+    if root.kind == "copy": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 1.4px;
+        fill: transparent;
+        commands: "M 5.5 5.5 L 13.5 5.5 L 13.5 14 L 5.5 14 Z M 3 11 L 2.5 11 L 2.5 2 L 10.5 2 L 10.5 3";
+    }
+    if root.kind == "hash": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 1.4px;
+        fill: transparent;
+        commands: "M 6 2 L 4.5 14 M 11.5 2 L 10 14 M 2.5 5.5 L 14 5.5 M 2 10.5 L 13.5 10.5";
+    }
+    if root.kind == "info": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 1.4px;
+        fill: transparent;
+        commands: "M 8 1.8 A 6.2 6.2 0 1 1 7.99 1.8 Z M 8 7 L 8 12 M 8 4.2 L 8 5.4";
+    }
+    if root.kind == "close": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 2px;
+        fill: transparent;
+        commands: "M 3.5 3.5 L 12.5 12.5 M 12.5 3.5 L 3.5 12.5";
+    }
+    if root.kind == "clock": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 1.5px;
+        fill: transparent;
+        commands: "M 8 1.8 A 6.2 6.2 0 1 1 7.99 1.8 Z M 8 4 L 8 8 L 11 9.5";
+    }
+    if root.kind == "plus": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 2px;
+        fill: transparent;
+        commands: "M 8 2.5 L 8 13.5 M 2.5 8 L 13.5 8";
+    }
+    if root.kind == "minus": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        stroke: root.tint;
+        stroke-width: 2px;
+        fill: transparent;
+        commands: "M 2.5 8 L 13.5 8";
+    }
+    if root.kind == "warn": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        fill: #e08a00;
+        commands: "M 8 1.5 L 15 14 L 1 14 Z M 7.2 5.5 L 8.8 5.5 L 8.5 10 L 7.5 10 Z M 7.3 11.2 L 8.7 11.2 L 8.7 12.6 L 7.3 12.6 Z";
+    }
+    if root.kind == "down": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        fill: root.tint;
+        commands: "M 6.5 2 L 9.5 2 L 9.5 8 L 13 8 L 8 14 L 3 8 L 6.5 8 Z";
+    }
+    if root.kind == "up": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        fill: root.tint;
+        commands: "M 6.5 14 L 9.5 14 L 9.5 8 L 13 8 L 8 2 L 3 8 L 6.5 8 Z";
+    }
+    if root.kind == "caret-down": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        fill: root.tint;
+        commands: "M 4 6 L 12 6 L 8 11 Z";
+    }
+    if root.kind == "caret-up": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        fill: root.tint;
+        commands: "M 4 10 L 12 10 L 8 5 Z";
+    }
+    if root.kind == "bulb": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        fill: #ffd54a;
+        stroke: #b8860b;
+        stroke-width: 1px;
+        commands: "M 8 1.5 A 4.8 4.8 0 0 1 11 10 L 10.5 12 L 5.5 12 L 5 10 A 4.8 4.8 0 0 1 8 1.5 Z M 6 13.5 L 10 13.5";
+    }
+    if root.kind == "queue": Path {
+        viewbox-width: 16;
+        viewbox-height: 16;
+        fill: root.tint;
+        commands: "M 2 3 L 10 3 L 10 4.6 L 2 4.6 Z M 2 6.5 L 10 6.5 L 10 8.1 L 2 8.1 Z M 2 10 L 7 10 L 7 11.6 L 2 11.6 Z M 9.5 9 L 14.5 12 L 9.5 15 Z";
+    }
+}
+
+// ------------------------------------------------------------------ icons
+
+export component P inherits Path {
+    viewbox-width: 32;
+    viewbox-height: 32;
+}
+
+// Toolbar icons, drawn on a 32x32 grid.
+export component Icon inherits Rectangle {
+    in property <string> kind;
+    width: 32px;
+    height: 32px;
+    if root.kind == "add": Rectangle {
+        P {
+            fill: @linear-gradient(180deg, #45c06a 0%, #23934a 100%);
+            commands: "M 16 2 A 14 14 0 1 1 15.99 2 Z";
+        }
+        P {
+            fill: white;
+            commands: "M 14 8 L 18 8 L 18 14 L 24 14 L 24 18 L 18 18 L 18 24 L 14 24 L 14 18 L 8 18 L 8 14 L 14 14 Z";
+        }
+    }
+    if root.kind == "batch": Rectangle {
+        P {
+            fill: #dde6f1;
+            stroke: #6b7c90;
+            stroke-width: 1.5px;
+            commands: "M 11 3 L 26 3 L 26 22 L 11 22 Z";
+        }
+        P {
+            fill: white;
+            stroke: #6b7c90;
+            stroke-width: 1.5px;
+            commands: "M 5 8 L 20 8 L 20 28 L 5 28 Z M 8 13 L 17 13 M 8 17 L 17 17 M 8 21 L 14 21";
+        }
+        P {
+            fill: #2e9e4f;
+            commands: "M 24 17 A 7 7 0 1 1 23.99 17 Z";
+        }
+        P {
+            fill: white;
+            commands: "M 23 20 L 25 20 L 25 23 L 28 23 L 28 25 L 25 25 L 25 28 L 23 28 L 23 25 L 20 25 L 20 23 L 23 23 Z";
+        }
+    }
+    if root.kind == "playlist": Rectangle {
+        // a red player with a list in front of it
+        P {
+            fill: @linear-gradient(180deg, #ff4b4b 0%, #d61f1f 100%);
+            commands: "M 6 4 L 28 4 Q 31 4 31 7 L 31 19 Q 31 22 28 22 L 6 22 Q 3 22 3 19 L 3 7 Q 3 4 6 4 Z";
+        }
+        P {
+            fill: white;
+            commands: "M 14 8 L 21 13 L 14 18 Z";
+        }
+        P {
+            fill: #33475b;
+            commands: "M 3 24 L 20 24 L 20 26 L 3 26 Z M 3 28 L 20 28 L 20 30 L 3 30 Z";
+        }
+        P {
+            fill: #2e9e4f;
+            commands: "M 25 21 A 6 6 0 1 1 24.99 21 Z";
+        }
+        P {
+            fill: white;
+            commands: "M 24 23 L 26 23 L 26 27 L 28 27 L 25 30 L 22 27 L 24 27 Z";
+        }
+    }
+    if root.kind == "grabber": Rectangle {
+        // a globe with a download arrow
+        P {
+            fill: @linear-gradient(180deg, #5aa8ff 0%, #1f6feb 100%);
+            commands: "M 14 3 A 11 11 0 1 1 13.99 3 Z";
+        }
+        P {
+            stroke: white;
+            stroke-width: 1.2px;
+            fill: transparent;
+            commands: "M 3 14 L 25 14 M 14 3 C 8 8 8 20 14 25 M 14 3 C 20 8 20 20 14 25 M 5 8 L 23 8 M 5 20 L 23 20";
+        }
+        P {
+            fill: #2e9e4f;
+            commands: "M 24 17 A 7 7 0 1 1 23.99 17 Z";
+        }
+        P {
+            fill: white;
+            commands: "M 23 19 L 25 19 L 25 24 L 27.5 24 L 24 28 L 20.5 24 L 23 24 Z";
+        }
+    }
+    if root.kind == "find": Rectangle {
+        P {
+            stroke: #4b5b70;
+            stroke-width: 3px;
+            fill: #e8f2ff;
+            commands: "M 13 4 A 9 9 0 1 1 12.99 4 Z";
+        }
+        P {
+            stroke: #4b5b70;
+            stroke-width: 4px;
+            commands: "M 19.5 19.5 L 28 28";
+        }
+    }
+    if root.kind == "resume": P {
+        fill: @linear-gradient(180deg, #45c06a 0%, #23934a 100%);
+        commands: "M 9 5 L 27 16 L 9 27 Z";
+    }
+    if root.kind == "stop": P {
+        fill: @linear-gradient(180deg, #f5a623 0%, #d97d00 100%);
+        commands: "M 8 6 L 14 6 L 14 26 L 8 26 Z M 18 6 L 24 6 L 24 26 L 18 26 Z";
+    }
+    if root.kind == "stopall": Rectangle {
+        P {
+            fill: #f2a7a2;
+            commands: "M 11 3 L 29 3 L 29 21 L 11 21 Z";
+        }
+        P {
+            fill: @linear-gradient(180deg, #ef5a50 0%, #c62f27 100%);
+            commands: "M 4 9 L 22 9 L 22 27 L 4 27 Z";
+        }
+    }
+    if root.kind == "delete": P {
+        stroke: #e0443b;
+        stroke-width: 4.5px;
+        commands: "M 8 8 L 24 24 M 24 8 L 8 24";
+    }
+    if root.kind == "deletedone": Rectangle {
+        P {
+            fill: #8a96a3;
+            commands: "M 7 7 L 25 7 L 25 10 L 7 10 Z M 13 4 L 19 4 L 19 7 L 13 7 Z M 9 11 L 23 11 L 21.5 29 L 10.5 29 Z";
+        }
+        P {
+            stroke: #3fcf7a;
+            stroke-width: 3.5px;
+            commands: "M 12 19 L 15.5 23 L 22 15";
+        }
+    }
+    if root.kind == "options": Rectangle {
+        P {
+            stroke: #7d8b9a;
+            stroke-width: 2.5px;
+            commands: "M 4 9 L 28 9 M 4 16 L 28 16 M 4 23 L 28 23";
+        }
+        P {
+            fill: #3b82f6;
+            stroke: white;
+            stroke-width: 1px;
+            commands: "M 11 5 A 4 4 0 1 1 10.99 5 Z M 21 12 A 4 4 0 1 1 20.99 12 Z M 14 19 A 4 4 0 1 1 13.99 19 Z";
+        }
+    }
+    if root.kind == "scheduler": Rectangle {
+        P {
+            fill: white;
+            stroke: #3b82f6;
+            stroke-width: 3px;
+            commands: "M 16 3.5 A 12.5 12.5 0 1 1 15.99 3.5 Z";
+        }
+        P {
+            stroke: #2d3a48;
+            stroke-width: 2.5px;
+            commands: "M 16 9 L 16 16 L 21.5 19.5";
+        }
+    }
+    if root.kind == "limiter": Rectangle {
+        P {
+            stroke: #7d8b9a;
+            stroke-width: 3px;
+            commands: "M 5 22 A 11 11 0 1 1 27 22";
+        }
+        P {
+            stroke: #e0443b;
+            stroke-width: 3px;
+            commands: "M 16 22 L 22 12";
+        }
+        P {
+            fill: #2d3a48;
+            commands: "M 16 19.5 A 2.5 2.5 0 1 1 15.99 19.5 Z";
+        }
+    }
+    if root.kind == "startqueue" || root.kind == "stopqueue": Rectangle {
+        P {
+            stroke: #7d8b9a;
+            stroke-width: 3px;
+            commands: "M 3 7 L 19 7 M 3 13 L 19 13 M 3 19 L 12 19";
+        }
+        if root.kind == "startqueue": P {
+            fill: #2e9e4f;
+            commands: "M 16 15 L 29 22.5 L 16 30 Z";
+        }
+        if root.kind == "stopqueue": P {
+            fill: #e0443b;
+            commands: "M 16 17 L 28 17 L 28 29 L 16 29 Z";
+        }
+    }
+    if root.kind == "folder": P {
+        fill: @linear-gradient(180deg, #ffd86b 0%, #f2b632 100%);
+        stroke: #c99a1e;
+        stroke-width: 1.2px;
+        commands: "M 3 8 L 12 8 L 15 11 L 29 11 L 29 27 L 3 27 Z";
+    }
+}
+
+export component G inherits Path {
+    viewbox-width: 16;
+    viewbox-height: 16;
+}
+
+// Colorful file-type icon: rounded tile with a white symbol.
+export component TypeIcon inherits Rectangle {
+    in property <string> kind: "general";
+    width: 18px;
+    height: 18px;
+    property <color> base: root.kind == "video" ? #e5484d
+        : root.kind == "audio" ? #8e4ec6
+        : root.kind == "archive" ? #c27c0e
+        : root.kind == "pdf" ? #d93025
+        : root.kind == "doc" ? #2b6cde
+        : root.kind == "sheet" ? #1e8e3e
+        : root.kind == "slides" ? #e8710a
+        : root.kind == "text" ? #6b7785
+        : root.kind == "exe" ? #4a5568
+        : root.kind == "apk" ? #2e9e5b
+        : root.kind == "disc" ? #5b7083
+        : root.kind == "image" ? #12a594
+        : #8a94a0;
+    border-radius: self.width * 0.22;
+    background: @linear-gradient(180deg, root.base.brighter(25%) 0%, root.base 100%);
+    if root.kind == "video": G {
+        fill: white;
+        commands: "M 6 4.5 L 12 8 L 6 11.5 Z";
+    }
+    if root.kind == "audio": G {
+        fill: white;
+        commands: "M 9.6 3 L 12.2 3.9 L 12.2 5.4 L 10.6 4.9 L 10.6 10.6 A 2.2 1.8 0 1 1 9.6 9.2 Z";
+    }
+    if root.kind == "archive": G {
+        fill: white;
+        commands: "M 7 2 L 9 2 L 9 3 L 7 3 Z M 7 4 L 9 4 L 9 5 L 7 5 Z M 7 6 L 9 6 L 9 7 L 7 7 Z M 6.3 8 L 9.7 8 L 9.7 12.5 L 6.3 12.5 Z";
+    }
+    if root.kind == "pdf" || root.kind == "doc" || root.kind == "text": G {
+        stroke: white;
+        stroke-width: 1.3px;
+        commands: "M 4.5 4.5 L 11.5 4.5 M 4.5 7 L 11.5 7 M 4.5 9.5 L 11.5 9.5 M 4.5 12 L 9 12";
+    }
+    if root.kind == "sheet": G {
+        stroke: white;
+        stroke-width: 1px;
+        commands: "M 4 4 L 12 4 L 12 12 L 4 12 Z M 4 6.7 L 12 6.7 M 4 9.3 L 12 9.3 M 7 4 L 7 12";
+    }
+    if root.kind == "slides": G {
+        stroke: white;
+        stroke-width: 1.2px;
+        commands: "M 3.5 4 L 12.5 4 L 12.5 10 L 3.5 10 Z M 8 10 L 8 12.5 M 6 12.5 L 10 12.5";
+    }
+    if root.kind == "exe": Rectangle {
+        G {
+            stroke: white;
+            stroke-width: 1.2px;
+            commands: "M 3.5 4 L 12.5 4 L 12.5 12 L 3.5 12 Z";
+        }
+        G {
+            fill: white;
+            commands: "M 3.5 4 L 12.5 4 L 12.5 6.2 L 3.5 6.2 Z";
+        }
+    }
+    if root.kind == "apk": G {
+        stroke: white;
+        stroke-width: 1.2px;
+        commands: "M 5.5 2.8 L 10.5 2.8 L 10.5 13.2 L 5.5 13.2 Z M 7.3 11.5 L 8.7 11.5";
+    }
+    if root.kind == "disc": Rectangle {
+        G {
+            stroke: white;
+            stroke-width: 1.3px;
+            commands: "M 8 3 A 5 5 0 1 1 7.99 3 Z";
+        }
+        G {
+            fill: white;
+            commands: "M 8 6.7 A 1.3 1.3 0 1 1 7.99 6.7 Z";
+        }
+    }
+    if root.kind == "image": Rectangle {
+        G {
+            fill: white;
+            commands: "M 3.5 11.8 L 6.5 7.5 L 8.6 10.2 L 10 8.6 L 12.5 11.8 Z";
+        }
+        G {
+            fill: white;
+            commands: "M 10.5 3.6 A 1.3 1.3 0 1 1 10.49 3.6 Z";
+        }
+    }
+    if root.kind == "general": G {
+        stroke: white;
+        stroke-width: 1.2px;
+        commands: "M 5 3 L 9.5 3 L 11.5 5 L 11.5 13 L 5 13 Z";
+    }
+}
+
+// Big icon with the file extension under it (dialogs).
+export component BigTypeIcon inherits VerticalLayout {
+    in property <string> kind;
+    in property <string> ext;
+    spacing: 4px;
+    alignment: start;
+    HorizontalLayout {
+        alignment: center;
+        TypeIcon {
+            kind: root.kind;
+            width: 48px;
+            height: 48px;
+        }
+    }
+    Text {
+        text: root.ext;
+        horizontal-alignment: center;
+        font-size: 11px;
+        font-weight: 700;
+        color: Theme.muted;
+    }
+}
+
+// ------------------------------------------------------------------ main window parts
+
+export component ToolBtn inherits Rectangle {
+    in property <string> icon;
+    in property <string> text;
+    in property <bool> enabled: true;
+    // View > Toolbar > Small buttons: icon only
+    in property <bool> small;
+    callback clicked();
+    width: root.small ? 34px : 70px;
+    height: root.small ? 34px : 62px;
+    border-radius: 3px;
+    border-width: ta.has-hover && root.enabled ? 1px : 0px;
+    border-color: Theme.select-line;
+    background: !root.enabled ? transparent : ta.pressed ? Theme.select : ta.has-hover ? Theme.toolbar-hover : transparent;
+    ta := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+    if !root.small: VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+        opacity: root.enabled ? 1.0 : 0.35;
+        HorizontalLayout {
+            alignment: center;
+            Icon {
+                kind: root.icon;
+            }
+        }
+        Text {
+            text: root.text;
+            font-size: 11px;
+            horizontal-alignment: center;
+            color: Theme.toolbar-text;
+        }
+    }
+    if root.small: Icon {
+        x: (parent.width - 24px) / 2;
+        y: (parent.height - 24px) / 2;
+        width: 24px;
+        height: 24px;
+        kind: root.icon;
+        opacity: root.enabled ? 1.0 : 0.35;
+    }
+}
+
+export component ToolSeparator inherits Rectangle {
+    width: 9px;
+    Rectangle {
+        x: 4px;
+        y: 8px;
+        width: 1px;
+        height: parent.height - 16px;
+        background: Theme.line;
+    }
+}
+
+export component TreeItem inherits Rectangle {
+    in property <string> text;
+    // "folder", "queue", "unfinished", "finished" or a file kind
+    in property <string> icon;
+    in property <string> count;
+    in property <int> indent;
+    in property <bool> selected;
+    in property <bool> bold;
+    // a branch that opens / closes (+ / - in front)
+    in property <bool> expandable;
+    in property <bool> expanded;
+    callback clicked();
+    callback toggle();
+    // right click, at this position inside the item
+    callback context(length, length);
+    height: 23px;
+    background: root.selected ? Theme.select : ta.has-hover ? Theme.hover : transparent;
+    border-width: root.selected ? 1px : 0px;
+    border-color: Theme.select-line;
+    ta := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        clicked => {
+            root.clicked();
+        }
+        double-clicked => {
+            root.toggle();
+        }
+        pointer-event(ev) => {
+            if (ev.button == PointerEventButton.right && ev.kind == PointerEventKind.up) {
+                root.clicked();
+                root.context(self.mouse-x, self.mouse-y);
+            }
+        }
+    }
+    HorizontalLayout {
+        padding-left: 4px + root.indent * 16px;
+        padding-right: 6px;
+        spacing: 5px;
+        Rectangle {
+            width: 11px;
+            if root.expandable: Rectangle {
+                y: (parent.height - 11px) / 2;
+                width: 11px;
+                height: 11px;
+                border-width: 1px;
+                border-color: Theme.muted;
+                background: Theme.panel;
+                Rectangle {
+                    x: 2px;
+                    y: 5px;
+                    width: 7px;
+                    height: 1px;
+                    background: Theme.text;
+                }
+                if !root.expanded: Rectangle {
+                    x: 5px;
+                    y: 2px;
+                    width: 1px;
+                    height: 7px;
+                    background: Theme.text;
+                }
+                TouchArea {
+                    clicked => {
+                        root.toggle();
+                    }
+                }
+            }
+        }
+        Rectangle {
+            width: 16px;
+            if root.icon == "folder": Icon {
+                kind: "folder";
+                width: 16px;
+                height: 16px;
+                y: (parent.height - 16px) / 2;
+            }
+            if root.icon == "queue": Icon {
+                kind: "startqueue";
+                width: 16px;
+                height: 16px;
+                y: (parent.height - 16px) / 2;
+            }
+            if root.icon == "unfinished": Glyph {
+                kind: "down";
+                y: (parent.height - 16px) / 2;
+            }
+            if root.icon == "finished": Glyph {
+                kind: "check";
+                tint: Theme.ok;
+                y: (parent.height - 16px) / 2;
+            }
+            if root.icon != "folder" && root.icon != "queue" && root.icon != "unfinished" && root.icon != "finished": TypeIcon {
+                kind: root.icon;
+                width: 16px;
+                height: 16px;
+                y: (parent.height - 16px) / 2;
+            }
+        }
+        Text {
+            text: root.text;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+            color: Theme.text;
+            font-size: 12px;
+            font-weight: root.bold ? 600 : 400;
+        }
+        Text {
+            text: root.count;
+            vertical-alignment: center;
+            color: Theme.muted;
+            font-size: 11px;
+        }
+    }
+}
+
+export component HeaderCell inherits Rectangle {
+    in property <string> text;
+    in property <TextHorizontalAlignment> align: left;
+    // sorting: this column's key, the current key and direction
+    in property <string> key;
+    in property <string> sort-by;
+    in property <bool> sort-desc;
+    callback sort(string);
+    height: 24px;
+    background: ta.has-hover && root.key != "" ? Theme.hover : transparent;
+    ta := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        enabled: root.key != "";
+        clicked => {
+            root.sort(root.key);
+        }
+    }
+    Text {
+        x: 6px;
+        width: parent.width - 12px;
+        height: parent.height;
+        text: root.text;
+        horizontal-alignment: root.align;
+        vertical-alignment: center;
+        font-size: 12px;
+        color: Theme.text;
+        overflow: elide;
+    }
+    if root.key != "" && root.key == root.sort-by: Glyph {
+        x: root.align == TextHorizontalAlignment.right ? 2px : parent.width - 16px;
+        y: (parent.height - 16px) / 2;
+        kind: root.sort-desc ? "caret-down" : "caret-up";
+        tint: Theme.muted;
+    }
+    Rectangle {
+        x: parent.width - 1px;
+        y: 4px;
+        width: 1px;
+        height: parent.height - 8px;
+        background: Theme.line;
+    }
+}
+
+export component Cell inherits Text {
+    vertical-alignment: center;
+    font-size: 12px;
+    color: Theme.text;
+    overflow: elide;
+}
+
+// ---- right-click menu pieces
+export component MenuEntry inherits Rectangle {
+    in property <string> text;
+    in property <string> glyph;
+    in property <color> glyph-color: Theme.accent;
+    in property <bool> enabled: true;
+    in property <bool> bold;
+    in property <bool> indent;
+    callback clicked();
+    height: 26px;
+    border-radius: 3px;
+    background: ta.has-hover && root.enabled ? Theme.select : transparent;
+    ta := TouchArea {
+        width: parent.width;
+        height: parent.height;
+        enabled: root.enabled;
+        clicked => {
+            root.clicked();
+        }
+    }
+    HorizontalLayout {
+        padding-left: root.indent ? 26px : 8px;
+        padding-right: 10px;
+        spacing: 8px;
+        opacity: root.enabled ? 1.0 : 0.4;
+        Rectangle {
+            width: 16px;
+            if root.glyph != "": Glyph {
+                y: (parent.height - 16px) / 2;
+                kind: root.glyph;
+                tint: root.glyph-color;
+            }
+        }
+        Text {
+            text: root.text;
+            color: Theme.text;
+            vertical-alignment: center;
+            font-size: 12px;
+            font-weight: root.bold ? 700 : 400;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+    }
+}
+
+export component MenuSep inherits Rectangle {
+    height: 7px;
+    Rectangle {
+        x: 6px;
+        y: 3px;
+        width: parent.width - 12px;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+export component MenuLabel inherits Rectangle {
+    in property <string> text;
+    height: 22px;
+    Text {
+        x: 34px;
+        text: root.text;
+        font-size: 11px;
+        color: Theme.muted;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+}
+
