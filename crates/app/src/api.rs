@@ -15,6 +15,14 @@ use tiny_http::{Header, Method, Request, Response, Server};
 /// refused Ezoo Download): the extension leaves them to the browser once.
 static FOR_BROWSER: std::sync::Mutex<Vec<(String, std::time::Instant)>> = std::sync::Mutex::new(Vec::new());
 
+/// Version of the browser add-in that ships with this program.
+pub fn bundled_extension_version() -> String {
+    serde_json::from_str::<serde_json::Value>(include_str!("../../../extension/manifest.json"))
+        .ok()
+        .and_then(|v| v["version"].as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
 pub fn leave_to_browser(url: &str) {
     let mut l = FOR_BROWSER.lock().unwrap();
     l.retain(|(_, at)| at.elapsed() < Duration::from_secs(300));
@@ -189,7 +197,13 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
     let path = req.url().split('?').next().unwrap_or("").to_string();
     match (req.method().clone(), path.as_str()) {
         (Method::Get, "/ping") => {
-            let body = format!(r#"{{"app":"EzooDownload","version":"{}"}}"#, env!("CARGO_PKG_VERSION"));
+            // "ext": the add-in version that came with this program; an older
+            // add-in loaded from the program's folder reloads itself
+            let body = format!(
+                r#"{{"app":"EzooDownload","version":"{}","ext":"{}"}}"#,
+                env!("CARGO_PKG_VERSION"),
+                bundled_extension_version()
+            );
             reply(req, 200, &body)
         }
         (Method::Get, "/config") => reply(req, 200, &config()),

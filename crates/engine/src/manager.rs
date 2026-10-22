@@ -429,6 +429,47 @@ impl Manager {
         });
     }
 
+    /// Remove many downloads from the list at once (files stay on the disk,
+    /// unfinished parts are cleaned up): one lock, one background clean-up.
+    pub fn remove_many(&self, ids: &[DownloadId]) {
+        let gone: Vec<Entry> = {
+            let mut inner = self.inner.lock().unwrap();
+            inner.dirty = true;
+            ids.iter().filter_map(|id| inner.entries.remove(id)).collect()
+        };
+        if gone.is_empty() {
+            return;
+        }
+        let mut recs = Vec::with_capacity(gone.len());
+        for e in gone {
+            if let Some(t) = &e.task {
+                t.cancel();
+            }
+            if e.rec.status != Status::Completed {
+                recs.push(e.rec);
+            }
+        }
+        if recs.is_empty() {
+            return;
+        }
+        self.rt.spawn(async move {
+            tokio::time::sleep(Duration::from_millis(800)).await;
+            for _ in 0..5 {
+                let mut left = Vec::new();
+                for rec in recs {
+                    if !remove_temp_files(&rec) {
+                        left.push(rec);
+                    }
+                }
+                if left.is_empty() {
+                    break;
+                }
+                recs = left;
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+    }
+
     /// Take a download back completely: stop it and delete everything it
     /// wrote (parts, temporary files and the finished file), as if it had
     /// never started. Used when "Download File Info" is cancelled.

@@ -3,10 +3,10 @@
 const fs = require("fs"), path = require("path"), vm = require("vm"), assert = require("assert");
 const dir = path.join(__dirname, "..");
 const listeners = {}; const on = (n) => ({ addListener: (f) => (listeners[n] = f) });
-const session = {}; const sent = []; const tabMsgs = []; let tabUrl = "https://www.youtube.com/watch?v=AAAAAAAAAAA";
+const session = {}; const localStore = {}; let reloads = 0; let pingExt = null; const sent = []; const tabMsgs = []; let tabUrl = "https://www.youtube.com/watch?v=AAAAAAAAAAA";
 const chrome = {
   storage: {
-    local: { get: async (d) => ({ ...d }), set: async () => {} },
+    local: { get: async (d) => (typeof d === "string" ? (d in localStore ? { [d]: localStore[d] } : {}) : { ...d, ...localStore }), set: async (o) => Object.assign(localStore, o) },
     session: {
       get: async (k) => { const ks = Array.isArray(k) ? k : [k]; const o = {}; for (const x of ks) if (x in session) o[x] = JSON.parse(JSON.stringify(session[x])); return o; },
       set: async (o) => Object.assign(session, JSON.parse(JSON.stringify(o))),
@@ -18,12 +18,13 @@ const chrome = {
   tabs: { onUpdated: on("upd"), onRemoved: on("rm"), get: async (id) => ({ id, url: tabUrl }),
           sendMessage: async (id, m) => tabMsgs.push(m) },
   action: { setBadgeBackgroundColor: () => {}, setBadgeText: async () => {} },
-  runtime: { onInstalled: on("inst"), onStartup: on("start"), onMessage: on("msg") },
+  runtime: { onInstalled: on("inst"), onStartup: on("start"), onMessage: on("msg"), getManifest: () => ({ version: "1.0.3" }), reload: () => { reloads++; } },
   contextMenus: { removeAll: () => {}, create: () => {}, onClicked: on("ctx") },
   cookies: { getAll: async () => [] },
 };
 const ytCalls = []; const browserDl = []; let appDown = false;
 const fetch = async (url, opts = {}) => {
+  if (url.endsWith("/ping") && pingExt) return { ok: true, status: 200, json: async () => ({ ext: pingExt }) };
   if (url.endsWith("/add")) { if (appDown) throw new TypeError("Failed to fetch"); sent.push(JSON.parse(opts.body)); }
   if (url.endsWith("/resolve")) {
     ytCalls.push(JSON.parse(opts.body));
@@ -130,5 +131,17 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   assert.strictEqual(browserDl.length, 1, "no loop");
   appDown = false;
   console.log("browser downloads: restored ones ignored, no repeats, no loop");
+  // add-in reloads itself once when the program brings a newer one
+  pingExt = "1.0.4"; delete session.versionCheckAt;
+  await ctx.followAppVersion(); await tick();
+  assert.strictEqual(reloads, 1, "reloads for the new version");
+  delete session.versionCheckAt;
+  await ctx.followAppVersion(); await tick();
+  assert.strictEqual(reloads, 1, "only once per version");
+  pingExt = "1.0.3"; delete session.versionCheckAt;
+  await ctx.followAppVersion();
+  assert.strictEqual(reloads, 1, "same version: nothing");
+  pingExt = null;
+  console.log("self update: reloads once when the program has a newer add-in");
   console.log("background simulation: all checks passed");
 })().catch((e) => { console.error(e); process.exit(1); });

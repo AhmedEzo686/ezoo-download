@@ -33,10 +33,38 @@ async function fetchWithTimeout(url, opts = {}, ms = 1500) {
   }
 }
 
+// ---------------------------------------------------------------- self update
+// The add-in is loaded from the program's own folder. When the program
+// updates itself it brings newer add-in files along; the browser only reads
+// them after a reload, so the add-in reloads itself once per new version.
+async function followAppVersion() {
+  const last = (await chrome.storage.session.get("versionCheckAt")).versionCheckAt || 0;
+  if (Date.now() - last < 60000) return;
+  await chrome.storage.session.set({ versionCheckAt: Date.now() });
+  const { port } = await getOpts();
+  try {
+    const r = await fetchWithTimeout(apiUrl(port, "/ping"), { headers: { "X-SwiftGet": "1" } }, 800);
+    if (!r.ok || typeof r.json !== "function") return;
+    const want = (await r.json()).ext;
+    const have = chrome.runtime.getManifest().version;
+    if (!want || want === have) return;
+    // only once per version: if the files on disk did not change (the add-in
+    // was loaded from somewhere else) it must not keep reloading
+    const done = (await chrome.storage.local.get("reloadedFor")).reloadedFor;
+    if (done === want) return;
+    await chrome.storage.local.set({ reloadedFor: want });
+    chrome.runtime.reload();
+  } catch {
+    /* the program is not running */
+  }
+}
+followAppVersion();
+
 async function appAlive() {
   const { port } = await getOpts();
   try {
     const r = await fetchWithTimeout(apiUrl(port, "/ping"), { headers: { "X-SwiftGet": "1" } }, 800);
+    if (r.ok) followAppVersion();
     return r.ok;
   } catch {
     return false;

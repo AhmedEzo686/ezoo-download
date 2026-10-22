@@ -97,3 +97,11 @@ jobs:
           if ($LASTEXITCODE -eq 0) { Write-Host "v$env:VERSION is already released"; exit 0 }
           gh release create "v$env:VERSION" dist/EzooDownload-Setup.exe dist/version.json --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Ezoo Download $env:VERSION" --notes "Ezoo Download $env:VERSION" --latest
           if ($LASTEXITCODE -ne 0) { throw "could not create the release" }
+          # only the newest release stays: older ones (and their tags) go
+          $tags = gh release list --repo "${{ github.repository }}" --limit 100 --json tagName -q '.[].tagName'
+          foreach ($t in $tags) {
+            if ($t -and $t -ne "v$env:VERSION") {
+              Write-Host "Removing old release $t"
+              gh release delete $t --repo "${{ github.repository }}" --yes --cleanup-tag
+            }
+          }

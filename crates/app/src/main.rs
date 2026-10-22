@@ -293,6 +293,9 @@ fn main() -> anyhow::Result<()> {
         let ui2 = ui.clone();
         let api_timer = Timer::default();
         api_timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {
+            if modal_open() {
+                return; // the requests wait until the message box is closed
+            }
             while let Ok(ev) = rx.try_recv() {
                 handle_api(&ui2, ev);
             }
@@ -329,6 +332,9 @@ fn main() -> anyhow::Result<()> {
     {
         let ui = ui.clone();
         fast_timer.start(TimerMode::Repeated, Duration::from_millis(100), move || {
+            if modal_open() {
+                return;
+            }
             update_progress_windows(&ui);
             grab::poll(&ui);
             if let Some(t) = &tray {
@@ -344,6 +350,9 @@ fn main() -> anyhow::Result<()> {
     {
         let ui = ui.clone();
         timer.start(TimerMode::Repeated, Duration::from_millis(250), move || {
+            if modal_open() {
+                return;
+            }
             refresh(&ui);
             scheduler::poll(&ui);
 
@@ -470,14 +479,26 @@ fn wire_main(ui: &Ui) {
     {
         let ui = ui.clone();
         main.on_delete(move |id| {
-            delete_downloads(&ui, targets(&ui, id as u64));
-            refresh(&ui);
+            // not inside the key press / click itself: the message box runs
+            // its own message loop (holding Delete down asked many times)
+            if modal_open() {
+                return;
+            }
+            let ids = targets(&ui, id as u64);
+            let ui = ui.clone();
+            Timer::single_shot(Duration::from_millis(1), move || {
+                if !modal_open() {
+                    delete_downloads(&ui, ids);
+                    refresh(&ui);
+                }
+            });
         });
     }
     {
         let ui = ui.clone();
         main.on_delete_completed(move || {
             use rfd::{MessageButtons, MessageDialog, MessageDialogResult};
+            let _g = ModalGuard::new();
             let ok = MessageDialog::new()
                 .set_title(APP)
                 .set_description(t("Remove every finished download from the list?\n(The files stay on the disk.)"))
@@ -854,7 +875,18 @@ fn multi_action(ui: &Ui, ids: &[u64], action: &str) {
                 ids.iter().for_each(|&i| ui.ctx.mgr.restart(i));
             }
         }
-        "delete" => delete_downloads(ui, ids.to_vec()),
+        "delete" => {
+            if modal_open() {
+                return;
+            }
+            let (ui, ids) = (ui.clone(), ids.to_vec());
+            Timer::single_shot(Duration::from_millis(1), move || {
+                if !modal_open() {
+                    delete_downloads(&ui, ids);
+                    refresh(&ui);
+                }
+            });
+        }
         "copy" => {
             let text: Vec<String> = ids.iter().filter_map(|&i| ui.ctx.mgr.get(i)).map(|v| v.url).collect();
             if let Ok(mut c) = arboard::Clipboard::new() {
@@ -868,7 +900,7 @@ fn multi_action(ui: &Ui, ids: &[u64], action: &str) {
 fn about() {
     ABOUT.with(|a| {
         if let Some(d) = a.borrow().as_ref().and_then(|w| w.upgrade()) {
-            d.set_version("1.0".into());
+            d.set_version(env!("CARGO_PKG_VERSION").into());
             let _ = d.show();
             to_front!(d);
         }
@@ -1315,12 +1347,41 @@ pub(crate) fn show_complete(ui: &Ui, id: u64) {
 
 // ===================================================================== helpers
 
+thread_local! {
+    /// a Windows message box is open: its own message loop runs our timers,
+    /// and a list refresh in the middle of the click that opened it could
+    /// hang the program; the timers wait until it is closed
+    static MODAL: Cell<bool> = const { Cell::new(false) };
+}
+
+pub(crate) fn modal_open() -> bool {
+    MODAL.with(|m| m.get())
+}
+
+/// Marks a message box as open for as long as it lives.
+pub(crate) struct ModalGuard(bool);
+
+impl ModalGuard {
+    pub(crate) fn new() -> ModalGuard {
+        ModalGuard(MODAL.with(|m| m.replace(true)))
+    }
+}
+
+impl Drop for ModalGuard {
+    fn drop(&mut self) {
+        let before = self.0;
+        MODAL.with(|m| m.set(before));
+    }
+}
+
 pub(crate) fn message(text: &str) {
+    let _g = ModalGuard::new();
     rfd::MessageDialog::new().set_title(APP).set_description(text).show();
 }
 
 pub(crate) fn ask(text: &str) -> bool {
     use rfd::{MessageButtons, MessageDialog, MessageDialogResult};
+    let _g = ModalGuard::new();
     matches!(
         MessageDialog::new().set_title(APP).set_description(text).set_buttons(MessageButtons::YesNo).show(),
         MessageDialogResult::Yes
@@ -1971,6 +2032,7 @@ fn delete_downloads(ui: &Ui, ids: Vec<u64>) {
         n => {
             use rfd::{MessageButtons, MessageDialog, MessageDialogResult};
             // the list only: files on the disk are never deleted from here
+            let _g = ModalGuard::new();
             let answer = MessageDialog::new()
                 .set_title(t("Delete downloads"))
                 .set_description(tf(
@@ -1982,9 +2044,7 @@ fn delete_downloads(ui: &Ui, ids: Vec<u64>) {
             if !matches!(answer, MessageDialogResult::Ok | MessageDialogResult::Yes) {
                 return;
             }
-            for id in ids {
-                ui.ctx.mgr.remove(id, false);
-            }
+            ui.ctx.mgr.remove_many(&ids);
             ui.sel.borrow_mut().ids.clear();
             if let Some(w) = ui.ctx.main.upgrade() {
                 w.set_selected_id(-1);
@@ -1998,6 +2058,7 @@ fn delete_download(ctx: &Ctx, id: u64) {
     use rfd::{MessageButtons, MessageDialog, MessageDialogResult};
     if v.status == Status::Completed {
         // the list only: the file stays on the disk
+        let _g = ModalGuard::new();
         let answer = MessageDialog::new()
             .set_title(t("Delete download"))
             .set_description(tf(
@@ -2010,6 +2071,7 @@ fn delete_download(ctx: &Ctx, id: u64) {
             ctx.mgr.remove(id, false);
         }
     } else {
+        let _g = ModalGuard::new();
         let answer = MessageDialog::new()
             .set_title(t("Delete download"))
             .set_description(tf(

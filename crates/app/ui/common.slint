@@ -362,26 +362,22 @@ export component Icon inherits Rectangle {
         }
     }
     if root.kind == "playlist": Rectangle {
-        // a red player with a list in front of it
+        // a list of numbered rows with a download arrow
         P {
-            fill: @linear-gradient(180deg, #ff4b4b 0%, #d61f1f 100%);
-            commands: "M 6 4 L 28 4 Q 31 4 31 7 L 31 19 Q 31 22 28 22 L 6 22 Q 3 22 3 19 L 3 7 Q 3 4 6 4 Z";
+            fill: @linear-gradient(180deg, #7c8cff 0%, #4b55d6 100%);
+            commands: "M 5 3 L 23 3 Q 26 3 26 6 L 26 24 Q 26 27 23 27 L 5 27 Q 2 27 2 24 L 2 6 Q 2 3 5 3 Z";
         }
         P {
             fill: white;
-            commands: "M 14 8 L 21 13 L 14 18 Z";
-        }
-        P {
-            fill: #33475b;
-            commands: "M 3 24 L 20 24 L 20 26 L 3 26 Z M 3 28 L 20 28 L 20 30 L 3 30 Z";
+            commands: "M 6 8 L 9 8 L 9 11 L 6 11 Z M 11 8.5 L 22 8.5 L 22 10.5 L 11 10.5 Z M 6 14 L 9 14 L 9 17 L 6 17 Z M 11 14.5 L 22 14.5 L 22 16.5 L 11 16.5 Z M 6 20 L 9 20 L 9 23 L 6 23 Z M 11 20.5 L 18 20.5 L 18 22.5 L 11 22.5 Z";
         }
         P {
             fill: #2e9e4f;
-            commands: "M 25 21 A 6 6 0 1 1 24.99 21 Z";
+            commands: "M 25 19 A 6.5 6.5 0 1 1 24.99 19 Z";
         }
         P {
             fill: white;
-            commands: "M 24 23 L 26 23 L 26 27 L 28 27 L 25 30 L 22 27 L 24 27 Z";
+            commands: "M 24 21 L 26 21 L 26 25.5 L 28.5 25.5 L 25 29 L 21.5 25.5 L 24 25.5 Z";
         }
     }
     if root.kind == "grabber": Rectangle {
