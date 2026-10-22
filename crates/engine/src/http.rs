@@ -300,13 +300,13 @@ mod refused_tests {
                     let resp = if refused {
                         "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
                     } else {
-                        "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Type: application/zip\r\nConnection: close\r\n\r\nhello".to_string()
+                        "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\nhello".to_string()
                     };
                     let _ = s.write_all(resp.as_bytes()).await;
                 });
             }
         });
-        format!("http://{addr}/tool.zip")
+        format!("http://{addr}/tool.bin")
     }
 
     #[tokio::test]
