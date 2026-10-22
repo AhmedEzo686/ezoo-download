@@ -255,8 +255,8 @@ component DownloadItem inherits Rectangle {
                     border-radius: 1.5px;
                     background: root.data.state == 1 ? Theme.accent : Theme.warn;
                     animate width {
-                        duration: 300ms;
-                        easing: ease-out;
+                        duration: 250ms;
+                        easing: linear;
                     }
                 }
             }
@@ -2281,7 +2281,7 @@ export component DetailsDialog inherits ThemedWindow {
             background: Theme.panel;
             border-width: 1px;
             border-color: Theme.line;
-            min-height: 196px;
+            min-height: 176px;
             if root.tab == 0: VerticalLayout {
                 padding: 10px;
                 spacing: 6px;
@@ -2306,67 +2306,90 @@ export component DetailsDialog inherits ThemedWindow {
                     height: 1px;
                     background: Theme.grid;
                 }
-                GridLayout {
-                    spacing-horizontal: 12px;
-                    spacing-vertical: 5px;
-                    Row {
+                VerticalLayout {
+                    spacing: 3px;
+                    HorizontalLayout {
+                        spacing: 6px;
                         Text {
                             text: @tr("Status");
                             color: Theme.muted;
+                            width: 125px;
                         }
                         Text {
                             text: root.status;
                             color: root.state == 4 ? Theme.err : Theme.text;
+                            horizontal-stretch: 1;
+                            overflow: elide;
                         }
                     }
-                    Row {
+                    HorizontalLayout {
+                        spacing: 6px;
                         Text {
                             text: @tr("File size");
                             color: Theme.muted;
+                            width: 125px;
                         }
                         Text {
                             text: root.size;
                             color: Theme.text;
+                            horizontal-stretch: 1;
+                            overflow: elide;
                         }
                     }
-                    Row {
+                    HorizontalLayout {
+                        spacing: 6px;
                         Text {
                             text: @tr("Downloaded");
                             color: Theme.muted;
+                            width: 125px;
                         }
                         Text {
                             text: root.downloaded;
                             color: Theme.text;
+                            horizontal-stretch: 1;
+                            overflow: elide;
                         }
                     }
-                    Row {
+                    HorizontalLayout {
+                        spacing: 6px;
                         Text {
                             text: @tr("Transfer rate");
                             color: Theme.muted;
+                            width: 125px;
                         }
                         Text {
                             text: root.speed;
                             color: Theme.text;
+                            horizontal-stretch: 1;
+                            overflow: elide;
                         }
                     }
-                    Row {
+                    HorizontalLayout {
+                        spacing: 6px;
                         Text {
                             text: @tr("Time left");
                             color: Theme.muted;
+                            width: 125px;
                         }
                         Text {
                             text: root.eta;
                             color: Theme.text;
+                            horizontal-stretch: 1;
+                            overflow: elide;
                         }
                     }
-                    Row {
+                    HorizontalLayout {
+                        spacing: 6px;
                         Text {
                             text: @tr("Resume capability");
                             color: Theme.muted;
+                            width: 125px;
                         }
                         Text {
                             text: root.resumable;
                             color: root.resumable-ok ? Theme.ok : Theme.err;
+                            horizontal-stretch: 1;
+                            overflow: elide;
                         }
                     }
                 }
@@ -2496,8 +2519,8 @@ export component DetailsDialog inherits ThemedWindow {
                 width: (parent.width - 2px) * root.progress;
                 background: @linear-gradient(180deg, #4fd06a 0%, #1f9d3e 100%);
                 animate width {
-                    duration: 250ms;
-                    easing: ease-out;
+                    duration: 100ms;
+                    easing: linear;
                 }
             }
         }
@@ -2560,8 +2583,8 @@ export component DetailsDialog inherits ThemedWindow {
                     height: parent.height - 2px;
                     background: Theme.accent;
                     animate width {
-                        duration: 250ms;
-                        easing: ease-out;
+                        duration: 100ms;
+                        easing: linear;
                     }
                 }
                 for s in root.segs: Rectangle {
@@ -2585,11 +2608,11 @@ export component DetailsDialog inherits ThemedWindow {
                         HorizontalLayout {
                             HeaderCell {
                                 text: @tr("N.");
-                                width: 44px;
+                                width: 34px;
                             }
                             HeaderCell {
                                 text: @tr("Downloaded");
-                                width: 130px;
+                                width: 110px;
                             }
                             HeaderCell {
                                 text: @tr("Info");
@@ -2604,16 +2627,16 @@ export component DetailsDialog inherits ThemedWindow {
                             HorizontalLayout {
                                 Cell {
                                     text: s.number;
-                                    width: 44px;
+                                    width: 34px;
                                     horizontal-alignment: center;
                                 }
                                 Cell {
-                                    text: s.downloaded;
-                                    width: 130px;
-                                    horizontal-alignment: right;
+                                    text: " " + s.downloaded;
+                                    width: 110px;
+                                    horizontal-alignment: left;
                                 }
                                 Cell {
-                                    text: "   " + s.info;
+                                    text: s.info;
                                     horizontal-stretch: 1;
                                     color: s.busy ? Theme.accent : Theme.muted;
                                 }
