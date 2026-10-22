@@ -432,4 +432,5 @@ AR = {
     "Language": "اللغة",
     "Version {}": "الإصدار {}",
     "Coded by Ahmed Ezzat": "Coded by Ahmed Ezzat",
+    "Check for updates": "البحث عن تحديثات",
 }

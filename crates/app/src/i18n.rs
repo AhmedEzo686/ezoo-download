@@ -227,6 +227,12 @@ const AR: &[(&str, &str)] = &[
     ("{} is not installed on this computer.", "{} غير مثبّت على هذا الكمبيوتر."),
     ("{} opened the store page: click \"Add\" / \"Get\" there.", "فتح {} صفحة المتجر: اضغط \"إضافة\" / \"Get\" هناك."),
     ("Could not start the update:\n\n{}", "تعذّر بدء التحديث:\n\n{}"),
+    ("A new version is being prepared. It is installed by itself when it is ready.", "يجري تجهيز إصدار جديد، وسيُثبَّت تلقائياً عندما يكون جاهزاً."),
+    ("Could not check for updates:\n\n{}", "تعذّر البحث عن تحديثات:\n\n{}"),
+    ("Ezoo Download is up to date (version {}).", "Ezoo Download محدَّث (الإصدار {})."),
+    ("Version {} is available. This copy was not installed with the setup, so it cannot update itself.", "الإصدار {} متاح. هذه النسخة لم تُثبَّت بملف الإعداد، لذلك لا يمكنها تحديث نفسها."),
+    ("Version {} is available. It is being prepared now and installed by itself; Ezoo Download opens again after that.", "الإصدار {} متاح. يجري تجهيزه الآن وتثبيته تلقائياً، ثم يُفتح Ezoo Download من جديد."),
+    ("Could not get the update:\n\n{}", "تعذّر الحصول على التحديث:\n\n{}"),
     (
         "The extension folder was not found next to EzooDownload.exe. Install Ezoo Download again.",
         "لم يتم العثور على مجلد الإضافة بجانب EzooDownload.exe. ثبّت Ezoo Download مرة أخرى.",

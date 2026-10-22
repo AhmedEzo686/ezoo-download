@@ -504,6 +504,7 @@ export component MainWindow inherits ThemedWindow {
     callback set-toolbar-small(bool);
     callback open-columns();
     callback update-tools();
+    callback check-app-update();
     callback set-all-done(int);
     callback add-category();
     callback category-props(string);
@@ -948,6 +949,12 @@ export component MainWindow inherits ThemedWindow {
                 title: @tr("Tip of the day…");
                 activated => {
                     root.tips();
+                }
+            }
+            MenuItem {
+                title: @tr("Check for updates");
+                activated => {
+                    root.check-app-update();
                 }
             }
             MenuItem {

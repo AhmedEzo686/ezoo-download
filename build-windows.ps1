@@ -68,33 +68,36 @@ cargo build --release
 if ($LASTEXITCODE -ne 0) { Fail "The build failed. Scroll up to see the first red 'error' lines." }
 
 # ---------------------------------------------------------------- 4. package
-# dist\EzooDownload-Setup.exe   one file with everything inside (install this)
-# dist\portable\                the same program without installing
+# The result is ONE file: dist\EzooDownload-Setup.exe (+ dist\version.json
+# for the GitHub release). Everything that goes into the setup is gathered
+# first in build-cache\stage, which is not part of the result:
 #   EzooDownload.exe, tools\yt-dlp.exe + ffmpeg.exe, extension, extension-firefox
-# dist\store\                   the extension packed for the browser stores
-Step "Preparing the dist folder"
+Step "Preparing the files for the setup"
 $dist = Join-Path $PSScriptRoot "dist"
-$portable = Join-Path $dist "portable"
-$tools = Join-Path $portable "tools"
 $cache = Join-Path $PSScriptRoot "build-cache"
-New-Item -ItemType Directory -Force $dist, $portable, $tools, $cache | Out-Null
-# files of older versions that used to lie in dist itself
+$stage = Join-Path $cache "stage"
+$tools = Join-Path $stage "tools"
+if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+New-Item -ItemType Directory -Force $dist, $stage, $tools, $cache | Out-Null
+# what older builds left in dist: only the setup stays there
 foreach ($old in @("EzooDownload.exe", "ffmpeg.exe", "yt-dlp.exe")) {
     Remove-Item (Join-Path $dist $old) -Force -ErrorAction SilentlyContinue
 }
-if (Test-Path "$dist\extension") { Remove-Item -Recurse -Force "$dist\extension" }
+foreach ($old in @("extension", "portable", "store", "redist")) {
+    if (Test-Path "$dist\$old") { Remove-Item -Recurse -Force "$dist\$old" }
+}
 
-Copy-Item "target\release\EzooDownload.exe" $portable -Force
+Copy-Item "target\release\EzooDownload.exe" $stage -Force
 foreach ($name in @("extension", "extension-firefox")) {
-    $to = Join-Path $portable $name
+    $to = Join-Path $stage $name
     if (Test-Path $to) { Remove-Item -Recurse -Force $to }
     Copy-Item -Recurse "extension" $to
     Remove-Item -Recurse -Force "$to\test" -ErrorAction SilentlyContinue
 }
 # Firefox wants its own manifest; the others ignore this file
-Copy-Item -Force "$portable\extension-firefox\manifest.firefox.json" "$portable\extension-firefox\manifest.json"
-Remove-Item "$portable\extension-firefox\manifest.firefox.json" -Force
-Remove-Item "$portable\extension\manifest.firefox.json" -Force -ErrorAction SilentlyContinue
+Copy-Item -Force "$stage\extension-firefox\manifest.firefox.json" "$stage\extension-firefox\manifest.json"
+Remove-Item "$stage\extension-firefox\manifest.firefox.json" -Force
+Remove-Item "$stage\extension\manifest.firefox.json" -Force -ErrorAction SilentlyContinue
 
 # ffmpeg (joins video + audio) and yt-dlp (finds video links): downloaded
 # once into build-cache, the app keeps them updated by itself afterwards
@@ -134,10 +137,10 @@ if (-not (Test-Path "$cache\yt-dlp.exe")) {
 # Visual C++ runtime: the program already carries it (static CRT, see
 # .cargo\config.toml). Optional: put Microsoft's vc_redist.x64.exe into
 # build-cache yourself and the installer also installs it where it is missing.
-$redist = Join-Path $dist "redist"
+$redist = Join-Path $cache "redist"
 New-Item -ItemType Directory -Force $redist | Out-Null
 if (Test-Path "$cache\vc_redist.x64.exe") { Copy-Item "$cache\vc_redist.x64.exe" $redist -Force }
-Copy-Item "THIRD-PARTY-NOTICES.txt" $portable -Force
+Copy-Item "THIRD-PARTY-NOTICES.txt" $stage -Force
 foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt")) {
     if (Test-Path "$cache\$f") { Copy-Item "$cache\$f" $tools -Force }
 }
@@ -160,14 +163,9 @@ function Sign-File($file) {
 }
 if ($signtool) {
     Step "Signing EzooDownload.exe"
-    Sign-File "$portable\EzooDownload.exe"
+    Sign-File "$stage\EzooDownload.exe"
 }
 
-# ---------------------------------------------------------------- 4c. extension for the stores
-$store = Join-Path $dist "store"
-New-Item -ItemType Directory -Force $store | Out-Null
-Compress-Archive -Path "$portable\extension\*" -DestinationPath "$store\ezoo-extension-chrome-edge-opera.zip" -Force
-Compress-Archive -Path "$portable\extension-firefox\*" -DestinationPath "$store\ezoo-extension-firefox.zip" -Force
 
 # ---------------------------------------------------------------- 5. installer
 Step "Creating the installer (EzooDownload-Setup.exe)"
@@ -210,11 +208,10 @@ if ($iscc) {
         $json = "{`n  ""version"": ""$version"",`n  ""url"": ""https://github.com/AhmedEzo686/ezoo-download/releases/download/v$version/EzooDownload-Setup.exe"",`n  ""sha256"": ""$hash""`n}`n"
         [IO.File]::WriteAllText((Join-Path $dist "version.json"), $json)
     } else {
-        Write-Host "Could not create the installer (the program in dist still works)." -ForegroundColor Yellow
-        Write-Host "Tip: move this folder out of Desktop/OneDrive (e.g. to C:\Ezoo) and run BUILD.bat again." -ForegroundColor Yellow
+        Fail "Could not create the setup. Tip: move this folder out of Desktop/OneDrive (e.g. to C:\Ezoo) and run BUILD.bat again."
     }
 } else {
-    Write-Host "Inno Setup is not available, skipping the installer (the program in dist still works)." -ForegroundColor Yellow
+    Fail "Inno Setup is not available, so the setup could not be made. Install Inno Setup 6 and run BUILD.bat again."
 }
 
 Write-Host ""
@@ -224,13 +221,9 @@ if (Test-Path $setup) {
     Write-Host "  >> Double-click  dist\EzooDownload-Setup.exe  to install Ezoo Download <<" -ForegroundColor Green
     Write-Host "     (Start Menu folder, desktop shortcut, starts with Windows, uninstall from Settings > Apps)"
 }
-Write-Host ""
-Write-Host "Also in $dist :"
-Write-Host " - portable\ : the program without installing (tools and browser extension inside)"
-Write-Host " - store\    : the browser extension packed for the Chrome / Edge / Opera / Firefox stores"
 if (Test-Path "$dist\version.json") {
-    Write-Host " - version.json : upload it with EzooDownload-Setup.exe to a GitHub release named v$version"
-    Write-Host "                  (installed copies then update themselves)"
+    Write-Host ""
+    Write-Host "Also in $dist : version.json (it goes into the GitHub release together with the setup)"
 }
 Start-Process explorer.exe $dist
 Read-Host "Press Enter to close"

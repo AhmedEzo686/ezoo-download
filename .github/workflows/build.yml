@@ -50,8 +50,9 @@ jobs:
             if ($tag -ne $version) { throw "Tag v$tag does not match version $version in Cargo.toml" }
           }
           "VERSION=$version" | Out-File -Append $env:GITHUB_ENV
-          $p = "dist/portable"
-          New-Item -ItemType Directory -Force "$p/tools", "dist/redist" | Out-Null
+          # everything for the setup is gathered here; the result is the setup only
+          $p = "build-cache/stage"
+          New-Item -ItemType Directory -Force "$p/tools", "dist" | Out-Null
           Copy-Item target/release/EzooDownload.exe $p
           Copy-Item THIRD-PARTY-NOTICES.txt $p
           Copy-Item -Recurse extension "$p/extension"
@@ -78,7 +79,7 @@ jobs:
           $json = "{`n  ""version"": ""$version"",`n  ""url"": ""https://github.com/${{ github.repository }}/releases/download/v$version/EzooDownload-Setup.exe"",`n  ""sha256"": ""$hash""`n}`n"
           [IO.File]::WriteAllText("$PWD/dist/version.json", $json)
           Get-Content dist/version.json
-          Compress-Archive -Path dist/portable, dist/EzooDownload-Setup.exe, dist/version.json -DestinationPath EzooDownload-windows.zip -Force
+          Compress-Archive -Path dist/EzooDownload-Setup.exe, dist/version.json -DestinationPath EzooDownload-windows.zip -Force
       - uses: actions/upload-artifact@v4
         with:
           name: EzooDownload-windows

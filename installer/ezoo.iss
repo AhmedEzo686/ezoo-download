@@ -9,6 +9,10 @@
 #define MyAppName "Ezoo Download"
 #define MyAppExe "EzooDownload.exe"
 ; BUILD.bat passes the version of Cargo.toml: /DMyAppVersion=1.0.1
+; the files that go into the setup (gathered by BUILD.bat / the CI)
+#ifndef Stage
+  #define Stage "..\build-cache\stage"
+#endif
 #ifndef MyAppVersion
   #define MyAppVersion "1.0.0"
 #endif
@@ -53,16 +57,16 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Name: "autostart"; Description: "Start Ezoo Download when Windows starts (recommended)"; GroupDescription: "Startup:"
 
 [Files]
-Source: "..\dist\portable\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\portable\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#Stage}\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Stage}\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; the helpers go into {app}\tools; the app updates them there by itself
-Source: "..\dist\portable\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\dist\portable\extension\*"; DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\dist\portable\extension-firefox\*"; DestDir: "{app}\extension-firefox"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#Stage}\extension\*"; DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#Stage}\extension-firefox\*"; DestDir: "{app}\extension-firefox"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; system runtime files, installed only when they are missing (see [Code])
-#ifexist "..\dist\redist\vc_redist.x64.exe"
+#ifexist "..\build-cache\redist\vc_redist.x64.exe"
   #define HaveRedist
-Source: "..\dist\redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: dontcopy
+Source: "..\build-cache\redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: dontcopy
 #endif
 
 [InstallDelete]

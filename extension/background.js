@@ -14,7 +14,6 @@
 if (typeof importScripts === "function") importScripts("yt-core.js");
 
 const DEFAULTS = { port: 9614, intercept: true, minSizeKB: 0 };
-const bypassOnce = new Set();
 
 async function getOpts() {
   return Object.assign({}, DEFAULTS, await chrome.storage.local.get(DEFAULTS));
@@ -185,15 +184,55 @@ function baseName(path) {
 
 // ---------------------------------------------------------------- 1. downloads
 
+// Remembered in session storage, not in memory: the browser stops this
+// service worker whenever it likes, and a lost "let the browser keep it"
+// mark made the same file come back over and over.
+const BYPASS_KEY = "bypassUrls";
+const RECENT_KEY = "recentSends";
+
+async function takeBypass(url) {
+  const list = (await chrome.storage.session.get(BYPASS_KEY))[BYPASS_KEY] || [];
+  const now = Date.now();
+  const fresh = list.filter((b) => now - b.at < 120000);
+  const hit = fresh.some((b) => b.url === url);
+  await chrome.storage.session.set({ [BYPASS_KEY]: fresh.filter((b) => b.url !== url) });
+  return hit;
+}
+
+async function addBypass(url) {
+  const list = (await chrome.storage.session.get(BYPASS_KEY))[BYPASS_KEY] || [];
+  list.push({ url, at: Date.now() });
+  await chrome.storage.session.set({ [BYPASS_KEY]: list.slice(-50) });
+}
+
+/** The same address handed to the app a moment ago (pages and the browser can fire twice). */
+async function sentRecently(url) {
+  const list = (await chrome.storage.session.get(RECENT_KEY))[RECENT_KEY] || [];
+  const now = Date.now();
+  const fresh = list.filter((r) => now - r.at < 15000);
+  const hit = fresh.some((r) => r.url === url);
+  if (!hit) fresh.push({ url, at: now });
+  await chrome.storage.session.set({ [RECENT_KEY]: fresh.slice(-50) });
+  return hit;
+}
+
+/** Only downloads the user starts now: not ones the browser restores or resumes at start-up. */
+function isNewDownload(item) {
+  if (item.state && item.state !== "in_progress") return false;
+  // ours (given back to the browser) and other extensions' downloads stay in the browser
+  if (item.byExtensionId) return false;
+  const started = Date.parse(item.startTime || "");
+  if (!Number.isNaN(started) && Date.now() - started > 30000) return false;
+  return true;
+}
+
 chrome.downloads.onCreated.addListener(async (item) => {
   const opts = await getOpts();
   if (!opts.intercept) return;
   const url = item.finalUrl || item.url;
   if (!url || !/^https?:/i.test(url)) return; // blob:, data:, file: stay in the browser
-  if (bypassOnce.has(url)) {
-    bypassOnce.delete(url);
-    return;
-  }
+  if (!isNewDownload(item)) return;
+  if (await takeBypass(url)) return;
   if (opts.minSizeKB > 0 && item.totalBytes > 0 && item.totalBytes < opts.minSizeKB * 1024) return;
   if (!(await appAlive())) return; // app not running: let the browser handle it
   const cfg = await getConfig();
@@ -205,11 +244,15 @@ chrome.downloads.onCreated.addListener(async (item) => {
   } catch (_) {
     /* already finished or gone */
   }
+  if (await sentRecently(url)) return;
   try {
     await sendToApp({ url, referrer: item.referrer, fileName: baseName(item.filename) });
   } catch (e) {
-    // something went wrong: give the download back to the browser
-    bypassOnce.add(url);
+    // the app may have got it anyway (it was only slow to answer): never
+    // hand it to the browser as well, that showed the file twice
+    if (e && e.name === "AbortError") return;
+    // the app could not be reached: give the download back to the browser, once
+    await addBypass(url);
     chrome.downloads.download({ url });
   }
 });

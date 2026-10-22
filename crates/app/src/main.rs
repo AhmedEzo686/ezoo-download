@@ -59,8 +59,19 @@ pub(crate) struct AddState {
     auto_path: String,
     /// category names in the window's list (General first)
     categories: Vec<String>,
-    /// download already running in the background for this window
+    /// download already running in the background for this window; it is
+    /// not in the list (and not "complete") until Start is pressed
     early_id: Option<u64>,
+    /// links that came in while the window was busy with another one
+    waiting: std::collections::VecDeque<PendingOpen>,
+}
+
+/// A "Download File Info" request waiting for the window.
+pub(crate) struct PendingOpen {
+    url: String,
+    headers: RequestHeaders,
+    name_hint: Option<String>,
+    extra: VideoExtra,
 }
 
 /// Everything background threads need. All fields are Send.
@@ -195,6 +206,7 @@ fn main() -> anyhow::Result<()> {
         add: add.as_weak(),
         add_state: Arc::new(Mutex::new(AddState::default())),
     };
+    let ctx_exit = ctx.clone();
     let ui = Ui {
         ctx: ctx.clone(),
         rows: Rc::new(VecModel::default()),
@@ -335,7 +347,10 @@ fn main() -> anyhow::Result<()> {
             refresh(&ui);
             scheduler::poll(&ui);
 
-            let finished = ui.ctx.mgr.take_completed();
+            // the download behind an open "Download File Info" says nothing
+            // until Start is pressed
+            let early = early_download(&ui.ctx);
+            let finished: Vec<u64> = ui.ctx.mgr.take_completed().into_iter().filter(|id| Some(*id) != early).collect();
             if let Some(&last) = finished.last() {
                 if ui.ctx.mgr.settings().show_complete_dialog {
                     show_complete(&ui, last);
@@ -388,6 +403,8 @@ fn main() -> anyhow::Result<()> {
     drop(timer);
     drop(fast_timer);
     drop(power_timer);
+    // a download nobody pressed Start for is not kept
+    cancel_early(&ctx_exit);
     mgr.shutdown();
     rt.shutdown_timeout(Duration::from_secs(2));
     Ok(())
@@ -750,6 +767,8 @@ fn wire_main(ui: &Ui) {
             let _ = slint::invoke_from_event_loop(move || message(&text));
         });
     });
+    let uctx = ui.ctx.clone();
+    main.on_check_app_update(move || update::check_now(&uctx));
     main.on_about(about);
     main.on_quit(|| {
         let _ = slint::quit_event_loop();
@@ -897,8 +916,10 @@ fn handle_events(ui: &Ui) {
         return;
     }
     let s = ui.ctx.mgr.settings();
+    let early = early_download(&ui.ctx);
     for ev in events {
         match ev {
+            Event::Completed(id) | Event::Failed(id) if Some(id) == early => {}
             Event::Completed(_) if s.sounds_on => sound::play(&s.sound_complete),
             Event::Failed(_) if s.sounds_on => sound::play(&s.sound_failed),
             Event::QueueStarted(_) if s.sounds_on => sound::play(&s.sound_queue_start),
@@ -917,12 +938,28 @@ fn handle_events(ui: &Ui) {
     }
 }
 
+thread_local! {
+    static LAST_API_ADD: RefCell<Option<(String, std::time::Instant)>> = const { RefCell::new(None) };
+}
+
 /// A request from the browser extension.
 fn handle_api(ui: &Ui, event: api::ApiEvent) {
     match event {
         api::ApiEvent::Show => bring_to_front(&ui.ctx),
         api::ApiEvent::Links(l) => grab::open_links(ui, l),
         api::ApiEvent::Add(req) => {
+            // the same address again within a few seconds (an older browser
+            // add-in could send a download over and over): show nothing new
+            let repeat = LAST_API_ADD.with(|l| {
+                let mut l = l.borrow_mut();
+                let now = std::time::Instant::now();
+                let same = l.as_ref().map(|(u, at)| *u == req.url && now.duration_since(*at) < Duration::from_secs(10)).unwrap_or(false);
+                *l = Some((req.url.clone(), now));
+                same
+            });
+            if repeat {
+                return;
+            }
             let mut headers = RequestHeaders {
                 referer: req.referrer,
                 cookies: req.cookies,
@@ -1042,6 +1079,7 @@ fn wire_add(ui: &Ui) {
             if let Some(d) = ctx.add.upgrade() {
                 let _ = d.hide();
             }
+            open_next(&ctx);
         });
     }
     {
@@ -1049,6 +1087,7 @@ fn wire_add(ui: &Ui) {
         add.window().on_close_requested(move || {
             ctx.add_state.lock().unwrap().probe_seq += 1;
             cancel_early(&ctx);
+            open_next(&ctx);
             slint::CloseRequestResponse::HideWindow
         });
     }
@@ -1465,8 +1504,19 @@ fn show_name_in_dialog(ctx: &Ctx, d: &AddDialog, name: &str, url: &str) -> Strin
 pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, name_hint: Option<String>, extra: VideoExtra) {
     let Some(d) = ctx.add.upgrade() else { return };
     let s = ctx.mgr.settings();
-    // the window is reused: a download started for the previous link keeps going
-    ctx.add_state.lock().unwrap().early_id = None;
+    if d.window().is_visible() {
+        let mut st = ctx.add_state.lock().unwrap();
+        // the same link again (a page can send it twice): nothing new to show;
+        // another link waits until this one is started or cancelled
+        if !url.is_empty() && st.origin_url != url && !st.waiting.iter().any(|p| p.url == url) {
+            st.waiting.push_back(PendingOpen { url, headers, name_hint, extra });
+        }
+        drop(st);
+        to_front!(d);
+        return;
+    }
+    // nothing may be left over from an earlier window
+    cancel_early(ctx);
     // General first, like the classic list
     let mut cats = vec!["General".to_string()];
     cats.extend(s.categories.iter().map(|c| c.name.clone()));
@@ -1540,11 +1590,28 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     }
 }
 
-/// "Cancel" in Download File Info: the download that started meanwhile goes away.
+/// "Cancel" in Download File Info: the download that started meanwhile goes
+/// away completely, with its temporary files and the file itself.
 fn cancel_early(ctx: &Ctx) {
     if let Some(id) = ctx.add_state.lock().unwrap().early_id.take() {
-        ctx.mgr.remove(id, false);
+        ctx.mgr.discard(id);
     }
+}
+
+/// The window is free again: show the next link that came in meanwhile.
+fn open_next(ctx: &Ctx) {
+    let next = ctx.add_state.lock().unwrap().waiting.pop_front();
+    if let Some(p) = next {
+        let ctx = ctx.clone();
+        Timer::single_shot(Duration::from_millis(300), move || {
+            open_add_dialog(&ctx, p.url, p.headers, p.name_hint, p.extra);
+        });
+    }
+}
+
+/// The download started in the background for the open window, if any.
+pub(crate) fn early_download(ctx: &Ctx) -> Option<u64> {
+    ctx.add_state.lock().unwrap().early_id
 }
 
 /// Ask the server about the file in the background, then show the result.
@@ -1675,6 +1742,7 @@ fn confirm_add(ui: &Ui, start: bool) {
         }
     };
     let _ = d.hide();
+    open_next(ctx);
     let early = ctx.add_state.lock().unwrap().early_id.take();
     if let Some(id) = early {
         if ctx.mgr.get(id).map(|v| v.url == url || v.parent_page.as_deref() == Some(url.as_str())).unwrap_or(false)
@@ -1689,7 +1757,18 @@ fn confirm_add(ui: &Ui, start: bool) {
                 if ctx.mgr.get(id).map(|v| v.status == Status::Failed || v.status == Status::Paused).unwrap_or(false) {
                     ctx.mgr.start(id);
                 }
-                show_progress_for_start(ui, id);
+                // finished while the window was open: "Download complete"
+                // now; still running: its progress window
+                if ctx.mgr.get(id).map(|v| v.status == Status::Completed).unwrap_or(false) {
+                    if settings.sounds_on {
+                        sound::play(&settings.sound_complete);
+                    }
+                    if settings.show_complete_dialog {
+                        show_complete(ui, id);
+                    }
+                } else {
+                    show_progress_for_start(ui, id);
+                }
             } else {
                 // Download Later: stop it and put it in the queue
                 ctx.mgr.pause(id);
@@ -2074,6 +2153,10 @@ fn update_model<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T
 pub(crate) fn refresh(ui: &Ui) {
     let Some(w) = ui.ctx.main.upgrade() else { return };
     let mut views = ui.ctx.mgr.snapshot();
+    // not in the list before Start is pressed in "Download File Info"
+    if let Some(early) = early_download(&ui.ctx) {
+        views.retain(|v| v.id != early);
+    }
     let settings = ui.ctx.mgr.settings();
     let view = w.get_view().to_string();
     let search = w.get_search().to_lowercase();

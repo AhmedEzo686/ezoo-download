@@ -429,6 +429,38 @@ impl Manager {
         });
     }
 
+    /// Take a download back completely: stop it and delete everything it
+    /// wrote (parts, temporary files and the finished file), as if it had
+    /// never started. Used when "Download File Info" is cancelled.
+    pub fn discard(&self, id: DownloadId) {
+        let entry = {
+            let mut inner = self.inner.lock().unwrap();
+            inner.dirty = true;
+            inner.entries.remove(&id)
+        };
+        let Some(entry) = entry else { return };
+        if let Some(t) = &entry.task {
+            t.cancel();
+        }
+        let rec = entry.rec;
+        self.rt.spawn(async move {
+            tokio::time::sleep(Duration::from_millis(800)).await;
+            // the file got its name when it was added (a free one), so
+            // whatever is there now was written by this download
+            for _ in 0..8 {
+                let mut ok = remove_temp_files(&rec);
+                let target = rec.target_path();
+                if target.exists() {
+                    ok &= std::fs::remove_file(&target).is_ok();
+                }
+                if ok {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
+    }
+
     /// Move / rename a finished file ("Save as" for downloads that are done).
     pub fn move_file(&self, id: DownloadId, new_path: &Path) -> anyhow::Result<()> {
         let mut inner = self.inner.lock().unwrap();

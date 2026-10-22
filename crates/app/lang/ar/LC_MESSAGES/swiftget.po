@@ -265,6 +265,9 @@ msgstr "إضافة Ezoo Download إلى متصفحي…"
 msgid "Tip of the day…"
 msgstr "نصيحة اليوم…"
 
+msgid "Check for updates"
+msgstr "البحث عن تحديثات"
+
 msgid "Check for updates (video downloader)"
 msgstr "البحث عن تحديثات (أداة الفيديو)"
 

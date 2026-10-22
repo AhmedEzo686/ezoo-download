@@ -13,7 +13,7 @@ const chrome = {
       remove: async (k) => { for (const x of [].concat(k)) delete session[x]; },
     },
   },
-  downloads: { onCreated: on("dl"), cancel: async () => {}, erase: async () => {}, download: () => {} },
+  downloads: { onCreated: on("dl"), cancel: async () => {}, erase: async () => {}, download: (o) => browserDl.push(o.url) },
   webRequest: { onHeadersReceived: on("headers"), onBeforeRequest: on("before") },
   tabs: { onUpdated: on("upd"), onRemoved: on("rm"), get: async (id) => ({ id, url: tabUrl }),
           sendMessage: async (id, m) => tabMsgs.push(m) },
@@ -22,9 +22,9 @@ const chrome = {
   contextMenus: { removeAll: () => {}, create: () => {}, onClicked: on("ctx") },
   cookies: { getAll: async () => [] },
 };
-const ytCalls = [];
+const ytCalls = []; const browserDl = []; let appDown = false;
 const fetch = async (url, opts = {}) => {
-  if (url.endsWith("/add")) sent.push(JSON.parse(opts.body));
+  if (url.endsWith("/add")) { if (appDown) throw new TypeError("Failed to fetch"); sent.push(JSON.parse(opts.body)); }
   if (url.endsWith("/resolve")) {
     ytCalls.push(JSON.parse(opts.body));
     await new Promise((r) => setTimeout(r, 30)); // yt-dlp takes a moment
@@ -111,5 +111,24 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   assert.strictEqual(req3.sourcePage, "https://www.instagram.com/reel/C1abcDEF/");
   assert.strictEqual(req3.referrer, "https://www.instagram.com/reel/C1abcDEF/");
   console.log("Instagram reel via app:", req3.fileName);
+  // browser downloads: only new ones, each once, no loop when the app fails
+  const now = new Date().toISOString();
+  const dl = async (o) => { await listeners.dl({ id: Math.random(), state: "in_progress", startTime: now, ...o }); await tick(); };
+  let before = sent.length;
+  await dl({ url: "https://example.com/old.pdf", startTime: new Date(Date.now() - 3600e3).toISOString() });
+  await dl({ url: "https://example.com/done.pdf", state: "complete" });
+  await dl({ url: "https://example.com/ext.pdf", byExtensionId: "other" });
+  assert.strictEqual(sent.length, before, "restored / finished / extension downloads are left alone");
+  await dl({ url: "https://example.com/new.pdf" });
+  await dl({ url: "https://example.com/new.pdf" });
+  assert.strictEqual(sent.length, before + 1, "a new download goes to the app once");
+  appDown = true;
+  await dl({ url: "https://example.com/fail.pdf" });
+  assert.deepStrictEqual(browserDl, ["https://example.com/fail.pdf"], "given back to the browser once");
+  await dl({ url: "https://example.com/fail.pdf", byExtensionId: "self" });
+  await dl({ url: "https://example.com/fail.pdf" }); // same address right after: the browser keeps it
+  assert.strictEqual(browserDl.length, 1, "no loop");
+  appDown = false;
+  console.log("browser downloads: restored ones ignored, no repeats, no loop");
   console.log("background simulation: all checks passed");
 })().catch((e) => { console.error(e); process.exit(1); });
