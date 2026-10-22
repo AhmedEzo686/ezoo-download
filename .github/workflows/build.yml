@@ -3,7 +3,8 @@ name: Build Ezoo Download for Windows
 # Every push: build and keep the result as an artifact.
 # A push to main whose commit message contains [release] also publishes a
 # GitHub release v<version> with the setup and version.json; installed
-# copies of the program read version.json of the latest release.
+# copies of the program read version.json of the latest release
+# (Help > Check for updates, or by themselves when they start).
 
 on:
   push:
