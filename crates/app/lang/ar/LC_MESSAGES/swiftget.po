@@ -415,6 +415,9 @@ msgstr "الاتصالات"
 msgid "Queue"
 msgstr "قائمة الانتظار"
 
+msgid "Download with the browser"
+msgstr "التحميل عبر المتصفح"
+
 msgid "Download Later"
 msgstr "تحميل لاحقاً"
 
@@ -1189,8 +1192,8 @@ msgstr "تحميل قائمة تشغيل"
 msgid "Paste the address of a playlist:"
 msgstr "الصق رابط قائمة التشغيل:"
 
-msgid "https://www.youtube.com/playlist?list=…"
-msgstr "https://www.youtube.com/playlist?list=…"
+msgid "https://…/playlist?list=…"
+msgstr "https://…/playlist?list=…"
 
 msgid "Getting the list…"
 msgstr "جارٍ جلب القائمة…"

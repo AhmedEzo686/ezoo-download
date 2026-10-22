@@ -142,12 +142,12 @@ const AR: &[(&str, &str)] = &[
     ("Delete downloads", "حذف التحميلات"),
     ("Delete download", "حذف التحميل"),
     (
-        "Remove these {} downloads from the list?\n\nYes: also delete the finished files from disk\nNo: keep the files\n(Unfinished parts are always deleted.)",
-        "حذف هذه التحميلات ({}) من القائمة؟\n\nنعم: احذف الملفات المكتملة من القرص أيضاً\nلا: احتفظ بالملفات\n(الأجزاء غير المكتملة تُحذف دائماً.)",
+        "Remove these {} downloads from the download list?\n\nOnly the list entries are removed: the downloaded files stay on your computer.\n(Parts of unfinished downloads are cleaned up.)",
+        "إزالة هذه التحميلات ({}) من قائمة التحميل؟\n\nستُزال من القائمة فقط، وتبقى الملفات المحمّلة على جهازك كما هي.\n(تُحذف الأجزاء المؤقتة للتحميلات غير المكتملة.)",
     ),
     (
-        "Remove “{}” from the list?\n\nYes: also delete the file from disk\nNo: keep the file",
-        "حذف “{}” من القائمة؟\n\nنعم: احذف الملف من القرص أيضاً\nلا: احتفظ بالملف",
+        "Remove “{}” from the download list?\n\nOnly the list entry is removed: the file stays on your computer.",
+        "إزالة “{}” من قائمة التحميل؟\n\nستُزال من القائمة فقط، ويبقى الملف على جهازك كما هو.",
     ),
     (
         "Delete the unfinished download “{}”?\nThe partly downloaded data will be removed.",
@@ -211,8 +211,8 @@ const AR: &[(&str, &str)] = &[
         "أعد تشغيل Ezoo Download لاستخدام المنفذ الجديد، واضبط نفس المنفذ في إضافة المتصفح.",
     ),
     (
-        "Paste the playlist address (https://www.youtube.com/playlist?list=…)",
-        "الصق رابط قائمة التشغيل (https://www.youtube.com/playlist?list=…)",
+        "Paste the playlist address (https://…/playlist?list=…)",
+        "الصق رابط قائمة التشغيل (https://…/playlist?list=…)",
     ),
     ("Getting the list of videos… (a few seconds)", "جارٍ جلب قائمة الفيديوهات… (ثوانٍ قليلة)"),
     ("No videos were found at this address.", "لم يتم العثور على فيديوهات في هذا الرابط."),

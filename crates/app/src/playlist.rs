@@ -47,7 +47,7 @@ pub(crate) fn wire(ui: &Ui) {
             let Some(d) = w.upgrade() else { return };
             let url = d.get_url().trim().to_string();
             if !(url.starts_with("http://") || url.starts_with("https://")) {
-                d.set_message(t("Paste the playlist address (https://www.youtube.com/playlist?list=…)").into());
+                d.set_message(t("Paste the playlist address (https://…/playlist?list=…)").into());
                 return;
             }
             d.set_message(SharedString::new());

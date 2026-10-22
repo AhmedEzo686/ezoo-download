@@ -216,6 +216,22 @@ async function sentRecently(url) {
   return hit;
 }
 
+/** The app's "Download with the browser" button: leave this one to the browser. */
+async function appSaysBrowser(urls) {
+  const { port } = await getOpts();
+  try {
+    const r = await fetchWithTimeout(
+      apiUrl(port, "/browser"),
+      { method: "POST", headers: { "Content-Type": "application/json", "X-SwiftGet": "1" }, body: JSON.stringify({ urls }) },
+      800
+    );
+    if (!r.ok || typeof r.json !== "function") return false;
+    return !!(await r.json()).browser;
+  } catch {
+    return false;
+  }
+}
+
 /** Only downloads the user starts now: not ones the browser restores or resumes at start-up. */
 function isNewDownload(item) {
   if (item.state && item.state !== "in_progress") return false;
@@ -237,6 +253,7 @@ chrome.downloads.onCreated.addListener(async (item) => {
   if (!(await appAlive())) return; // app not running: let the browser handle it
   const cfg = await getConfig();
   if (!wanted(cfg, url, baseName(item.filename), item.mime, currentKeys())) return;
+  if (await appSaysBrowser([item.url, url])) return; // the user chose the browser for it
 
   try {
     await chrome.downloads.cancel(item.id);

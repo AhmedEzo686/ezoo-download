@@ -11,6 +11,31 @@ use std::net::TcpStream;
 use std::time::Duration;
 use tiny_http::{Header, Method, Request, Response, Server};
 
+/// Addresses the user chose to download with the browser itself (the server
+/// refused Ezoo Download): the extension leaves them to the browser once.
+static FOR_BROWSER: std::sync::Mutex<Vec<(String, std::time::Instant)>> = std::sync::Mutex::new(Vec::new());
+
+pub fn leave_to_browser(url: &str) {
+    let mut l = FOR_BROWSER.lock().unwrap();
+    l.retain(|(_, at)| at.elapsed() < Duration::from_secs(300));
+    l.push((url.to_string(), std::time::Instant::now()));
+}
+
+fn take_for_browser(urls: &[String]) -> bool {
+    let mut l = FOR_BROWSER.lock().unwrap();
+    l.retain(|(_, at)| at.elapsed() < Duration::from_secs(300));
+    if let Some(i) = l.iter().position(|(u, _)| urls.iter().any(|x| x == u)) {
+        l.remove(i);
+        return true;
+    }
+    false
+}
+
+#[derive(Deserialize)]
+struct BrowserQuery {
+    urls: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddRequest {
@@ -181,6 +206,15 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
                 }
                 Err(_) => reply(req, 400, r#"{"error":"invalid request"}"#),
             }
+        }
+        (Method::Post, "/browser") => {
+            // should the browser keep this download? (see leave_to_browser)
+            let mut body = String::new();
+            if req.as_reader().take(1 << 16).read_to_string(&mut body).is_err() {
+                return reply(req, 400, r#"{"error":"bad body"}"#);
+            }
+            let keep = serde_json::from_str::<BrowserQuery>(&body).map(|q| take_for_browser(&q.urls)).unwrap_or(false);
+            reply(req, 200, if keep { r#"{"browser":true}"# } else { r#"{"browser":false}"# })
         }
         (Method::Post, "/show") => {
             on_event(ApiEvent::Show);

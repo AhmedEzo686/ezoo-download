@@ -2715,7 +2715,7 @@ export component PlaylistDialog inherits ThemedWindow {
             spacing: 8px;
             LineEdit {
                 text <=> root.url;
-                placeholder-text: @tr("https://www.youtube.com/playlist?list=…");
+                placeholder-text: @tr("https://…/playlist?list=…");
                 horizontal-stretch: 1;
                 accepted(t) => {
                     root.fetch();

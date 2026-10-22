@@ -1670,6 +1670,9 @@ export component AddDialog inherits ThemedWindow {
     in-out property <string> password;
     // a warning about the address (web page, duplicate...)
     in property <string> warning;
+    // the server refused Ezoo Download: offer the browser instead
+    in property <bool> can-use-browser;
+    callback use-browser();
 
     callback check-url();
     callback category-changed(int);
@@ -1878,6 +1881,15 @@ export component AddDialog inherits ThemedWindow {
         HorizontalLayout {
             spacing: 8px;
             alignment: end;
+            if root.can-use-browser: Button {
+                text: @tr("Download with the browser");
+                clicked => {
+                    root.use-browser();
+                }
+            }
+            if root.can-use-browser: Rectangle {
+                horizontal-stretch: 1;
+            }
             Button {
                 text: @tr("Download Later");
                 enabled: root.url != "";

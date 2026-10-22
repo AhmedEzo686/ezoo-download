@@ -1068,6 +1068,22 @@ fn wire_add(ui: &Ui) {
         add.on_start_now(move || confirm_add(&ui, true));
     }
     {
+        // the server refused us: give the address back to the browser
+        let ctx = ui.ctx.clone();
+        add.on_use_browser(move || {
+            let Some(d) = ctx.add.upgrade() else { return };
+            let url = d.get_url().trim().to_string();
+            ctx.add_state.lock().unwrap().probe_seq += 1;
+            cancel_early(&ctx);
+            let _ = d.hide();
+            if url.starts_with("http://") || url.starts_with("https://") {
+                api::leave_to_browser(&url);
+                let _ = open::that(&url);
+            }
+            open_next(&ctx);
+        });
+    }
+    {
         let ui = ui.clone();
         add.on_later(move || confirm_add(&ui, false));
     }
@@ -1561,6 +1577,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
         .into(),
     );
     d.set_info(t("Paste a link and press Check").into());
+    d.set_can_use_browser(false);
     d.set_info_error(false);
     d.set_probing(false);
     let _ = d.show();
@@ -1656,6 +1673,7 @@ fn start_probe(ctx: &Ctx, url: String) {
                         (_, true) => "Resume supported",
                         (_, false) => "No resume support",
                     };
+                    d.set_can_use_browser(false);
                     d.set_info(format!("{}  ·  {}", t(kind), p.content_type.clone().unwrap_or_default()).into());
                     d.set_info_error(false);
                     if p.is_web_page() {
@@ -1668,7 +1686,11 @@ fn start_probe(ctx: &Ctx, url: String) {
                     st.probe = Some(p);
                 }
                 Err(e) => {
-                    d.set_info(format!("{e:#}").into());
+                    let text = format!("{e:#}");
+                    // refused (often a site that only serves its own browser
+                    // session): the browser can still take it
+                    d.set_can_use_browser(["HTTP 403", "HTTP 406", "HTTP 429"].iter().any(|c| text.contains(c)));
+                    d.set_info(text.into());
                     d.set_info_error(true);
                 }
             }
@@ -1948,21 +1970,20 @@ fn delete_downloads(ui: &Ui, ids: Vec<u64>) {
         1 => delete_download(&ui.ctx, ids[0]),
         n => {
             use rfd::{MessageButtons, MessageDialog, MessageDialogResult};
+            // the list only: files on the disk are never deleted from here
             let answer = MessageDialog::new()
                 .set_title(t("Delete downloads"))
                 .set_description(tf(
-                    "Remove these {} downloads from the list?\n\nYes: also delete the finished files from disk\nNo: keep the files\n(Unfinished parts are always deleted.)",
+                    "Remove these {} downloads from the download list?\n\nOnly the list entries are removed: the downloaded files stay on your computer.\n(Parts of unfinished downloads are cleaned up.)",
                     &[&n],
                 ))
-                .set_buttons(MessageButtons::YesNoCancel)
+                .set_buttons(MessageButtons::OkCancel)
                 .show();
-            let delete_files = match answer {
-                MessageDialogResult::Yes => true,
-                MessageDialogResult::No => false,
-                _ => return,
-            };
+            if !matches!(answer, MessageDialogResult::Ok | MessageDialogResult::Yes) {
+                return;
+            }
             for id in ids {
-                ui.ctx.mgr.remove(id, delete_files);
+                ui.ctx.mgr.remove(id, false);
             }
             ui.sel.borrow_mut().ids.clear();
             if let Some(w) = ui.ctx.main.upgrade() {
@@ -1976,18 +1997,17 @@ fn delete_download(ctx: &Ctx, id: u64) {
     let Some(v) = ctx.mgr.get(id) else { return };
     use rfd::{MessageButtons, MessageDialog, MessageDialogResult};
     if v.status == Status::Completed {
+        // the list only: the file stays on the disk
         let answer = MessageDialog::new()
             .set_title(t("Delete download"))
             .set_description(tf(
-                "Remove “{}” from the list?\n\nYes: also delete the file from disk\nNo: keep the file",
+                "Remove “{}” from the download list?\n\nOnly the list entry is removed: the file stays on your computer.",
                 &[&v.file_name],
             ))
-            .set_buttons(MessageButtons::YesNoCancel)
+            .set_buttons(MessageButtons::OkCancel)
             .show();
-        match answer {
-            MessageDialogResult::Yes => ctx.mgr.remove(id, true),
-            MessageDialogResult::No => ctx.mgr.remove(id, false),
-            _ => {}
+        if matches!(answer, MessageDialogResult::Ok | MessageDialogResult::Yes) {
+            ctx.mgr.remove(id, false);
         }
     } else {
         let answer = MessageDialog::new()

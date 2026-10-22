@@ -18,7 +18,7 @@ pub enum TrayAction {
 mod imp {
     use super::TrayAction;
     use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
-    use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconEvent};
+    use tray_icon::{Icon, MouseButton, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
     pub struct Tray {
         _icon: TrayIcon,
@@ -55,6 +55,8 @@ mod imp {
                 .with_tooltip("Ezoo Download")
                 .with_icon(icon)
                 .with_menu(Box::new(menu))
+                // the menu on a right click only; a double click opens the window
+                .with_menu_on_left_click(false)
                 .build()
                 .ok()?;
             let ids: Vec<(MenuId, fn() -> TrayAction)> = vec![
@@ -75,7 +77,8 @@ mod imp {
         pub fn poll(&self) -> Vec<TrayAction> {
             let mut out = Vec::new();
             while let Ok(ev) = TrayIconEvent::receiver().try_recv() {
-                if let TrayIconEvent::DoubleClick { .. } = ev {
+                // left double click: the window (the menu is on the right button)
+                if let TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } = ev {
                     out.push(TrayAction::Show);
                 }
             }

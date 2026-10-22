@@ -1063,6 +1063,13 @@ impl Manager {
                 table.clear();
             }
         }
+        // the server only took the request without the browser's cookies /
+        // referrer: the download asks the same way
+        if let Some(h) = &p.headers_used {
+            let auth = rec.headers.auth.clone();
+            rec.headers = h.clone();
+            rec.headers.auth = auth;
+        }
         rec.final_url = Some(p.final_url.clone());
         rec.total_size = p.total_size;
         rec.resumable = p.resumable;

@@ -152,6 +152,29 @@ fn looks_like_hls(url: &str, content_type: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
+/// Ways to ask again when a server refuses the request as the browser sent
+/// it: some sites refuse a byte range, or cookies / a referrer that belong to
+/// the browser's own session. (with range?, headers)
+fn fallbacks(h: &RequestHeaders) -> Vec<(bool, RequestHeaders)> {
+    let mut out = vec![(true, h.clone()), (false, h.clone())];
+    let has = |s: &Option<String>| s.as_deref().map(|v| !v.is_empty()).unwrap_or(false);
+    if has(&h.cookies) {
+        let mut n = h.clone();
+        n.cookies = None;
+        out.push((true, n.clone()));
+        out.push((false, n));
+    }
+    if has(&h.cookies) || has(&h.referer) || has(&h.user_agent) {
+        let mut n = h.clone();
+        n.cookies = None;
+        n.referer = None;
+        n.user_agent = None;
+        out.push((true, n.clone()));
+        out.push((false, n));
+    }
+    out
+}
+
 /// Ask the server about a file: real size, final URL after redirects,
 /// file name and whether it supports ranges (= resume + many connections).
 pub async fn probe(
@@ -160,18 +183,35 @@ pub async fn probe(
     headers: &RequestHeaders,
     default_ua: &str,
 ) -> anyhow::Result<ProbeResult> {
-    let resp = request(client, url, headers, default_ua)
-        .header(RANGE, "bytes=0-0")
-        .send()
-        .await
-        .context("could not connect to server")?;
+    let mut first_refusal: Option<u16> = None;
+    let mut found = None;
+    for (with_range, h) in fallbacks(headers) {
+        let mut rb = request(client, url, &h, default_ua);
+        if with_range {
+            rb = rb.header(RANGE, "bytes=0-0");
+        }
+        let resp = rb.send().await.context("could not connect to server")?;
+        let status = resp.status();
+        if status == StatusCode::UNAUTHORIZED {
+            bail!("the server asks for a user name and password (HTTP 401) - use \"Use authorization\" or Options > Site Logins");
+        }
+        // refused (forbidden, range not allowed, too many requests...): try
+        // the next way; anything else is the server's real answer
+        if matches!(status.as_u16(), 403 | 406 | 416 | 429) {
+            first_refusal.get_or_insert(status.as_u16());
+            continue;
+        }
+        if !status.is_success() {
+            bail!("server answered HTTP {}", status.as_u16());
+        }
+        let changed = h != *headers;
+        found = Some((resp, with_range, changed.then_some(h)));
+        break;
+    }
+    let Some((resp, with_range, headers_used)) = found else {
+        bail!("server answered HTTP {}", first_refusal.unwrap_or(403));
+    };
     let status = resp.status();
-    if status == StatusCode::UNAUTHORIZED {
-        bail!("the server asks for a user name and password (HTTP 401) - use \"Use authorization\" or Options > Site Logins");
-    }
-    if !status.is_success() {
-        bail!("server answered HTTP {}", status.as_u16());
-    }
     let final_url = resp.url().to_string();
     let h = resp.headers();
     let content_type = h
@@ -226,7 +266,10 @@ pub async fn probe(
     }
     drop(resp);
 
+    // a server that refused a byte range gets one plain connection
+    let resumable = resumable && with_range;
     Ok(ProbeResult {
+        headers_used,
         final_url,
         file_name,
         total_size: if kind == DownloadKind::Hls { None } else { total_size },
@@ -235,4 +278,46 @@ pub async fn probe(
         kind,
         last_modified,
     })
+}
+
+#[cfg(test)]
+mod refused_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A server that answers 403 to the browser's cookie and to byte ranges.
+    async fn picky_server() -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut s, _)) = listener.accept().await else { return };
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 8192];
+                    let n = s.read(&mut buf).await.unwrap_or(0);
+                    let req = String::from_utf8_lossy(&buf[..n]).to_ascii_lowercase();
+                    let refused = req.contains("\r\ncookie:") || req.contains("\r\nrange:");
+                    let resp = if refused {
+                        "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                    } else {
+                        "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Type: application/zip\r\nConnection: close\r\n\r\nhello".to_string()
+                    };
+                    let _ = s.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+        format!("http://{addr}/tool.zip")
+    }
+
+    #[tokio::test]
+    async fn probe_falls_back_when_refused() {
+        let url = picky_server().await;
+        let client = Client::builder().no_proxy().build().unwrap();
+        let headers = RequestHeaders { cookies: Some("cf=1".into()), ..Default::default() };
+        let p = probe(&client, &url, &headers, "UA").await.unwrap();
+        assert_eq!(p.total_size, Some(5));
+        assert!(!p.resumable, "the server refuses ranges: one plain connection");
+        let used = p.headers_used.expect("it worked only without the cookie");
+        assert!(used.cookies.is_none());
+    }
 }

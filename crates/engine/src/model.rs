@@ -71,6 +71,9 @@ pub struct ProbeResult {
     pub kind: DownloadKind,
     /// the server's "Last-Modified" date
     pub last_modified: Option<DateTime<Utc>>,
+    /// the server refused the request as it was (HTTP 403 and the like) and
+    /// took it with these headers instead: the download uses them too
+    pub headers_used: Option<RequestHeaders>,
 }
 
 impl ProbeResult {

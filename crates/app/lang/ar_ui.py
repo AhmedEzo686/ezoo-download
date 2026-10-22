@@ -408,7 +408,7 @@ AR = {
         "يمكن أن يكون لكل تحميل حد خاص: نافذة تقدّمه > تبويب محدد السرعة.",
     "Download a playlist": "تحميل قائمة تشغيل",
     "Paste the address of a playlist:": "الصق رابط قائمة التشغيل:",
-    "https://www.youtube.com/playlist?list=…": "https://www.youtube.com/playlist?list=…",
+    "https://…/playlist?list=…": "https://…/playlist?list=…",
     "Getting the list…": "جارٍ جلب القائمة…",
     "Get videos": "جلب الفيديوهات",
     "Video": "الفيديو",
@@ -433,4 +433,5 @@ AR = {
     "Version {}": "الإصدار {}",
     "Coded by Ahmed Ezzat": "Coded by Ahmed Ezzat",
     "Check for updates": "البحث عن تحديثات",
+    "Download with the browser": "التحميل عبر المتصفح",
 }
