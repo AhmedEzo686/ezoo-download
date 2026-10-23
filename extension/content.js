@@ -139,7 +139,12 @@
         .x { margin-left: auto; opacity: .8; padding: 0 2px; }
         .x:hover { opacity: 1; }
         .list { margin-top: 6px; background: #fff; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25);
-                overflow: hidden; }
+                max-height: min(340px, 60vh); overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+                scrollbar-width: thin; scrollbar-color: #b6c0ce transparent; }
+        .list::-webkit-scrollbar { width: 8px; }
+        .list::-webkit-scrollbar-track { background: transparent; }
+        .list::-webkit-scrollbar-thumb { background: #b6c0ce; border-radius: 4px; }
+        .list::-webkit-scrollbar-thumb:hover { background: #9da9ba; }
         .item { padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #eef1f5; }
         .item:last-child { border-bottom: 0; }
         .item:hover { background: #eef4fe; }
