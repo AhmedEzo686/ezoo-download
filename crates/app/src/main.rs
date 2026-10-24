@@ -306,9 +306,18 @@ fn main() -> anyhow::Result<()> {
     }
     {
         let enabled_mgr = mgr.clone();
+        let exts_mgr = mgr.clone();
         let ctx = ctx.clone();
         clipboard::spawn(
             move || enabled_mgr.settings().clipboard_monitor,
+            move || {
+                exts_mgr
+                    .settings()
+                    .capture_exts
+                    .split_whitespace()
+                    .map(|s| s.trim_start_matches('.').to_ascii_lowercase())
+                    .collect()
+            },
             move |url| {
                 let ctx = ctx.clone();
                 let _ = slint::invoke_from_event_loop(move || {

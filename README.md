@@ -1,5 +1,7 @@
 <div align="center">
 
+**[ 🇸🇦 العربية ](README.md) • [ 🇬🇧 English ](README_EN.md)**
+
 # Ezoo Download
 
 برنامج سطح مكتب لنظام ويندوز، مكتوب بلغة Rust

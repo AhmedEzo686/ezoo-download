@@ -29,15 +29,15 @@ mod imp {
     impl Tray {
         pub fn new() -> Option<Tray> {
             let menu = Menu::new();
-            let show = MenuItem::new("Restore Ezoo Download", true, None);
-            let add = MenuItem::new("Add new download…", true, None);
-            let resume = MenuItem::new("Resume all downloads", true, None);
-            let stop = MenuItem::new("Stop all downloads", true, None);
-            let limiter = CheckMenuItem::new("Speed Limiter", true, false, None);
-            let sched = MenuItem::new("Scheduler…", true, None);
-            let options = MenuItem::new("Options…", true, None);
-            let about = MenuItem::new("About", true, None);
-            let exit = MenuItem::new("Exit", true, None);
+            let show = MenuItem::new(crate::i18n::t("Restore Ezoo Download"), true, None);
+            let add = MenuItem::new(crate::i18n::t("Add new download…"), true, None);
+            let resume = MenuItem::new(crate::i18n::t("Resume all downloads"), true, None);
+            let stop = MenuItem::new(crate::i18n::t("Stop all downloads"), true, None);
+            let limiter = CheckMenuItem::new(crate::i18n::t("Speed Limiter"), true, false, None);
+            let sched = MenuItem::new(crate::i18n::t("Scheduler…"), true, None);
+            let options = MenuItem::new(crate::i18n::t("Options…"), true, None);
+            let about = MenuItem::new(crate::i18n::t("About"), true, None);
+            let exit = MenuItem::new(crate::i18n::t("Exit"), true, None);
             menu.append(&show).ok()?;
             menu.append(&PredefinedMenuItem::separator()).ok()?;
             menu.append(&add).ok()?;

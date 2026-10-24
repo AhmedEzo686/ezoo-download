@@ -422,7 +422,9 @@ pub fn resolve(page_url: &str, cookies: Option<&[BrowserCookie]>) -> anyhow::Res
         Ok(j) => j,
         Err(e) => match cookies.filter(|c| !c.is_empty()) {
             Some(list) if needs_login(&e.to_string()) => {
-                let file = std::env::temp_dir().join(format!("ezoo-cookies-{}.txt", std::process::id()));
+                static COOKIE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+                let seq = COOKIE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let file = std::env::temp_dir().join(format!("ezoo-cookies-{}-{seq}.txt", std::process::id()));
                 std::fs::write(&file, netscape_cookies(list))?;
                 let r = run_ytdlp(&tool, page_url, Some(&file));
                 let _ = std::fs::remove_file(&file);

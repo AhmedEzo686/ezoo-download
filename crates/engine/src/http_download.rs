@@ -274,20 +274,29 @@ impl Worker {
             let Some(chunk) = chunk else { break };
             self.shared.limiter.acquire(chunk.len()).await;
             self.job.limiter.acquire(chunk.len()).await;
-            let finished = {
+            let (take, write_pos, finished) = {
                 let mut table = self.segs.lock().unwrap();
                 let s = &mut table[idx];
                 // `end` may have moved down because another worker split us
                 let stop = s.end.min(req_end);
                 let room = stop.saturating_sub(s.pos);
                 let take = (chunk.len() as u64).min(room) as usize;
+                let write_pos = s.pos;
                 if take > 0 {
-                    write_at(&self.file, &chunk[..take], s.pos)?;
                     s.pos += take as u64;
                     self.progress.bytes.fetch_add(take as u64, Ordering::Relaxed);
                 }
-                s.pos >= stop
+                (take, write_pos, s.pos >= stop)
             };
+            if take > 0 {
+                if let Err(e) = write_at(&self.file, &chunk[..take], write_pos) {
+                    let mut table = self.segs.lock().unwrap();
+                    let s = &mut table[idx];
+                    s.pos = s.pos.saturating_sub(take as u64);
+                    self.progress.bytes.fetch_sub(take as u64, Ordering::Relaxed);
+                    return Err(e.into());
+                }
+            }
             if finished {
                 return Ok(()); // dropping `resp` closes the connection
             }
