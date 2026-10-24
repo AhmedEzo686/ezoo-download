@@ -36,6 +36,9 @@ impl SpeedLimiter {
             let cap = rate as f64;
             b.0 = (b.0 + elapsed * cap).min(cap);
             b.0 -= n as f64;
+            // Prevent negative debt from accumulating indefinitely when many connections
+            // acquire tokens concurrently. Limit debt to at most 1 second worth of bandwidth.
+            b.0 = b.0.max(-cap);
             if b.0 < 0.0 {
                 -b.0 / cap
             } else {
@@ -45,5 +48,18 @@ impl SpeedLimiter {
         if wait > 0.0 {
             tokio::time::sleep(Duration::from_secs_f64(wait.min(5.0))).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_speed_limiter_acquire() {
+        let limiter = SpeedLimiter::new(100_000);
+        limiter.acquire(10_000).await;
+        // Large chunk should be clamped and not cause catastrophic freeze
+        limiter.acquire(500_000).await;
     }
 }

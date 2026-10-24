@@ -387,6 +387,16 @@ const AR: &[(&str, &str)] = &[
         "أيقونة جديدة لقوائم التشغيل، وأيقونة أصغر في شريط عنوان النافذة.",
     ),
     ("Support Ezoo Download with PayPal from Help > About.", "ادعم Ezoo Download عبر PayPal من مساعدة > حول."),
+    // tray menu
+    ("Restore Ezoo Download", "استعادة Ezoo Download"),
+    ("Add new download…", "إضافة تحميل جديد…"),
+    ("Resume all downloads", "استئناف كل التحميلات"),
+    ("Stop all downloads", "إيقاف كل التحميلات"),
+    ("Speed Limiter", "محدد السرعة"),
+    ("Scheduler…", "المجدول…"),
+    ("Options…", "الخيارات…"),
+    ("About", "حول"),
+    ("Exit", "خروج"),
 ];
 
 #[cfg(test)]

@@ -13,6 +13,26 @@
 // Chrome / Edge / Opera load yt-core.js here; Firefox lists it in its manifest
 if (typeof importScripts === "function") importScripts("yt-core.js");
 
+// Polyfill chrome.storage.session for browsers/environments where it is not supported
+if (typeof chrome !== "undefined" && chrome.storage && !chrome.storage.session) {
+  const _sessionData = {};
+  chrome.storage.session = {
+    async get(keys) {
+      if (!keys) return { ..._sessionData };
+      const ks = Array.isArray(keys) ? keys : [keys];
+      const res = {};
+      for (const k of ks) if (k in _sessionData) res[k] = _sessionData[k];
+      return res;
+    },
+    async set(obj) {
+      Object.assign(_sessionData, obj);
+    },
+    async remove(keys) {
+      for (const k of [].concat(keys)) delete _sessionData[k];
+    },
+  };
+}
+
 const DEFAULTS = { port: 9614, intercept: true, minSizeKB: 0 };
 
 async function getOpts() {
