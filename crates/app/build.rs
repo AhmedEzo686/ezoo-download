@@ -5,7 +5,10 @@ fn main() {
         .with_style("fluent".into())
         .with_bundled_translations("lang")
         .with_default_translation_context(slint_build::DefaultTranslationContext::None);
-    println!("cargo:rerun-if-changed=lang/ar/LC_MESSAGES/swiftget.po");
+    for lang in ["ar", "fr", "es", "de", "pt", "tr", "ru"] {
+        println!("cargo:rerun-if-changed=lang/{lang}/LC_MESSAGES/swiftget.po");
+    }
+    println!("cargo:rerun-if-changed=lang/rs");
     slint_build::compile_with_config("ui/app.slint", config).expect("Slint UI failed to compile");
 
     // Icon, full version information and a standard manifest for

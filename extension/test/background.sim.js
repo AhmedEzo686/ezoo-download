@@ -18,7 +18,7 @@ const chrome = {
   tabs: { onUpdated: on("upd"), onRemoved: on("rm"), get: async (id) => ({ id, url: tabUrl }),
           sendMessage: async (id, m) => tabMsgs.push(m) },
   action: { setBadgeBackgroundColor: () => {}, setBadgeText: async () => {} },
-  runtime: { onInstalled: on("inst"), onStartup: on("start"), onMessage: on("msg"), getManifest: () => ({ version: "1.0.3" }), reload: () => { reloads++; } },
+  runtime: { onInstalled: on("inst"), onStartup: on("start"), onMessage: on("msg"), getManifest: () => ({ version: "1.0.4" }), reload: () => { reloads++; } },
   contextMenus: { removeAll: () => {}, create: () => {}, onClicked: on("ctx") },
   cookies: { getAll: async () => [] },
 };
@@ -132,13 +132,13 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   appDown = false;
   console.log("browser downloads: restored ones ignored, no repeats, no loop");
   // add-in reloads itself once when the program brings a newer one
-  pingExt = "1.0.4"; delete session.versionCheckAt;
+  pingExt = "1.0.5"; delete session.versionCheckAt;
   await ctx.followAppVersion(); await tick();
   assert.strictEqual(reloads, 1, "reloads for the new version");
   delete session.versionCheckAt;
   await ctx.followAppVersion(); await tick();
   assert.strictEqual(reloads, 1, "only once per version");
-  pingExt = "1.0.3"; delete session.versionCheckAt;
+  pingExt = "1.0.4"; delete session.versionCheckAt;
   await ctx.followAppVersion();
   assert.strictEqual(reloads, 1, "same version: nothing");
   pingExt = null;

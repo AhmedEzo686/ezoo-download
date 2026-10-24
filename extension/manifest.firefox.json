@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ezoo Download",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Ezoo Download extension.",
   "permissions": [
     "downloads",
@@ -29,6 +29,10 @@
       "48": "icons/icon48.png"
     }
   },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -49,8 +53,17 @@
   ],
   "browser_specific_settings": {
     "gecko": {
-      "id": "ezoo-download@ezoo.app",
-      "strict_min_version": "121.0"
+      "id": "ezoo-download@ezoo-tech.com",
+      "strict_min_version": "140.0",
+      "update_url": "https://github.com/AhmedEzo686/ezoo-download/releases/latest/download/firefox-updates.json",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
     }
   }
 }

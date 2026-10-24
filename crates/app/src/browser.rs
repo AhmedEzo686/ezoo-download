@@ -2,6 +2,7 @@
 //! (its store page once the extension is published there, otherwise its
 //! extensions page with the folder path ready in the clipboard).
 
+use crate::to_front;
 use crate::*;
 use crate::i18n::{t, tf};
 
@@ -11,6 +12,11 @@ const STORE_CHROME: &str = "";
 const STORE_EDGE: &str = "";
 const STORE_FIREFOX: &str = "";
 const STORE_OPERA: &str = "";
+const STORE_BRAVE: &str = "";
+
+/// The Firefox add-on signed by Mozilla (built by the release): installed
+/// from this file it stays in Firefox for good.
+const FIREFOX_XPI: &str = "ezoo-download-firefox.xpi";
 
 #[derive(Clone)]
 pub(crate) struct Browser {
@@ -80,6 +86,18 @@ fn detect() -> Vec<Browser> {
             firefox: false,
             tint: rgb(0xd6, 0x1f, 0x2b),
         },
+        Browser {
+            name: "Brave",
+            exe: first_existing(vec![
+                env_path("ProgramFiles", r"BraveSoftware\Brave-Browser\Application\brave.exe"),
+                env_path("ProgramFiles(x86)", r"BraveSoftware\Brave-Browser\Application\brave.exe"),
+                env_path("LOCALAPPDATA", r"BraveSoftware\Brave-Browser\Application\brave.exe"),
+            ]),
+            extensions_page: "brave://extensions/",
+            store: STORE_BRAVE,
+            firefox: false,
+            tint: rgb(0xfb, 0x54, 0x2b),
+        },
     ]
 }
 
@@ -88,6 +106,12 @@ fn extension_dir(firefox: bool) -> Option<PathBuf> {
     let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
     let name = if firefox { "extension-firefox" } else { "extension" };
     [dir.join(name), dir.join("..").join(name)].into_iter().find(|p| p.exists())
+}
+
+/// The signed Firefox add-on next to the program, when the release has one.
+fn firefox_xpi() -> Option<PathBuf> {
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    Some(dir.join(FIREFOX_XPI)).filter(|p| p.exists())
 }
 
 pub(crate) fn open(ui: &Ui) {
@@ -107,6 +131,7 @@ pub(crate) fn open(ui: &Ui) {
     d.set_steps(SharedString::new());
     d.set_folder(extension_dir(false).map(|p| p.display().to_string()).unwrap_or_default().into());
     let _ = d.show();
+    to_front!(d);
     d.window().set_minimized(false);
 }
 
@@ -125,6 +150,15 @@ fn add(ui: &Ui, i: usize) {
         launch(&exe, b.store);
         d.set_steps(tf("{} opened the store page: click \"Add\" / \"Get\" there.", &[&b.name]).into());
         return;
+    }
+    if b.firefox {
+        if let Some(xpi) = firefox_xpi() {
+            // the signed add-on: Firefox asks "Add Ezoo Download?" and keeps it
+            let _ = std::process::Command::new(&exe).arg(&xpi).spawn();
+            d.set_folder(xpi.display().to_string().into());
+            d.set_steps(t("Firefox opened the Ezoo Download add-on.\n1. Click \"Add\" in the message Firefox shows.\n2. Then click \"OK\".\n\nThe add-on is signed by Mozilla, so it stays in Firefox after you close it and updates by itself.").into());
+            return;
+        }
     }
     let Some(dir) = extension_dir(b.firefox) else {
         d.set_steps(t("The extension folder was not found next to EzooDownload.exe. Install Ezoo Download again.").into());

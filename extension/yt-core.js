@@ -79,7 +79,15 @@ function parseStream(rawUrl) {
     else return null;
   }
   for (const k of PIECE_PARAMS) p.delete(k);
+  // videos can have several sound tracks: "xtags" says which language and
+  // whether it is the original one or a translated ("dubbed") one
+  const xtags = (p.get("xtags") || "").toLowerCase();
+  const lang = (/(?:^|:)lang=([\w-]+)/.exec(xtags) || [])[1] || "";
+  const acont = (/(?:^|:)acont=([\w-]+)/.exec(xtags) || [])[1] || "";
   return {
+    lang,
+    original: acont === "original",
+    dubbed: acont.startsWith("dubbed") || acont === "descriptive",
     itag,
     url: u.toString(),
     mime,
@@ -130,7 +138,11 @@ function buildOptions(streams) {
   const mainDur = [...groups.keys()].sort((a, b) => b - a || groups.get(b).length - groups.get(a).length)[0];
   const main = groups.get(mainDur);
 
-  const audios = main.filter((s) => s.kind === "a").sort((a, b) => (b.abr || 0) - (a.abr || 0) || b.size - a.size);
+  // the video's own language first, translated tracks last, then quality
+  const trackRank = (s) => (s.original ? 2 : s.dubbed ? 0 : 1);
+  const audios = main
+    .filter((s) => s.kind === "a")
+    .sort((a, b) => trackRank(b) - trackRank(a) || (b.abr || 0) - (a.abr || 0) || b.size - a.size);
   const bestAudio = (ext) => audios.find((a) => (ext === "webm" ? a.ext === "webm" : a.ext === "m4a"));
 
   const options = [];

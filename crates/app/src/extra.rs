@@ -2,6 +2,7 @@
 //! Duplicate link, shut down countdown, Tip of the day, Refresh download
 //! address, and Export / Import of the list.
 
+use crate::to_front;
 use crate::*;
 use swiftget_engine::config::{CategoryDef, ALL_COLUMNS, DEFAULT_COLUMNS};
 use swiftget_engine::ef2::{self, Ef2Item};
@@ -14,6 +15,7 @@ pub(crate) fn open_columns(ui: &Ui) {
     let Some(d) = ui.columns.upgrade() else { return };
     d.set_cols(cols_from(&ui.ctx.mgr.settings()));
     let _ = d.show();
+    to_front!(d);
 }
 
 fn cols_to_list(c: &Cols) -> Vec<String> {
@@ -56,6 +58,7 @@ pub(crate) fn open_category(ui: &Ui, name: Option<String>) {
         }
     }
     let _ = d.show();
+    to_front!(d);
 }
 
 fn save_category(ui: &Ui) {
@@ -146,6 +149,7 @@ pub(crate) fn open_find(ui: &Ui) {
     if let Some(d) = ui.find.upgrade() {
         d.set_message(SharedString::new());
         let _ = d.show();
+        to_front!(d);
     }
 }
 
@@ -242,6 +246,7 @@ pub(crate) fn open_properties(ui: &Ui, id: u64) {
     d.set_password(v.headers.auth.as_ref().map(|a| a.1.clone()).unwrap_or_default().into());
     d.set_message(SharedString::new());
     let _ = d.show();
+    to_front!(d);
 }
 
 fn save_properties(ui: &Ui) {
@@ -311,6 +316,7 @@ pub(crate) fn start_countdown(ui: &Ui, action: AfterDone) {
     d.set_seconds_left(COUNTDOWN);
     *ui.power.borrow_mut() = Some((action, COUNTDOWN));
     let _ = d.show();
+    to_front!(d);
 }
 
 pub(crate) fn tick_countdown(ui: &Ui) {
@@ -340,6 +346,31 @@ fn power_now(ui: &Ui) {
 }
 
 // ---------------------------------------------------------------- tips
+
+/// What the newest version brings (shown once after an automatic update).
+const WHATS_NEW: [&str; 10] = [
+    "A \"Download this video\" button on every video of a page, and you can drag it anywhere on the video.",
+    "Videos with several sound tracks: the original language is downloaded, not a dubbed one.",
+    "New languages: French, Spanish, German, Portuguese, Turkish and Russian.",
+    "Five new themes and a window opacity setting (View > Theme).",
+    "Brave is supported (Help > Add Ezoo Download to my browser).",
+    "Firefox: the add-on stays in Firefox after it is closed.",
+    "The browser add-in window is bigger; its settings moved to the add-in's own settings page.",
+    "Windows of the program open in front of the main window.",
+    "A new playlist icon, and a smaller icon on the window title.",
+    "Support Ezoo Download with PayPal from Help > About.",
+];
+
+pub(crate) fn whats_new() {
+    let mut text = tf("Ezoo Download was updated to version {} by itself.", &[&env!("CARGO_PKG_VERSION")]);
+    text.push_str("\n\n");
+    text.push_str(&t("What's new:"));
+    for line in WHATS_NEW {
+        text.push_str("\n•  ");
+        text.push_str(&t(line));
+    }
+    crate::message(&text);
+}
 
 const TIPS: [&str; 14] = [
     "Copy a download link anywhere (Ctrl+C) and Ezoo Download offers to download it.",
@@ -371,6 +402,7 @@ pub(crate) fn show_tip(ui: &Ui, from_menu: bool) {
         let _ = ui.ctx.mgr.set_settings(s);
     }
     let _ = d.show();
+    to_front!(d);
 }
 
 // ---------------------------------------------------------------- refresh download address

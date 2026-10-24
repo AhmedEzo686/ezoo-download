@@ -1,6 +1,6 @@
 // Ezoo Download – user interface (Slint)
 // Classic download-manager layout: menu bar, big icon toolbar, category and
-// queue tree, detailed list, one progress window per download. Four themes.
+// queue tree, detailed list, one progress window per download. Nine themes.
 
 import { Button, LineEdit, SpinBox, CheckBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
 import { DownloadRow, QueueRow, SegView, Cols, CatRow, PairRow, LinkRow, Theme, ThemedWindow, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph } from "common.slint";
@@ -900,6 +900,54 @@ export component MainWindow inherits ThemedWindow {
                         root.set-language("ar");
                     }
                 }
+                MenuItem {
+                    title: "Français";
+                    checkable: true;
+                    checked: root.language == "fr";
+                    activated => {
+                        root.set-language("fr");
+                    }
+                }
+                MenuItem {
+                    title: "Español";
+                    checkable: true;
+                    checked: root.language == "es";
+                    activated => {
+                        root.set-language("es");
+                    }
+                }
+                MenuItem {
+                    title: "Deutsch";
+                    checkable: true;
+                    checked: root.language == "de";
+                    activated => {
+                        root.set-language("de");
+                    }
+                }
+                MenuItem {
+                    title: "Português";
+                    checkable: true;
+                    checked: root.language == "pt";
+                    activated => {
+                        root.set-language("pt");
+                    }
+                }
+                MenuItem {
+                    title: "Türkçe";
+                    checkable: true;
+                    checked: root.language == "tr";
+                    activated => {
+                        root.set-language("tr");
+                    }
+                }
+                MenuItem {
+                    title: "Русский";
+                    checkable: true;
+                    checked: root.language == "ru";
+                    activated => {
+                        root.set-language("ru");
+                    }
+                }
             }
             Menu {
                 title: @tr("Theme");
@@ -935,6 +983,53 @@ export component MainWindow inherits ThemedWindow {
                         root.set-theme(3);
                     }
                 }
+                MenuItem {
+                    title: @tr("Forest green");
+                    checkable: true;
+                    checked: Theme.mode == 4;
+                    activated => {
+                        root.set-theme(4);
+                    }
+                }
+                MenuItem {
+                    title: @tr("Black");
+                    checkable: true;
+                    checked: Theme.mode == 5;
+                    activated => {
+                        root.set-theme(5);
+                    }
+                }
+                MenuItem {
+                    title: @tr("Sunset");
+                    checkable: true;
+                    checked: Theme.mode == 6;
+                    activated => {
+                        root.set-theme(6);
+                    }
+                }
+                MenuItem {
+                    title: @tr("Teal night");
+                    checkable: true;
+                    checked: Theme.mode == 7;
+                    activated => {
+                        root.set-theme(7);
+                    }
+                }
+                MenuItem {
+                    title: @tr("Rose");
+                    checkable: true;
+                    checked: Theme.mode == 8;
+                    activated => {
+                        root.set-theme(8);
+                    }
+                }
+                MenuSeparator { }
+                MenuItem {
+                    title: @tr("Transparency…");
+                    activated => {
+                        root.open-settings(0);
+                    }
+                }
             }
         }
         Menu {
@@ -961,12 +1056,6 @@ export component MainWindow inherits ThemedWindow {
                 title: @tr("Check for updates (video downloader)");
                 activated => {
                     root.update-tools();
-                }
-            }
-            MenuItem {
-                title: @tr("Tell a friend");
-                activated => {
-                    root.tell-friend();
                 }
             }
             MenuSeparator { }

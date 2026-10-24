@@ -434,4 +434,13 @@ AR = {
     "Coded by Ahmed Ezzat": "Coded by Ahmed Ezzat",
     "Check for updates": "البحث عن تحديثات",
     "Download with the browser": "التحميل عبر المتصفح",
+    "Forest green": "أخضر الغابة",
+    "Black": "أسود",
+    "Sunset": "الغروب",
+    "Teal night": "ليل فيروزي",
+    "Rose": "وردي",
+    "Transparency…": "الشفافية…",
+    "Window opacity": "شفافية النافذة",
+    "Like Ezoo Download? You can support its development:": "أعجبك Ezoo Download؟ يمكنك دعم تطويره:",
+    "Support with PayPal": "ادعم عبر PayPal",
 }

@@ -459,7 +459,7 @@ async function addYoutubeStream(tabId, stream) {
     if (state.sabr) return;
     state.sabr = true;
   } else {
-    const sk = `${stream.itag}_${stream.dur}`;
+    const sk = `${stream.itag}_${stream.dur}${stream.lang ? "_" + stream.lang : ""}`;
     // keep the newest URL of each stream (the old one may expire)
     state.streams[sk] = stream;
     const ids = Object.keys(state.streams);
@@ -474,7 +474,7 @@ chrome.webRequest.onBeforeRequest.addListener(
     if (d.tabId < 0) return;
     const stream = parseStream(d.url);
     if (!stream) return;
-    const sk = stream.sabr ? "sabr" : `${stream.itag}_${stream.dur}`;
+    const sk = stream.sabr ? "sabr" : `${stream.itag}_${stream.dur}${stream.lang ? "_" + stream.lang : ""}`;
     let seen = seenStreams.get(d.tabId);
     if (!seen) seenStreams.set(d.tabId, (seen = new Set()));
     if (seen.has(sk)) return;
@@ -576,6 +576,25 @@ async function resolvePage(tabId, page) {
     await chrome.storage.session.set({ [key]: { page, resolving: false, ...change } });
     pushToTab(tabId);
   }
+}
+
+/** The bubble of a video that is not the page's main one was clicked. */
+async function resolveOneVideo(msg, tab) {
+  const items = [];
+  if (msg.src && /^https?:/i.test(msg.src)) {
+    items.push({ label: "Video file", sub: msg.src, url: msg.src, ext: (/\.(\w{2,4})(\?|$)/.exec(msg.src) || [])[1] || "mp4" });
+  }
+  const page = msg.page || (msg.src ? "" : tab && tab.url);
+  if (page && /^https?:/i.test(page)) {
+    try {
+      const r = await askApp(page);
+      if (r.resolved && r.resolved.options.length) items.unshift(...optionItems(r.resolved, page));
+      else if (!items.length) return { error: r.resolveError || "Can't get this video" };
+    } catch (e) {
+      if (!items.length) return { error: (await appAlive()) ? String((e && e.message) || e) : "Ezoo Download is not running" };
+    }
+  }
+  return items.length ? { items } : { error: "Can't get this video" };
 }
 
 // ---------------------------------------------------------------- tab lifecycle
@@ -698,6 +717,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (isYoutube(sender.tab.url)) resolveYoutube(sender.tab.id, sender.tab.url);
       else resolvePage(sender.tab.id, msg.page || sender.tab.url);
       return false;
+    case "swiftget-resolve-video":
+      // one of several videos on the page: its own file, or its own link
+      resolveOneVideo(msg, sender.tab).then(sendResponse);
+      return true;
     case "swiftget-status":
       appAlive().then((ok) => sendResponse({ ok }));
       return true;

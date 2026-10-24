@@ -1,5 +1,6 @@
 //! The Options window (all its tabs).
 
+use crate::to_front;
 use crate::*;
 use swiftget_engine::config::{ServerLimit, SiteLogin, DEFAULT_CAPTURE_EXTS};
 use crate::i18n::{t, tf};
@@ -29,6 +30,7 @@ pub(crate) fn open(ui: &Ui, tab: i32) {
     d.set_tab(tab);
     d.set_message(SharedString::new());
     let _ = d.show();
+    to_front!(d);
 }
 
 fn show_lists(ui: &Ui, d: &SettingsDialog) {
@@ -49,8 +51,9 @@ fn show_lists(ui: &Ui, d: &SettingsDialog) {
 
 fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     // General
-    d.set_language(if crate::i18n::effective(&s.language) == "ar" { 1 } else { 0 });
+    d.set_language(crate::i18n::index_of(crate::i18n::effective(&s.language)) as i32);
     d.set_theme(s.theme as i32);
+    d.set_window_opacity(s.opacity.clamp(50, 100) as f32);
     d.set_start_with_windows(autostart::is_enabled());
     d.set_close_to_tray(s.close_to_tray);
     d.set_clipboard(s.clipboard_monitor);
@@ -135,8 +138,9 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
         return Err(t("Type the proxy address (Proxy / Server)"));
     }
     // General
-    s.language = if d.get_language() == 1 { "ar" } else { "en" }.into();
-    s.theme = d.get_theme().clamp(0, 3) as u32;
+    s.language = crate::i18n::LANGS[(d.get_language().max(0) as usize).min(crate::i18n::LANGS.len() - 1)].0.into();
+    s.theme = d.get_theme().clamp(0, 8) as u32;
+    s.opacity = (d.get_window_opacity().round() as u32).clamp(50, 100);
     s.close_to_tray = d.get_close_to_tray();
     s.clipboard_monitor = d.get_clipboard();
     s.auto_start_clipboard = d.get_auto_clipboard();
@@ -217,6 +221,14 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
 
 pub(crate) fn wire(ui: &Ui) {
     let Some(d) = ui.settings_dlg.upgrade() else { return };
+    {
+        let ui = ui.clone();
+        d.on_preview_opacity(move |v| {
+            if let Some(m) = ui.ctx.main.upgrade() {
+                crate::winfx::set_opacity(m.window(), v.round() as u32);
+            }
+        });
+    }
     {
         let w = d.as_weak();
         d.on_browse(move |which| {
@@ -413,9 +425,14 @@ pub(crate) fn wire(ui: &Ui) {
     }
     {
         let w = d.as_weak();
+        let ui = ui.clone();
         d.on_cancel(move || {
             if let Some(d) = w.upgrade() {
                 let _ = d.hide();
+            }
+            // the slider only showed it: back to the saved opacity
+            if let Some(m) = ui.ctx.main.upgrade() {
+                crate::winfx::set_opacity(m.window(), ui.ctx.mgr.settings().opacity);
             }
         });
     }

@@ -49,5 +49,17 @@ assert(opts.every((o) => !o.videoUrl.includes("dur=15")), "ad streams must be ig
 // no audio captured yet -> only progressive or nothing
 assert.deepStrictEqual(buildOptions({ a: parseStream(url(137, "video/mp4", 1, "10")) }), []);
 
+// several sound tracks: the original language wins over a translated one
+{
+  const tracks = {};
+  for (const s of [
+    url(137, "video/mp4", 9, "50"),
+    url(140, "audio/mp4", 5, "50", "&xtags=acont%3Ddubbed-auto%3Alang%3Den-US"),
+    url(140, "audio/mp4", 5, "50", "&xtags=acont%3Doriginal%3Alang%3Dar"),
+  ].map(parseStream)) tracks[`${s.itag}_${s.dur}_${s.lang}`] = s;
+  const o = buildOptions(tracks);
+  assert(o[0].audioUrl.includes("lang%3Dar"), "original Arabic track, not the dubbed one");
+}
+
 assert.strictEqual(cleanYoutubeTitle("(3) My video: part 1 - YouTube"), "My video_ part 1");
 console.log("yt-core: all tests passed;", opts.map((o) => o.label).join(" | "));

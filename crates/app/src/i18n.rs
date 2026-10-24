@@ -1,41 +1,88 @@
-//! Arabic / English for the texts made in Rust (statuses, messages).
-//! The window texts themselves are translated by Slint (lang/*.po).
+//! The texts made in Rust (statuses, messages) in the language of the
+//! program. Arabic is the table below; the other languages are the files
+//! lang/rs/<code>.json (English text -> translation). The window texts
+//! themselves are translated by Slint (lang/<code>/LC_MESSAGES/*.po).
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::OnceLock;
 
-static ARABIC: AtomicBool = AtomicBool::new(false);
+/// The languages of the program: code and own name, in the order of the
+/// Language list in Options.
+pub const LANGS: [(&str, &str); 8] = [
+    ("en", "English"),
+    ("ar", "العربية"),
+    ("fr", "Français"),
+    ("es", "Español"),
+    ("de", "Deutsch"),
+    ("pt", "Português"),
+    ("tr", "Türkçe"),
+    ("ru", "Русский"),
+];
 
-/// "ar", "en", or "" = the language of Windows.
+static CURRENT: AtomicUsize = AtomicUsize::new(0);
+
+/// A language code from LANGS, or "" = the language of Windows.
 pub fn effective(setting: &str) -> &'static str {
-    match setting {
-        "ar" => "ar",
-        "en" => "en",
-        _ => {
-            let sys = sys_locale::get_locale().unwrap_or_default().to_ascii_lowercase();
-            if sys.starts_with("ar") {
-                "ar"
-            } else {
-                "en"
-            }
-        }
+    if let Some((code, _)) = LANGS.iter().find(|(c, _)| *c == setting) {
+        return code;
     }
+    let sys = sys_locale::get_locale().unwrap_or_default().to_ascii_lowercase();
+    LANGS.iter().map(|(c, _)| *c).find(|c| sys.starts_with(c)).unwrap_or("en")
+}
+
+/// Place of a language in LANGS (0 = English for anything unknown).
+pub fn index_of(code: &str) -> usize {
+    LANGS.iter().position(|(c, _)| *c == code).unwrap_or(0)
 }
 
 /// Switch every window and every Rust text to this language.
 pub fn apply(lang: &str) {
-    ARABIC.store(lang == "ar", Ordering::Relaxed);
-    let _ = slint::select_bundled_translation(if lang == "ar" { "ar" } else { "en" });
+    CURRENT.store(index_of(lang), Ordering::Relaxed);
+    let _ = slint::select_bundled_translation(LANGS[index_of(lang)].0);
 }
 
+pub fn current() -> &'static str {
+    LANGS[CURRENT.load(Ordering::Relaxed) % LANGS.len()].0
+}
+
+#[allow(dead_code)]
 pub fn is_arabic() -> bool {
-    ARABIC.load(Ordering::Relaxed)
+    current() == "ar"
+}
+
+fn table(code: &str) -> Option<&'static HashMap<String, String>> {
+    static FR: OnceLock<HashMap<String, String>> = OnceLock::new();
+    static ES: OnceLock<HashMap<String, String>> = OnceLock::new();
+    static DE: OnceLock<HashMap<String, String>> = OnceLock::new();
+    static PT: OnceLock<HashMap<String, String>> = OnceLock::new();
+    static TR: OnceLock<HashMap<String, String>> = OnceLock::new();
+    static RU: OnceLock<HashMap<String, String>> = OnceLock::new();
+    let (cell, src) = match code {
+        "fr" => (&FR, include_str!("../lang/rs/fr.json")),
+        "es" => (&ES, include_str!("../lang/rs/es.json")),
+        "de" => (&DE, include_str!("../lang/rs/de.json")),
+        "pt" => (&PT, include_str!("../lang/rs/pt.json")),
+        "tr" => (&TR, include_str!("../lang/rs/tr.json")),
+        "ru" => (&RU, include_str!("../lang/rs/ru.json")),
+        _ => return None,
+    };
+    Some(cell.get_or_init(|| serde_json::from_str(src).unwrap_or_default()))
 }
 
 /// The text in the current language.
 pub fn t(en: &str) -> String {
-    if is_arabic() {
-        if let Some(ar) = lookup(en) {
-            return ar.to_string();
+    match current() {
+        "en" => {}
+        "ar" => {
+            if let Some(ar) = lookup(en) {
+                return ar.to_string();
+            }
+        }
+        code => {
+            if let Some(v) = table(code).and_then(|m| m.get(en)) {
+                return v.clone();
+            }
         }
     }
     en.to_string()
@@ -302,6 +349,44 @@ const AR: &[(&str, &str)] = &[
         "Hold Alt while clicking a link in the browser to let the browser download it by itself.",
         "اضغط Alt أثناء الضغط على رابط في المتصفح ليحمّله المتصفح بنفسه.",
     ),
+    // 1.0.4
+    (
+        "Firefox opened the Ezoo Download add-on.\n1. Click \"Add\" in the message Firefox shows.\n2. Then click \"OK\".\n\nThe add-on is signed by Mozilla, so it stays in Firefox after you close it and updates by itself.",
+        "فتح فايرفوكس إضافة Ezoo Download.\n1. اضغط \"إضافة\" في الرسالة التي يعرضها فايرفوكس.\n2. ثم اضغط \"حسنًا\".\n\nالإضافة موقّعة من Mozilla، لذلك تبقى في فايرفوكس بعد إغلاقه وتتحدّث وحدها.",
+    ),
+    ("Ezoo Download was updated to version {} by itself.", "تم تحديث Ezoo Download تلقائيًا إلى الإصدار {}."),
+    ("What's new:", "الجديد في هذا الإصدار:"),
+    (
+        "A \"Download this video\" button on every video of a page, and you can drag it anywhere on the video.",
+        "زر \"تحميل هذا الفيديو\" على كل فيديو في الصفحة، ويمكنك سحبه إلى أي مكان على الفيديو.",
+    ),
+    (
+        "Videos with several sound tracks: the original language is downloaded, not a dubbed one.",
+        "الفيديوهات ذات المسارات الصوتية المتعددة: يُحمَّل الصوت باللغة الأصلية وليس المدبلج.",
+    ),
+    (
+        "New languages: French, Spanish, German, Portuguese, Turkish and Russian.",
+        "لغات جديدة: الفرنسية والإسبانية والألمانية والبرتغالية والتركية والروسية.",
+    ),
+    (
+        "Five new themes and a window opacity setting (View > Theme).",
+        "خمسة مظاهر جديدة وإعداد لشفافية النافذة (عرض > المظهر).",
+    ),
+    (
+        "Brave is supported (Help > Add Ezoo Download to my browser).",
+        "دعم متصفح Brave (مساعدة > إضافة Ezoo Download إلى متصفحي).",
+    ),
+    ("Firefox: the add-on stays in Firefox after it is closed.", "فايرفوكس: الإضافة تبقى بعد إغلاق المتصفح."),
+    (
+        "The browser add-in window is bigger; its settings moved to the add-in's own settings page.",
+        "نافذة إضافة المتصفح أكبر، وإعداداتها انتقلت إلى صفحة الإعدادات الخاصة بالإضافة.",
+    ),
+    ("Windows of the program open in front of the main window.", "نوافذ البرنامج تفتح أمام النافذة الرئيسية."),
+    (
+        "A new playlist icon, and a smaller icon on the window title.",
+        "أيقونة جديدة لقوائم التشغيل، وأيقونة أصغر في شريط عنوان النافذة.",
+    ),
+    ("Support Ezoo Download with PayPal from Help > About.", "ادعم Ezoo Download عبر PayPal من مساعدة > حول."),
 ];
 
 #[cfg(test)]
@@ -310,9 +395,25 @@ mod tests {
     #[test]
     fn fills_places() {
         assert_eq!(tf("Tip {} of {}", &[&1, &14]), "Tip 1 of 14");
-        ARABIC.store(true, Ordering::Relaxed);
+        CURRENT.store(index_of("ar"), Ordering::Relaxed);
         assert_eq!(tf("Tip {} of {}", &[&1, &14]), "نصيحة 1 من 14");
         assert_eq!(t("not in the list"), "not in the list");
-        ARABIC.store(false, Ordering::Relaxed);
+        CURRENT.store(index_of("fr"), Ordering::Relaxed);
+        assert_eq!(tf("Tip {} of {}", &[&1, &14]), "Astuce 1 sur 14");
+        CURRENT.store(0, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn every_language_has_every_text() {
+        // the tables are read from JSON: a broken file would silently fall back to English
+        for (code, _) in LANGS.iter().skip(2) {
+            let m = table(code).expect("table");
+            assert!(m.len() > 150, "{code}: only {} texts", m.len());
+            for (en, tr) in m {
+                assert_eq!(en.matches("{}").count(), tr.matches("{}").count(), "{code}: {en}");
+            }
+        }
+        assert_eq!(index_of("xx"), 0);
+        assert_eq!(effective("es"), "es");
     }
 }

@@ -1,0 +1,1286 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: ru\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "{} downloads selected"
+msgstr "Выбрано загрузок: {}"
+
+msgid "Open"
+msgstr "Открыть"
+
+msgid "Show download progress"
+msgstr "Показать ход загрузки"
+
+msgid "Open with…"
+msgstr "Открыть с помощью…"
+
+msgid "Open folder"
+msgstr "Открыть папку"
+
+msgid "Resume download"
+msgstr "Продолжить загрузку"
+
+msgid "Stop download"
+msgstr "Остановить загрузку"
+
+msgid "Redownload"
+msgstr "Скачать заново"
+
+msgid "Refresh download address…"
+msgstr "Обновить адрес загрузки…"
+
+msgid "Move / Rename…"
+msgstr "Переместить / Переименовать…"
+
+msgid "Move to queue"
+msgstr "Переместить в очередь"
+
+msgid "Delete from queue"
+msgstr "Убрать из очереди"
+
+msgid "Copy address"
+msgstr "Копировать адрес"
+
+msgid "Check file (SHA-256)"
+msgstr "Проверить файл (SHA-256)"
+
+msgid "Properties"
+msgstr "Свойства"
+
+msgid "Remove"
+msgstr "Убрать"
+
+msgid "Start queue"
+msgstr "Запустить очередь"
+
+msgid "Stop queue"
+msgstr "Остановить очередь"
+
+msgid "Edit queue / schedule…"
+msgstr "Изменить очередь / расписание…"
+
+msgid "New queue…"
+msgstr "Новая очередь…"
+
+msgid "Delete queue"
+msgstr "Удалить очередь"
+
+msgid "Add category…"
+msgstr "Добавить категорию…"
+
+msgid "Delete category"
+msgstr "Удалить категорию"
+
+msgid "Properties…"
+msgstr "Свойства…"
+
+msgid "Ezoo Download"
+msgstr "Ezoo Download"
+
+msgid "Tasks"
+msgstr "Задачи"
+
+msgid "Add new download…"
+msgstr "Добавить загрузку…"
+
+msgid "Add batch download…"
+msgstr "Добавить пакетную загрузку…"
+
+msgid "Add batch download from clipboard"
+msgstr "Пакетная загрузка из буфера обмена"
+
+msgid "Run site grabber…"
+msgstr "Запустить сборщик сайтов…"
+
+msgid "Download a playlist…"
+msgstr "Скачать плейлист…"
+
+msgid "Export"
+msgstr "Экспорт"
+
+msgid "To download list file (.ef2)…"
+msgstr "В файл списка загрузок (.ef2)…"
+
+msgid "To text file…"
+msgstr "В текстовый файл…"
+
+msgid "Import"
+msgstr "Импорт"
+
+msgid "From download list file (.ef2)…"
+msgstr "Из файла списка загрузок (.ef2)…"
+
+msgid "From text file…"
+msgstr "Из текстового файла…"
+
+msgid "Open download folder"
+msgstr "Открыть папку загрузок"
+
+msgid "Exit"
+msgstr "Выход"
+
+msgid "File"
+msgstr "Файл"
+
+msgid "Download now"
+msgstr "Скачать сейчас"
+
+msgid "Select all   Ctrl+A"
+msgstr "Выделить всё   Ctrl+A"
+
+msgid "Downloads"
+msgstr "Загрузки"
+
+msgid "Resume all"
+msgstr "Продолжить все"
+
+msgid "Stop all"
+msgstr "Остановить все"
+
+msgid "Delete all completed"
+msgstr "Удалить все завершённые"
+
+msgid "Find…   Ctrl+F"
+msgstr "Найти…   Ctrl+F"
+
+msgid "Find next   F3"
+msgstr "Найти далее   F3"
+
+msgid "Speed Limiter"
+msgstr "Ограничитель скорости"
+
+msgid "Turn on"
+msgstr "Включить"
+
+msgid "Turn off"
+msgstr "Выключить"
+
+msgid "Settings…"
+msgstr "Настройки…"
+
+msgid "When all downloads finish"
+msgstr "Когда все загрузки завершатся"
+
+msgid "Do nothing"
+msgstr "Ничего не делать"
+
+msgid "Shut down the computer"
+msgstr "Выключить компьютер"
+
+msgid "Sleep"
+msgstr "Спящий режим"
+
+msgid "Hibernate"
+msgstr "Гибернация"
+
+msgid "Exit Ezoo Download"
+msgstr "Выйти из Ezoo Download"
+
+msgid "Scheduler…"
+msgstr "Планировщик…"
+
+msgid "Options…"
+msgstr "Параметры…"
+
+msgid "View"
+msgstr "Вид"
+
+msgid "Show categories"
+msgstr "Показывать категории"
+
+msgid "Arrange files"
+msgstr "Упорядочить файлы"
+
+msgid "By order of addition"
+msgstr "По порядку добавления"
+
+msgid "File name"
+msgstr "Имя файла"
+
+msgid "Size"
+msgstr "Размер"
+
+msgid "Status"
+msgstr "Состояние"
+
+msgid "Time left"
+msgstr "Осталось"
+
+msgid "Transfer rate"
+msgstr "Скорость"
+
+msgid "Last try date"
+msgstr "Последняя попытка"
+
+msgid "Description"
+msgstr "Описание"
+
+msgid "Save to"
+msgstr "Сохранить в"
+
+msgid "Referer"
+msgstr "Реферер"
+
+msgid "Parent web page"
+msgstr "Исходная веб-страница"
+
+msgid "Toolbar"
+msgstr "Панель инструментов"
+
+msgid "Large buttons"
+msgstr "Большие кнопки"
+
+msgid "Small buttons"
+msgstr "Маленькие кнопки"
+
+msgid "Columns…"
+msgstr "Столбцы…"
+
+msgid "Language"
+msgstr "Язык"
+
+msgid "Theme"
+msgstr "Тема"
+
+msgid "Light"
+msgstr "Светлая"
+
+msgid "Dark"
+msgstr "Тёмная"
+
+msgid "Ocean blue"
+msgstr "Синий океан"
+
+msgid "Midnight purple"
+msgstr "Полуночный фиолетовый"
+
+msgid "Forest green"
+msgstr "Зелёный лес"
+
+msgid "Black"
+msgstr "Чёрная"
+
+msgid "Sunset"
+msgstr "Закат"
+
+msgid "Teal night"
+msgstr "Бирюзовая ночь"
+
+msgid "Rose"
+msgstr "Розовая"
+
+msgid "Transparency…"
+msgstr "Прозрачность…"
+
+msgid "Help"
+msgstr "Справка"
+
+msgid "Add Ezoo Download to my browser…"
+msgstr "Добавить Ezoo Download в мой браузер…"
+
+msgid "Tip of the day…"
+msgstr "Совет дня…"
+
+msgid "Check for updates"
+msgstr "Проверить обновления"
+
+msgid "Check for updates (video downloader)"
+msgstr "Проверить обновления (загрузчик видео)"
+
+msgid "About Ezoo Download"
+msgstr "О программе Ezoo Download"
+
+msgid "Add URL"
+msgstr "Добавить URL"
+
+msgid "Add Batch"
+msgstr "Пакет"
+
+msgid "Resume"
+msgstr "Продолжить"
+
+msgid "Stop"
+msgstr "Стоп"
+
+msgid "Stop All"
+msgstr "Стоп все"
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "Delete Done"
+msgstr "Удалить готовые"
+
+msgid "Options"
+msgstr "Параметры"
+
+msgid "Scheduler"
+msgstr "Планировщик"
+
+msgid "Limiter: On"
+msgstr "Ограничитель: вкл"
+
+msgid "Limiter: Off"
+msgstr "Ограничитель: выкл"
+
+msgid "Start Queue"
+msgstr "Запуск очереди"
+
+msgid "Stop Queue"
+msgstr "Стоп очереди"
+
+msgid "Grabber"
+msgstr "Сборщик"
+
+msgid "Playlist"
+msgstr "Плейлист"
+
+msgid "Filter the list…"
+msgstr "Фильтр списка…"
+
+msgid "Categories"
+msgstr "Категории"
+
+msgid "All Downloads"
+msgstr "Все загрузки"
+
+msgid "Unfinished"
+msgstr "Незавершённые"
+
+msgid "Finished"
+msgstr "Завершённые"
+
+msgid "Queues"
+msgstr "Очереди"
+
+msgid "{} (running)"
+msgstr "{} (выполняется)"
+
+msgid "New queue"
+msgstr "Новая очередь"
+
+msgid "Edit"
+msgstr "Изменить"
+
+msgid "File Name"
+msgstr "Имя файла"
+
+msgid "Q"
+msgstr "О"
+
+msgid "Last Try Date"
+msgstr "Последняя попытка"
+
+msgid "Date Added"
+msgstr "Дата добавления"
+
+msgid "Save To"
+msgstr "Сохранить в"
+
+msgid "Parent Web Page"
+msgstr "Исходная веб-страница"
+
+msgid "Nothing matches “{}”."
+msgstr "Ничего не найдено по «{}»."
+
+msgid "No downloads here.\nClick “Add URL”, copy a link, or download something in your browser."
+msgstr "Здесь нет загрузок.\nНажмите «Добавить URL», скопируйте ссылку или скачайте что-нибудь в браузере."
+
+msgid "Download File Info"
+msgstr "Сведения о файле"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "https://example.com/file"
+msgstr "https://example.com/file"
+
+msgid "Check"
+msgstr "Проверить"
+
+msgid "Category"
+msgstr "Категория"
+
+msgid "Save As"
+msgstr "Сохранить как"
+
+msgid "Remember this path for \"{}\" category"
+msgstr "Запомнить этот путь для категории \"{}\""
+
+msgid "optional note"
+msgstr "примечание (необязательно)"
+
+msgid "Use authorization"
+msgstr "Использовать авторизацию"
+
+msgid "Login"
+msgstr "Логин"
+
+msgid "Password"
+msgstr "Пароль"
+
+msgid "Checking the address…"
+msgstr "Проверка адреса…"
+
+msgid "Connections"
+msgstr "Соединения"
+
+msgid "Queue"
+msgstr "Очередь"
+
+msgid "Download with the browser"
+msgstr "Скачать браузером"
+
+msgid "Download Later"
+msgstr "Скачать позже"
+
+msgid "Start Download"
+msgstr "Начать загрузку"
+
+msgid "Cancel"
+msgstr "Отмена"
+
+msgid "Add batch download"
+msgstr "Пакетная загрузка"
+
+msgid "List of links"
+msgstr "Список ссылок"
+
+msgid "Address with a pattern (*)"
+msgstr "Адрес с шаблоном (*)"
+
+msgid "Paste the links, one per line. They download one after another in the queue you choose."
+msgstr "Вставьте ссылки, по одной в строке. Они скачиваются друг за другом в выбранной очереди."
+
+msgid "Paste from clipboard"
+msgstr "Вставить из буфера обмена"
+
+msgid "Type an address with a * where the number (or letter) goes, for example\nhttps://www.site.com/pictures/img*.jpg"
+msgstr "Введите адрес со * на месте номера (или буквы), например\nhttps://www.site.com/pictures/img*.jpg"
+
+msgid "https://www.site.com/pictures/img*.jpg"
+msgstr "https://www.site.com/pictures/img*.jpg"
+
+msgid "Letters (a-z) instead of numbers"
+msgstr "Буквы (a-z) вместо чисел"
+
+msgid "From"
+msgstr "С"
+
+msgid "To"
+msgstr "По"
+
+msgid "Wildcard size"
+msgstr "Ширина шаблона"
+
+msgid "Wildcard size 3 makes 001, 002 … 010."
+msgstr "Ширина 3 даёт 001, 002 … 010."
+
+msgid "optional"
+msgstr "необязательно"
+
+msgid "Save all to"
+msgstr "Сохранить всё в"
+
+msgid "automatic (by file type)"
+msgstr "автоматически (по типу файла)"
+
+msgid "Start the queue now"
+msgstr "Запустить очередь сейчас"
+
+msgid "Add"
+msgstr "Добавить"
+
+msgid "Download status"
+msgstr "Состояние загрузки"
+
+msgid "Options on completion"
+msgstr "Действия по завершении"
+
+msgid "File size"
+msgstr "Размер файла"
+
+msgid "Downloaded"
+msgstr "Скачано"
+
+msgid "Resume capability"
+msgstr "Возобновление"
+
+msgid "Use speed limiter for this download"
+msgstr "Ограничить скорость этой загрузки"
+
+msgid "Maximum download speed (KB/s)"
+msgstr "Максимальная скорость (КБ/с)"
+
+msgid "{} MB/s"
+msgstr "{} МБ/с"
+
+msgid "{} KB/s"
+msgstr "{} КБ/с"
+
+msgid "Changes apply right away, even while downloading."
+msgstr "Изменения применяются сразу, даже во время загрузки."
+
+msgid "When this download completes:"
+msgstr "Когда эта загрузка завершится:"
+
+msgid "Do nothing (keep the computer on)"
+msgstr "Ничего не делать (не выключать компьютер)"
+
+msgid "Force programs to close when shutting down"
+msgstr "Принудительно закрывать программы при выключении"
+
+msgid "Show the \"Download complete\" window"
+msgstr "Показывать окно \"Загрузка завершена\""
+
+msgid "You get 30 seconds to cancel before the computer shuts down, sleeps or hibernates."
+msgstr "У вас будет 30 секунд на отмену, прежде чем компьютер выключится или перейдёт в спящий режим или гибернацию."
+
+msgid "<< Hide details"
+msgstr "<< Скрыть подробности"
+
+msgid "Show details >>"
+msgstr "Подробнее >>"
+
+msgid "Pause"
+msgstr "Пауза"
+
+msgid "Close"
+msgstr "Закрыть"
+
+msgid "Start positions and download progress by connections"
+msgstr "Начальные позиции и ход загрузки по соединениям"
+
+msgid "N."
+msgstr "№"
+
+msgid "Info"
+msgstr "Инфо"
+
+msgid "Download complete"
+msgstr "Загрузка завершена"
+
+msgid "Address"
+msgstr "Адрес"
+
+msgid "Saved as"
+msgstr "Сохранено как"
+
+msgid "Don't show this again"
+msgstr "Больше не показывать"
+
+msgid "Columns"
+msgstr "Столбцы"
+
+msgid "Show these columns in the download list:"
+msgstr "Показывать эти столбцы в списке загрузок:"
+
+msgid "File Name (always shown)"
+msgstr "Имя файла (всегда показывается)"
+
+msgid "Q (queue number)"
+msgstr "О (номер очереди)"
+
+msgid "Reset"
+msgstr "Сбросить"
+
+msgid "OK"
+msgstr "ОК"
+
+msgid "Add category"
+msgstr "Добавить категорию"
+
+msgid "Category properties"
+msgstr "Свойства категории"
+
+msgid "Category name"
+msgstr "Название категории"
+
+msgid "e.g. Courses"
+msgstr "например, Курсы"
+
+msgid "File types"
+msgstr "Типы файлов"
+
+msgid "mp4 mkv avi (separated by spaces)"
+msgstr "mp4 mkv avi (через пробел)"
+
+msgid "Sites"
+msgstr "Сайты"
+
+msgid "udemy.com *.coursera.org (optional)"
+msgstr "udemy.com *.coursera.org (необязательно)"
+
+msgid "Save files to"
+msgstr "Сохранять файлы в"
+
+msgid "automatic (Downloads\\{})"
+msgstr "автоматически (Загрузки\\{})"
+
+msgid "Files with these extensions, or from these sites, are put into this category and saved to its folder."
+msgstr "Файлы с этими расширениями или с этих сайтов попадают в эту категорию и сохраняются в её папку."
+
+msgid "Find file"
+msgstr "Найти файл"
+
+msgid "Find what"
+msgstr "Что искать"
+
+msgid "Look in"
+msgstr "Где искать"
+
+msgid "Address, referer and parent web page"
+msgstr "Адрес, реферер и исходная веб-страница"
+
+msgid "Match case"
+msgstr "Учитывать регистр"
+
+msgid "Match whole string"
+msgstr "Только целиком"
+
+msgid "Find Next"
+msgstr "Найти далее"
+
+msgid "File Properties – {}"
+msgstr "Свойства файла – {}"
+
+msgid "Type"
+msgstr "Тип"
+
+msgid "Date added"
+msgstr "Дата добавления"
+
+msgid "Use authorization (server login)"
+msgstr "Использовать авторизацию (вход на сервер)"
+
+msgid "Result: {}"
+msgstr "Результат: {}"
+
+msgid "Duplicate download link"
+msgstr "Повторная ссылка на загрузку"
+
+msgid "This address is already in the download list:"
+msgstr "Этот адрес уже есть в списке загрузок:"
+
+msgid "Add it with a new name (numbered)"
+msgstr "Добавить под новым именем (с номером)"
+
+msgid "Add it and replace the old download (overwrite the file)"
+msgstr "Добавить и заменить старую загрузку (перезаписать файл)"
+
+msgid "If it is finished show it, if not resume it"
+msgstr "Если завершена — показать, если нет — продолжить"
+
+msgid "Remember my choice (Options > Downloads)"
+msgstr "Запомнить мой выбор (Параметры > Загрузки)"
+
+msgid "All downloads are finished."
+msgstr "Все загрузки завершены."
+
+msgid "Ezoo Download will {} in {} seconds."
+msgstr "Ezoo Download: {} через {} с."
+
+msgid "Now"
+msgstr "Сейчас"
+
+msgid "Queue name"
+msgstr "Название очереди"
+
+msgid "Schedule"
+msgstr "Расписание"
+
+msgid "Files in the queue"
+msgstr "Файлы в очереди"
+
+msgid "Start the queue automatically"
+msgstr "Запускать очередь автоматически"
+
+msgid "Start time (HH:MM)"
+msgstr "Время запуска (ЧЧ:ММ)"
+
+msgid "Daily"
+msgstr "Ежедневно"
+
+msgid "Once at (YYYY-MM-DD)"
+msgstr "Один раз (ГГГГ-ММ-ДД)"
+
+msgid "Mon"
+msgstr "Пн"
+
+msgid "Tue"
+msgstr "Вт"
+
+msgid "Wed"
+msgstr "Ср"
+
+msgid "Thu"
+msgstr "Чт"
+
+msgid "Fri"
+msgstr "Пт"
+
+msgid "Sat"
+msgstr "Сб"
+
+msgid "Sun"
+msgstr "Вс"
+
+msgid "Start the queue when Ezoo Download starts"
+msgstr "Запускать очередь при запуске Ezoo Download"
+
+msgid "Stop the queue at"
+msgstr "Остановить очередь в"
+
+msgid "When the queue is done"
+msgstr "Когда очередь завершится"
+
+msgid "For Sleep you may need to allow wake timers in the Windows power options, so the computer can wake up for the next start."
+msgstr "Для спящего режима может понадобиться разрешить таймеры пробуждения в настройках электропитания Windows, чтобы компьютер проснулся к следующему запуску."
+
+msgid "Move up"
+msgstr "Вверх"
+
+msgid "Move down"
+msgstr "Вниз"
+
+msgid "Files download in this order. Add files with right click > Move to queue, Add Batch, or \"Download Later\"."
+msgstr "Файлы скачиваются в этом порядке. Добавляйте файлы правым щелчком > Переместить в очередь, через Пакет или \"Скачать позже\"."
+
+msgid "Download"
+msgstr "Скачивать"
+
+msgid "files at the same time"
+msgstr "файлов одновременно"
+
+msgid "Number of retries for each file if downloading failed"
+msgstr "Число повторов для каждого файла при ошибке"
+
+msgid "Save all files of this queue to"
+msgstr "Сохранять все файлы этой очереди в"
+
+msgid "Open each file when it has finished downloading"
+msgstr "Открывать каждый файл после загрузки"
+
+msgid "Start now"
+msgstr "Запустить сейчас"
+
+msgid "Apply"
+msgstr "Применить"
+
+msgid "Download all links"
+msgstr "Скачать все ссылки"
+
+msgid "Site Grabber"
+msgstr "Сборщик сайтов"
+
+msgid "Start page"
+msgstr "Начальная страница"
+
+msgid "https://example.com/gallery/"
+msgstr "https://example.com/gallery/"
+
+msgid "Start exploring"
+msgstr "Начать обход"
+
+msgid "Get"
+msgstr "Собирать"
+
+msgid "All files (not web pages)"
+msgstr "Все файлы (не веб-страницы)"
+
+msgid "All images"
+msgstr "Все изображения"
+
+msgid "All videos"
+msgstr "Все видео"
+
+msgid "All music / audio"
+msgstr "Вся музыка / аудио"
+
+msgid "Archives and programs"
+msgstr "Архивы и программы"
+
+msgid "Documents (PDF, Office)"
+msgstr "Документы (PDF, Office)"
+
+msgid "Custom file types"
+msgstr "Свои типы файлов"
+
+msgid "jpg png mp4 (custom types)"
+msgstr "jpg png mp4 (свои типы)"
+
+msgid "Levels to explore"
+msgstr "Уровней обхода"
+
+msgid "Pages at the same time"
+msgstr "Страниц одновременно"
+
+msgid "Other sites too"
+msgstr "Также другие сайты"
+
+msgid "Don't go to parent folders"
+msgstr "Не переходить в родительские папки"
+
+msgid "Show"
+msgstr "Показать"
+
+msgid "All types"
+msgstr "Все типы"
+
+msgid "Images"
+msgstr "Изображения"
+
+msgid "Videos"
+msgstr "Видео"
+
+msgid "Music"
+msgstr "Музыка"
+
+msgid "Archives / programs"
+msgstr "Архивы / программы"
+
+msgid "Documents"
+msgstr "Документы"
+
+msgid "Web pages"
+msgstr "Веб-страницы"
+
+msgid "Filter by name or address…"
+msgstr "Фильтр по имени или адресу…"
+
+msgid "Check all"
+msgstr "Отметить все"
+
+msgid "Uncheck all"
+msgstr "Снять все"
+
+msgid "Link text"
+msgstr "Текст ссылки"
+
+msgid "No links on this page."
+msgstr "На этой странице нет ссылок."
+
+msgid "Exploring…"
+msgstr "Обход…"
+
+msgid "Type a start page and click \"Start exploring\"."
+msgstr "Введите начальную страницу и нажмите \"Начать обход\"."
+
+msgid "Use link texts as descriptions"
+msgstr "Использовать текст ссылок как описание"
+
+msgid "Download checked"
+msgstr "Скачать отмеченные"
+
+msgid "Tip of the day"
+msgstr "Совет дня"
+
+msgid "Did you know…"
+msgstr "А вы знали…"
+
+msgid "Show tips at startup"
+msgstr "Показывать советы при запуске"
+
+msgid "Next tip"
+msgstr "Следующий совет"
+
+msgid "Refresh download address"
+msgstr "Обновить адрес загрузки"
+
+msgid "1. Open the web page where you got this file.\n2. Click the download link there again (or start the video).\n3. Ezoo Download takes the new address and continues from where it stopped."
+msgstr "1. Откройте веб-страницу, откуда вы получили этот файл.\n2. Снова нажмите там ссылку для скачивания (или запустите видео).\n3. Ezoo Download возьмёт новый адрес и продолжит с того места, где остановился."
+
+msgid "Open the page"
+msgstr "Открыть страницу"
+
+msgid "Waiting for the new address from the browser…"
+msgstr "Ожидание нового адреса от браузера…"
+
+msgid "Or paste the new address here:"
+msgstr "Или вставьте новый адрес сюда:"
+
+msgid "https://…"
+msgstr "https://…"
+
+msgid "Use it"
+msgstr "Использовать"
+
+msgid "Stop waiting"
+msgstr "Не ждать"
+
+msgid "Play"
+msgstr "Воспроизвести"
+
+msgid "Ezoo Download – Options"
+msgstr "Ezoo Download – Параметры"
+
+msgid "General"
+msgstr "Общие"
+
+msgid "File Types"
+msgstr "Типы файлов"
+
+msgid "Connection"
+msgstr "Соединение"
+
+msgid "Proxy / Server"
+msgstr "Прокси / Сервер"
+
+msgid "Site Logins"
+msgstr "Логины сайтов"
+
+msgid "Sounds"
+msgstr "Звуки"
+
+msgid "Window opacity"
+msgstr "Непрозрачность окна"
+
+msgid "Launch Ezoo Download on Windows startup"
+msgstr "Запускать Ezoo Download вместе с Windows"
+
+msgid "Keep running next to the clock when the window is closed"
+msgstr "Оставаться рядом с часами при закрытии окна"
+
+msgid "Watch the clipboard for download links"
+msgstr "Следить за буфером обмена на ссылки для загрузки"
+
+msgid "Automatically start downloading links placed in the clipboard"
+msgstr "Автоматически скачивать ссылки, попавшие в буфер обмена"
+
+msgid "Show \"Tip of the day\" at startup"
+msgstr "Показывать \"Совет дня\" при запуске"
+
+msgid "On double click on a download"
+msgstr "Двойной щелчок по загрузке"
+
+msgid "Open the file / progress window"
+msgstr "Открыть файл / окно хода загрузки"
+
+msgid "Show properties"
+msgstr "Показать свойства"
+
+msgid "Browser integration"
+msgstr "Интеграция с браузером"
+
+msgid "Chrome and Edge: load the \"extension\" folder in chrome://extensions (Developer mode > Load unpacked). Downloads, videos and the right click menu then go to Ezoo Download."
+msgstr "Chrome и Edge: загрузите папку \"extension\" в chrome://extensions (Режим разработчика > Загрузить распакованное расширение). Тогда загрузки, видео и меню правого щелчка пойдут в Ezoo Download."
+
+msgid "Hold this key to let the browser download by itself"
+msgstr "Удерживайте эту клавишу, чтобы браузер скачивал сам"
+
+msgid "Alt"
+msgstr "Alt"
+
+msgid "Ctrl"
+msgstr "Ctrl"
+
+msgid "Shift"
+msgstr "Shift"
+
+msgid "None"
+msgstr "Нет"
+
+msgid "Hold this key to force Ezoo Download to take a link"
+msgstr "Удерживайте эту клавишу, чтобы Ezoo Download обязательно взял ссылку"
+
+msgid "Browser extension port"
+msgstr "Порт расширения браузера"
+
+msgid "Automatically start downloading these file types (from the browser):"
+msgstr "Автоматически скачивать файлы этих типов (из браузера):"
+
+msgid "Default"
+msgstr "По умолчанию"
+
+msgid "Don't start downloading automatically from these sites:"
+msgstr "Не начинать загрузку автоматически с этих сайтов:"
+
+msgid "*.update.microsoft.com  windowsupdate.com"
+msgstr "*.update.microsoft.com  windowsupdate.com"
+
+msgid "Don't start downloading these addresses (one per line, * allowed):"
+msgstr "Не скачивать эти адреса (по одному в строке, можно *):"
+
+msgid "Show the \"Download this video\" panel on web players"
+msgstr "Показывать панель \"Скачать это видео\" на веб-плеерах"
+
+msgid "Don't show it on these sites"
+msgstr "Не показывать на этих сайтах"
+
+msgid "Smallest video (KB)"
+msgstr "Минимальный размер видео (КБ)"
+
+msgid "Smallest audio (KB)"
+msgstr "Минимальный размер аудио (КБ)"
+
+msgid "Main download folder"
+msgstr "Основная папка загрузок"
+
+msgid "Browse…"
+msgstr "Обзор…"
+
+msgid "Sort files into folders by category (Video, Music, Programs, Compressed, Documents, Images…)"
+msgstr "Раскладывать файлы по папкам категорий (Видео, Музыка, Программы, Архивы, Документы, Изображения…)"
+
+msgid "Each category's own folder and file types: right click it in the sidebar > Properties."
+msgstr "Своя папка и типы файлов каждой категории: правый щелчок по ней на боковой панели > Свойства."
+
+msgid "Forget remembered category paths"
+msgstr "Забыть запомненные пути категорий"
+
+msgid "Temporary folder (parts while downloading)"
+msgstr "Временная папка (части во время загрузки)"
+
+msgid "next to the file (default)"
+msgstr "рядом с файлом (по умолчанию)"
+
+msgid "Tip: a temporary folder on another drive than the download folder makes joining the parts faster."
+msgstr "Совет: временная папка на другом диске, чем папка загрузок, ускоряет сборку частей."
+
+msgid "Show the \"Download File Info\" window for downloads from the browser"
+msgstr "Показывать окно \"Сведения о файле\" для загрузок из браузера"
+
+msgid "Start downloading immediately while showing \"Download File Info\""
+msgstr "Сразу начинать загрузку, показывая \"Сведения о файле\""
+
+msgid "Show the download progress window"
+msgstr "Показывать окно хода загрузки"
+
+msgid "Normally"
+msgstr "Обычно"
+
+msgid "Minimized"
+msgstr "Свёрнутым"
+
+msgid "Don't show"
+msgstr "Не показывать"
+
+msgid "If a duplicate link is added"
+msgstr "Если добавлена повторная ссылка"
+
+msgid "Ask me"
+msgstr "Спрашивать"
+
+msgid "Add it with a numbered file name"
+msgstr "Добавить с номером в имени файла"
+
+msgid "Add it and replace the old download"
+msgstr "Добавить и заменить старую загрузку"
+
+msgid "Show the finished one / resume the unfinished one"
+msgstr "Показать завершённую / продолжить незавершённую"
+
+msgid "Give finished files the date from the server"
+msgstr "Ставить завершённым файлам дату с сервера"
+
+msgid "Check every finished file for viruses with this program"
+msgstr "Проверять каждый завершённый файл на вирусы этой программой"
+
+msgid "C:\\Program Files\\Windows Defender\\MpCmdRun.exe"
+msgstr "C:\\Program Files\\Windows Defender\\MpCmdRun.exe"
+
+msgid "Command line parameters"
+msgstr "Параметры командной строки"
+
+msgid "-Scan -ScanType 3 -File [File]"
+msgstr "-Scan -ScanType 3 -File [File]"
+
+msgid "[File] is replaced by the downloaded file."
+msgstr "[File] заменяется скачанным файлом."
+
+msgid "User-Agent for downloads added by hand"
+msgstr "User-Agent для загрузок, добавленных вручную"
+
+msgid "Connection type / speed"
+msgstr "Тип / скорость соединения"
+
+msgid "Low speed (modem, mobile)"
+msgstr "Низкая скорость (модем, мобильная сеть)"
+
+msgid "Medium speed (DSL)"
+msgstr "Средняя скорость (DSL)"
+
+msgid "High speed (fiber, cable, LAN)"
+msgstr "Высокая скорость (оптика, кабель, LAN)"
+
+msgid "Default max. connections number"
+msgstr "Макс. число соединений по умолчанию"
+
+msgid "Downloads at the same time (0 = no limit)"
+msgstr "Загрузок одновременно (0 = без ограничений)"
+
+msgid "Retries on error"
+msgstr "Повторов при ошибке"
+
+msgid "Exceptions: servers with their own number of connections"
+msgstr "Исключения: серверы со своим числом соединений"
+
+msgid "Server"
+msgstr "Сервер"
+
+msgid "example.com"
+msgstr "example.com"
+
+msgid "Download limits"
+msgstr "Ограничения загрузки"
+
+msgid "Download no more than"
+msgstr "Скачивать не больше"
+
+msgid "MB every"
+msgstr "МБ каждые"
+
+msgid "hours"
+msgstr "ч"
+
+msgid "No proxy"
+msgstr "Без прокси"
+
+msgid "Use the system settings (like your browser)"
+msgstr "Использовать настройки системы (как браузер)"
+
+msgid "Manual proxy configuration (HTTP / HTTPS)"
+msgstr "Ручная настройка прокси (HTTP / HTTPS)"
+
+msgid "Proxy address"
+msgstr "Адрес прокси"
+
+msgid "proxy.example.com"
+msgstr "proxy.example.com"
+
+msgid "Port"
+msgstr "Порт"
+
+msgid "User name"
+msgstr "Имя пользователя"
+
+msgid "Don't use the proxy for"
+msgstr "Не использовать прокси для"
+
+msgid "localhost 127.0.0.1 *.local"
+msgstr "localhost 127.0.0.1 *.local"
+
+msgid "Addresses separated by spaces. SOCKS proxies: use the system settings."
+msgstr "Адреса через пробел. SOCKS-прокси: используйте настройки системы."
+
+msgid "User names and passwords for sites that ask for them:"
+msgstr "Имена пользователей и пароли для сайтов, которые их запрашивают:"
+
+msgid "Site / path"
+msgstr "Сайт / путь"
+
+msgid "example.com/members"
+msgstr "example.com/members"
+
+msgid "Add / Update"
+msgstr "Добавить / Обновить"
+
+msgid "Saved in the settings file of your Windows user account."
+msgstr "Хранится в файле настроек вашей учётной записи Windows."
+
+msgid "Play sounds"
+msgstr "Воспроизводить звуки"
+
+msgid "Download failed"
+msgstr "Ошибка загрузки"
+
+msgid "Queue started"
+msgstr "Очередь запущена"
+
+msgid "Queue finished"
+msgstr "Очередь завершена"
+
+msgid ".wav files. Empty = no sound for that event."
+msgstr "Файлы .wav. Пусто = без звука для этого события."
+
+msgid "Turn the speed limiter on"
+msgstr "Включить ограничитель скорости"
+
+msgid "Always turn on the speed limiter when Ezoo Download starts"
+msgstr "Всегда включать ограничитель при запуске Ezoo Download"
+
+msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
+msgstr "У каждой загрузки может быть свой лимит: её окно хода загрузки > вкладка «Ограничитель скорости»."
+
+msgid "Download a playlist"
+msgstr "Скачать плейлист"
+
+msgid "Paste the address of a playlist:"
+msgstr "Вставьте адрес плейлиста:"
+
+msgid "https://…/playlist?list=…"
+msgstr "https://…/playlist?list=…"
+
+msgid "Getting the list…"
+msgstr "Получение списка…"
+
+msgid "Get videos"
+msgstr "Получить видео"
+
+msgid "Video"
+msgstr "Видео"
+
+msgid "Length"
+msgstr "Длительность"
+
+msgid "Getting the videos of the playlist…"
+msgstr "Получение видео из плейлиста…"
+
+msgid "The videos of the playlist show up here."
+msgstr "Здесь появятся видео из плейлиста."
+
+msgid "Quality"
+msgstr "Качество"
+
+msgid "Best quality (MP4)"
+msgstr "Лучшее качество (MP4)"
+
+msgid "1080p"
+msgstr "1080p"
+
+msgid "720p"
+msgstr "720p"
+
+msgid "480p"
+msgstr "480p"
+
+msgid "360p"
+msgstr "360p"
+
+msgid "Audio only (M4A)"
+msgstr "Только аудио (M4A)"
+
+msgid "Files at the same time"
+msgstr "Файлов одновременно"
+
+msgid "Number the files"
+msgstr "Нумеровать файлы"
+
+msgid "Not installed on this computer"
+msgstr "Не установлен на этом компьютере"
+
+msgid "Add Ezoo Download to your browser"
+msgstr "Добавьте Ezoo Download в браузер"
+
+msgid "Click your browser:"
+msgstr "Нажмите на свой браузер:"
+
+msgid "Almost done:"
+msgstr "Почти готово:"
+
+msgid "Copy folder path"
+msgstr "Копировать путь к папке"
+
+msgid "Version {}"
+msgstr "Версия {}"
+
+msgid "Coded by Ahmed Ezzat"
+msgstr "Автор: Ahmed Ezzat"
+
+msgid "Like Ezoo Download? You can support its development:"
+msgstr "Нравится Ezoo Download? Вы можете поддержать разработку:"
+
+msgid "Support with PayPal"
+msgstr "Поддержать через PayPal"

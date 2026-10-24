@@ -1,0 +1,1286 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: pt\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "{} downloads selected"
+msgstr "{} downloads selecionados"
+
+msgid "Open"
+msgstr "Abrir"
+
+msgid "Show download progress"
+msgstr "Mostrar o progresso"
+
+msgid "Open with…"
+msgstr "Abrir com…"
+
+msgid "Open folder"
+msgstr "Abrir pasta"
+
+msgid "Resume download"
+msgstr "Retomar download"
+
+msgid "Stop download"
+msgstr "Parar download"
+
+msgid "Redownload"
+msgstr "Baixar novamente"
+
+msgid "Refresh download address…"
+msgstr "Atualizar o endereço do download…"
+
+msgid "Move / Rename…"
+msgstr "Mover / Renomear…"
+
+msgid "Move to queue"
+msgstr "Mover para a fila"
+
+msgid "Delete from queue"
+msgstr "Remover da fila"
+
+msgid "Copy address"
+msgstr "Copiar endereço"
+
+msgid "Check file (SHA-256)"
+msgstr "Verificar arquivo (SHA-256)"
+
+msgid "Properties"
+msgstr "Propriedades"
+
+msgid "Remove"
+msgstr "Remover"
+
+msgid "Start queue"
+msgstr "Iniciar fila"
+
+msgid "Stop queue"
+msgstr "Parar fila"
+
+msgid "Edit queue / schedule…"
+msgstr "Editar fila / agendamento…"
+
+msgid "New queue…"
+msgstr "Nova fila…"
+
+msgid "Delete queue"
+msgstr "Excluir fila"
+
+msgid "Add category…"
+msgstr "Adicionar categoria…"
+
+msgid "Delete category"
+msgstr "Excluir categoria"
+
+msgid "Properties…"
+msgstr "Propriedades…"
+
+msgid "Ezoo Download"
+msgstr "Ezoo Download"
+
+msgid "Tasks"
+msgstr "Tarefas"
+
+msgid "Add new download…"
+msgstr "Adicionar novo download…"
+
+msgid "Add batch download…"
+msgstr "Adicionar download em lote…"
+
+msgid "Add batch download from clipboard"
+msgstr "Adicionar download em lote da área de transferência"
+
+msgid "Run site grabber…"
+msgstr "Executar o capturador de sites…"
+
+msgid "Download a playlist…"
+msgstr "Baixar uma playlist…"
+
+msgid "Export"
+msgstr "Exportar"
+
+msgid "To download list file (.ef2)…"
+msgstr "Para arquivo de lista (.ef2)…"
+
+msgid "To text file…"
+msgstr "Para arquivo de texto…"
+
+msgid "Import"
+msgstr "Importar"
+
+msgid "From download list file (.ef2)…"
+msgstr "De arquivo de lista (.ef2)…"
+
+msgid "From text file…"
+msgstr "De arquivo de texto…"
+
+msgid "Open download folder"
+msgstr "Abrir a pasta de downloads"
+
+msgid "Exit"
+msgstr "Sair"
+
+msgid "File"
+msgstr "Arquivo"
+
+msgid "Download now"
+msgstr "Baixar agora"
+
+msgid "Select all   Ctrl+A"
+msgstr "Selecionar tudo   Ctrl+A"
+
+msgid "Downloads"
+msgstr "Downloads"
+
+msgid "Resume all"
+msgstr "Retomar todos"
+
+msgid "Stop all"
+msgstr "Parar todos"
+
+msgid "Delete all completed"
+msgstr "Excluir todos os concluídos"
+
+msgid "Find…   Ctrl+F"
+msgstr "Localizar…   Ctrl+F"
+
+msgid "Find next   F3"
+msgstr "Localizar próximo   F3"
+
+msgid "Speed Limiter"
+msgstr "Limitador de velocidade"
+
+msgid "Turn on"
+msgstr "Ligar"
+
+msgid "Turn off"
+msgstr "Desligar"
+
+msgid "Settings…"
+msgstr "Configurações…"
+
+msgid "When all downloads finish"
+msgstr "Quando todos os downloads terminarem"
+
+msgid "Do nothing"
+msgstr "Não fazer nada"
+
+msgid "Shut down the computer"
+msgstr "Desligar o computador"
+
+msgid "Sleep"
+msgstr "Suspender"
+
+msgid "Hibernate"
+msgstr "Hibernar"
+
+msgid "Exit Ezoo Download"
+msgstr "Sair do Ezoo Download"
+
+msgid "Scheduler…"
+msgstr "Agendador…"
+
+msgid "Options…"
+msgstr "Opções…"
+
+msgid "View"
+msgstr "Exibir"
+
+msgid "Show categories"
+msgstr "Mostrar categorias"
+
+msgid "Arrange files"
+msgstr "Organizar arquivos"
+
+msgid "By order of addition"
+msgstr "Por ordem de adição"
+
+msgid "File name"
+msgstr "Nome do arquivo"
+
+msgid "Size"
+msgstr "Tamanho"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Time left"
+msgstr "Tempo restante"
+
+msgid "Transfer rate"
+msgstr "Taxa de transferência"
+
+msgid "Last try date"
+msgstr "Última tentativa"
+
+msgid "Description"
+msgstr "Descrição"
+
+msgid "Save to"
+msgstr "Salvar em"
+
+msgid "Referer"
+msgstr "Referenciador"
+
+msgid "Parent web page"
+msgstr "Página de origem"
+
+msgid "Toolbar"
+msgstr "Barra de ferramentas"
+
+msgid "Large buttons"
+msgstr "Botões grandes"
+
+msgid "Small buttons"
+msgstr "Botões pequenos"
+
+msgid "Columns…"
+msgstr "Colunas…"
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "Theme"
+msgstr "Tema"
+
+msgid "Light"
+msgstr "Claro"
+
+msgid "Dark"
+msgstr "Escuro"
+
+msgid "Ocean blue"
+msgstr "Azul oceano"
+
+msgid "Midnight purple"
+msgstr "Roxo meia-noite"
+
+msgid "Forest green"
+msgstr "Verde floresta"
+
+msgid "Black"
+msgstr "Preto"
+
+msgid "Sunset"
+msgstr "Pôr do sol"
+
+msgid "Teal night"
+msgstr "Noite turquesa"
+
+msgid "Rose"
+msgstr "Rosa"
+
+msgid "Transparency…"
+msgstr "Transparência…"
+
+msgid "Help"
+msgstr "Ajuda"
+
+msgid "Add Ezoo Download to my browser…"
+msgstr "Adicionar o Ezoo Download ao meu navegador…"
+
+msgid "Tip of the day…"
+msgstr "Dica do dia…"
+
+msgid "Check for updates"
+msgstr "Verificar atualizações"
+
+msgid "Check for updates (video downloader)"
+msgstr "Verificar atualizações (baixador de vídeo)"
+
+msgid "About Ezoo Download"
+msgstr "Sobre o Ezoo Download"
+
+msgid "Add URL"
+msgstr "Adicionar URL"
+
+msgid "Add Batch"
+msgstr "Em lote"
+
+msgid "Resume"
+msgstr "Retomar"
+
+msgid "Stop"
+msgstr "Parar"
+
+msgid "Stop All"
+msgstr "Parar todos"
+
+msgid "Delete"
+msgstr "Excluir"
+
+msgid "Delete Done"
+msgstr "Excluir concluídos"
+
+msgid "Options"
+msgstr "Opções"
+
+msgid "Scheduler"
+msgstr "Agendador"
+
+msgid "Limiter: On"
+msgstr "Limitador: ligado"
+
+msgid "Limiter: Off"
+msgstr "Limitador: desligado"
+
+msgid "Start Queue"
+msgstr "Iniciar fila"
+
+msgid "Stop Queue"
+msgstr "Parar fila"
+
+msgid "Grabber"
+msgstr "Capturador"
+
+msgid "Playlist"
+msgstr "Playlist"
+
+msgid "Filter the list…"
+msgstr "Filtrar a lista…"
+
+msgid "Categories"
+msgstr "Categorias"
+
+msgid "All Downloads"
+msgstr "Todos os downloads"
+
+msgid "Unfinished"
+msgstr "Não concluídos"
+
+msgid "Finished"
+msgstr "Concluídos"
+
+msgid "Queues"
+msgstr "Filas"
+
+msgid "{} (running)"
+msgstr "{} (em andamento)"
+
+msgid "New queue"
+msgstr "Nova fila"
+
+msgid "Edit"
+msgstr "Editar"
+
+msgid "File Name"
+msgstr "Nome do arquivo"
+
+msgid "Q"
+msgstr "F"
+
+msgid "Last Try Date"
+msgstr "Última tentativa"
+
+msgid "Date Added"
+msgstr "Data de adição"
+
+msgid "Save To"
+msgstr "Salvar em"
+
+msgid "Parent Web Page"
+msgstr "Página de origem"
+
+msgid "Nothing matches “{}”."
+msgstr "Nada corresponde a “{}”."
+
+msgid "No downloads here.\nClick “Add URL”, copy a link, or download something in your browser."
+msgstr "Nenhum download aqui.\nClique em “Adicionar URL”, copie um link ou baixe algo no seu navegador."
+
+msgid "Download File Info"
+msgstr "Informações do arquivo"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "https://example.com/file"
+msgstr "https://example.com/file"
+
+msgid "Check"
+msgstr "Verificar"
+
+msgid "Category"
+msgstr "Categoria"
+
+msgid "Save As"
+msgstr "Salvar como"
+
+msgid "Remember this path for \"{}\" category"
+msgstr "Lembrar este caminho para a categoria \"{}\""
+
+msgid "optional note"
+msgstr "nota opcional"
+
+msgid "Use authorization"
+msgstr "Usar autenticação"
+
+msgid "Login"
+msgstr "Usuário"
+
+msgid "Password"
+msgstr "Senha"
+
+msgid "Checking the address…"
+msgstr "Verificando o endereço…"
+
+msgid "Connections"
+msgstr "Conexões"
+
+msgid "Queue"
+msgstr "Fila"
+
+msgid "Download with the browser"
+msgstr "Baixar com o navegador"
+
+msgid "Download Later"
+msgstr "Baixar depois"
+
+msgid "Start Download"
+msgstr "Iniciar download"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Add batch download"
+msgstr "Download em lote"
+
+msgid "List of links"
+msgstr "Lista de links"
+
+msgid "Address with a pattern (*)"
+msgstr "Endereço com padrão (*)"
+
+msgid "Paste the links, one per line. They download one after another in the queue you choose."
+msgstr "Cole os links, um por linha. Eles são baixados um após o outro na fila que você escolher."
+
+msgid "Paste from clipboard"
+msgstr "Colar da área de transferência"
+
+msgid "Type an address with a * where the number (or letter) goes, for example\nhttps://www.site.com/pictures/img*.jpg"
+msgstr "Digite um endereço com um * onde fica o número (ou a letra), por exemplo\nhttps://www.site.com/pictures/img*.jpg"
+
+msgid "https://www.site.com/pictures/img*.jpg"
+msgstr "https://www.site.com/pictures/img*.jpg"
+
+msgid "Letters (a-z) instead of numbers"
+msgstr "Letras (a-z) em vez de números"
+
+msgid "From"
+msgstr "De"
+
+msgid "To"
+msgstr "Até"
+
+msgid "Wildcard size"
+msgstr "Largura do curinga"
+
+msgid "Wildcard size 3 makes 001, 002 … 010."
+msgstr "Largura 3 gera 001, 002 … 010."
+
+msgid "optional"
+msgstr "opcional"
+
+msgid "Save all to"
+msgstr "Salvar tudo em"
+
+msgid "automatic (by file type)"
+msgstr "automático (pelo tipo de arquivo)"
+
+msgid "Start the queue now"
+msgstr "Iniciar a fila agora"
+
+msgid "Add"
+msgstr "Adicionar"
+
+msgid "Download status"
+msgstr "Status do download"
+
+msgid "Options on completion"
+msgstr "Opções ao concluir"
+
+msgid "File size"
+msgstr "Tamanho do arquivo"
+
+msgid "Downloaded"
+msgstr "Baixado"
+
+msgid "Resume capability"
+msgstr "Pode retomar"
+
+msgid "Use speed limiter for this download"
+msgstr "Limitar a velocidade deste download"
+
+msgid "Maximum download speed (KB/s)"
+msgstr "Velocidade máxima (KB/s)"
+
+msgid "{} MB/s"
+msgstr "{} MB/s"
+
+msgid "{} KB/s"
+msgstr "{} KB/s"
+
+msgid "Changes apply right away, even while downloading."
+msgstr "As mudanças valem na hora, mesmo durante o download."
+
+msgid "When this download completes:"
+msgstr "Quando este download terminar:"
+
+msgid "Do nothing (keep the computer on)"
+msgstr "Não fazer nada (manter o computador ligado)"
+
+msgid "Force programs to close when shutting down"
+msgstr "Forçar o fechamento dos programas ao desligar"
+
+msgid "Show the \"Download complete\" window"
+msgstr "Mostrar a janela \"Download concluído\""
+
+msgid "You get 30 seconds to cancel before the computer shuts down, sleeps or hibernates."
+msgstr "Você tem 30 segundos para cancelar antes de o computador desligar, suspender ou hibernar."
+
+msgid "<< Hide details"
+msgstr "<< Ocultar detalhes"
+
+msgid "Show details >>"
+msgstr "Mostrar detalhes >>"
+
+msgid "Pause"
+msgstr "Pausar"
+
+msgid "Close"
+msgstr "Fechar"
+
+msgid "Start positions and download progress by connections"
+msgstr "Posições iniciais e progresso por conexão"
+
+msgid "N."
+msgstr "N.º"
+
+msgid "Info"
+msgstr "Info"
+
+msgid "Download complete"
+msgstr "Download concluído"
+
+msgid "Address"
+msgstr "Endereço"
+
+msgid "Saved as"
+msgstr "Salvo como"
+
+msgid "Don't show this again"
+msgstr "Não mostrar novamente"
+
+msgid "Columns"
+msgstr "Colunas"
+
+msgid "Show these columns in the download list:"
+msgstr "Mostrar estas colunas na lista de downloads:"
+
+msgid "File Name (always shown)"
+msgstr "Nome do arquivo (sempre visível)"
+
+msgid "Q (queue number)"
+msgstr "F (número da fila)"
+
+msgid "Reset"
+msgstr "Redefinir"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "Add category"
+msgstr "Adicionar categoria"
+
+msgid "Category properties"
+msgstr "Propriedades da categoria"
+
+msgid "Category name"
+msgstr "Nome da categoria"
+
+msgid "e.g. Courses"
+msgstr "ex. Cursos"
+
+msgid "File types"
+msgstr "Tipos de arquivo"
+
+msgid "mp4 mkv avi (separated by spaces)"
+msgstr "mp4 mkv avi (separados por espaços)"
+
+msgid "Sites"
+msgstr "Sites"
+
+msgid "udemy.com *.coursera.org (optional)"
+msgstr "udemy.com *.coursera.org (opcional)"
+
+msgid "Save files to"
+msgstr "Salvar os arquivos em"
+
+msgid "automatic (Downloads\\{})"
+msgstr "automático (Downloads\\{})"
+
+msgid "Files with these extensions, or from these sites, are put into this category and saved to its folder."
+msgstr "Arquivos com estas extensões, ou destes sites, vão para esta categoria e são salvos na pasta dela."
+
+msgid "Find file"
+msgstr "Localizar arquivo"
+
+msgid "Find what"
+msgstr "Localizar"
+
+msgid "Look in"
+msgstr "Procurar em"
+
+msgid "Address, referer and parent web page"
+msgstr "Endereço, referenciador e página de origem"
+
+msgid "Match case"
+msgstr "Diferenciar maiúsculas"
+
+msgid "Match whole string"
+msgstr "Texto inteiro"
+
+msgid "Find Next"
+msgstr "Localizar próximo"
+
+msgid "File Properties – {}"
+msgstr "Propriedades do arquivo – {}"
+
+msgid "Type"
+msgstr "Tipo"
+
+msgid "Date added"
+msgstr "Data de adição"
+
+msgid "Use authorization (server login)"
+msgstr "Usar autenticação (login no servidor)"
+
+msgid "Result: {}"
+msgstr "Resultado: {}"
+
+msgid "Duplicate download link"
+msgstr "Link de download duplicado"
+
+msgid "This address is already in the download list:"
+msgstr "Este endereço já está na lista de downloads:"
+
+msgid "Add it with a new name (numbered)"
+msgstr "Adicionar com um novo nome (numerado)"
+
+msgid "Add it and replace the old download (overwrite the file)"
+msgstr "Adicionar e substituir o download antigo (sobrescrever o arquivo)"
+
+msgid "If it is finished show it, if not resume it"
+msgstr "Se estiver concluído mostrar, senão retomar"
+
+msgid "Remember my choice (Options > Downloads)"
+msgstr "Lembrar minha escolha (Opções > Downloads)"
+
+msgid "All downloads are finished."
+msgstr "Todos os downloads terminaram."
+
+msgid "Ezoo Download will {} in {} seconds."
+msgstr "O Ezoo Download vai {} em {} segundos."
+
+msgid "Now"
+msgstr "Agora"
+
+msgid "Queue name"
+msgstr "Nome da fila"
+
+msgid "Schedule"
+msgstr "Agendamento"
+
+msgid "Files in the queue"
+msgstr "Arquivos na fila"
+
+msgid "Start the queue automatically"
+msgstr "Iniciar a fila automaticamente"
+
+msgid "Start time (HH:MM)"
+msgstr "Hora de início (HH:MM)"
+
+msgid "Daily"
+msgstr "Diariamente"
+
+msgid "Once at (YYYY-MM-DD)"
+msgstr "Uma vez em (AAAA-MM-DD)"
+
+msgid "Mon"
+msgstr "Seg"
+
+msgid "Tue"
+msgstr "Ter"
+
+msgid "Wed"
+msgstr "Qua"
+
+msgid "Thu"
+msgstr "Qui"
+
+msgid "Fri"
+msgstr "Sex"
+
+msgid "Sat"
+msgstr "Sáb"
+
+msgid "Sun"
+msgstr "Dom"
+
+msgid "Start the queue when Ezoo Download starts"
+msgstr "Iniciar a fila quando o Ezoo Download abrir"
+
+msgid "Stop the queue at"
+msgstr "Parar a fila às"
+
+msgid "When the queue is done"
+msgstr "Quando a fila terminar"
+
+msgid "For Sleep you may need to allow wake timers in the Windows power options, so the computer can wake up for the next start."
+msgstr "Para suspender, talvez seja preciso permitir os temporizadores de ativação nas opções de energia do Windows, para que o computador acorde para o próximo início."
+
+msgid "Move up"
+msgstr "Subir"
+
+msgid "Move down"
+msgstr "Descer"
+
+msgid "Files download in this order. Add files with right click > Move to queue, Add Batch, or \"Download Later\"."
+msgstr "Os arquivos são baixados nesta ordem. Adicione arquivos com clique direito > Mover para a fila, Em lote ou \"Baixar depois\"."
+
+msgid "Download"
+msgstr "Baixar"
+
+msgid "files at the same time"
+msgstr "arquivos ao mesmo tempo"
+
+msgid "Number of retries for each file if downloading failed"
+msgstr "Número de tentativas por arquivo em caso de falha"
+
+msgid "Save all files of this queue to"
+msgstr "Salvar todos os arquivos desta fila em"
+
+msgid "Open each file when it has finished downloading"
+msgstr "Abrir cada arquivo quando terminar de baixar"
+
+msgid "Start now"
+msgstr "Iniciar agora"
+
+msgid "Apply"
+msgstr "Aplicar"
+
+msgid "Download all links"
+msgstr "Baixar todos os links"
+
+msgid "Site Grabber"
+msgstr "Capturador de sites"
+
+msgid "Start page"
+msgstr "Página inicial"
+
+msgid "https://example.com/gallery/"
+msgstr "https://example.com/gallery/"
+
+msgid "Start exploring"
+msgstr "Começar a explorar"
+
+msgid "Get"
+msgstr "Obter"
+
+msgid "All files (not web pages)"
+msgstr "Todos os arquivos (não páginas web)"
+
+msgid "All images"
+msgstr "Todas as imagens"
+
+msgid "All videos"
+msgstr "Todos os vídeos"
+
+msgid "All music / audio"
+msgstr "Todas as músicas / áudio"
+
+msgid "Archives and programs"
+msgstr "Compactados e programas"
+
+msgid "Documents (PDF, Office)"
+msgstr "Documentos (PDF, Office)"
+
+msgid "Custom file types"
+msgstr "Tipos de arquivo personalizados"
+
+msgid "jpg png mp4 (custom types)"
+msgstr "jpg png mp4 (tipos personalizados)"
+
+msgid "Levels to explore"
+msgstr "Níveis a explorar"
+
+msgid "Pages at the same time"
+msgstr "Páginas ao mesmo tempo"
+
+msgid "Other sites too"
+msgstr "Outros sites também"
+
+msgid "Don't go to parent folders"
+msgstr "Não subir para pastas superiores"
+
+msgid "Show"
+msgstr "Mostrar"
+
+msgid "All types"
+msgstr "Todos os tipos"
+
+msgid "Images"
+msgstr "Imagens"
+
+msgid "Videos"
+msgstr "Vídeos"
+
+msgid "Music"
+msgstr "Músicas"
+
+msgid "Archives / programs"
+msgstr "Compactados / programas"
+
+msgid "Documents"
+msgstr "Documentos"
+
+msgid "Web pages"
+msgstr "Páginas web"
+
+msgid "Filter by name or address…"
+msgstr "Filtrar por nome ou endereço…"
+
+msgid "Check all"
+msgstr "Marcar todos"
+
+msgid "Uncheck all"
+msgstr "Desmarcar todos"
+
+msgid "Link text"
+msgstr "Texto do link"
+
+msgid "No links on this page."
+msgstr "Nenhum link nesta página."
+
+msgid "Exploring…"
+msgstr "Explorando…"
+
+msgid "Type a start page and click \"Start exploring\"."
+msgstr "Digite uma página inicial e clique em \"Começar a explorar\"."
+
+msgid "Use link texts as descriptions"
+msgstr "Usar o texto dos links como descrição"
+
+msgid "Download checked"
+msgstr "Baixar marcados"
+
+msgid "Tip of the day"
+msgstr "Dica do dia"
+
+msgid "Did you know…"
+msgstr "Você sabia…"
+
+msgid "Show tips at startup"
+msgstr "Mostrar dicas ao iniciar"
+
+msgid "Next tip"
+msgstr "Próxima dica"
+
+msgid "Refresh download address"
+msgstr "Atualizar o endereço do download"
+
+msgid "1. Open the web page where you got this file.\n2. Click the download link there again (or start the video).\n3. Ezoo Download takes the new address and continues from where it stopped."
+msgstr "1. Abra a página web de onde veio este arquivo.\n2. Clique de novo no link de download (ou inicie o vídeo).\n3. O Ezoo Download pega o novo endereço e continua de onde parou."
+
+msgid "Open the page"
+msgstr "Abrir a página"
+
+msgid "Waiting for the new address from the browser…"
+msgstr "Aguardando o novo endereço do navegador…"
+
+msgid "Or paste the new address here:"
+msgstr "Ou cole o novo endereço aqui:"
+
+msgid "https://…"
+msgstr "https://…"
+
+msgid "Use it"
+msgstr "Usar"
+
+msgid "Stop waiting"
+msgstr "Parar de aguardar"
+
+msgid "Play"
+msgstr "Reproduzir"
+
+msgid "Ezoo Download – Options"
+msgstr "Ezoo Download – Opções"
+
+msgid "General"
+msgstr "Geral"
+
+msgid "File Types"
+msgstr "Tipos de arquivo"
+
+msgid "Connection"
+msgstr "Conexão"
+
+msgid "Proxy / Server"
+msgstr "Proxy / Servidor"
+
+msgid "Site Logins"
+msgstr "Logins de sites"
+
+msgid "Sounds"
+msgstr "Sons"
+
+msgid "Window opacity"
+msgstr "Opacidade da janela"
+
+msgid "Launch Ezoo Download on Windows startup"
+msgstr "Abrir o Ezoo Download ao iniciar o Windows"
+
+msgid "Keep running next to the clock when the window is closed"
+msgstr "Continuar ao lado do relógio quando a janela for fechada"
+
+msgid "Watch the clipboard for download links"
+msgstr "Monitorar a área de transferência em busca de links"
+
+msgid "Automatically start downloading links placed in the clipboard"
+msgstr "Iniciar automaticamente os links copiados para a área de transferência"
+
+msgid "Show \"Tip of the day\" at startup"
+msgstr "Mostrar a \"Dica do dia\" ao iniciar"
+
+msgid "On double click on a download"
+msgstr "Ao clicar duas vezes num download"
+
+msgid "Open the file / progress window"
+msgstr "Abrir o arquivo / a janela de progresso"
+
+msgid "Show properties"
+msgstr "Mostrar propriedades"
+
+msgid "Browser integration"
+msgstr "Integração com o navegador"
+
+msgid "Chrome and Edge: load the \"extension\" folder in chrome://extensions (Developer mode > Load unpacked). Downloads, videos and the right click menu then go to Ezoo Download."
+msgstr "Chrome e Edge: carregue a pasta \"extension\" em chrome://extensions (Modo do desenvolvedor > Carregar sem compactação). Downloads, vídeos e o menu do clique direito passam então para o Ezoo Download."
+
+msgid "Hold this key to let the browser download by itself"
+msgstr "Segurar esta tecla para o navegador baixar sozinho"
+
+msgid "Alt"
+msgstr "Alt"
+
+msgid "Ctrl"
+msgstr "Ctrl"
+
+msgid "Shift"
+msgstr "Shift"
+
+msgid "None"
+msgstr "Nenhuma"
+
+msgid "Hold this key to force Ezoo Download to take a link"
+msgstr "Segurar esta tecla para obrigar o Ezoo Download a pegar um link"
+
+msgid "Browser extension port"
+msgstr "Porta da extensão do navegador"
+
+msgid "Automatically start downloading these file types (from the browser):"
+msgstr "Baixar automaticamente estes tipos de arquivo (do navegador):"
+
+msgid "Default"
+msgstr "Padrão"
+
+msgid "Don't start downloading automatically from these sites:"
+msgstr "Não baixar automaticamente destes sites:"
+
+msgid "*.update.microsoft.com  windowsupdate.com"
+msgstr "*.update.microsoft.com  windowsupdate.com"
+
+msgid "Don't start downloading these addresses (one per line, * allowed):"
+msgstr "Não baixar estes endereços (um por linha, * permitido):"
+
+msgid "Show the \"Download this video\" panel on web players"
+msgstr "Mostrar o painel \"Baixar este vídeo\" nos players web"
+
+msgid "Don't show it on these sites"
+msgstr "Não mostrar nestes sites"
+
+msgid "Smallest video (KB)"
+msgstr "Menor vídeo (KB)"
+
+msgid "Smallest audio (KB)"
+msgstr "Menor áudio (KB)"
+
+msgid "Main download folder"
+msgstr "Pasta principal de downloads"
+
+msgid "Browse…"
+msgstr "Procurar…"
+
+msgid "Sort files into folders by category (Video, Music, Programs, Compressed, Documents, Images…)"
+msgstr "Separar os arquivos em pastas por categoria (Vídeo, Música, Programas, Compactados, Documentos, Imagens…)"
+
+msgid "Each category's own folder and file types: right click it in the sidebar > Properties."
+msgstr "Pasta e tipos de arquivo de cada categoria: clique direito nela na barra lateral > Propriedades."
+
+msgid "Forget remembered category paths"
+msgstr "Esquecer os caminhos lembrados das categorias"
+
+msgid "Temporary folder (parts while downloading)"
+msgstr "Pasta temporária (partes durante o download)"
+
+msgid "next to the file (default)"
+msgstr "ao lado do arquivo (padrão)"
+
+msgid "Tip: a temporary folder on another drive than the download folder makes joining the parts faster."
+msgstr "Dica: uma pasta temporária em outro disco que não o dos downloads deixa a junção das partes mais rápida."
+
+msgid "Show the \"Download File Info\" window for downloads from the browser"
+msgstr "Mostrar a janela \"Informações do arquivo\" para downloads do navegador"
+
+msgid "Start downloading immediately while showing \"Download File Info\""
+msgstr "Começar a baixar imediatamente enquanto mostra \"Informações do arquivo\""
+
+msgid "Show the download progress window"
+msgstr "Mostrar a janela de progresso"
+
+msgid "Normally"
+msgstr "Normalmente"
+
+msgid "Minimized"
+msgstr "Minimizada"
+
+msgid "Don't show"
+msgstr "Não mostrar"
+
+msgid "If a duplicate link is added"
+msgstr "Se um link duplicado for adicionado"
+
+msgid "Ask me"
+msgstr "Perguntar"
+
+msgid "Add it with a numbered file name"
+msgstr "Adicionar com um nome numerado"
+
+msgid "Add it and replace the old download"
+msgstr "Adicionar e substituir o download antigo"
+
+msgid "Show the finished one / resume the unfinished one"
+msgstr "Mostrar o concluído / retomar o não concluído"
+
+msgid "Give finished files the date from the server"
+msgstr "Dar aos arquivos concluídos a data do servidor"
+
+msgid "Check every finished file for viruses with this program"
+msgstr "Verificar cada arquivo concluído contra vírus com este programa"
+
+msgid "C:\\Program Files\\Windows Defender\\MpCmdRun.exe"
+msgstr "C:\\Program Files\\Windows Defender\\MpCmdRun.exe"
+
+msgid "Command line parameters"
+msgstr "Parâmetros de linha de comando"
+
+msgid "-Scan -ScanType 3 -File [File]"
+msgstr "-Scan -ScanType 3 -File [File]"
+
+msgid "[File] is replaced by the downloaded file."
+msgstr "[File] é substituído pelo arquivo baixado."
+
+msgid "User-Agent for downloads added by hand"
+msgstr "User-Agent para downloads adicionados à mão"
+
+msgid "Connection type / speed"
+msgstr "Tipo / velocidade da conexão"
+
+msgid "Low speed (modem, mobile)"
+msgstr "Baixa velocidade (modem, celular)"
+
+msgid "Medium speed (DSL)"
+msgstr "Velocidade média (DSL)"
+
+msgid "High speed (fiber, cable, LAN)"
+msgstr "Alta velocidade (fibra, cabo, LAN)"
+
+msgid "Default max. connections number"
+msgstr "Número máx. de conexões padrão"
+
+msgid "Downloads at the same time (0 = no limit)"
+msgstr "Downloads ao mesmo tempo (0 = sem limite)"
+
+msgid "Retries on error"
+msgstr "Tentativas em caso de erro"
+
+msgid "Exceptions: servers with their own number of connections"
+msgstr "Exceções: servidores com o próprio número de conexões"
+
+msgid "Server"
+msgstr "Servidor"
+
+msgid "example.com"
+msgstr "example.com"
+
+msgid "Download limits"
+msgstr "Limites de download"
+
+msgid "Download no more than"
+msgstr "Não baixar mais que"
+
+msgid "MB every"
+msgstr "MB a cada"
+
+msgid "hours"
+msgstr "horas"
+
+msgid "No proxy"
+msgstr "Sem proxy"
+
+msgid "Use the system settings (like your browser)"
+msgstr "Usar as configurações do sistema (como o navegador)"
+
+msgid "Manual proxy configuration (HTTP / HTTPS)"
+msgstr "Configuração manual do proxy (HTTP / HTTPS)"
+
+msgid "Proxy address"
+msgstr "Endereço do proxy"
+
+msgid "proxy.example.com"
+msgstr "proxy.example.com"
+
+msgid "Port"
+msgstr "Porta"
+
+msgid "User name"
+msgstr "Nome de usuário"
+
+msgid "Don't use the proxy for"
+msgstr "Não usar o proxy para"
+
+msgid "localhost 127.0.0.1 *.local"
+msgstr "localhost 127.0.0.1 *.local"
+
+msgid "Addresses separated by spaces. SOCKS proxies: use the system settings."
+msgstr "Endereços separados por espaços. Proxies SOCKS: use as configurações do sistema."
+
+msgid "User names and passwords for sites that ask for them:"
+msgstr "Usuários e senhas dos sites que pedem:"
+
+msgid "Site / path"
+msgstr "Site / caminho"
+
+msgid "example.com/members"
+msgstr "example.com/members"
+
+msgid "Add / Update"
+msgstr "Adicionar / Atualizar"
+
+msgid "Saved in the settings file of your Windows user account."
+msgstr "Salvo no arquivo de configurações da sua conta do Windows."
+
+msgid "Play sounds"
+msgstr "Tocar sons"
+
+msgid "Download failed"
+msgstr "Falha no download"
+
+msgid "Queue started"
+msgstr "Fila iniciada"
+
+msgid "Queue finished"
+msgstr "Fila concluída"
+
+msgid ".wav files. Empty = no sound for that event."
+msgstr "Arquivos .wav. Vazio = sem som para esse evento."
+
+msgid "Turn the speed limiter on"
+msgstr "Ligar o limitador de velocidade"
+
+msgid "Always turn on the speed limiter when Ezoo Download starts"
+msgstr "Sempre ligar o limitador ao iniciar o Ezoo Download"
+
+msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
+msgstr "Cada download também pode ter seu próprio limite: a janela de progresso dele > aba Limitador de velocidade."
+
+msgid "Download a playlist"
+msgstr "Baixar uma playlist"
+
+msgid "Paste the address of a playlist:"
+msgstr "Cole o endereço de uma playlist:"
+
+msgid "https://…/playlist?list=…"
+msgstr "https://…/playlist?list=…"
+
+msgid "Getting the list…"
+msgstr "Obtendo a lista…"
+
+msgid "Get videos"
+msgstr "Obter vídeos"
+
+msgid "Video"
+msgstr "Vídeo"
+
+msgid "Length"
+msgstr "Duração"
+
+msgid "Getting the videos of the playlist…"
+msgstr "Obtendo os vídeos da playlist…"
+
+msgid "The videos of the playlist show up here."
+msgstr "Os vídeos da playlist aparecem aqui."
+
+msgid "Quality"
+msgstr "Qualidade"
+
+msgid "Best quality (MP4)"
+msgstr "Melhor qualidade (MP4)"
+
+msgid "1080p"
+msgstr "1080p"
+
+msgid "720p"
+msgstr "720p"
+
+msgid "480p"
+msgstr "480p"
+
+msgid "360p"
+msgstr "360p"
+
+msgid "Audio only (M4A)"
+msgstr "Só áudio (M4A)"
+
+msgid "Files at the same time"
+msgstr "Arquivos ao mesmo tempo"
+
+msgid "Number the files"
+msgstr "Numerar os arquivos"
+
+msgid "Not installed on this computer"
+msgstr "Não instalado neste computador"
+
+msgid "Add Ezoo Download to your browser"
+msgstr "Adicionar o Ezoo Download ao seu navegador"
+
+msgid "Click your browser:"
+msgstr "Clique no seu navegador:"
+
+msgid "Almost done:"
+msgstr "Quase pronto:"
+
+msgid "Copy folder path"
+msgstr "Copiar o caminho da pasta"
+
+msgid "Version {}"
+msgstr "Versão {}"
+
+msgid "Coded by Ahmed Ezzat"
+msgstr "Desenvolvido por Ahmed Ezzat"
+
+msgid "Like Ezoo Download? You can support its development:"
+msgstr "Gosta do Ezoo Download? Você pode apoiar o desenvolvimento:"
+
+msgid "Support with PayPal"
+msgstr "Apoiar com PayPal"

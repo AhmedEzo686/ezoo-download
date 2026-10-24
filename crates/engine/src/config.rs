@@ -226,8 +226,13 @@ pub struct Settings {
     /// progress window for each download
     pub show_progress_window: bool,
     pub queues: Vec<QueueDef>,
-    /// 0 Light, 1 Dark, 2 Ocean, 3 Midnight
+    /// 0 Light, 1 Dark, 2 Ocean, 3 Midnight, 4 Forest, 5 Black, 6 Sunset,
+    /// 7 Teal night, 8 Rose
     pub theme: u32,
+    /// how solid the main window is, 50..=100 (%)
+    pub opacity: u32,
+    /// version that ran last time: after an update "What's new" is shown once
+    pub last_version: String,
     /// speed limiter switched on (the limit itself is speed_limit_kb)
     pub speed_limit_on: bool,
     /// "remember this path for this category" from the download dialog
@@ -339,6 +344,8 @@ impl Default for Settings {
             schedule: Schedule::default(),
             show_progress_window: true,
             theme: 0,
+            opacity: 100,
+            last_version: String::new(),
             speed_limit_on: false,
             category_dirs: Default::default(),
             hide_categories: false,

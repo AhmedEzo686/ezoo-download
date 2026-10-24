@@ -12,7 +12,7 @@ anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-slint = "1.8"
+slint = { version = "1.8", features = ["raw-window-handle-06"] }
 tiny_http = "0.12"
 arboard = { version = "3", default-features = false }
 rfd = "0.15"
@@ -35,4 +35,5 @@ path = "src/main.rs"
 
 [target.'cfg(windows)'.dependencies]
 tray-icon = "0.19"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Media_Audio"] }
+raw-window-handle = "0.6"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Media_Audio", "Win32_UI_WindowsAndMessaging"] }

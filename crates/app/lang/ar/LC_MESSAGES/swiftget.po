@@ -256,6 +256,24 @@ msgstr "أزرق المحيط"
 msgid "Midnight purple"
 msgstr "بنفسجي ليلي"
 
+msgid "Forest green"
+msgstr "أخضر الغابة"
+
+msgid "Black"
+msgstr "أسود"
+
+msgid "Sunset"
+msgstr "الغروب"
+
+msgid "Teal night"
+msgstr "ليل فيروزي"
+
+msgid "Rose"
+msgstr "وردي"
+
+msgid "Transparency…"
+msgstr "الشفافية…"
+
 msgid "Help"
 msgstr "مساعدة"
 
@@ -270,9 +288,6 @@ msgstr "البحث عن تحديثات"
 
 msgid "Check for updates (video downloader)"
 msgstr "البحث عن تحديثات (أداة الفيديو)"
-
-msgid "Tell a friend"
-msgstr "أخبر صديقاً"
 
 msgid "About Ezoo Download"
 msgstr "حول Ezoo Download"
@@ -919,6 +934,9 @@ msgstr "حسابات المواقع"
 msgid "Sounds"
 msgstr "الأصوات"
 
+msgid "Window opacity"
+msgstr "شفافية النافذة"
+
 msgid "Launch Ezoo Download on Windows startup"
 msgstr "تشغيل Ezoo Download مع بدء ويندوز"
 
@@ -1260,3 +1278,9 @@ msgstr "الإصدار {}"
 
 msgid "Coded by Ahmed Ezzat"
 msgstr "Coded by Ahmed Ezzat"
+
+msgid "Like Ezoo Download? You can support its development:"
+msgstr "أعجبك Ezoo Download؟ يمكنك دعم تطويره:"
+
+msgid "Support with PayPal"
+msgstr "ادعم عبر PayPal"

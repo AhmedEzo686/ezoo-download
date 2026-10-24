@@ -73,6 +73,9 @@ struct Fmt {
     note: String,
     hls: bool,
     headers: Vec<(String, String)>,
+    /// sound track ranking: the video's own language first, translated
+    /// ("dubbed", often made automatically) tracks last
+    audio_rank: i64,
 }
 
 impl Fmt {
@@ -150,7 +153,30 @@ fn parse_one(f: &Value) -> Option<Fmt> {
         note: f["format_note"].as_str().unwrap_or("").to_string(),
         hls,
         headers: headers_of(f),
+        audio_rank: audio_rank(f),
     })
+}
+
+/// Videos can carry several sound tracks in different languages; yt-dlp marks
+/// the original one (language_preference, "original" / "default" in the
+/// note) and translated ones ("dubbed"). Higher = better.
+fn audio_rank(f: &Value) -> i64 {
+    let note = format!(
+        "{} {}",
+        f["format_note"].as_str().unwrap_or(""),
+        f["format_id"].as_str().unwrap_or("")
+    )
+    .to_ascii_lowercase();
+    let mut rank = f["language_preference"].as_i64().unwrap_or(0);
+    if note.contains("original") {
+        rank += 100;
+    } else if note.contains("default") {
+        rank += 50;
+    }
+    if note.contains("dubbed") || note.contains("descriptive") {
+        rank -= 100;
+    }
+    rank
 }
 
 fn parse_formats(info: &Value) -> Vec<Fmt> {
@@ -215,7 +241,12 @@ pub fn build_options(full: &Value) -> YtInfo {
         .iter()
         .filter(|f| f.has_audio() && !f.has_video() && !f.hls)
         .collect();
-    audios.sort_by(|a, b| b.abr.partial_cmp(&a.abr).unwrap_or(std::cmp::Ordering::Equal));
+    // the original language first, then the best quality
+    audios.sort_by(|a, b| {
+        b.audio_rank
+            .cmp(&a.audio_rank)
+            .then(b.abr.partial_cmp(&a.abr).unwrap_or(std::cmp::Ordering::Equal))
+    });
     let best_audio = |container: &str| -> Option<&Fmt> {
         audios
             .iter()
@@ -574,6 +605,25 @@ mod tests {
                 {"format_id": "drm", "protocol": "https", "ext": "mp4", "vcodec": "avc1", "acodec": "none", "height": 2160, "has_drm": true, "url": "https://gv/drm"}
             ]
         })
+    }
+
+    #[test]
+    fn original_sound_track_wins_over_dubbed() {
+        let info = serde_json::json!({
+            "title": "t", "extractor_key": "Youtube",
+            "formats": [
+                {"format_id": "140-0", "protocol": "https", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 130.0,
+                 "language": "en", "language_preference": -1, "format_note": "English (United States) - dubbed-auto, medium", "url": "https://gv/en"},
+                {"format_id": "140-1", "protocol": "https", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "abr": 129.0,
+                 "language": "ar", "language_preference": 10, "format_note": "Arabic original (default), medium", "url": "https://gv/ar"},
+                {"format_id": "137", "protocol": "https", "ext": "mp4", "vcodec": "avc1.640028", "acodec": "none", "height": 1080, "url": "https://gv/137"}
+            ]
+        });
+        let r = build_options(&info);
+        let best = r.options.iter().find(|o| o.key.starts_with("1080p")).unwrap();
+        assert_eq!(best.audio_url.as_deref(), Some("https://gv/ar"));
+        let audio = r.options.iter().find(|o| o.key.starts_with("audio|")).unwrap();
+        assert_eq!(audio.video_url, "https://gv/ar");
     }
 
     #[test]

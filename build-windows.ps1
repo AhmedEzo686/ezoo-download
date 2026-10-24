@@ -141,6 +141,9 @@ $redist = Join-Path $cache "redist"
 New-Item -ItemType Directory -Force $redist | Out-Null
 if (Test-Path "$cache\vc_redist.x64.exe") { Copy-Item "$cache\vc_redist.x64.exe" $redist -Force }
 Copy-Item "THIRD-PARTY-NOTICES.txt" $stage -Force
+# the Firefox add-on signed by Mozilla for this version (stays in Firefox for good)
+$signedXpi = "extension-signed\ezoo-download-firefox-$version.xpi"
+if (Test-Path $signedXpi) { Copy-Item $signedXpi (Join-Path $stage "ezoo-download-firefox.xpi") -Force }
 foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt")) {
     if (Test-Path "$cache\$f") { Copy-Item "$cache\$f" $tools -Force }
 }

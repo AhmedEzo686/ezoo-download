@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8">
 <style>
-  body { font: 13px/1.4 "Segoe UI", system-ui, sans-serif; color: #1f2733; margin: 0; width: 320px; background: #f4f6fa; }
-  header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; background: #fff; border-bottom: 1px solid #e6eaf0; }
-  header img { width: 22px; height: 22px; }
-  header b { font-size: 14px; }
+  body { font: 14px/1.45 "Segoe UI", system-ui, sans-serif; color: #1f2733; margin: 0; width: 420px; min-height: 260px; background: #f4f6fa; }
+  header { display: flex; align-items: center; gap: 8px; padding: 14px 16px; background: #fff; border-bottom: 1px solid #e6eaf0; }
+  header img { width: 26px; height: 26px; }
+  .gear { background: none; color: #6b7686; font-size: 18px; padding: 2px 6px; }
+  .gear:hover { background: #eef1f5; color: #1f2733; }
+  header b { font-size: 16px; }
   .dot { margin-left: auto; font-size: 12px; color: #6b7686; }
   .dot::before { content: "●"; margin-right: 4px; color: #b9c0cb; }
   .dot.on::before { color: #1a9e5a; }
-  section { padding: 10px 14px; }
+  section { padding: 12px 16px; }
   h3 { margin: 4px 0 6px; font-size: 11px; color: #6b7686; text-transform: uppercase; letter-spacing: .04em; }
-  label { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
-  input[type=number] { width: 80px; padding: 3px 6px; border: 1px solid #d5dbe4; border-radius: 5px; }
-  .media { background: #fff; border-radius: 8px; margin: 6px 0; padding: 8px 10px; display: flex; gap: 8px; align-items: center; }
+  .media { background: #fff; border-radius: 8px; margin: 8px 0; padding: 10px 12px; display: flex; gap: 8px; align-items: center; }
   .media div { flex: 1; min-width: 0; }
   .media small { display: block; color: #6b7686; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   button { background: #1f6feb; color: #fff; border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
@@ -27,16 +27,11 @@
     <img src="icons/icon32.png" alt="">
     <b>Ezoo Download</b>
     <span class="dot" id="status">checking…</span>
+    <button class="gear" id="settings" title="Settings">⚙</button>
   </header>
   <section>
     <h3>Media on this page</h3>
     <div id="media"><div class="empty">Nothing detected yet. Start playing the video.</div></div>
-  </section>
-  <section>
-    <h3>Settings</h3>
-    <label><input type="checkbox" id="intercept"> Send browser downloads to Ezoo Download</label>
-    <label>Ignore files smaller than <input type="number" id="minSize" min="0"> KB</label>
-    <label>App port <input type="number" id="port" min="1024" max="65535"></label>
   </section>
   <script src="popup.js"></script>
 </body>

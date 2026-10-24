@@ -1,5 +1,6 @@
 //! Site Grabber and "Download all links" (both use the same window).
 
+use crate::to_front;
 use crate::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use swiftget_engine::grabber::{self, FoundFile, GrabOptions, GrabProgress};
@@ -127,11 +128,13 @@ pub(crate) fn open_grabber(ui: &Ui) {
     let Some(d) = ui.grabber.upgrade() else { return };
     if d.window().is_visible() && !d.get_links_mode() {
         let _ = d.show();
+        to_front!(d);
         return;
     }
     reset(ui, &d, false);
     show(ui);
     let _ = d.show();
+    to_front!(d);
 }
 
 /// "Download all links with Ezoo Download" from the browser.

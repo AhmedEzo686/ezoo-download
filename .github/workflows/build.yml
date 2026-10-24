@@ -44,6 +44,12 @@ jobs:
         run: cargo build --release
       - name: Package
         shell: pwsh
+        env:
+          # Mozilla add-on keys (addons.mozilla.org > Developer Hub > API keys);
+          # with them the Firefox add-on is signed and stays in Firefox for good
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          IS_RELEASE: ${{ github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]') }}
         run: |
           $version = ([regex]::Match((Get-Content Cargo.toml -Raw), '(?m)^version\s*=\s*"([^"]+)"')).Groups[1].Value
           if ("${{ github.ref_type }}" -eq "tag") {
@@ -61,6 +67,26 @@ jobs:
           Remove-Item -Recurse -Force "$p/extension/test", "$p/extension-firefox/test"
           Copy-Item -Force "$p/extension-firefox/manifest.firefox.json" "$p/extension-firefox/manifest.json"
           Remove-Item -Force "$p/extension-firefox/manifest.firefox.json", "$p/extension/manifest.firefox.json"
+          # Firefox keeps only add-ons signed by Mozilla; a version can be signed
+          # once, so this runs for a release only
+          if ($env:IS_RELEASE -eq "true" -and $env:AMO_JWT_ISSUER -and $env:AMO_JWT_SECRET -and -not (Test-Path "extension-signed/ezoo-download-firefox-$version.xpi")) {
+            npx --yes web-ext@8 sign --channel=unlisted --source-dir "$p/extension-firefox" --artifacts-dir xpi-out --api-key "$env:AMO_JWT_ISSUER" --api-secret "$env:AMO_JWT_SECRET" --approval-timeout 900000
+            $xpi = Get-ChildItem xpi-out -Filter *.xpi | Select-Object -First 1
+            if ($xpi) {
+              Copy-Item $xpi.FullName "$p/ezoo-download-firefox.xpi"
+              Copy-Item $xpi.FullName "dist/ezoo-download-firefox.xpi"
+              $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$version"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
+              [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
+            } else { Write-Host "::warning::the Firefox add-on was not signed" }
+          } elseif ($env:IS_RELEASE -eq "true") { Write-Host "::warning::AMO_JWT_ISSUER / AMO_JWT_SECRET are not set: the Firefox add-on is not signed" }
+          # an add-on of this version already signed by hand on addons.mozilla.org
+          $signed = "extension-signed/ezoo-download-firefox-$version.xpi"
+          if (-not (Test-Path "$p/ezoo-download-firefox.xpi") -and (Test-Path $signed)) {
+            Copy-Item $signed "$p/ezoo-download-firefox.xpi"
+            Copy-Item $signed "dist/ezoo-download-firefox.xpi"
+            $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$version"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
+            [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
+          }
           $rel = Invoke-RestMethod "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest" -Headers @{ "User-Agent" = "EzooDownload-ci"; "Authorization" = "Bearer ${{ github.token }}" }
           $asset = $rel.assets | Where-Object { $_.name -match '^ffmpeg-n[0-9.]+-latest-win64-gpl-[0-9.]+\.zip$' } |
             Sort-Object { [version](($_.name -replace '^ffmpeg-n([0-9.]+)-.*$', '$1') + '.0') } | Select-Object -Last 1
@@ -95,7 +121,9 @@ jobs:
         run: |
           gh release view "v$env:VERSION" --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) { Write-Host "v$env:VERSION is already released"; exit 0 }
-          gh release create "v$env:VERSION" dist/EzooDownload-Setup.exe dist/version.json --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Ezoo Download $env:VERSION" --notes "Ezoo Download $env:VERSION" --latest
+          $files = @("dist/EzooDownload-Setup.exe", "dist/version.json")
+          if (Test-Path dist/ezoo-download-firefox.xpi) { $files += "dist/ezoo-download-firefox.xpi", "dist/firefox-updates.json" }
+          gh release create "v$env:VERSION" @files --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Ezoo Download $env:VERSION" --notes "Ezoo Download $env:VERSION" --latest
           if ($LASTEXITCODE -ne 0) { throw "could not create the release" }
           # only the newest release stays: older ones (and their tags) go
           $tags = gh release list --repo "${{ github.repository }}" --limit 100 --json tagName -q '.[].tagName'

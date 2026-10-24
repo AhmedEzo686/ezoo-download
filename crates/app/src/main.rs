@@ -17,6 +17,7 @@ mod scheduler;
 mod sound;
 mod tray;
 mod update;
+mod winfx;
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 use std::cell::{Cell, RefCell};
@@ -378,7 +379,15 @@ fn main() -> anyhow::Result<()> {
     let power_timer = Timer::default();
     {
         let ui = ui.clone();
-        power_timer.start(TimerMode::Repeated, Duration::from_secs(1), move || extra::tick_countdown(&ui));
+        power_timer.start(TimerMode::Repeated, Duration::from_secs(1), move || {
+            extra::tick_countdown(&ui);
+            // the window may have been shown again from the icon next to the clock
+            if let Some(m) = ui.ctx.main.upgrade() {
+                if m.window().is_visible() {
+                    winfx::set_opacity(m.window(), ui.ctx.mgr.settings().opacity);
+                }
+            }
+        });
     }
     refresh(&ui);
 
@@ -392,8 +401,23 @@ fn main() -> anyhow::Result<()> {
             slint::CloseRequestResponse::HideWindow
         });
     }
+    // after an update: what is new, once, in the language of the program
+    {
+        let mut s = mgr.settings();
+        let now = env!("CARGO_PKG_VERSION");
+        if s.last_version != now {
+            // an empty last_version on a copy used before = an update from 1.0.3
+            let updated = if s.last_version.is_empty() { s.extension_prompted } else { true };
+            s.last_version = now.into();
+            let _ = mgr.set_settings(s);
+            if updated {
+                Timer::single_shot(Duration::from_millis(1500), || extra::whats_new());
+            }
+        }
+    }
     if !(background && has_tray) {
         main.show()?;
+        winfx::set_opacity(main.window(), mgr.settings().opacity);
         let mut s = mgr.settings();
         if !s.extension_prompted {
             // first start: help adding the browser extension
@@ -556,7 +580,7 @@ fn wire_main(ui: &Ui) {
         let ui = ui.clone();
         main.on_set_theme(move |m| {
             let mut s = ui.ctx.mgr.settings();
-            s.theme = m.clamp(0, 3) as u32;
+            s.theme = m.clamp(0, 8) as u32;
             let _ = ui.ctx.mgr.set_settings(s);
             apply_theme(&ui, m);
         });
@@ -1467,7 +1491,7 @@ pub(crate) fn bring_to_front(ctx: &Ctx) {
     }
 }
 
-/// Switch the whole program to "ar" or "en" right away.
+/// Switch the whole program to another language right away.
 pub(crate) fn set_language(ui: &Ui, lang: &str) {
     i18n::apply(lang);
     if let Some(m) = ui.ctx.main.upgrade() {
@@ -1551,6 +1575,7 @@ fn open_batch(ui: &Ui, text: String) {
     d.set_message(SharedString::new());
     d.set_preview(SharedString::new());
     let _ = d.show();
+    to_front!(d);
 }
 
 fn close_complete(ui: &Ui) {
@@ -2380,6 +2405,7 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
     if let Some((d, segs)) = ui.progress.borrow().get(&id) {
         fill_details(d, segs, &v);
         let _ = d.show();
+        to_front!(d);
         d.window().set_minimized(false);
         return;
     }
