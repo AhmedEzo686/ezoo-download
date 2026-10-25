@@ -670,7 +670,9 @@ export component ToolBtn inherits Rectangle {
     callback clicked();
     // small buttons: every one fits a 960 px wide window
     width: root.small ? 34px : 56px;
-    height: root.small ? 34px : 52px;
+    height: root.small ? 34px : 56px;
+    // a name that is still too long never covers the next button
+    clip: true;
     border-radius: 3px;
     border-width: ta.has-hover && root.enabled ? 1px : 0px;
     border-color: Theme.select-line;
@@ -697,14 +699,17 @@ export component ToolBtn inherits Rectangle {
                 kind: root.icon;
             }
         }
-        // a long name ends in "…" ("Delete C…")
+        // a long name goes on two lines ("Delete / Done"); "…" does not work
+        // for right-to-left (Arabic) text, which would spill over the next button
         Text {
             text: root.text;
             font-size: 10px * Theme.font-scale;
             // bold, so the names read well on every theme
             font-weight: 700;
             horizontal-alignment: center;
-            overflow: elide;
+            vertical-alignment: top;
+            wrap: word-wrap;
+            max-height: 26px * Theme.font-scale;
             color: Theme.toolbar-text;
         }
     }
@@ -861,6 +866,8 @@ export component HeaderCell inherits Rectangle {
     callback resize-done();
     // the title was dragged and let go at `x` (in the header)
     callback dropped(length);
+    // a long (Arabic) title is cut at its own column, never over the next one
+    clip: true;
     property <bool> moving;
     property <length> start-width;
     property <length> start-x;
