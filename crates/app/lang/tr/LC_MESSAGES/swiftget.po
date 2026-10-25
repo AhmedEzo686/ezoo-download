@@ -598,9 +598,6 @@ msgstr "<< Ayrıntıları gizle"
 msgid "Show details >>"
 msgstr "Ayrıntıları göster >>"
 
-msgid "Hide to tray"
-msgstr "Saatin yanına gizle"
-
 msgid "Pause"
 msgstr "Duraklat"
 
@@ -615,6 +612,9 @@ msgstr "No."
 
 msgid "Info"
 msgstr "Bilgi"
+
+msgid "Hide next to the clock"
+msgstr "Saatin yanına gizle"
 
 msgid "Download complete"
 msgstr "İndirme tamamlandı"

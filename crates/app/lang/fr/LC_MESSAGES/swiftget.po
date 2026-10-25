@@ -598,9 +598,6 @@ msgstr "<< Masquer les détails"
 msgid "Show details >>"
 msgstr "Afficher les détails >>"
 
-msgid "Hide to tray"
-msgstr "Masquer près de l'horloge"
-
 msgid "Pause"
 msgstr "Pause"
 
@@ -615,6 +612,9 @@ msgstr "N°"
 
 msgid "Info"
 msgstr "Infos"
+
+msgid "Hide next to the clock"
+msgstr "Masquer près de l'horloge"
 
 msgid "Download complete"
 msgstr "Téléchargement terminé"

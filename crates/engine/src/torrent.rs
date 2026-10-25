@@ -125,6 +125,9 @@ pub struct TorrentFile {
     /// path inside the torrent's folder, with "/" between the parts
     pub path: String,
     pub size: u64,
+    /// its number in the torrent, 1-based, counting the padding files the
+    /// list leaves out (what "select-file" wants)
+    pub index: usize,
 }
 
 /// What a .torrent file shares.
@@ -147,7 +150,7 @@ pub fn parse_torrent(data: &[u8]) -> anyhow::Result<TorrentInfo> {
         .unwrap_or_else(|| "torrent".into());
     let mut files = Vec::new();
     if let Some(list) = info.get("files") {
-        for f in list.list() {
+        for (n, f) in list.list().iter().enumerate() {
             let parts = f.get("path.utf-8").or_else(|| f.get("path")).map(Ben::list).unwrap_or(&[]);
             let path: Vec<String> = parts.iter().filter_map(Ben::text).collect();
             // padding files (BEP 47) are not real files
@@ -156,10 +159,14 @@ pub fn parse_torrent(data: &[u8]) -> anyhow::Result<TorrentInfo> {
             if pad {
                 continue;
             }
-            files.push(TorrentFile { path: path.join("/"), size: f.get("length").and_then(Ben::int).unwrap_or(0).max(0) as u64 });
+            files.push(TorrentFile {
+                path: path.join("/"),
+                size: f.get("length").and_then(Ben::int).unwrap_or(0).max(0) as u64,
+                index: n + 1,
+            });
         }
     } else {
-        files.push(TorrentFile { path: name.clone(), size: info.get("length").and_then(Ben::int).unwrap_or(0).max(0) as u64 });
+        files.push(TorrentFile { path: name.clone(), size: info.get("length").and_then(Ben::int).unwrap_or(0).max(0) as u64, index: 1 });
     }
     if files.is_empty() {
         bail!("this torrent has no files");
@@ -171,7 +178,8 @@ pub fn parse_torrent(data: &[u8]) -> anyhow::Result<TorrentInfo> {
 /// A magnet link of a torrent ("magnet:?xt=urn:btih:...").
 pub fn is_magnet(s: &str) -> bool {
     let s = s.trim().to_ascii_lowercase();
-    s.starts_with("magnet:?") && (s.contains("xt=urn:btih:") || s.contains("xt=urn:btmh:"))
+    // a real one is a few hundred characters
+    s.len() <= 8192 && !s.contains(char::is_whitespace) && s.starts_with("magnet:?") && (s.contains("xt=urn:btih:") || s.contains("xt=urn:btmh:"))
 }
 
 /// Is this download a torrent: a magnet link or a .torrent file on the disk.
@@ -410,17 +418,34 @@ impl Aria2 {
         }
     }
 
-    /// The real file names of a torrent once aria2 knows them.
-    pub async fn files(&self, gid: &str) -> anyhow::Result<Vec<(PathBuf, u64, bool)>> {
+    /// The files of a torrent once aria2 knows them, with how much of each
+    /// is here.
+    pub async fn files(&self, gid: &str) -> anyhow::Result<Vec<FileState>> {
         let r = self.call("aria2.getFiles", vec![json!(gid)]).await?;
         Ok(r.as_array()
             .map(|a| {
                 a.iter()
-                    .map(|f| (PathBuf::from(f["path"].as_str().unwrap_or("")), num(&f["length"]), f["selected"].as_str() == Some("true")))
+                    .map(|f| FileState {
+                        path: PathBuf::from(f["path"].as_str().unwrap_or("")),
+                        size: num(&f["length"]),
+                        done: num(&f["completedLength"]),
+                        selected: f["selected"].as_str() == Some("true"),
+                    })
                     .collect()
             })
             .unwrap_or_default())
     }
+}
+
+/// One file of a running torrent.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileState {
+    pub path: PathBuf,
+    pub size: u64,
+    pub done: u64,
+    /// one of the files the user wants (the others only get the bits of
+    /// pieces they share with those)
+    pub selected: bool,
 }
 
 impl Drop for Aria2 {
@@ -463,8 +488,8 @@ mod tests {
         let i = parse_torrent(t.as_bytes()).unwrap();
         assert_eq!(i.name, "My Show");
         assert_eq!(i.files, vec![
-            TorrentFile { path: "Season 1/ep1.mkv".into(), size: 100 },
-            TorrentFile { path: "readme.txt".into(), size: 5 },
+            TorrentFile { path: "Season 1/ep1.mkv".into(), size: 100, index: 1 },
+            TorrentFile { path: "readme.txt".into(), size: 5, index: 2 },
         ]);
         assert_eq!(i.total, 105);
     }
@@ -473,7 +498,7 @@ mod tests {
     fn reads_a_single_file_torrent_and_refuses_junk() {
         let t = format!("d4:infod6:lengthi42e4:name{}ee", ben_str("film.mp4"));
         let i = parse_torrent(t.as_bytes()).unwrap();
-        assert_eq!(i.files, vec![TorrentFile { path: "film.mp4".into(), size: 42 }]);
+        assert_eq!(i.files, vec![TorrentFile { path: "film.mp4".into(), size: 42, index: 1 }]);
         assert!(parse_torrent(b"<html>").is_err());
         assert!(parse_torrent(b"d4:infod6:lengthi42e4:name99:x").is_err());
         assert!(parse_torrent(&b"l".repeat(200)).is_err());

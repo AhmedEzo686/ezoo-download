@@ -140,7 +140,8 @@ async fn downloads_a_torrent_with_aria2() {
     assert!(done, "the torrent should finish");
     assert_eq!(std::fs::read(get_dir.join("song.bin")).unwrap(), data);
     let files = getter.files(&gg).await.unwrap();
-    assert_eq!(files[0].0, get_dir.join("song.bin"));
+    assert_eq!(files[0].path, get_dir.join("song.bin"));
+    assert_eq!(files[0].done, data.len() as u64);
     getter.remove(&gg).await;
     seeder.remove(&sg).await;
     let _ = std::fs::remove_dir_all(&root);
@@ -172,6 +173,23 @@ async fn torrent_in_the_download_list() {
     let v = mgr.get(id).unwrap();
     assert_eq!(status, swiftget_engine::Status::Completed, "{:?}", v.error);
     assert_eq!(std::fs::read(list_dir.join("song.bin")).unwrap(), data);
+    // the same torrent again into the same folder: the file there is checked, not refused
+    let again = mgr.add(swiftget_engine::NewDownload {
+        url: file.to_string_lossy().into_owned(),
+        save_dir: Some(list_dir.clone()),
+        start: true,
+        ..Default::default()
+    });
+    let mut st2 = swiftget_engine::Status::Queued;
+    for _ in 0..300 {
+        st2 = mgr.get(again).unwrap().status;
+        if matches!(st2, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(st2, swiftget_engine::Status::Completed, "{:?}", mgr.get(again).unwrap().error);
+    mgr.remove(again, false);
     // delete with the file: exactly the torrent's file goes
     std::fs::write(list_dir.join("mine.txt"), b"keep").unwrap();
     mgr.remove(id, true);
@@ -207,6 +225,88 @@ async fn magnet_link_learns_its_name() {
     assert_eq!(status, swiftget_engine::Status::Completed, "{:?}", v.error);
     assert_eq!(v.file_name, "song.bin", "the real name once the file list came");
     assert_eq!(std::fs::read(list_dir.join("song.bin")).unwrap(), data);
+    seeder.remove(&sg).await;
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A torrent of two files ("pack/a.bin", "pack/b.bin").
+fn make_multi(a: &[u8], b: &[u8], tracker: &str) -> (Vec<u8>, Vec<u8>) {
+    let piece = 16 * 1024;
+    let all: Vec<u8> = a.iter().chain(b).copied().collect();
+    let mut pieces = Vec::new();
+    for c in all.chunks(piece) {
+        pieces.extend_from_slice(ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, c).as_ref());
+    }
+    let file = |len: usize, name: &str| {
+        let mut f = b"d6:length".to_vec();
+        f.extend(format!("i{len}e").into_bytes());
+        f.extend(b"4:pathl");
+        f.extend(ben(name.as_bytes()));
+        f.extend(b"ee");
+        f
+    };
+    let mut info = b"d5:filesl".to_vec();
+    info.extend(file(a.len(), "a.bin"));
+    info.extend(file(b.len(), "b.bin"));
+    info.extend(b"e4:name");
+    info.extend(ben(b"pack"));
+    info.extend(b"12:piece lengthi16384e6:pieces");
+    info.extend(ben(&pieces));
+    info.extend(b"e");
+    let mut t = b"d8:announce".to_vec();
+    t.extend(ben(tracker.as_bytes()));
+    t.extend(b"4:info");
+    t.extend(info.clone());
+    t.extend(b"e");
+    (t, info)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn only_the_checked_files_of_a_torrent() {
+    if swiftget_engine::mux::find_tool("aria2c").is_none() {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!("ezoo-torrent-multi-{}", std::process::id()));
+    let seed = root.join("seed");
+    std::fs::create_dir_all(seed.join("pack")).unwrap();
+    let a: Vec<u8> = (0..200_000u32).map(|i| (i % 251) as u8).collect();
+    let b: Vec<u8> = (0..90_000u32).map(|i| (i % 241) as u8).collect();
+    std::fs::write(seed.join("pack/a.bin"), &a).unwrap();
+    std::fs::write(seed.join("pack/b.bin"), &b).unwrap();
+    let port = tracker().await;
+    let (t, _) = make_multi(&a, &b, &format!("http://127.0.0.1:{port}/announce"));
+    let file = root.join("pack.torrent");
+    std::fs::write(&file, t).unwrap();
+    let info = parse_torrent(&std::fs::read(&file).unwrap()).unwrap();
+    assert_eq!(info.files.iter().map(|f| f.index).collect::<Vec<_>>(), [1, 2]);
+
+    let seeder = Aria2::new(&root.join("a"));
+    let sg = seeder.add(file.to_str().unwrap(), &AddOptions { dir: seed.clone(), seed_minutes: 30, check: true, ..Default::default() }).await.unwrap();
+    let mgr = swiftget_engine::Manager::new(tokio::runtime::Handle::current(), root.join("app")).unwrap();
+    let get = root.join("get");
+    let id = mgr.add(swiftget_engine::NewDownload {
+        url: file.to_string_lossy().into_owned(),
+        save_dir: Some(get.clone()),
+        start: true,
+        torrent_select: Some("2".into()),
+        ..Default::default()
+    });
+    let mut status = swiftget_engine::Status::Queued;
+    let mut total = None;
+    for _ in 0..300 {
+        let v = mgr.get(id).unwrap();
+        status = v.status;
+        total = v.total_size;
+        if matches!(status, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(status, swiftget_engine::Status::Completed, "{:?}", mgr.get(id).unwrap().error);
+    // its own size, not the pieces it shares with the other file
+    assert_eq!(total, Some(b.len() as u64));
+    assert_eq!(std::fs::read(get.join("pack/b.bin")).unwrap(), b);
+    assert!(!get.join("pack/a.bin").exists(), "the unchecked file is not kept");
     seeder.remove(&sg).await;
     let _ = std::fs::remove_dir_all(&root);
 }

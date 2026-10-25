@@ -490,4 +490,5 @@ AR = {
     "480p SD": "480p SD",
     "360p SD": "360p SD",
     "Audio MP3": "صوت MP3",
+    "Hide next to the clock": "إخفاء بجوار الساعة",
 }

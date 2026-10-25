@@ -1338,6 +1338,8 @@ impl Manager {
             // all there already (no notes of aria2 about it): check it
             check: target.exists() && !control.exists(),
         };
+        // files that were there before: never removed by us
+        let existed: HashSet<PathBuf> = rec.torrent_data_paths().into_iter().filter(|p| p.exists()).collect();
         let mut gid = tokio::select! {
             r = self.torrents.add(&rec.url, &opts) => r?,
             _ = cancel.cancelled() => return Err(Cancelled.into()),
@@ -1369,24 +1371,30 @@ impl Manager {
                 gid = next;
                 continue;
             }
-            progress.bytes.store(st.done, Ordering::Relaxed);
+            // the chosen files only: aria2's own total also counts the
+            // pieces they share with files that were left out
+            let files = if st.total > 0 { self.torrents.files(&gid).await.unwrap_or_default() } else { Vec::new() };
+            let chosen: Vec<&torrent::FileState> = files.iter().filter(|f| f.selected).collect();
+            let (total, done) = if chosen.is_empty() {
+                (st.total, st.done)
+            } else {
+                (chosen.iter().map(|f| f.size).sum(), chosen.iter().map(|f| f.done.min(f.size)).sum())
+            };
+            progress.bytes.store(done, Ordering::Relaxed);
             progress.connections.store(st.connections, Ordering::Relaxed);
-            if st.total > 0 && !listed {
+            if !listed && !chosen.is_empty() {
                 // the files it writes, to clean up exactly those later
-                if let Ok(files) = self.torrents.files(&gid).await {
-                    let rel: Vec<String> = files
-                        .iter()
-                        .filter_map(|(p, _, _)| p.strip_prefix(&rec.save_dir).ok().map(|r| r.to_string_lossy().into_owned()))
-                        .filter(|r| !r.is_empty())
-                        .collect();
-                    if !rel.is_empty() {
-                        listed = true;
-                        self.update(id, move |x| x.torrent_files = rel);
-                    }
+                let rel: Vec<String> = chosen
+                    .iter()
+                    .filter_map(|f| f.path.strip_prefix(&rec.save_dir).ok().map(|r| r.to_string_lossy().into_owned()))
+                    .filter(|r| !r.is_empty())
+                    .collect();
+                if !rel.is_empty() {
+                    listed = true;
+                    self.update(id, move |x| x.torrent_files = rel);
                 }
             }
-            if st.total > 0 {
-                let total = st.total;
+            if total > 0 {
                 let name = if named { None } else { st.name.clone().map(|n| filename::sanitize(&n)) };
                 named = named || name.is_some();
                 self.update(id, move |x| {
@@ -1397,18 +1405,33 @@ impl Manager {
                     }
                 });
             }
-            match st.status.as_str() {
-                "complete" => return Ok(()),
+            let finished = match st.status.as_str() {
+                "complete" => true,
                 "error" => {
                     let msg = st.error.unwrap_or_else(|| "the torrent could not be downloaded".into());
                     self.torrents.remove(&gid).await;
                     anyhow::bail!("{msg}");
                 }
                 "removed" => anyhow::bail!("the torrent was stopped"),
-                _ => {}
-            }
-            // everything is here and it shares for a while: done for us
-            if st.seeding && st.total > 0 && st.done >= st.total {
+                // everything is here and it shares for a while: done for us
+                _ => st.seeding && total > 0 && done >= total,
+            };
+            if finished {
+                // no sharing wanted (or its time is over): aria2 forgets it,
+                // so the same torrent can be added again
+                if st.status == "complete" || settings.torrent_seed_minutes == 0 {
+                    self.torrents.remove(&gid).await;
+                }
+                // the bits of the files that were left out (pieces are shared
+                // between files): not wanted, and not the user's own
+                for f in files.iter().filter(|f| !f.selected) {
+                    if inside(&f.path, &rec.save_dir) && f.path.is_file() && !existed.contains(&f.path) {
+                        let _ = std::fs::remove_file(&f.path);
+                        if let Some(dir) = f.path.parent() {
+                            let _ = std::fs::remove_dir(dir); // only when empty
+                        }
+                    }
+                }
                 return Ok(());
             }
         }
@@ -1870,16 +1893,27 @@ impl Manager {
 
 /// Delete every temporary file of a download. Returns false if something
 /// could not be removed (still open), so the caller can retry.
+/// `path` is in `dir` (or below it), with no ".." that could lead out.
+fn inside(path: &Path, dir: &Path) -> bool {
+    path.starts_with(dir)
+        && path != dir
+        && !path.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::CurDir))
+}
+
 /// The files of a torrent, then its folders if they are empty now.
 fn remove_torrent_data(rec: &DownloadRecord) -> bool {
     let mut ok = true;
-    let files = rec.torrent_data_paths();
+    // only inside its own folder: a strange name can't reach anything else
+    let files: Vec<PathBuf> = rec.torrent_data_paths().into_iter().filter(|f| inside(f, &rec.save_dir)).collect();
     for f in &files {
         if f.is_file() {
             ok &= std::fs::remove_file(f).is_ok();
         }
     }
     let top = rec.target_path();
+    if !inside(&top, &rec.save_dir) {
+        return ok;
+    }
     let mut dirs: Vec<PathBuf> = files.iter().filter_map(|f| f.parent().map(Path::to_path_buf)).filter(|d| d.starts_with(&top)).collect();
     dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
     dirs.dedup();
@@ -2045,5 +2079,19 @@ mod name_tests {
         assert_eq!(playlist_stem("How to cook rice", "طريقة عمل الأرز"), "طريقة عمل الأرز");
         assert_eq!(playlist_stem("2024 plans", "Plans"), "Plans");
         assert_eq!(playlist_stem("07 - Old", "  "), "07 - Old");
+    }
+}
+
+#[cfg(test)]
+mod inside_tests {
+    use super::inside;
+    use std::path::Path;
+    #[test]
+    fn nothing_outside_the_folder() {
+        let d = Path::new("/d/Video");
+        assert!(inside(Path::new("/d/Video/pack/a.bin"), d));
+        assert!(!inside(Path::new("/d/Video/../x.bin"), d));
+        assert!(!inside(Path::new("/d/Video"), d));
+        assert!(!inside(Path::new("/d/Other/a.bin"), d));
     }
 }

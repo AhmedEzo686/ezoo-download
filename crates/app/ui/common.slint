@@ -154,6 +154,36 @@ export component ThemedWindow inherits Window {
     icon: @image-url("icon-window.png");
 }
 
+// A button of a window's own title bar (windows drawn without the Windows
+// frame): "tray" (hide next to the clock), "min" or "close".
+export component CaptionButton inherits Rectangle {
+    in property <string> kind;
+    callback clicked();
+    out property <bool> hovered: ca.has-hover;
+    width: 44px;
+    background: ca.pressed ? (root.kind == "close" ? #c50f1f : Theme.line) : ca.has-hover ? (root.kind == "close" ? #e81123 : Theme.hover) : transparent;
+    ca := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+    Path {
+        x: (parent.width - 10px) / 2;
+        y: (parent.height - 10px) / 2;
+        width: 10px;
+        height: 10px;
+        viewbox-width: 10;
+        viewbox-height: 10;
+        stroke-width: 1px;
+        stroke: root.kind == "close" && ca.has-hover ? white : Theme.text;
+        fill: transparent;
+        commands: root.kind == "close" ? "M 0 0 L 10 10 M 10 0 L 0 10"
+            : root.kind == "min" ? "M 0 5.5 L 10 5.5"
+            // an arrow down into a tray
+            : "M 5 0 L 5 6.5 M 2.2 3.8 L 5 6.5 L 7.8 3.8 M 0.5 6.5 L 0.5 9.5 L 9.5 9.5 L 9.5 6.5";
+    }
+}
+
 // Small vector icons for menus, lists and buttons (fonts on Windows don't
 // have every symbol, so nothing here depends on a font).
 export component Glyph inherits Rectangle {

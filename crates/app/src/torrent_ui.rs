@@ -40,13 +40,14 @@ fn checked_text(rows: &VecModel<LinkRow>) -> String {
     tf("{} of {} files checked", &[&n, &rows.row_count()])
 }
 
-/// "1,3,4" of the checked files (1-based), `None` when all are checked.
+/// "1,3,4": the torrent's numbers of the checked files (kept in each row's
+/// `text`), `None` when all are checked.
 fn selection(rows: &VecModel<LinkRow>) -> Option<String> {
-    let all: Vec<bool> = (0..rows.row_count()).filter_map(|i| rows.row_data(i)).map(|r| r.checked).collect();
-    if all.iter().all(|c| *c) {
+    let all: Vec<LinkRow> = (0..rows.row_count()).filter_map(|i| rows.row_data(i)).collect();
+    if all.iter().all(|r| r.checked) {
         return None;
     }
-    Some(all.iter().enumerate().filter(|(_, c)| **c).map(|(i, _)| (i + 1).to_string()).collect::<Vec<_>>().join(","))
+    Some(all.iter().filter(|r| r.checked).map(|r| r.text.to_string()).collect::<Vec<_>>().join(","))
 }
 
 pub(crate) fn wire(ui: &Ui) {
@@ -102,7 +103,7 @@ pub(crate) fn wire(ui: &Ui) {
                         name: f.path.clone().into(),
                         kind: kind_for(&f.path).into(),
                         ext: fmt_size(f.size).into(),
-                        text: SharedString::new(),
+                        text: f.index.to_string().into(),
                         url: SharedString::new(),
                     })
                     .collect::<Vec<_>>(),
@@ -118,7 +119,9 @@ pub(crate) fn wire(ui: &Ui) {
         let w = d.as_weak();
         d.on_pick_file(move || {
             let Some(d) = w.upgrade() else { return };
-            if let Some(p) = rfd::FileDialog::new().add_filter("Torrent", &["torrent"]).pick_file() {
+            // on top of this window, which waits for it
+            d.set_front(false);
+            if let Some(p) = crate::winfx::on_top_of(rfd::FileDialog::new(), d.window()).add_filter("Torrent", &["torrent"]).pick_file() {
                 d.set_source(p.display().to_string().into());
                 d.invoke_load();
             }
@@ -152,7 +155,8 @@ pub(crate) fn wire(ui: &Ui) {
         let w = d.as_weak();
         d.on_browse(move || {
             let Some(d) = w.upgrade() else { return };
-            if let Some(dir) = rfd::FileDialog::new().set_directory(d.get_folder().as_str()).pick_folder() {
+            d.set_front(false);
+            if let Some(dir) = crate::winfx::on_top_of(rfd::FileDialog::new(), d.window()).set_directory(d.get_folder().as_str()).pick_folder() {
                 d.set_folder(dir.display().to_string().into());
             }
         });
@@ -176,16 +180,23 @@ pub(crate) fn wire(ui: &Ui) {
                 d.set_message(t("Choose where to save it").into());
                 return;
             }
-            mgr.add(NewDownload {
+            let start = d.get_start_now();
+            let id = mgr.add(NewDownload {
                 url: src,
                 save_dir: Some(PathBuf::from(folder)),
-                start: d.get_start_now(),
+                start,
                 torrent_select: select,
                 ..Default::default()
             });
             d.set_source(SharedString::new());
             rows.set_vec(Vec::new());
             let _ = d.hide();
+            // its progress window, like any download that starts
+            if start {
+                if let Some(ui) = OPENER.with(|o| o.borrow().clone()) {
+                    crate::show_progress_for_start(&ui, id);
+                }
+            }
         });
     }
     {
@@ -202,17 +213,18 @@ pub(crate) fn wire(ui: &Ui) {
 mod tests {
     use super::*;
 
-    fn row(checked: bool) -> LinkRow {
-        LinkRow { checked, ..Default::default() }
+    fn row(checked: bool, index: usize) -> LinkRow {
+        LinkRow { checked, text: index.to_string().into(), ..Default::default() }
     }
 
     #[test]
     fn chosen_files() {
-        let rows = VecModel::from(vec![row(true), row(false), row(true)]);
-        assert_eq!(selection(&rows).as_deref(), Some("1,3"));
-        let all = VecModel::from(vec![row(true), row(true)]);
+        // the torrent's own numbers (a padding file was number 2)
+        let rows = VecModel::from(vec![row(true, 1), row(false, 3), row(true, 4)]);
+        assert_eq!(selection(&rows).as_deref(), Some("1,4"));
+        let all = VecModel::from(vec![row(true, 1), row(true, 2)]);
         assert_eq!(selection(&all), None);
-        let none = VecModel::from(vec![row(false)]);
+        let none = VecModel::from(vec![row(false, 1)]);
         assert_eq!(selection(&none).as_deref(), Some(""));
     }
 }

@@ -215,5 +215,8 @@
  "This .torrent file can't be read: {}": "Bu .torrent dosyası okunamıyor: {}",
  "{} in {} files": "{}, {} dosya",
  "Check at least one file": "En az bir dosya işaretleyin",
- "Choose where to save it": "Nereye kaydedileceğini seçin"
+ "Choose where to save it": "Nereye kaydedileceğini seçin",
+ "Show download progress": "İndirme ilerlemesini göster",
+ "Stop download": "İndirmeyi durdur",
+ "This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.": "Bu torrent zaten çalışıyor (dosyalarını hâlâ paylaşıyor olabilir). Biraz bekleyin ya da Ezoo Download’dan çıkıp yeniden açın."
 }

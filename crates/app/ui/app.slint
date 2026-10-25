@@ -3,7 +3,7 @@
 // queue tree, detailed list, one progress window per download. Nine themes.
 
 import { Button, LineEdit, SpinBox, CheckBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
-import { ToolTip, DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph } from "common.slint";
+import { ToolTip, DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, CaptionButton, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph } from "common.slint";
 export { DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme }
 export { BrowserRow } from "dialogs.slint";
 export { ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, TorrentDialog, BrowserDialog, AboutDialog, UpdateDialog } from "dialogs.slint";
@@ -2296,6 +2296,8 @@ export component DetailsDialog inherits ThemedWindow {
     title: root.percent + " " + root.name;
     preferred-width: 560px;
     min-width: 520px;
+    // its own title bar (with "hide next to the clock" beside minimize)
+    no-frame: true;
 
     in property <string> name;
     in property <string> percent;
@@ -2329,8 +2331,89 @@ export component DetailsDialog inherits ThemedWindow {
     callback hide-to-tray();
     callback limit-changed();
     callback completion-changed();
+    // title bar: move the window / minimize / the X
+    callback start-drag();
+    callback minimize();
+    callback close-clicked();
+    callback start-resize();
 
+    property <bool> tray-tip;
+    tip-timer := Timer {
+        interval: 600ms;
+        running: tray-btn.hovered && !root.tray-tip;
+        triggered => {
+            root.tray-tip = true;
+        }
+    }
+
+    Rectangle {
+        border-width: 1px;
+        border-color: Theme.line;
+    }
     VerticalLayout {
+      padding: 1px;
+      spacing: 0px;
+      Rectangle {
+        height: 30px;
+        background: Theme.panel;
+        HorizontalLayout {
+            spacing: 0px;
+            Rectangle {
+                horizontal-stretch: 1;
+                drag := TouchArea {
+                    pointer-event(ev) => {
+                        if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                            root.start-drag();
+                        }
+                    }
+                }
+                HorizontalLayout {
+                    padding-left: 8px;
+                    spacing: 7px;
+                    Image {
+                        source: @image-url("icon-window.png");
+                        width: 16px;
+                        height: 16px;
+                        y: 7px;
+                    }
+                    Text {
+                        text: root.title;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        color: Theme.text;
+                        horizontal-stretch: 1;
+                    }
+                }
+            }
+            tray-btn := CaptionButton {
+                kind: "tray";
+                visible: root.state != 3;
+                width: root.state != 3 ? 44px : 0px;
+                changed hovered => {
+                    if (!self.hovered) {
+                        root.tray-tip = false;
+                    }
+                }
+                clicked => {
+                    root.tray-tip = false;
+                    root.hide-to-tray();
+                }
+            }
+            CaptionButton {
+                kind: "min";
+                clicked => {
+                    root.minimize();
+                }
+            }
+            CaptionButton {
+                kind: "close";
+                clicked => {
+                    root.close-clicked();
+                }
+            }
+        }
+      }
+      VerticalLayout {
         padding: 10px;
         spacing: 0px;
         HorizontalLayout {
@@ -2618,14 +2701,6 @@ export component DetailsDialog inherits ThemedWindow {
                     root.show-details = !root.show-details;
                 }
             }
-            // the window goes away (to the icon next to the clock); the
-            // download goes on, double click it in the list to see it again
-            if root.state != 3: Button {
-                text: @tr("Hide to tray");
-                clicked => {
-                    root.hide-to-tray();
-                }
-            }
             Rectangle {
                 horizontal-stretch: 1;
             }
@@ -2736,6 +2811,46 @@ export component DetailsDialog inherits ThemedWindow {
                     }
                 }
             }
+        }
+    }
+    }
+    // the hint of the tray button
+    if root.tray-tip: Rectangle {
+        x: max(4px, root.width - 89px - tip-text.preferred-width - 16px);
+        y: 32px;
+        width: tip-text.preferred-width + 16px;
+        height: tip-text.preferred-height + 10px;
+        background: Theme.input-bg;
+        border-width: 1px;
+        border-color: Theme.line;
+        border-radius: 3px;
+        drop-shadow-blur: 6px;
+        drop-shadow-color: #00000044;
+        tip-text := Text {
+            text: @tr("Hide next to the clock");
+            color: Theme.text;
+        }
+    }
+    // a corner to make the window bigger
+    Rectangle {
+        x: root.width - 14px;
+        y: root.height - 14px;
+        width: 14px;
+        height: 14px;
+        TouchArea {
+            mouse-cursor: nwse-resize;
+            pointer-event(ev) => {
+                if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                    root.start-resize();
+                }
+            }
+        }
+        Path {
+            viewbox-width: 10;
+            viewbox-height: 10;
+            stroke: Theme.muted;
+            stroke-width: 1px;
+            commands: "M 9 3 L 3 9 M 9 6 L 6 9";
         }
     }
 }

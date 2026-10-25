@@ -282,6 +282,43 @@ pub(crate) fn drag_file_out(w: &slint::Window, path: &std::path::Path) {
     }
 }
 
+/// Windows drawn without the Windows frame (their own title bar): move the
+/// window while the mouse button is held on the title.
+#[cfg(windows)]
+pub(crate) fn drag_window(w: &slint::Window) {
+    use slint::winit_030::{winit, WinitWindowAccessor};
+    w.with_winit_window(|win: &winit::window::Window| {
+        let _ = win.drag_window();
+    });
+}
+
+/// ...and make it bigger / smaller from its bottom right corner.
+#[cfg(windows)]
+pub(crate) fn drag_resize_window(w: &slint::Window) {
+    use slint::winit_030::{winit, WinitWindowAccessor};
+    w.with_winit_window(|win: &winit::window::Window| {
+        let _ = win.drag_resize_window(winit::window::ResizeDirection::SouthEast);
+    });
+}
+
+#[cfg(not(windows))]
+pub(crate) fn drag_window(_w: &slint::Window) {}
+
+#[cfg(not(windows))]
+pub(crate) fn drag_resize_window(_w: &slint::Window) {}
+
+/// A file / folder picker that belongs to `w`: it stays on top of it and
+/// `w` waits for it.
+#[cfg(windows)]
+pub(crate) fn on_top_of(dlg: rfd::FileDialog, w: &slint::Window) -> rfd::FileDialog {
+    dlg.set_parent(&w.window_handle())
+}
+
+#[cfg(not(windows))]
+pub(crate) fn on_top_of(dlg: rfd::FileDialog, _w: &slint::Window) -> rfd::FileDialog {
+    dlg
+}
+
 #[cfg(test)]
 mod tests {
     use super::centered;

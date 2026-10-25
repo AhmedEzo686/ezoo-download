@@ -361,7 +361,8 @@ fn main() -> anyhow::Result<()> {
             move |url| {
                 let ctx = ctx.clone();
                 let _ = slint::invoke_from_event_loop(move || {
-                    if ctx.mgr.settings().auto_start_clipboard {
+                    // a torrent always asks first (it also shares with others)
+                    if ctx.mgr.settings().auto_start_clipboard && !swiftget_engine::torrent::is_magnet(&url) {
                         if ctx.mgr.find_url(&url).is_none() {
                             ctx.mgr.add(NewDownload { url, start: true, ..Default::default() });
                         }
@@ -391,6 +392,12 @@ fn main() -> anyhow::Result<()> {
                 t.set_limiter(ui.ctx.mgr.settings().speed_limit_on);
                 for action in t.poll() {
                     tray_action(&ui, action);
+                }
+                for (id, action) in tray::take_download_actions() {
+                    match action {
+                        tray::DownloadAction::Show => open_progress(&ui, id),
+                        tray::DownloadAction::Pause => ui.ctx.mgr.pause(id),
+                    }
                 }
             }
         });
@@ -1147,6 +1154,11 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
             };
             if let Some(list) = &req.headers {
                 swiftget_engine::ytdlp::apply_headers(&mut headers, list);
+            }
+            // a torrent's magnet link from a page: the torrent window asks first
+            if swiftget_engine::torrent::is_magnet(&req.url) {
+                torrent_ui::open_source(&req.url);
+                return;
             }
             // "Refresh download address": this is the new link we waited for
             if let Some(id) = ui.refresh_id.get() {
@@ -2474,6 +2486,8 @@ pub(crate) fn open_download(path: &std::path::Path) {
 pub(crate) fn err_text(e: &str) -> String {
     if e.contains("needs a login or an age check") {
         t("This video needs a login or an age check. Open it once in the browser where you are signed in (with the Ezoo Download extension), then try again.")
+    } else if e.contains("is already registered") {
+        t("This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.")
     } else if e.contains("the link has expired or the file was removed") {
         t("The link has expired or the file was removed. Right-click the download and use \"Refresh download address\".")
     } else {
@@ -2715,6 +2729,8 @@ pub(crate) fn refresh(ui: &Ui) {
 pub(crate) fn open_progress(ui: &Ui, id: u64) {
     let Some(v) = ui.ctx.mgr.get(id) else { return };
     if let Some((d, segs)) = ui.progress.borrow().get(&id) {
+        // back from next to the clock
+        tray::remove_download(id);
         fill_details(d, segs, &v);
         open_window!(d);
         d.window().set_minimized(false);
@@ -2773,22 +2789,57 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
         d.on_close_window(move || close_progress(&map, id));
     }
     {
-        // "Hide to tray": only the window goes, the download goes on
-        let map = ui.progress.clone();
-        d.on_hide_to_tray(move || close_progress(&map, id));
+        // "Hide next to the clock": the window goes, a small icon with the
+        // progress comes next to the clock, the download goes on
+        let (map, mgr, w) = (ui.progress.clone(), ui.ctx.mgr.clone(), d.as_weak());
+        d.on_hide_to_tray(move || {
+            let Some(d) = w.upgrade() else { return };
+            let (tip, progress) = mgr.get(id).map(|v| tray_tip(&v)).unwrap_or_default();
+            if tray::show_download(id, &tip, progress, (&t("Show download progress"), &t("Stop download"))) {
+                let _ = d.hide();
+            } else {
+                // no icon could be made: at least out of the way
+                d.window().set_minimized(true);
+            }
+            let _ = &map;
+        });
     }
     {
-        // the window's X stops the download
+        let w = d.as_weak();
+        d.on_start_drag(move || {
+            if let Some(d) = w.upgrade() {
+                winfx::drag_window(d.window());
+            }
+        });
+    }
+    {
+        let w = d.as_weak();
+        d.on_start_resize(move || {
+            if let Some(d) = w.upgrade() {
+                winfx::drag_resize_window(d.window());
+            }
+        });
+    }
+    {
+        let w = d.as_weak();
+        d.on_minimize(move || {
+            if let Some(d) = w.upgrade() {
+                d.window().set_minimized(true);
+            }
+        });
+    }
+    {
+        // its own X (title bar) does what the Windows X did: stop and close
+        let (map, mgr) = (ui.progress.clone(), ui.ctx.mgr.clone());
+        d.on_close_clicked(move || {
+            stop_and_close(&map, &mgr, id);
+        });
+    }
+    {
+        // Alt+F4: the same
         let (map, mgr) = (ui.progress.clone(), ui.ctx.mgr.clone());
         d.window().on_close_requested(move || {
-            if mgr.get(id).is_some_and(|v| v.status != Status::Completed) {
-                mgr.pause(id);
-            }
-            let map = map.clone();
-            // drop the window after this event has been handled
-            slint::Timer::single_shot(Duration::from_millis(1), move || {
-                map.borrow_mut().remove(&id);
-            });
+            stop_and_close(&map, &mgr, id);
             slint::CloseRequestResponse::HideWindow
         });
     }
@@ -2799,7 +2850,33 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
     ui.progress.borrow_mut().insert(id, (d, segs));
 }
 
+/// The X of a download's window: the download stops (it can be resumed).
+fn stop_and_close(map: &Rc<RefCell<HashMap<u64, ProgressWin>>>, mgr: &Arc<Manager>, id: u64) {
+    if mgr.get(id).is_some_and(|v| v.status != Status::Completed) {
+        mgr.pause(id);
+    }
+    close_progress(map, id);
+}
+
+/// The hint and the bar of a hidden download's icon next to the clock.
+fn tray_tip(v: &DownloadView) -> (String, Option<f32>) {
+    let progress = v.total_size.filter(|t| *t > 0).map(|_| v.progress());
+    let mut tip = match progress {
+        Some(p) => format!("{:.0}%  {}", p * 100.0, v.file_name),
+        None => format!("{}  {}", fmt_size(v.downloaded), v.file_name),
+    };
+    if v.waiting {
+        tip.push_str(&format!("\n{}", t("Waiting for connection…")));
+    } else if v.status.is_running() && v.speed > 0.0 {
+        tip.push_str(&format!("\n{}/s", fmt_size(v.speed as u64)));
+    } else if v.status == Status::Paused {
+        tip.push_str(&format!("\n{}", t("Paused")));
+    }
+    (tip, progress)
+}
+
 fn close_progress(map: &Rc<RefCell<HashMap<u64, ProgressWin>>>, id: u64) {
+    tray::remove_download(id);
     if let Some((d, _)) = map.borrow().get(&id) {
         let _ = d.hide();
     }
@@ -2816,6 +2893,8 @@ fn update_progress_windows(ui: &Ui) {
             // finished: the "complete" window takes over
             Some(v) if v.status == Status::Completed => close_progress(&ui.progress, id),
             Some(v) => {
+                let (tip, progress) = tray_tip(&v);
+                tray::update_download(id, &tip, progress);
                 if let Some((d, segs)) = ui.progress.borrow().get(&id) {
                     fill_details(d, segs, &v);
                     // also on the window's taskbar button (seen when it is minimized)
@@ -2850,7 +2929,7 @@ fn taskbar_state(v: &DownloadView) -> winfx::TaskbarProgress {
 fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) {
     let pct = v.progress();
     d.set_name(v.file_name.clone().into());
-    d.set_kind(kind_for(&v.file_name).into());
+    d.set_kind(if v.kind == DownloadKind::Torrent { "torrent" } else { kind_for(&v.file_name) }.into());
     d.set_percent(format!("{:.0}%", pct * 100.0).into());
     d.set_url(v.url.clone().into());
     let status = match v.status {

@@ -598,9 +598,6 @@ msgstr "<< Скрыть подробности"
 msgid "Show details >>"
 msgstr "Подробнее >>"
 
-msgid "Hide to tray"
-msgstr "Спрятать к часам"
-
 msgid "Pause"
 msgstr "Пауза"
 
@@ -615,6 +612,9 @@ msgstr "№"
 
 msgid "Info"
 msgstr "Инфо"
+
+msgid "Hide next to the clock"
+msgstr "Спрятать к часам"
 
 msgid "Download complete"
 msgstr "Загрузка завершена"

@@ -22,8 +22,18 @@ pub(crate) fn play(part: &Path, final_name: &str) -> std::io::Result<()> {
         std::process::Command::new(player).arg(part).spawn()?;
         return Ok(());
     }
-    let link = link_name(part, final_name, &ext);
-    let _ = std::fs::remove_file(&link);
+    // never over a file that is already there (it could be the user's own)
+    let mut link = link_name(part, final_name, &ext);
+    let mut n = 2;
+    while link.exists() {
+        let (stem, e) = (link.file_stem().unwrap_or_default().to_string_lossy().into_owned(), link.extension().unwrap_or_default().to_string_lossy().into_owned());
+        let base = stem.trim_end_matches(|c: char| c.is_ascii_digit() || c == ' ').to_string();
+        link = link.with_file_name(format!("{base} {n}.{e}"));
+        n += 1;
+        if n > 50 {
+            return Err(std::io::Error::other("too many preview files"));
+        }
+    }
     std::fs::hard_link(part, &link)?;
     LINKS.lock().unwrap_or_else(|p| p.into_inner()).push((link.clone(), std::time::Instant::now()));
     open::that_detached(&link)

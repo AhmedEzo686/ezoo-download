@@ -215,5 +215,8 @@
  "This .torrent file can't be read: {}": "Ce fichier .torrent est illisible : {}",
  "{} in {} files": "{} en {} fichiers",
  "Check at least one file": "Cochez au moins un fichier",
- "Choose where to save it": "Choisissez où l'enregistrer"
+ "Choose where to save it": "Choisissez où l'enregistrer",
+ "Show download progress": "Afficher la progression",
+ "Stop download": "Arrêter le téléchargement",
+ "This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.": "Ce torrent est déjà en cours (il partage peut-être encore ses fichiers). Patientez un peu, ou quittez Ezoo Download et rouvrez-le."
 }

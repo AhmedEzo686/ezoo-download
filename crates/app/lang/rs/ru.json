@@ -215,5 +215,8 @@
  "This .torrent file can't be read: {}": "Не удаётся прочитать этот файл .torrent: {}",
  "{} in {} files": "{} в {} файлах",
  "Check at least one file": "Отметьте хотя бы один файл",
- "Choose where to save it": "Выберите, куда сохранить"
+ "Choose where to save it": "Выберите, куда сохранить",
+ "Show download progress": "Показать ход загрузки",
+ "Stop download": "Остановить загрузку",
+ "This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.": "Этот торрент уже запущен (возможно, ещё раздаёт файлы). Подождите немного или закройте Ezoo Download и откройте снова."
 }

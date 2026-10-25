@@ -534,6 +534,9 @@ const AR: &[(&str, &str)] = &[
     ("{} in {} files", "{} في {} ملفات"),
     ("Check at least one file", "حدد ملفًا واحدًا على الأقل"),
     ("Choose where to save it", "اختر مكان الحفظ"),
+    ("Show download progress", "عرض تقدّم التحميل"),
+    ("Stop download", "إيقاف التحميل"),
+    ("This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.", "هذا التورنت يعمل بالفعل (قد يكون ما زال يشارك ملفاته). انتظر قليلًا، أو اخرج من Ezoo Download وافتحه مرة أخرى."),
 ];
 
 #[cfg(test)]
