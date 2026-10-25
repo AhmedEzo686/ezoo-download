@@ -144,5 +144,17 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   assert.strictEqual(reloads, 1, "same version: nothing");
   pingExt = null;
   console.log("self update: reloads once when the program has a newer add-in");
+  // a player inside a frame (Dailymotion's "geo.dailymotion.com/player/…"):
+  // the page around it is looked up, its qualities are offered
+  {
+    const page = "https://www.dailymotion.com/video/xac78kk";
+    const n = ytCalls.length;
+    const res = await new Promise((resolve) =>
+      listeners.msg({ type: "swiftget-resolve-video", page: "", src: "", frame: true }, { tab: { id: 21, url: page }, frameId: 4 }, resolve));
+    assert(res.items && res.items.length >= 2, "qualities of the page: " + JSON.stringify(res));
+    assert.strictEqual(ytCalls[n].url, page, "the page, not the player frame");
+    assert(!ytCalls.slice(n).some((c) => /geo\.dailymotion\.com/.test(c.url)));
+    console.log("player in a frame: uses the page's qualities");
+  }
   console.log("background simulation: all checks passed");
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -83,6 +83,41 @@ pub fn merge(video: &Path, audio: &Path, output: &Path, final_name: &str) -> any
     Ok(())
 }
 
+/// "Play while downloading" for picture + sound in two files: one playable
+/// file of what is there so far (the first `video_ready` / `audio_ready`
+/// bytes, nothing is re-encoded, takes a moment). `output` gets a
+/// Matroska (.mkv) file: it takes every kind of picture and sound.
+pub fn preview_snapshot(video: &Path, video_ready: u64, audio: Option<(&Path, u64)>, output: &Path) -> anyhow::Result<()> {
+    let Some(ffmpeg) = find_ffmpeg() else {
+        bail!("ffmpeg.exe is missing. Ezoo Download gets it by itself in a few minutes (internet needed)");
+    };
+    // only the part with no gap ("subfile": ffmpeg reads just those bytes)
+    let part = |p: &Path, n: u64| {
+        let mut s = std::ffi::OsString::from(format!("subfile,,start,0,end,{n},,:"));
+        s.push(p.as_os_str());
+        s
+    };
+    let mut cmd = Command::new(&ffmpeg);
+    cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-protocol_whitelist", "file,subfile", "-i"])
+        .arg(part(video, video_ready));
+    if let Some((a, n)) = audio {
+        cmd.arg("-i").arg(part(a, n)).args(["-map", "0:v:0", "-map", "1:a:0"]);
+    } else {
+        cmd.args(["-map", "0:v:0"]);
+    }
+    cmd.args(["-c", "copy", "-f", "matroska"]).arg(output);
+    hide_window(&mut cmd);
+    let out = cmd.output().context("could not start ffmpeg")?;
+    // the cut at the end makes ffmpeg complain; what it wrote is fine
+    let made = std::fs::metadata(output).map(|m| m.len() > 1024).unwrap_or(false);
+    if !made {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let last = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("unknown error");
+        bail!("ffmpeg could not prepare the preview: {last}");
+    }
+    Ok(())
+}
+
 /// Turn a downloaded sound (or video) file into an MP3 file.
 pub fn to_mp3(input: &Path, output: &Path, kbps: u64) -> anyhow::Result<()> {
     let Some(ffmpeg) = find_ffmpeg() else {
@@ -122,6 +157,29 @@ pub(crate) fn hide_window(cmd: &mut Command) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn preview_of_half_downloaded_video_and_sound() {
+        let Some(ffmpeg) = find_ffmpeg() else { return };
+        let dir = std::env::temp_dir().join(format!("swiftget-preview-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let (v, a) = (dir.join(".x.video.sgpart"), dir.join(".x.audio.sgpart"));
+        let gen = |args: &[&str], out: &Path| {
+            let ok = Command::new(&ffmpeg).args(["-hide_banner", "-loglevel", "error", "-y"]).args(args).arg(out).status().unwrap();
+            assert!(ok.success());
+        };
+        // like YouTube: fragmented MP4, picture and sound apart
+        gen(&["-f", "lavfi", "-i", "testsrc=size=320x240:rate=25:duration=20", "-c:v", "mpeg4", "-an", "-movflags", "+frag_keyframe+empty_moov", "-f", "mp4"], &v);
+        gen(&["-f", "lavfi", "-i", "sine=frequency=440:duration=20", "-c:a", "aac", "-vn", "-movflags", "+frag_keyframe+empty_moov", "-f", "mp4"], &a);
+        // the files are full size already (sparse), only half is real
+        let (vl, al) = (std::fs::metadata(&v).unwrap().len(), std::fs::metadata(&a).unwrap().len());
+        let out = dir.join("x (preview).mkv");
+        preview_snapshot(&v, vl / 2, Some((&a, al / 2)), &out).unwrap();
+        let probe = Command::new(&ffmpeg).arg("-i").arg(&out).output().unwrap();
+        let info = String::from_utf8_lossy(&probe.stderr);
+        assert!(info.contains("Video: mpeg4") && info.contains("Audio: aac"), "{info}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn makes_mp3() {
         let Some(ffmpeg) = find_ffmpeg() else { return };

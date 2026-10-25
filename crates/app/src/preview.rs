@@ -22,8 +22,15 @@ pub(crate) fn play(part: &Path, final_name: &str) -> std::io::Result<()> {
         std::process::Command::new(player).arg(part).spawn()?;
         return Ok(());
     }
-    // never over a file that is already there (it could be the user's own)
-    let mut link = link_name(part, final_name, &ext);
+    let link = free_name(link_name(part, final_name, &ext))?;
+    std::fs::hard_link(part, &link)?;
+    LINKS.lock().unwrap_or_else(|p| p.into_inner()).push((link.clone(), std::time::Instant::now()));
+    open::that_detached(&link)
+}
+
+/// Never over a file that is already there (it could be the user's own).
+fn free_name(first: PathBuf) -> std::io::Result<PathBuf> {
+    let mut link = first;
     let mut n = 2;
     while link.exists() {
         let (stem, e) = (link.file_stem().unwrap_or_default().to_string_lossy().into_owned(), link.extension().unwrap_or_default().to_string_lossy().into_owned());
@@ -34,9 +41,31 @@ pub(crate) fn play(part: &Path, final_name: &str) -> std::io::Result<()> {
             return Err(std::io::Error::other("too many preview files"));
         }
     }
-    std::fs::hard_link(part, &link)?;
-    LINKS.lock().unwrap_or_else(|p| p.into_inner()).push((link.clone(), std::time::Instant::now()));
-    open::that_detached(&link)
+    Ok(link)
+}
+
+/// Picture and sound in two files (YouTube): one file of what is there so
+/// far is made (a few seconds, nothing re-encoded) and opened. It is a
+/// picture of this moment: "Play while downloading" again shows more.
+/// Runs on its own thread; `done` gets the error, if any.
+pub(crate) fn play_pair(
+    video: PathBuf,
+    video_ready: u64,
+    audio: Option<(PathBuf, u64)>,
+    final_name: &str,
+    done: impl FnOnce(Option<String>) + Send + 'static,
+) {
+    let first = link_name(&video, final_name, "mkv");
+    std::thread::spawn(move || {
+        let result = (|| -> anyhow::Result<()> {
+            let out = free_name(first)?;
+            swiftget_engine::mux::preview_snapshot(&video, video_ready, audio.as_ref().map(|(p, n)| (p.as_path(), *n)), &out)?;
+            LINKS.lock().unwrap_or_else(|p| p.into_inner()).push((out.clone(), std::time::Instant::now()));
+            open::that_detached(&out)?;
+            Ok(())
+        })();
+        done(result.err().map(|e| format!("{e:#}")));
+    });
 }
 
 /// Remove the second names no player uses any more. A player that is

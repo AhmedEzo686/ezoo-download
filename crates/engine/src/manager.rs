@@ -832,38 +832,37 @@ impl Manager {
     }
 
     /// One download (cheap: used many times a second by progress windows).
-    /// The file to watch / listen to while it is still downloading, and how
-    /// much of it is already there from the start (players stop where the
-    /// first gap is). `None`: nothing to play yet, or a kind that can't be
-    /// played before it is done (streams are joined at the end).
-    pub fn preview_file(&self, id: DownloadId) -> Option<(PathBuf, u64)> {
+    /// What can be watched / listened to of a download that is still
+    /// running: the part of each file from its start with no gap (players
+    /// stop at the first gap). `None`: nothing yet, or a kind that can't be
+    /// played before it is done (streams joined at the end, torrents).
+    pub fn preview_source(&self, id: DownloadId) -> Option<PreviewSource> {
         let inner = self.inner.lock().unwrap();
         let e = inner.entries.get(&id)?;
         if e.rec.status == Status::Completed {
             return None;
         }
-        let (path, segs) = match e.rec.kind {
-            DownloadKind::Http => (e.rec.part_path(), e.segs.lock().unwrap().clone()),
-            // the picture without the sound: joined only at the end
-            DownloadKind::Dash => (e.rec.video_part_path(), e.segs.lock().unwrap().clone()),
-            DownloadKind::Hls => return None,
-            // the pieces of a torrent come in any order
-            DownloadKind::Torrent => return None,
-        };
-        // the part from the beginning with no gap
-        let mut ready = 0u64;
-        let mut sorted: Vec<_> = segs.iter().map(|s| (s.start, s.pos)).collect();
-        sorted.sort();
-        for (start, pos) in sorted {
-            if start > ready {
-                break;
+        match e.rec.kind {
+            DownloadKind::Http => {
+                let segs = e.segs.lock().unwrap().clone();
+                let ready = if segs.is_empty() { e.progress.bytes.load(Ordering::Relaxed) } else { ready_from_start(&segs) };
+                let path = e.rec.part_path();
+                (ready > 0 && path.exists()).then_some(PreviewSource::File { path, ready })
             }
-            ready = ready.max(pos);
+            // picture and sound come as two files (YouTube): both are needed
+            DownloadKind::Dash => {
+                let (video, audio) = (e.rec.video_part_path(), e.rec.audio_part_path());
+                let video_ready = ready_from_start(&e.segs.lock().unwrap());
+                let audio_ready = ready_from_start(&e.audio_segs.lock().unwrap());
+                (video_ready > 0 && video.exists()).then(|| PreviewSource::Pair {
+                    video,
+                    video_ready,
+                    audio: (audio_ready > 0 && audio.exists()).then_some(audio),
+                    audio_ready,
+                })
+            }
+            DownloadKind::Hls | DownloadKind::Torrent => None,
         }
-        if segs.is_empty() {
-            ready = e.progress.bytes.load(Ordering::Relaxed);
-        }
-        (ready > 0 && path.exists()).then_some((path, ready))
     }
 
     pub fn get(&self, id: DownloadId) -> Option<DownloadView> {
@@ -1893,6 +1892,29 @@ impl Manager {
 
 /// Delete every temporary file of a download. Returns false if something
 /// could not be removed (still open), so the caller can retry.
+/// Bytes from the start of a file with no gap.
+fn ready_from_start(segs: &[segments::Segment]) -> u64 {
+    let mut ready = 0u64;
+    let mut sorted: Vec<_> = segs.iter().map(|s| (s.start, s.pos)).collect();
+    sorted.sort();
+    for (start, pos) in sorted {
+        if start > ready {
+            break;
+        }
+        ready = ready.max(pos);
+    }
+    ready
+}
+
+/// What a running download offers to play (see `Manager::preview_source`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum PreviewSource {
+    /// one file that grows
+    File { path: PathBuf, ready: u64 },
+    /// a picture file and a sound file (no sound yet: `audio` is `None`)
+    Pair { video: PathBuf, video_ready: u64, audio: Option<PathBuf>, audio_ready: u64 },
+}
+
 /// `path` is in `dir` (or below it), with no ".." that could lead out.
 fn inside(path: &Path, dir: &Path) -> bool {
     path.starts_with(dir)

@@ -565,8 +565,10 @@ async function resolveYoutube(tabId, pageUrl) {
  * video the user is watching) is handed to yt-dlp, which knows Facebook,
  * Instagram, TikTok, X, Vimeo, Dailymotion and ~1800 more sites.
  */
-async function resolvePage(tabId, page) {
-  if (!page || !/^https?:/i.test(page) || isYoutube(page)) return;
+async function resolvePage(tabId, page, embedded = false) {
+  // YouTube's own pages have their own way (resolveYoutube); a YouTube
+  // player embedded in another site goes this way
+  if (!page || !/^https?:/i.test(page) || (isYoutube(page) && !embedded)) return;
   const key = `res_${tabId}`;
   const state = (await chrome.storage.session.get(key))[key];
   if (state && state.page === page && (state.resolved || state.resolving || state.resolveError)) return;
@@ -591,11 +593,26 @@ async function resolvePage(tabId, page) {
 
 /** The bubble of a video that is not the page's main one was clicked. */
 async function resolveOneVideo(msg, tab) {
+  // a player in a frame (Dailymotion, news sites...): what was found for the
+  // whole page (its qualities, its streams) is what this player plays
+  if (msg.frame && tab) {
+    if (!msg.page && !isYoutube(tab.url)) {
+      await resolvePage(tab.id, tab.url).catch(() => {});
+      // it may have been started already (the player was seen): wait for it
+      for (let i = 0; i < 180; i++) {
+        const { res } = await readTab(tab.id);
+        if (!res || !res.resolving) break;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    const found = (await itemsForTab(tab.id)).filter((i) => !i.disabled);
+    if (found.length) return { items: found };
+  }
   const items = [];
   if (msg.src && /^https?:/i.test(msg.src)) {
     items.push({ label: "Video file", sub: msg.src, url: msg.src, ext: (/\.(\w{2,4})(\?|$)/.exec(msg.src) || [])[1] || "mp4" });
   }
-  const page = msg.page || (msg.src ? "" : tab && tab.url);
+  const page = msg.page || (msg.src && !msg.frame ? "" : tab && tab.url);
   if (page && /^https?:/i.test(page)) {
     try {
       const r = await askApp(page);
@@ -727,7 +744,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // the page shows a video: find its qualities
       if (!sender.tab) return false;
       if (isYoutube(sender.tab.url)) resolveYoutube(sender.tab.id, sender.tab.url);
-      else resolvePage(sender.tab.id, msg.page || sender.tab.url);
+      else resolvePage(sender.tab.id, msg.page || sender.tab.url, !!msg.frame);
       return false;
     case "swiftget-resolve-video":
       // one of several videos on the page: its own file, or its own link

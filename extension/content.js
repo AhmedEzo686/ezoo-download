@@ -102,7 +102,8 @@
     /(twitter|x)\.com\/[^/]+\/status\//i,
     /vimeo\.com\/\d+/i,
     /player\.vimeo\.com\/video\//i,
-    /dailymotion\.com\/(video\/|embed\/video\/|player)/i,
+    // (not the "geo.dailymotion.com/player/…" frame: that is only the player)
+    /dailymotion\.com\/(video\/|embed\/video\/)/i,
     /dai\.ly\//i,
     /reddit\.com\/r\/[^/]+\/comments\//i,
     /twitch\.tv\/(videos\/|[^/]+\/clip\/)/i,
@@ -139,15 +140,18 @@
 
   let lastPage = "";
   function watchVideos() {
-    if (!TOP) return; // the page's qualities are found for the main page only
     const v = biggestVideo();
     if (!v) return;
     // ignore tiny muted background loops that never play for long
     if (v.paused && !(v.duration > 3) && !v.currentSrc) return;
-    const page = linkFor(v);
-    if (page !== lastPage) {
-      lastPage = page;
-      chrome.runtime.sendMessage({ type: "swiftget-video-seen", page }).catch?.(() => {});
+    // in a frame (an embedded player): its own address when it is a video
+    // page (YouTube / Vimeo embeds), otherwise the page around it (the
+    // add-in knows that one)
+    const page = TOP ? linkFor(v) : isVideoPage(location.href) ? location.href : "";
+    if (page !== lastPage || (!TOP && !lastPage)) {
+      if (!TOP && lastPage === "frame:" + page) return;
+      lastPage = TOP ? page : "frame:" + page;
+      chrome.runtime.sendMessage({ type: "swiftget-video-seen", page, frame: !TOP }).catch?.(() => {});
     }
   }
 
@@ -344,8 +348,10 @@
       // neither is there
       {
         type: "swiftget-resolve-video",
-        page: ownLink(b.video) || (directSrc(b.video) ? "" : location.href),
+        // in a frame that is only a player: the add-in uses the page around it
+        page: ownLink(b.video) || (directSrc(b.video) || !TOP ? "" : location.href),
         src: directSrc(b.video),
+        frame: !TOP,
       },
       (res) => {
         b.loading = false;

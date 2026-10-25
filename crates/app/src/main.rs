@@ -2459,15 +2459,22 @@ pub(crate) fn play_while_downloading(ui: &Ui, id: u64) {
     if kind != "video" && kind != "audio" {
         return message(&t("Only videos and sound files can be played while they download."));
     }
-    match ui.ctx.mgr.preview_file(id) {
+    match ui.ctx.mgr.preview_source(id) {
         None if v.kind == DownloadKind::Hls => {
             message(&t("This video comes in many small pieces that are joined at the end: it can be played when the download is done."))
         }
         None => message(&t("Nothing to play yet: wait until a part of the file is downloaded, then try again.")),
-        Some((path, _ready)) => {
+        Some(swiftget_engine::PreviewSource::File { path, .. }) => {
             if let Err(e) = preview::play(&path, &v.file_name) {
                 message(&tf("Could not open the player: {}", &[&e]));
             }
+        }
+        Some(swiftget_engine::PreviewSource::Pair { video, video_ready, audio, audio_ready }) => {
+            preview::play_pair(video, video_ready, audio.map(|a| (a, audio_ready)), &v.file_name, |err| {
+                if let Some(e) = err {
+                    let _ = slint::invoke_from_event_loop(move || message(&tf("Could not open the player: {}", &[&e])));
+                }
+            });
         }
     }
 }
