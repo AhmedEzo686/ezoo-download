@@ -3607,6 +3607,122 @@ export component AboutDialog inherits ThemedWindow {
     }
 }
 
+
+// After an update: what is new, right to left in Arabic.
+export component WhatsNewDialog inherits ThemedWindow {
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("What's new in Ezoo Download");
+    preferred-width: 560px;
+    preferred-height: 560px;
+    min-width: 440px;
+    min-height: 360px;
+    in property <string> heading;
+    in property <[string]> items;
+    in property <bool> rtl;
+    callback open-link(string);
+    callback close-window();
+    property <TextHorizontalAlignment> side: root.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+    VerticalLayout {
+        padding: 18px;
+        spacing: 10px;
+        HorizontalLayout {
+            spacing: 12px;
+            alignment: root.rtl ? end : start;
+            if !root.rtl: Image {
+                source: @image-url("icon.png");
+                width: 40px;
+                height: 40px;
+            }
+            Text {
+                text: root.heading;
+                font-size: 15px * Theme.font-scale;
+                font-weight: 700;
+                color: Theme.text;
+                vertical-alignment: center;
+                horizontal-alignment: root.side;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+            if root.rtl: Image {
+                source: @image-url("icon.png");
+                width: 40px;
+                height: 40px;
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: 4px;
+            ScrollView {
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+                    alignment: start;
+                    for line in root.items: HorizontalLayout {
+                        spacing: 8px;
+                        if !root.rtl: Text {
+                            text: "•";
+                            color: Theme.accent;
+                            font-weight: 700;
+                        }
+                        Text {
+                            text: line;
+                            color: Theme.text;
+                            wrap: word-wrap;
+                            horizontal-alignment: root.side;
+                            horizontal-stretch: 1;
+                        }
+                        if root.rtl: Text {
+                            text: "•";
+                            color: Theme.accent;
+                            font-weight: 700;
+                        }
+                    }
+                }
+            }
+        }
+        // the program is free: a way to say thank you
+        Rectangle {
+            background: Theme.input-bg;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: 4px;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                Text {
+                    text: @tr("Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal. Thank you!");
+                    color: Theme.text;
+                    wrap: word-wrap;
+                    horizontal-alignment: root.side;
+                }
+                HorizontalLayout {
+                    alignment: root.rtl ? end : start;
+                    Button {
+                        text: @tr("Support with PayPal");
+                        primary: true;
+                        clicked => {
+                            root.open-link("https://www.paypal.com/paypalme/ahmedezzat99");
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            alignment: root.rtl ? start : end;
+            Button {
+                text: @tr("OK");
+                clicked => {
+                    root.close-window();
+                }
+            }
+        }
+    }
+}
+
 // Help > Check for updates: looks for a new version, says when
 // this one is the newest, otherwise downloads the new one right here and
 // installs it in front of the user.

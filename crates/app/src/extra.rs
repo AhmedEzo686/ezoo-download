@@ -366,15 +366,34 @@ const WHATS_NEW: [&str; 14] = [
     "Fixed a crash around the Tips window.",
 ];
 
-pub(crate) fn whats_new() {
-    let mut text = tf("Ezoo Download was updated to version {} by itself.", &[&env!("CARGO_PKG_VERSION")]);
-    text.push_str("\n\n");
-    text.push_str(&t("What's new:"));
-    for line in WHATS_NEW {
-        text.push_str("\n•  ");
-        text.push_str(&t(line));
-    }
-    crate::message(&text);
+thread_local! {
+    static WHATS_NEW_WIN: std::cell::RefCell<Option<WhatsNewDialog>> = const { std::cell::RefCell::new(None) };
+}
+
+/// After an update: what is new, in its own window (right to left in
+/// Arabic), with a word about supporting the free program.
+pub(crate) fn whats_new(ui: &Ui) {
+    let Ok(d) = WhatsNewDialog::new() else { return };
+    crate::set_theme_of(d.global::<Theme>(), &crate::Look::of(&ui.ctx.mgr.settings()));
+    d.set_rtl(crate::i18n::is_arabic());
+    d.set_heading(tf("Ezoo Download was updated to version {} by itself.", &[&env!("CARGO_PKG_VERSION")]).into());
+    let items: Vec<SharedString> = WHATS_NEW.iter().map(|l| t(l).into()).collect();
+    d.set_items(ModelRc::new(VecModel::from(items)));
+    d.on_open_link(|u| {
+        if u.starts_with("https://") {
+            let _ = open::that(u.as_str());
+        }
+    });
+    let w = d.as_weak();
+    d.on_close_window(move || {
+        if let Some(d) = w.upgrade() {
+            let _ = d.hide();
+        }
+        // let the window go after this click
+        slint::Timer::single_shot(std::time::Duration::from_millis(1), || WHATS_NEW_WIN.with(|x| *x.borrow_mut() = None));
+    });
+    open_window!(d);
+    WHATS_NEW_WIN.with(|x| *x.borrow_mut() = Some(d));
 }
 
 const TIPS: [&str; 14] = [

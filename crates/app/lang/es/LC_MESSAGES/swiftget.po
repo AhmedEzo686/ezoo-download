@@ -1405,5 +1405,11 @@ msgstr "¿Le gusta Ezoo Download? Puede apoyar su desarrollo:"
 msgid "Support with PayPal"
 msgstr "Apoyar con PayPal"
 
+msgid "What's new in Ezoo Download"
+msgstr "Novedades de Ezoo Download"
+
+msgid "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal. Thank you!"
+msgstr "Ezoo Download es gratis y sin anuncios. Si te sirve y quieres apoyar su desarrollo, puedes enviar un aporte con PayPal. ¡Gracias!"
+
 msgid "Hide"
 msgstr "Ocultar"

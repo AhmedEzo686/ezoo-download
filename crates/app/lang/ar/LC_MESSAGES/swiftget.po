@@ -47,7 +47,7 @@ msgid "Download all or some videos of a playlist."
 msgstr "تحميل كل فيديوهات قائمة تشغيل أو بعضها."
 
 msgid "Download a .torrent file or a magnet link."
-msgstr "تحميل ملف ‎.torrent أو رابط magnet."
+msgstr "تحميل ملف تورنت أو رابط magnet."
 
 msgid "{} downloads selected"
 msgstr "تم تحديد {} تحميلات"
@@ -1301,19 +1301,19 @@ msgid "Add a torrent"
 msgstr "إضافة تورنت"
 
 msgid "A magnet link, or a .torrent file:"
-msgstr "رابط magnet، أو ملف ‎.torrent:"
+msgstr "رابط magnet، أو ملف تورنت:"
 
 msgid "magnet:?xt=urn:btih:…  or  C:\\…\\file.torrent"
 msgstr "magnet:?xt=urn:btih:…  أو  C:\\…\\file.torrent"
 
 msgid "Open .torrent file…"
-msgstr "فتح ملف ‎.torrent…"
+msgstr "فتح ملف تورنت…"
 
 msgid "A magnet link brings its file list from the other computers when it starts: all its files are downloaded."
 msgstr "رابط magnet يجلب قائمة ملفاته من الأجهزة الأخرى عند البدء: يتم تحميل كل ملفاته."
 
 msgid "Paste a magnet link or open a .torrent file: what it shares shows up here."
-msgstr "الصق رابط magnet أو افتح ملف ‎.torrent: ما يشاركه يظهر هنا."
+msgstr "الصق رابط magnet أو افتح ملف تورنت: ما يشاركه يظهر هنا."
 
 msgid "Download a playlist"
 msgstr "تحميل قائمة تشغيل"
@@ -1404,6 +1404,12 @@ msgstr "أعجبك Ezoo Download؟ يمكنك دعم تطويره:"
 
 msgid "Support with PayPal"
 msgstr "ادعم عبر PayPal"
+
+msgid "What's new in Ezoo Download"
+msgstr "الجديد في Ezoo Download"
+
+msgid "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal. Thank you!"
+msgstr "برنامج Ezoo Download مجاني تمامًا وبدون إعلانات. لو البرنامج بيفيدك وحابب تدعم تطويره، تقدر تبعت دعمك عن طريق PayPal. شكرًا لك!"
 
 msgid "Hide"
 msgstr "إخفاء"

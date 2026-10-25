@@ -469,7 +469,8 @@ fn main() -> anyhow::Result<()> {
             let _ = mgr.set_settings(s);
             just_updated = updated;
             if updated {
-                Timer::single_shot(Duration::from_millis(1500), extra::whats_new);
+                let ui = ui.clone();
+                Timer::single_shot(Duration::from_millis(1500), move || extra::whats_new(&ui));
             }
         }
     }
