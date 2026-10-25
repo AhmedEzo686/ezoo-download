@@ -387,6 +387,119 @@ const AR: &[(&str, &str)] = &[
         "أيقونة جديدة لقوائم التشغيل، وأيقونة أصغر في شريط عنوان النافذة.",
     ),
     ("Support Ezoo Download with PayPal from Help > About.", "ادعم Ezoo Download عبر PayPal من مساعدة > حول."),
+    // 1.0.5
+    (
+        "The main window can be maximized to the full screen.",
+        "نافذة البرنامج الرئيسية يمكن تكبيرها لملء الشاشة.",
+    ),
+    (
+        "Columns of the list can be resized and moved by dragging their titles.",
+        "أعمدة القائمة يمكن تكبيرها وتصغيرها ونقلها بسحب عناوينها.",
+    ),
+    (
+        "Toolbar names are bold, and the size of the video button can be chosen in the add-in's window.",
+        "أسماء أزرار الشريط بخط عريض، ويمكن اختيار حجم زر الفيديو من نافذة الإضافة.",
+    ),
+    (
+        "Pictures",
+        "الصور",
+    ),
+    (
+        "Checking for updates…",
+        "جارٍ البحث عن تحديثات…",
+    ),
+    (
+        "This is version {}.",
+        "هذا هو الإصدار {}.",
+    ),
+    (
+        "Could not check for updates",
+        "تعذّر البحث عن تحديثات",
+    ),
+    (
+        "Ezoo Download is up to date",
+        "Ezoo Download محدَّث",
+    ),
+    (
+        "Version {} is the newest version.",
+        "الإصدار {} هو أحدث إصدار.",
+    ),
+    (
+        "Version {} is available",
+        "الإصدار {} متاح",
+    ),
+    (
+        "This copy was not installed with the setup, so it cannot update itself.",
+        "هذه النسخة لم تُثبَّت ببرنامج الإعداد، لذلك لا يمكنها تحديث نفسها.",
+    ),
+    (
+        "Downloading version {}…",
+        "جارٍ تحميل الإصدار {}…",
+    ),
+    (
+        "Installing version {}…",
+        "جارٍ تثبيت الإصدار {}…",
+    ),
+    (
+        "Ezoo Download closes now and opens again when it is installed.",
+        "سيُغلق Ezoo Download الآن ويفتح من جديد بعد التثبيت.",
+    ),
+    (
+        "Could not get the update",
+        "تعذّر الحصول على التحديث",
+    ),
+    (
+        "Text size, font and a picture behind the main window (Options > Appearance).",
+        "حجم الخط والخط وصورة خلف النافذة الرئيسية (الخيارات > المظهر).",
+    ),
+    (
+        "Windows open in the middle of the screen; only the main window can be maximized.",
+        "النوافذ تفتح في منتصف الشاشة، والنافذة الرئيسية وحدها يمكن تكبيرها.",
+    ),
+    (
+        "Drag a finished file from the list onto the desktop or into a folder.",
+        "اسحب ملفًا مكتملًا من القائمة إلى سطح المكتب أو إلى أي مجلد.",
+    ),
+    (
+        "The progress of a download shows on its taskbar button.",
+        "تقدّم التحميل يظهر على زر النافذة في شريط المهام.",
+    ),
+    (
+        "Check for updates shows the check, the download and the installation in its own window.",
+        "البحث عن تحديثات يعرض البحث والتحميل والتثبيت في نافذة خاصة.",
+    ),
+    (
+        "Playlist videos are saved with their own original titles and their original sound.",
+        "فيديوهات قوائم التشغيل تُحفظ بعناوينها الأصلية وصوتها الأصلي.",
+    ),
+    (
+        "Closing a download's window (X) stops the download; Resume opens it again.",
+        "إغلاق نافذة التحميل (X) يوقف التحميل، و«استئناف» يفتحها من جديد.",
+    ),
+    (
+        "The download button on videos in the browser is smaller, and its size can be changed in the add-in's settings.",
+        "زر التحميل على الفيديوهات في المتصفح أصبح أصغر، ويمكن تغيير حجمه من إعدادات الإضافة.",
+    ),
+    (
+        "Updates are signed: Ezoo Download installs only updates made by its developer.",
+        "التحديثات أصبحت موقّعة: Ezoo Download لا يثبّت إلا التحديثات الصادرة من مطوّره.",
+    ),
+    (
+        "Downloaded files are marked as coming from the internet, so Windows warns before opening an unsafe file.",
+        "الملفات المحمّلة تُعلَّم بأنها من الإنترنت، فيحذّرك ويندوز قبل فتح ملف غير آمن.",
+    ),
+    (
+        "Saved passwords and site logins are encrypted with your Windows account.",
+        "كلمات المرور وبيانات دخول المواقع المحفوظة أصبحت مشفّرة بحساب ويندوز الخاص بك.",
+    ),
+    (
+        "The video helpers (yt-dlp and ffmpeg) are checked before they are used.",
+        "أدوات الفيديو (yt-dlp و ffmpeg) يتم التحقق منها قبل استخدامها.",
+    ),
+    (
+        "More protection against harmful web pages and links.",
+        "حماية أكبر من صفحات الويب والروابط الضارة.",
+    ),
 ];
 
 #[cfg(test)]

@@ -425,5 +425,14 @@
  "Version {}": "Sürüm {}",
  "Coded by Ahmed Ezzat": "Kodlayan: Ahmed Ezzat",
  "Like Ezoo Download? You can support its development:": "Ezoo Download'u beğendiniz mi? Geliştirilmesine destek olabilirsiniz:",
- "Support with PayPal": "PayPal ile destek ol"
+ "Support with PayPal": "PayPal ile destek ol",
+ "Appearance…": "Görünüm…",
+ "Appearance": "Görünüm",
+ "Text size": "Metin boyutu",
+ "Font": "Yazı tipi",
+ "Default (Segoe UI)": "Varsayılan (Segoe UI)",
+ "Background picture": "Arka plan resmi",
+ "none (the theme's colors)": "yok (temanın renkleri)",
+ "Picture visibility": "Resim görünürlüğü",
+ "Hide": "Gizle"
 }

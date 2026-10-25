@@ -3,16 +3,17 @@
 // queue tree, detailed list, one progress window per download. Nine themes.
 
 import { Button, LineEdit, SpinBox, CheckBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
-import { DownloadRow, QueueRow, SegView, Cols, CatRow, PairRow, LinkRow, Theme, ThemedWindow, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph } from "common.slint";
-export { DownloadRow, QueueRow, SegView, Cols, CatRow, PairRow, LinkRow, Theme }
+import { DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph } from "common.slint";
+export { DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme }
 export { BrowserRow } from "dialogs.slint";
-export { ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, BrowserDialog, AboutDialog } from "dialogs.slint";
+export { ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, BrowserDialog, AboutDialog, UpdateDialog } from "dialogs.slint";
 
 component DownloadItem inherits Rectangle {
     in property <DownloadRow> data;
     in property <bool> selected;
     in property <[QueueRow]> queues;
     in property <Cols> cols;
+    in property <[ColDef]> columns;
     // how many downloads are selected (the menu then works on all of them)
     in property <int> sel-count;
     // click with Ctrl / Shift
@@ -25,7 +26,10 @@ component DownloadItem inherits Rectangle {
     callback activated();
     callback action(string);
     callback move-to-queue(int);
-    height: 24px;
+    // dragging a finished file out of the program (onto the desktop, a folder…)
+    callback drag-out();
+    property <bool> dragged-out;
+    height: max(24px, 24px * Theme.font-scale);
     background: root.selected ? Theme.select : ta.has-hover ? Theme.hover : transparent;
     border-width: root.selected ? 1px : 0px;
     border-color: Theme.select-line;
@@ -36,6 +40,12 @@ component DownloadItem inherits Rectangle {
             root.activated();
         }
         moved => {
+            // a finished file pulled sideways: hand it to Windows to drop elsewhere
+            if (self.pressed && root.done && !root.dragged-out && abs(self.mouse-x - self.pressed-x) > 12px) {
+                root.dragged-out = true;
+                root.drag-out();
+                return;
+            }
             if (self.pressed && floor(self.mouse-y / root.height) != root.drag-last) {
                 root.drag-last = floor(self.mouse-y / root.height);
                 root.drag(root.drag-last);
@@ -44,6 +54,7 @@ component DownloadItem inherits Rectangle {
         pointer-event(ev) => {
             if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
                 root.drag-last = 0;
+                root.dragged-out = false;
                 root.pick(ev.modifiers.control, ev.modifiers.shift);
             }
             // right click: select the row and open the menu where the mouse is
@@ -211,104 +222,113 @@ component DownloadItem inherits Rectangle {
                 y: (parent.height - 18px) / 2;
             }
         }
-        // clip: long right-to-left (Arabic) names must never spill over the icon
-        Rectangle {
-            horizontal-stretch: 1;
-            min-width: 120px;
+        // the columns in the order and widths of the header
+        for c in root.columns: Rectangle {
+            width: c.width;
+            // clip: long right-to-left (Arabic) names must never spill over
             clip: true;
-            Cell {
+            if c.key == "name": Cell {
                 x: 0px;
-                width: parent.width;
+                width: parent.width - 4px;
                 height: parent.height;
                 text: root.data.name;
                 horizontal-alignment: left;
             }
-        }
-        Rectangle {
-            width: 8px;
-        }
-        if root.cols.q: Cell {
-            text: root.data.queue;
-            width: 26px;
-            horizontal-alignment: center;
-            color: Theme.accent;
-        }
-        if root.cols.size: Cell {
-            text: root.data.size;
-            width: 82px;
-            horizontal-alignment: right;
-        }
-        if root.cols.status: Rectangle {
-            width: 110px;
-            // thin progress line under the status, for running downloads
-            if root.data.state == 1 || (root.data.state == 2 && root.data.progress > 0): Rectangle {
-                x: 10px;
-                y: parent.height - 5px;
-                width: parent.width - 20px;
-                height: 3px;
-                border-radius: 1.5px;
-                background: Theme.bar-bg;
-                Rectangle {
-                    x: 0;
-                    width: parent.width * root.data.progress;
-                    height: parent.height;
+            if c.key == "q": Cell {
+                width: parent.width;
+                height: parent.height;
+                text: root.data.queue;
+                horizontal-alignment: center;
+                color: Theme.accent;
+            }
+            if c.key == "size": Cell {
+                width: parent.width - 4px;
+                height: parent.height;
+                text: root.data.size;
+                horizontal-alignment: right;
+            }
+            if c.key == "status": Rectangle {
+                // thin progress line under the status, for running downloads
+                if root.data.state == 1 || (root.data.state == 2 && root.data.progress > 0): Rectangle {
+                    x: 10px;
+                    y: parent.height - 5px;
+                    width: parent.width - 20px;
+                    height: 3px;
                     border-radius: 1.5px;
-                    background: root.data.state == 1 ? Theme.accent : Theme.warn;
-                    animate width {
-                        duration: 250ms;
-                        easing: linear;
+                    background: Theme.bar-bg;
+                    Rectangle {
+                        x: 0;
+                        width: parent.width * root.data.progress;
+                        height: parent.height;
+                        border-radius: 1.5px;
+                        background: root.data.state == 1 ? Theme.accent : Theme.warn;
+                        animate width {
+                            duration: 250ms;
+                            easing: linear;
+                        }
                     }
                 }
+                Cell {
+                    width: parent.width;
+                    height: parent.height - 2px;
+                    text: root.data.status;
+                    horizontal-alignment: center;
+                    color: root.data.state == 3 ? Theme.ok : root.data.state == 4 ? Theme.err : root.data.state == 1 ? Theme.accent : Theme.text;
+                }
             }
-            Cell {
+            if c.key == "eta": Cell {
+                width: parent.width - 4px;
+                height: parent.height;
+                text: root.data.eta;
+                horizontal-alignment: right;
+            }
+            if c.key == "speed": Cell {
+                width: parent.width - 4px;
+                height: parent.height;
+                text: root.data.speed;
+                horizontal-alignment: right;
+            }
+            if c.key == "last": Cell {
                 width: parent.width;
-                height: parent.height - 2px;
-                text: root.data.status;
+                height: parent.height;
+                text: root.data.last-try;
                 horizontal-alignment: center;
-                color: root.data.state == 3 ? Theme.ok : root.data.state == 4 ? Theme.err : root.data.state == 1 ? Theme.accent : Theme.text;
+                color: Theme.muted;
+            }
+            if c.key == "desc": Cell {
+                width: parent.width;
+                height: parent.height;
+                text: "  " + root.data.description;
+                color: Theme.muted;
+            }
+            if c.key == "added": Cell {
+                width: parent.width;
+                height: parent.height;
+                text: root.data.added;
+                horizontal-alignment: center;
+                color: Theme.muted;
+            }
+            if c.key == "saveto": Cell {
+                width: parent.width;
+                height: parent.height;
+                text: "  " + root.data.save-to;
+                color: Theme.muted;
+            }
+            if c.key == "referer": Cell {
+                width: parent.width;
+                height: parent.height;
+                text: "  " + root.data.referer;
+                color: Theme.muted;
+            }
+            if c.key == "parent": Cell {
+                width: parent.width;
+                height: parent.height;
+                text: "  " + root.data.parent;
+                color: Theme.muted;
             }
         }
-        if root.cols.eta: Cell {
-            text: root.data.eta;
-            width: 74px;
-            horizontal-alignment: right;
-        }
-        if root.cols.speed: Cell {
-            text: root.data.speed;
-            width: 92px;
-            horizontal-alignment: right;
-        }
-        if root.cols.last: Cell {
-            text: root.data.last-try;
-            width: 118px;
-            horizontal-alignment: center;
-            color: Theme.muted;
-        }
-        if root.cols.desc: Cell {
-            text: "  " + root.data.description;
-            width: 170px;
-            color: Theme.muted;
-        }
-        if root.cols.added: Cell {
-            text: root.data.added;
-            width: 118px;
-            horizontal-alignment: center;
-            color: Theme.muted;
-        }
-        if root.cols.saveto: Cell {
-            text: "  " + root.data.save-to;
-            width: 190px;
-            color: Theme.muted;
-        }
-        if root.cols.referer: Cell {
-            text: "  " + root.data.referer;
-            width: 190px;
-            color: Theme.muted;
-        }
-        if root.cols.parent: Cell {
-            text: "  " + root.data.parent;
-            width: 190px;
-            color: Theme.muted;
+        Rectangle {
+            horizontal-stretch: 1;
         }
     }
 }
@@ -429,10 +449,14 @@ export component MainWindow inherits ThemedWindow {
     in property <bool> front;
     always-on-top: root.front;
     title: @tr("Ezoo Download");
-    preferred-width: 1200px;
-    preferred-height: 660px;
-    min-width: 900px;
-    min-height: 440px;
+    // Options > General > Background picture (shows through the panels)
+    in property <image> bg-image;
+    in property <bool> has-bg-image;
+    // the size the window opens with
+    preferred-width: 960px;
+    preferred-height: 500px;
+    min-width: 700px;
+    min-height: 380px;
 
     in property <[DownloadRow]> rows;
     in property <[QueueRow]> queues;
@@ -492,6 +516,32 @@ export component MainWindow inherits ThemedWindow {
     callback row-clicked(int, bool, bool);
     callback row-right(int);
     callback row-drag(int, int);
+    callback row-drag-out(int);
+    // the list's columns (order + widths); dragging in the header changes them
+    in property <[ColDef]> columns;
+    callback column-resized(int, length);
+    callback column-dropped(int, length);
+    callback columns-changed();
+    pure function col-title(k: string) -> string {
+        if (k == "name") { return @tr("File Name"); }
+        if (k == "q") { return @tr("Q"); }
+        if (k == "size") { return @tr("Size"); }
+        if (k == "status") { return @tr("Status"); }
+        if (k == "eta") { return @tr("Time left"); }
+        if (k == "speed") { return @tr("Transfer rate"); }
+        if (k == "last") { return @tr("Last Try Date"); }
+        if (k == "desc") { return @tr("Description"); }
+        if (k == "added") { return @tr("Date Added"); }
+        if (k == "saveto") { return @tr("Save To"); }
+        if (k == "referer") { return @tr("Referer"); }
+        if (k == "parent") { return @tr("Parent Web Page"); }
+        return k;
+    }
+    pure function col-sort-key(k: string) -> string {
+        if (k == "q") { return ""; }
+        if (k == "last") { return "date"; }
+        return k;
+    }
     callback select-all();
     callback row-action(int, string);
     callback row-to-queue(int, int);
@@ -515,7 +565,6 @@ export component MainWindow inherits ThemedWindow {
     callback playlist();
     callback browsers();
     callback tips();
-    callback tell-friend();
     callback about();
     callback quit();
 
@@ -1025,9 +1074,9 @@ export component MainWindow inherits ThemedWindow {
                 }
                 MenuSeparator { }
                 MenuItem {
-                    title: @tr("Transparency…");
+                    title: @tr("Appearance…");
                     activated => {
-                        root.open-settings(0);
+                        root.open-settings(9);
                     }
                 }
             }
@@ -1129,6 +1178,14 @@ export component MainWindow inherits ThemedWindow {
         }
     }
 
+    if root.has-bg-image: Image {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        source: root.bg-image;
+        image-fit: cover;
+    }
     keys := FocusScope {
         key-pressed(event) => {
             if (event.modifiers.control && (event.text == "a" || event.text == "A")) {
@@ -1163,9 +1220,11 @@ export component MainWindow inherits ThemedWindow {
         }
 
         VerticalLayout {
-            // ---- toolbar
+            // ---- toolbar (buttons that don't fit a narrow window are cut off)
             Rectangle {
-                height: root.toolbar-small ? 42px : 70px;
+                height: root.toolbar-small ? 42px : 60px;
+                min-width: 0px;
+                clip: true;
                 background: @linear-gradient(180deg, Theme.toolbar-top 0%, Theme.toolbar-bottom 100%);
                 HorizontalLayout {
                     padding: 4px;
@@ -1263,7 +1322,7 @@ export component MainWindow inherits ThemedWindow {
                         icon: "startqueue";
                         text: @tr("Start Queue");
                         small: root.toolbar-small;
-                        width: root.toolbar-small ? 34px : 84px;
+                        width: root.toolbar-small ? 34px : 62px;
                         clicked => {
                             root.qmenu-start = true;
                             root.qmenu-x = self.x;
@@ -1274,7 +1333,7 @@ export component MainWindow inherits ThemedWindow {
                         icon: "stopqueue";
                         text: @tr("Stop Queue");
                         small: root.toolbar-small;
-                        width: root.toolbar-small ? 34px : 84px;
+                        width: root.toolbar-small ? 34px : 62px;
                         clicked => {
                             root.qmenu-start = false;
                             root.qmenu-x = self.x;
@@ -1304,7 +1363,7 @@ export component MainWindow inherits ThemedWindow {
                     VerticalLayout {
                         alignment: center;
                         LineEdit {
-                            width: 150px;
+                            width: 96px;
                             placeholder-text: @tr("Filter the list…");
                             text <=> root.search;
                             edited(t) => {
@@ -1342,7 +1401,7 @@ export component MainWindow inherits ThemedWindow {
                                 height: parent.height;
                                 text: @tr("Categories");
                                 vertical-alignment: center;
-                                font-size: 12px;
+                                font-size: 12px * Theme.font-scale;
                                 font-weight: 600;
                                 color: Theme.text;
                             }
@@ -1502,9 +1561,11 @@ export component MainWindow inherits ThemedWindow {
                     }
                 }
 
-                // ---- list
+                // ---- list (columns that don't fit are cut off on the right)
                 Rectangle {
                     horizontal-stretch: 1;
+                    min-width: 300px;
+                    clip: true;
                     background: Theme.panel;
                     border-width: 1px;
                     border-color: Theme.line;
@@ -1513,136 +1574,39 @@ export component MainWindow inherits ThemedWindow {
                         Rectangle {
                             height: 24px;
                             background: @linear-gradient(180deg, Theme.header-top 0%, Theme.header-bottom 100%);
+                            clip: true;
+                            // scrolls sideways together with the list (wide columns)
                             HorizontalLayout {
+                                x: lv.viewport-x;
+                                width: max(parent.width, lv.viewport-width);
                                 padding-left: 6px;
                                 HeaderCell {
                                     text: "";
                                     width: 32px;
                                 }
-                                HeaderCell {
-                                    text: @tr("File Name");
-                                    key: "name";
+                                for c[i] in root.columns: HeaderCell {
+                                    width: c.width;
+                                    adjustable: true;
+                                    text: root.col-title(c.key);
+                                    key: root.col-sort-key(c.key);
+                                    align: c.key == "size" || c.key == "eta" || c.key == "speed" ? TextHorizontalAlignment.right : c.key == "q" || c.key == "status" || c.key == "last" || c.key == "added" ? TextHorizontalAlignment.center : TextHorizontalAlignment.left;
                                     sort-by: root.sort-by;
                                     sort-desc: root.sort-desc;
                                     sort(k) => {
                                         root.sort(k);
                                     }
-                                    horizontal-stretch: 1;
-                                    min-width: 120px;
+                                    resized(w) => {
+                                        root.column-resized(i, w);
+                                    }
+                                    resize-done => {
+                                        root.columns-changed();
+                                    }
+                                    dropped(x) => {
+                                        root.column-dropped(i, x);
+                                    }
                                 }
                                 Rectangle {
-                                    width: 8px;
-                                }
-                                if root.cols.q: HeaderCell {
-                                    text: @tr("Q");
-                                    width: 26px;
-                                    align: center;
-                                }
-                                if root.cols.size: HeaderCell {
-                                    text: @tr("Size");
-                                    key: "size";
-                                    sort-by: root.sort-by;
-                                    sort-desc: root.sort-desc;
-                                    sort(k) => {
-                                        root.sort(k);
-                                    }
-                                    width: 82px;
-                                    align: right;
-                                }
-                                if root.cols.status: HeaderCell {
-                                    text: @tr("Status");
-                                    key: "status";
-                                    sort-by: root.sort-by;
-                                    sort-desc: root.sort-desc;
-                                    sort(k) => {
-                                        root.sort(k);
-                                    }
-                                    width: 110px;
-                                    align: center;
-                                }
-                                if root.cols.eta: HeaderCell {
-                                    text: @tr("Time left");
-                                    key: "eta";
-                                    sort-by: root.sort-by;
-                                    sort-desc: root.sort-desc;
-                                    sort(k) => {
-                                        root.sort(k);
-                                    }
-                                    width: 74px;
-                                    align: right;
-                                }
-                                if root.cols.speed: HeaderCell {
-                                    text: @tr("Transfer rate");
-                                    key: "speed";
-                                    sort-by: root.sort-by;
-                                    sort-desc: root.sort-desc;
-                                    sort(k) => {
-                                        root.sort(k);
-                                    }
-                                    width: 92px;
-                                    align: right;
-                                }
-                                if root.cols.last: HeaderCell {
-                                    text: @tr("Last Try Date");
-                                    key: "date";
-                                    sort-by: root.sort-by;
-                                    sort-desc: root.sort-desc;
-                                    sort(k) => {
-                                        root.sort(k);
-                                    }
-                                    width: 118px;
-                                    align: center;
-                                }
-                                if root.cols.desc: HeaderCell {
-                                    text: @tr("Description");
-                                    key: "desc";
-                                    sort-by: root.sort-by;
-                                    sort-desc: root.sort-desc;
-                                    sort(k) => {
-                                        root.sort(k);
-                                    }
-                                    width: 170px;
-                                }
-                                if root.cols.added: HeaderCell {
-                                    text: @tr("Date Added");
-                                    key: "added";
-                                    sort-by: root.sort-by;
-                                    sort-desc: root.sort-desc;
-                                    sort(k) => {
-                                        root.sort(k);
-                                    }
-                                    width: 118px;
-                                    align: center;
-                                }
-                                if root.cols.saveto: HeaderCell {
-                                    text: @tr("Save To");
-                                    key: "saveto";
-                                    sort-by: root.sort-by;
-                                    sort-desc: root.sort-desc;
-                                    sort(k) => {
-                                        root.sort(k);
-                                    }
-                                    width: 190px;
-                                }
-                                if root.cols.referer: HeaderCell {
-                                    text: @tr("Referer");
-                                    key: "referer";
-                                    sort-by: root.sort-by;
-                                    sort-desc: root.sort-desc;
-                                    sort(k) => {
-                                        root.sort(k);
-                                    }
-                                    width: 190px;
-                                }
-                                if root.cols.parent: HeaderCell {
-                                    text: @tr("Parent Web Page");
-                                    key: "parent";
-                                    sort-by: root.sort-by;
-                                    sort-desc: root.sort-desc;
-                                    sort(k) => {
-                                        root.sort(k);
-                                    }
-                                    width: 190px;
+                                    horizontal-stretch: 1;
                                 }
                             }
                             Rectangle {
@@ -1653,12 +1617,13 @@ export component MainWindow inherits ThemedWindow {
                                 background: Theme.line;
                             }
                         }
-                        ListView {
+                        lv := ListView {
                             vertical-stretch: 1;
                             for r in root.rows: DownloadItem {
                                 data: r;
                                 queues: root.queues;
                                 cols: root.cols;
+                                columns: root.columns;
                                 selected: r.sel;
                                 sel-count: root.sel-count;
                                 pick(ctrl, shift) => {
@@ -1670,6 +1635,9 @@ export component MainWindow inherits ThemedWindow {
                                 }
                                 drag(offset) => {
                                     root.row-drag(r.id, offset);
+                                }
+                                drag-out => {
+                                    root.row-drag-out(r.id);
                                 }
                                 activated => {
                                     root.row-activated(r.id);
@@ -1711,13 +1679,13 @@ export component MainWindow inherits ThemedWindow {
                         text: root.status-text;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
-                        font-size: 11px;
+                        font-size: 11px * Theme.font-scale;
                         color: Theme.muted;
                     }
                     Text {
                         text: root.limiter-text;
                         vertical-alignment: center;
-                        font-size: 11px;
+                        font-size: 11px * Theme.font-scale;
                         color: root.limiter-on ? Theme.warn : Theme.muted;
                     }
                 }
@@ -1873,7 +1841,7 @@ export component AddDialog inherits ThemedWindow {
                 Text {
                     text: root.size-text;
                     horizontal-alignment: center;
-                    font-size: 12px;
+                    font-size: 12px * Theme.font-scale;
                     font-weight: 600;
                     color: Theme.text;
                     wrap: word-wrap;
@@ -1918,7 +1886,7 @@ export component AddDialog inherits ThemedWindow {
                 text: root.warning;
                 color: Theme.warn;
                 wrap: word-wrap;
-                font-size: 12px;
+                font-size: 12px * Theme.font-scale;
                 horizontal-stretch: 1;
             }
         }
@@ -1935,7 +1903,7 @@ export component AddDialog inherits ThemedWindow {
                 text: root.probing ? @tr("Checking the address…") : root.info;
                 color: root.info-error ? Theme.err : Theme.muted;
                 overflow: elide;
-                font-size: 12px;
+                font-size: 12px * Theme.font-scale;
             }
         }
         HorizontalLayout {
@@ -2026,7 +1994,7 @@ component TabButton inherits Rectangle {
         text: root.text;
         horizontal-alignment: center;
         vertical-alignment: center;
-        font-size: 12px;
+        font-size: 12px * Theme.font-scale;
         font-weight: root.active ? 600 : 400;
         color: Theme.text;
     }
@@ -2107,7 +2075,7 @@ export component BatchDialog inherits ThemedWindow {
                 text <=> root.links;
                 vertical-stretch: 1;
                 min-height: 200px;
-                font-size: 12px;
+                font-size: 12px * Theme.font-scale;
             }
             HorizontalLayout {
                 spacing: 6px;
@@ -2197,7 +2165,7 @@ export component BatchDialog inherits ThemedWindow {
             Text {
                 text: @tr("Wildcard size 3 makes 001, 002 … 010.");
                 color: Theme.muted;
-                font-size: 11px;
+                font-size: 11px * Theme.font-scale;
             }
             HorizontalLayout {
                 spacing: 8px;
@@ -2233,7 +2201,7 @@ export component BatchDialog inherits ThemedWindow {
                     y: 6px;
                     width: parent.width - 16px;
                     text: root.preview;
-                    font-size: 11px;
+                    font-size: 11px * Theme.font-scale;
                     color: Theme.muted;
                     wrap: word-wrap;
                 }
@@ -2314,7 +2282,8 @@ export component DetailsDialog inherits ThemedWindow {
     in property <bool> front;
     always-on-top: root.front;
     title: root.percent + " " + root.name;
-    width: 560px;
+    preferred-width: 560px;
+    min-width: 520px;
 
     in property <string> name;
     in property <string> percent;
@@ -2396,7 +2365,7 @@ export component DetailsDialog inherits ThemedWindow {
                     }
                     Text {
                         text: root.url;
-                        font-size: 11px;
+                        font-size: 11px * Theme.font-scale;
                         overflow: elide;
                         color: Theme.accent;
                         vertical-alignment: center;
@@ -2498,7 +2467,7 @@ export component DetailsDialog inherits ThemedWindow {
                     text: root.error;
                     color: Theme.err;
                     wrap: word-wrap;
-                    font-size: 11px;
+                    font-size: 11px * Theme.font-scale;
                 }
             }
             if root.tab == 1: VerticalLayout {
@@ -2561,7 +2530,7 @@ export component DetailsDialog inherits ThemedWindow {
                 }
                 Text {
                     text: @tr("Changes apply right away, even while downloading.");
-                    font-size: 11px;
+                    font-size: 11px * Theme.font-scale;
                     color: Theme.muted;
                 }
             }
@@ -2598,7 +2567,7 @@ export component DetailsDialog inherits ThemedWindow {
                 }
                 Text {
                     text: @tr("You get 30 seconds to cancel before the computer shuts down, sleeps or hibernates.");
-                    font-size: 11px;
+                    font-size: 11px * Theme.font-scale;
                     color: Theme.muted;
                     wrap: word-wrap;
                 }
@@ -2668,7 +2637,7 @@ export component DetailsDialog inherits ThemedWindow {
             padding-top: 8px;
             Text {
                 text: @tr("Start positions and download progress by connections");
-                font-size: 11px;
+                font-size: 11px * Theme.font-scale;
                 color: Theme.muted;
             }
             Rectangle {
@@ -2784,7 +2753,7 @@ export component CompleteDialog inherits ThemedWindow {
                 horizontal-stretch: 1;
                 Text {
                     text: @tr("Download complete");
-                    font-size: 15px;
+                    font-size: 15px * Theme.font-scale;
                     font-weight: 700;
                     color: Theme.ok;
                 }
@@ -2798,7 +2767,7 @@ export component CompleteDialog inherits ThemedWindow {
                         Text {
                             text: root.url;
                             overflow: elide;
-                            font-size: 11px;
+                            font-size: 11px * Theme.font-scale;
                             color: Theme.accent;
                         }
                     }
@@ -2820,7 +2789,7 @@ export component CompleteDialog inherits ThemedWindow {
                         Text {
                             text: root.path;
                             wrap: word-wrap;
-                            font-size: 11px;
+                            font-size: 11px * Theme.font-scale;
                             color: Theme.text;
                         }
                     }

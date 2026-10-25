@@ -22,6 +22,8 @@ cbc = "0.1"
 regex = "1"
 filetime = "0.2"
 sha2 = "0.10"
+# Ed25519 check of signed updates (selfupdate.rs)
+ring = "0.17"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
@@ -30,6 +32,7 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Ioctl",
     "Win32_Storage_FileSystem",
     "Win32_System_Power",
+    "Win32_Security_Cryptography",
 ] }
 
 [dev-dependencies]

@@ -443,4 +443,13 @@ AR = {
     "Window opacity": "شفافية النافذة",
     "Like Ezoo Download? You can support its development:": "أعجبك Ezoo Download؟ يمكنك دعم تطويره:",
     "Support with PayPal": "ادعم عبر PayPal",
+    "Appearance…": "المظهر…",
+    "Appearance": "المظهر",
+    "Text size": "حجم الخط",
+    "Font": "الخط",
+    "Default (Segoe UI)": "الافتراضي (Segoe UI)",
+    "Background picture": "صورة الخلفية",
+    "none (the theme's colors)": "بدون (ألوان المظهر)",
+    "Picture visibility": "وضوح الصورة",
+    "Hide": "إخفاء",
 }

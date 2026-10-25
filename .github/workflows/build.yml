@@ -20,10 +20,13 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
+      # actions pinned to exact commits (a moved tag can't change the build)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - name: Run extension tests
@@ -40,6 +43,12 @@ jobs:
             Select-Object -First 40 | ForEach-Object { Write-Host "::error::$($_.Line.Trim())" }
           if ($code -ne 0) { Write-Host "::warning::engine tests failed (exit $code)" }
           exit 0
+      - name: Check dependencies for known vulnerabilities
+        shell: pwsh
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          # fails on published vulnerabilities; "unmaintained" notices only warn
+          cargo audit
       - name: Build release
         run: cargo build --release
       - name: Package
@@ -49,6 +58,9 @@ jobs:
           # with them the Firefox add-on is signed and stays in Firefox for good
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
           AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          # Ed25519 key that signs version.json; the program installs only
+          # updates signed with it (selfupdate.rs has the public half)
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
           IS_RELEASE: ${{ github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]') }}
         run: |
           $version = ([regex]::Match((Get-Content Cargo.toml -Raw), '(?m)^version\s*=\s*"([^"]+)"')).Groups[1].Value
@@ -67,30 +79,40 @@ jobs:
           Remove-Item -Recurse -Force "$p/extension/test", "$p/extension-firefox/test"
           Copy-Item -Force "$p/extension-firefox/manifest.firefox.json" "$p/extension-firefox/manifest.json"
           Remove-Item -Force "$p/extension-firefox/manifest.firefox.json", "$p/extension/manifest.firefox.json"
+          # the add-on has its own version (manifest.firefox.json)
+          $extVersion = (Get-Content extension/manifest.firefox.json -Raw | ConvertFrom-Json).version
           # Firefox keeps only add-ons signed by Mozilla; a version can be signed
           # once, so this runs for a release only
-          if ($env:IS_RELEASE -eq "true" -and $env:AMO_JWT_ISSUER -and $env:AMO_JWT_SECRET -and -not (Test-Path "extension-signed/ezoo-download-firefox-$version.xpi")) {
-            npx --yes web-ext@8 sign --channel=unlisted --source-dir "$p/extension-firefox" --artifacts-dir xpi-out --api-key "$env:AMO_JWT_ISSUER" --api-secret "$env:AMO_JWT_SECRET" --approval-timeout 900000
+          if ($env:IS_RELEASE -eq "true" -and $env:AMO_JWT_ISSUER -and $env:AMO_JWT_SECRET -and -not (Test-Path "extension-signed/ezoo-download-firefox-$extVersion.xpi")) {
+            npx --yes web-ext@8.10.0 sign --channel=unlisted --source-dir "$p/extension-firefox" --artifacts-dir xpi-out --api-key "$env:AMO_JWT_ISSUER" --api-secret "$env:AMO_JWT_SECRET" --approval-timeout 900000
             $xpi = Get-ChildItem xpi-out -Filter *.xpi | Select-Object -First 1
             if ($xpi) {
               Copy-Item $xpi.FullName "$p/ezoo-download-firefox.xpi"
               Copy-Item $xpi.FullName "dist/ezoo-download-firefox.xpi"
-              $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$version"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
+              $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
               [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
             } else { Write-Host "::warning::the Firefox add-on was not signed" }
           } elseif ($env:IS_RELEASE -eq "true") { Write-Host "::warning::AMO_JWT_ISSUER / AMO_JWT_SECRET are not set: the Firefox add-on is not signed" }
-          # an add-on of this version already signed by hand on addons.mozilla.org
-          $signed = "extension-signed/ezoo-download-firefox-$version.xpi"
+          # an add-on of this version already signed (by hand on addons.mozilla.org)
+          $signed = "extension-signed/ezoo-download-firefox-$extVersion.xpi"
           if (-not (Test-Path "$p/ezoo-download-firefox.xpi") -and (Test-Path $signed)) {
             Copy-Item $signed "$p/ezoo-download-firefox.xpi"
             Copy-Item $signed "dist/ezoo-download-firefox.xpi"
-            $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$version"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
+            $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
             [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
           }
           $rel = Invoke-RestMethod "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest" -Headers @{ "User-Agent" = "EzooDownload-ci"; "Authorization" = "Bearer ${{ github.token }}" }
           $asset = $rel.assets | Where-Object { $_.name -match '^ffmpeg-n[0-9.]+-latest-win64-gpl-[0-9.]+\.zip$' } |
             Sort-Object { [version](($_.name -replace '^ffmpeg-n([0-9.]+)-.*$', '$1') + '.0') } | Select-Object -Last 1
           Invoke-WebRequest $asset.browser_download_url -OutFile ffmpeg.zip
+          # only the build its makers published: SHA-256 from their checksum list
+          $sums = $rel.assets | Where-Object { $_.name -eq "checksums.sha256" } | Select-Object -First 1
+          if (-not $sums) { throw "the ffmpeg release has no checksums.sha256" }
+          $sumText = (Invoke-WebRequest $sums.browser_download_url).Content
+          if ($sumText -is [byte[]]) { $sumText = [Text.Encoding]::UTF8.GetString($sumText) }
+          $want = ($sumText -split "`n" | Where-Object { $_ -match "^([0-9a-fA-F]{64})\s+\*?$([regex]::Escape($asset.name))\s*$" } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
+          $got = (Get-FileHash ffmpeg.zip -Algorithm SHA256).Hash
+          if (-not $want -or $got -ne $want.ToUpper()) { throw "ffmpeg.zip does not match its published SHA-256" }
           Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-tmp
           Copy-Item (Get-ChildItem ffmpeg-tmp -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName "$p/tools/"
           # GPL: the FFmpeg license goes next to the program
@@ -98,16 +120,34 @@ jobs:
           if ($lic) { Copy-Item $lic.FullName "$p/tools/ffmpeg-LICENSE.txt" }
           $u = $asset.updated_at; if ($u -is [datetime]) { $u = $u.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
           "$($asset.name) $u" | Set-Content "$p/tools/ffmpeg-version.txt" -NoNewline
-          Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile "$p/tools/yt-dlp.exe"
+          # yt-dlp of one release, checked against that release's SHA2-256SUMS
+          $yt = Invoke-RestMethod "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest" -Headers @{ "User-Agent" = "EzooDownload-ci"; "Authorization" = "Bearer ${{ github.token }}" }
+          $ytExe = $yt.assets | Where-Object { $_.name -eq "yt-dlp.exe" } | Select-Object -First 1
+          $ytSums = $yt.assets | Where-Object { $_.name -eq "SHA2-256SUMS" } | Select-Object -First 1
+          if (-not $ytExe -or -not $ytSums) { throw "the yt-dlp release has no yt-dlp.exe / SHA2-256SUMS" }
+          Invoke-WebRequest $ytExe.browser_download_url -OutFile "$p/tools/yt-dlp.exe"
+          $ySumText = (Invoke-WebRequest $ytSums.browser_download_url).Content
+          if ($ySumText -is [byte[]]) { $ySumText = [Text.Encoding]::UTF8.GetString($ySumText) }
+          $yWant = ($ySumText -split "`n" | Where-Object { $_ -match "^([0-9a-fA-F]{64})\s+\*?yt-dlp\.exe\s*$" } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
+          $yGot = (Get-FileHash "$p/tools/yt-dlp.exe" -Algorithm SHA256).Hash
+          if (-not $yWant -or $yGot -ne $yWant.ToUpper()) { throw "yt-dlp.exe does not match its published SHA-256" }
           choco install innosetup -y --no-progress
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DMyAppVersion=$version" installer\ezoo.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
           $hash = (Get-FileHash dist/EzooDownload-Setup.exe -Algorithm SHA256).Hash.ToLower()
-          $json = "{`n  ""version"": ""$version"",`n  ""url"": ""https://github.com/${{ github.repository }}/releases/download/v$version/EzooDownload-Setup.exe"",`n  ""sha256"": ""$hash""`n}`n"
+          # the signature the program checks before it installs an update
+          $sig = ""
+          if ($env:UPDATE_SIGNING_KEY) {
+            $sig = (cargo run --quiet --release -p swiftget-engine --example sign_update -- $version $hash).Trim()
+            if ($LASTEXITCODE -ne 0 -or $sig.Length -ne 128) { throw "could not sign the release" }
+          } elseif ($env:IS_RELEASE -eq "true") {
+            throw "UPDATE_SIGNING_KEY is not set: installed copies would refuse this update"
+          }
+          $json = "{`n  ""version"": ""$version"",`n  ""url"": ""https://github.com/${{ github.repository }}/releases/download/v$version/EzooDownload-Setup.exe"",`n  ""sha256"": ""$hash"",`n  ""sig"": ""$sig""`n}`n"
           [IO.File]::WriteAllText("$PWD/dist/version.json", $json)
           Get-Content dist/version.json
           Compress-Archive -Path dist/EzooDownload-Setup.exe, dist/version.json -DestinationPath EzooDownload-windows.zip -Force
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: EzooDownload-windows
           path: EzooDownload-windows.zip

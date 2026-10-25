@@ -9,6 +9,12 @@ use std::process::Command;
 use std::time::{Duration, SystemTime};
 
 const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+/// the SHA-256 of every file of that release, published by yt-dlp
+const YTDLP_SUMS_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
+/// the SHA-256 of every build, published with the ffmpeg builds
+const FFMPEG_SUMS_NAME: &str = "checksums.sha256";
+/// none of the helpers is anywhere near this big
+const MAX_TOOL_BYTES: u64 = 400 << 20;
 /// ffmpeg builds published on GitHub (rolling release "latest")
 const FFMPEG_RELEASE_API: &str = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest";
 
@@ -94,7 +100,36 @@ fn due(stamp: &Path, every: Duration) -> bool {
         .unwrap_or(true)
 }
 
-async fn download(client: &reqwest::Client, url: &str, dest: &Path) -> anyhow::Result<()> {
+/// The SHA-256 of `name` in a checksum list ("<sha256>  <name>" per line).
+pub fn sum_for(list: &str, name: &str) -> Option<String> {
+    list.lines().find_map(|l| {
+        let mut it = l.split_whitespace();
+        let (sum, file) = (it.next()?, it.next()?);
+        (file.trim_start_matches('*') == name && sum.len() == 64 && sum.chars().all(|c| c.is_ascii_hexdigit()))
+            .then(|| sum.to_ascii_lowercase())
+    })
+}
+
+async fn get_text(client: &reqwest::Client, url: &str) -> anyhow::Result<String> {
+    let text = client
+        .get(url)
+        .header(reqwest::header::USER_AGENT, crate::config::DEFAULT_USER_AGENT)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    if text.len() > 1 << 20 {
+        anyhow::bail!("unexpected answer from {url}");
+    }
+    Ok(text)
+}
+
+/// Download `url` to `dest`. It is used only when its SHA-256 is `sha256`
+/// (from the checksum list its makers publish): a changed or broken file is
+/// thrown away and never run.
+async fn download(client: &reqwest::Client, url: &str, dest: &Path, sha256: &str) -> anyhow::Result<()> {
+    use sha2::{Digest, Sha256};
     let mut resp = client
         .get(url)
         .header(reqwest::header::USER_AGENT, crate::config::DEFAULT_USER_AGENT)
@@ -104,15 +139,23 @@ async fn download(client: &reqwest::Client, url: &str, dest: &Path) -> anyhow::R
     use std::io::Write;
     let tmp = dest.with_extension("download");
     let mut file = std::fs::File::create(&tmp)?;
-    let mut total = 0usize;
+    let mut h = Sha256::new();
+    let mut total: u64 = 0;
     while let Some(chunk) = resp.chunk().await? {
+        total += chunk.len() as u64;
+        if total > MAX_TOOL_BYTES {
+            drop(file);
+            let _ = std::fs::remove_file(&tmp);
+            anyhow::bail!("the download of {url} is far bigger than expected");
+        }
+        h.update(&chunk);
         file.write_all(&chunk)?;
-        total += chunk.len();
     }
     drop(file);
-    if total < 1024 {
+    let got: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    if !got.eq_ignore_ascii_case(sha256) {
         let _ = std::fs::remove_file(&tmp);
-        anyhow::bail!("the download of {url} was too small");
+        anyhow::bail!("the download of {url} does not match its published SHA-256");
     }
     replace(&tmp, dest)
 }
@@ -136,7 +179,11 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
     if bundled("yt-dlp").is_none() {
         if cfg!(windows) {
             if let Some(dir) = writable_dir("yt-dlp") {
-                let _ = download(client, YTDLP_URL, &dir.join(exe("yt-dlp"))).await;
+                if let Ok(sums) = get_text(client, YTDLP_SUMS_URL).await {
+                    if let Some(sum) = sum_for(&sums, "yt-dlp.exe") {
+                        let _ = download(client, YTDLP_URL, &dir.join(exe("yt-dlp")), &sum).await;
+                    }
+                }
             }
         }
         return;
@@ -148,7 +195,7 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
     let Some(tool) = bundled("yt-dlp") else { return };
     let ok = tokio::task::spawn_blocking(move || {
         let mut cmd = Command::new(&tool);
-        cmd.arg("-U");
+        cmd.args(["--ignore-config", "-U"]);
         hide_window(&mut cmd);
         cmd.output().map(|o| o.status.success()).unwrap_or(false)
     })
@@ -189,6 +236,13 @@ async fn ffmpeg(client: &reqwest::Client, data_dir: &Path) -> anyhow::Result<()>
     if !zip_url.starts_with("https://github.com/") {
         anyhow::bail!("unexpected ffmpeg download address");
     }
+    let sums_url = release
+        .assets
+        .iter()
+        .find(|a| a.name == FFMPEG_SUMS_NAME)
+        .map(|a| a.browser_download_url.clone())
+        .filter(|u| u.starts_with("https://github.com/"))
+        .ok_or_else(|| anyhow::anyhow!("the ffmpeg release has no checksum list"))?;
     let Some(dir) = writable_dir("ffmpeg") else { return Ok(()) };
     let version_file = dir.join("ffmpeg-version.txt");
     let current = std::fs::read_to_string(&version_file).unwrap_or_default();
@@ -201,10 +255,12 @@ async fn ffmpeg(client: &reqwest::Client, data_dir: &Path) -> anyhow::Result<()>
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work)?;
     let zip = work.join("ffmpeg.zip");
-    download(client, &zip_url, &zip).await?;
+    let sum = sum_for(&get_text(client, &sums_url).await?, &asset.name)
+        .ok_or_else(|| anyhow::anyhow!("no checksum for {}", asset.name))?;
+    download(client, &zip_url, &zip, &sum).await?;
     let (zip2, work2) = (zip.clone(), work.clone());
     let unpacked = tokio::task::spawn_blocking(move || {
-        let mut cmd = Command::new("tar");
+        let mut cmd = Command::new(crate::system::windows_tool("tar.exe"));
         cmd.arg("-xf").arg(&zip2).arg("-C").arg(&work2);
         hide_window(&mut cmd);
         cmd.output().map(|o| o.status.success()).unwrap_or(false)

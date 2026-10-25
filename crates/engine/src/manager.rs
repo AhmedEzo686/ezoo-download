@@ -603,12 +603,10 @@ impl Manager {
         e.rec.file_name = filename::sanitize(name);
         e.rec.auto_name = false;
         for (from, to) in old.temp_paths().into_iter().zip(e.rec.temp_paths()) {
-            if from.exists() && from != to {
-                if std::fs::rename(&from, &to).is_err() {
-                    e.rec.save_dir = old.save_dir.clone();
-                    e.rec.file_name = old.file_name.clone();
-                    anyhow::bail!("could not move the partly downloaded data");
-                }
+            if from.exists() && from != to && std::fs::rename(&from, &to).is_err() {
+                e.rec.save_dir = old.save_dir.clone();
+                e.rec.file_name = old.file_name.clone();
+                anyhow::bail!("could not move the partly downloaded data");
             }
         }
         inner.dirty = true;
@@ -995,6 +993,7 @@ impl Manager {
             let mut finished = false;
             let mut failed = false;
             let mut open_file = false;
+            let mut mark: Option<(PathBuf, String, Option<String>)> = None;
             let mut action = AfterDone::Nothing;
             let settings = self.settings();
             if let Some(e) = inner.entries.get_mut(&id) {
@@ -1018,6 +1017,11 @@ impl Manager {
                         e.segs.lock().unwrap().clear();
                         e.audio_segs.lock().unwrap().clear();
                         finished = true;
+                        mark = Some((
+                            e.rec.target_path(),
+                            e.rec.final_url.clone().unwrap_or_else(|| e.rec.url.clone()),
+                            e.rec.headers.referer.clone(),
+                        ));
                         action = std::mem::take(&mut e.rec.on_complete);
                         open_file = e.rec.queue.and_then(|q| settings.queue(q)).map(|q| q.open_when_done).unwrap_or(false);
                     }
@@ -1042,6 +1046,10 @@ impl Manager {
                 }
             }
             if finished {
+                // before anything can open it: the file comes from the internet
+                if let Some((path, host, referrer)) = &mark {
+                    system::mark_from_internet(path, host, referrer.as_deref());
+                }
                 inner.completed.push(id);
                 inner.events.push(Event::Completed(id));
                 if open_file {
@@ -1221,10 +1229,14 @@ impl Manager {
         rec.source_page = Some(page.clone());
         rec.source_key = Some(opt.key.clone());
         ytdlp::apply_headers(&mut rec.headers, &opt.headers);
-        // the real container decides the extension
+        // The video's own title (yt-dlp gives the title in the video's own
+        // language here; the playlist page often shows translated ones),
+        // keeping the "07 - " number of the playlist; the real container
+        // decides the extension.
         let (stem, ext) = filename::split_ext(&rec.file_name);
-        if !ext.eq_ignore_ascii_case(&opt.ext) {
-            let wanted = format!("{stem}.{}", opt.ext);
+        let stem = playlist_stem(stem, &info.title);
+        if !ext.eq_ignore_ascii_case(&opt.ext) || stem != filename::split_ext(&rec.file_name).0 {
+            let wanted = filename::sanitize(&format!("{stem}.{}", opt.ext));
             rec.file_name = free_name(&self.inner.lock().unwrap(), &rec.save_dir, &wanted);
         }
         rec.pick_quality = None;
@@ -1748,6 +1760,18 @@ fn collect_records(inner: &Inner) -> Vec<DownloadRecord> {
         .collect()
 }
 
+/// The file name of a playlist video: its own `title`, after the "07 - "
+/// number the playlist gave it (when it has one).
+fn playlist_stem(current: &str, title: &str) -> String {
+    let title = title.trim();
+    if title.is_empty() {
+        return current.to_string();
+    }
+    let digits = current.chars().take_while(|c| c.is_ascii_digit()).count();
+    let number = if digits > 0 && current[digits..].starts_with(" - ") { &current[..digits + 3] } else { "" };
+    format!("{number}{title}")
+}
+
 /// A name that is free on disk and not used by another unfinished download.
 fn free_name(inner: &Inner, dir: &Path, wanted: &str) -> String {
     let used = |n: &str| {
@@ -1772,4 +1796,18 @@ fn free_name(inner: &Inner, dir: &Path, wanted: &str) -> String {
         }
     }
     first
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::playlist_stem;
+
+    #[test]
+    fn playlist_videos_get_their_own_title() {
+        // the playlist page showed a translated title; the video's own one wins
+        assert_eq!(playlist_stem("07 - How to cook rice", "طريقة عمل الأرز"), "07 - طريقة عمل الأرز");
+        assert_eq!(playlist_stem("How to cook rice", "طريقة عمل الأرز"), "طريقة عمل الأرز");
+        assert_eq!(playlist_stem("2024 plans", "Plans"), "Plans");
+        assert_eq!(playlist_stem("07 - Old", "  "), "07 - Old");
+    }
 }

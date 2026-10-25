@@ -2,7 +2,7 @@
 //! (its store page once the extension is published there, otherwise its
 //! extensions page with the folder path ready in the clipboard).
 
-use crate::to_front;
+use crate::open_window;
 use crate::*;
 use crate::i18n::{t, tf};
 
@@ -130,8 +130,7 @@ pub(crate) fn open(ui: &Ui) {
     d.set_browsers(ModelRc::new(VecModel::from(rows)));
     d.set_steps(SharedString::new());
     d.set_folder(extension_dir(false).map(|p| p.display().to_string()).unwrap_or_default().into());
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
     d.window().set_minimized(false);
 }
 

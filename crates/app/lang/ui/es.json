@@ -425,5 +425,14 @@
  "Version {}": "Versión {}",
  "Coded by Ahmed Ezzat": "Programado por Ahmed Ezzat",
  "Like Ezoo Download? You can support its development:": "¿Le gusta Ezoo Download? Puede apoyar su desarrollo:",
- "Support with PayPal": "Apoyar con PayPal"
+ "Support with PayPal": "Apoyar con PayPal",
+ "Appearance…": "Apariencia…",
+ "Appearance": "Apariencia",
+ "Text size": "Tamaño del texto",
+ "Font": "Fuente",
+ "Default (Segoe UI)": "Predeterminada (Segoe UI)",
+ "Background picture": "Imagen de fondo",
+ "none (the theme's colors)": "ninguna (colores del tema)",
+ "Picture visibility": "Visibilidad de la imagen",
+ "Hide": "Ocultar"
 }

@@ -79,6 +79,42 @@ msgstr "Eigenschaften…"
 msgid "Ezoo Download"
 msgstr "Ezoo Download"
 
+msgid "File Name"
+msgstr "Dateiname"
+
+msgid "Q"
+msgstr "W"
+
+msgid "Size"
+msgstr "Größe"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Time left"
+msgstr "Restzeit"
+
+msgid "Transfer rate"
+msgstr "Übertragungsrate"
+
+msgid "Last Try Date"
+msgstr "Letzter Versuch"
+
+msgid "Description"
+msgstr "Beschreibung"
+
+msgid "Date Added"
+msgstr "Hinzugefügt am"
+
+msgid "Save To"
+msgstr "Speichern in"
+
+msgid "Referer"
+msgstr "Referer"
+
+msgid "Parent Web Page"
+msgstr "Ursprungsseite"
+
 msgid "Tasks"
 msgstr "Aufgaben"
 
@@ -199,29 +235,11 @@ msgstr "Nach Reihenfolge des Hinzufügens"
 msgid "File name"
 msgstr "Dateiname"
 
-msgid "Size"
-msgstr "Größe"
-
-msgid "Status"
-msgstr "Status"
-
-msgid "Time left"
-msgstr "Restzeit"
-
-msgid "Transfer rate"
-msgstr "Übertragungsrate"
-
 msgid "Last try date"
 msgstr "Letzter Versuch"
 
-msgid "Description"
-msgstr "Beschreibung"
-
 msgid "Save to"
 msgstr "Speichern in"
-
-msgid "Referer"
-msgstr "Referer"
 
 msgid "Parent web page"
 msgstr "Ursprungsseite"
@@ -271,8 +289,8 @@ msgstr "Petrol-Nacht"
 msgid "Rose"
 msgstr "Rosé"
 
-msgid "Transparency…"
-msgstr "Transparenz…"
+msgid "Appearance…"
+msgstr "Darstellung…"
 
 msgid "Help"
 msgstr "Hilfe"
@@ -363,24 +381,6 @@ msgstr "Neue Warteschlange"
 
 msgid "Edit"
 msgstr "Bearbeiten"
-
-msgid "File Name"
-msgstr "Dateiname"
-
-msgid "Q"
-msgstr "W"
-
-msgid "Last Try Date"
-msgstr "Letzter Versuch"
-
-msgid "Date Added"
-msgstr "Hinzugefügt am"
-
-msgid "Save To"
-msgstr "Speichern in"
-
-msgid "Parent Web Page"
-msgstr "Ursprungsseite"
 
 msgid "Nothing matches “{}”."
 msgstr "Nichts passt zu „{}“."
@@ -934,8 +934,32 @@ msgstr "Website-Logins"
 msgid "Sounds"
 msgstr "Klänge"
 
+msgid "Appearance"
+msgstr "Darstellung"
+
 msgid "Window opacity"
 msgstr "Fensterdeckkraft"
+
+msgid "Text size"
+msgstr "Textgröße"
+
+msgid "Font"
+msgstr "Schriftart"
+
+msgid "Default (Segoe UI)"
+msgstr "Standard (Segoe UI)"
+
+msgid "Background picture"
+msgstr "Hintergrundbild"
+
+msgid "none (the theme's colors)"
+msgstr "keines (Farben des Designs)"
+
+msgid "Browse…"
+msgstr "Durchsuchen…"
+
+msgid "Picture visibility"
+msgstr "Sichtbarkeit des Bildes"
 
 msgid "Launch Ezoo Download on Windows startup"
 msgstr "Ezoo Download beim Windows-Start starten"
@@ -1017,9 +1041,6 @@ msgstr "Kleinstes Audio (KB)"
 
 msgid "Main download folder"
 msgstr "Haupt-Download-Ordner"
-
-msgid "Browse…"
-msgstr "Durchsuchen…"
 
 msgid "Sort files into folders by category (Video, Music, Programs, Compressed, Documents, Images…)"
 msgstr "Dateien nach Kategorie in Ordner sortieren (Video, Musik, Programme, Archive, Dokumente, Bilder…)"
@@ -1284,3 +1305,6 @@ msgstr "Gefällt Ihnen Ezoo Download? Sie können die Entwicklung unterstützen:
 
 msgid "Support with PayPal"
 msgstr "Mit PayPal unterstützen"
+
+msgid "Hide"
+msgstr "Ausblenden"

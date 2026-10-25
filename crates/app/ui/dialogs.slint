@@ -11,18 +11,18 @@ import { Cols, PairRow, LinkRow, QueueRow, DownloadRow, Theme, ThemedWindow, Typ
 component Label inherits Text {
     vertical-alignment: center;
     color: Theme.text;
-    font-size: 12px;
+    font-size: 12px * Theme.font-scale;
 }
 
 component Hint inherits Text {
     color: Theme.muted;
-    font-size: 11px;
+    font-size: 11px * Theme.font-scale;
     wrap: word-wrap;
 }
 
 component Section inherits Text {
     color: Theme.accent;
-    font-size: 12px;
+    font-size: 12px * Theme.font-scale;
     font-weight: 700;
 }
 
@@ -63,7 +63,7 @@ component Radio inherits Rectangle {
         height: parent.height;
         text: root.text;
         vertical-alignment: center;
-        font-size: 12px;
+        font-size: 12px * Theme.font-scale;
         color: root.enabled ? Theme.text : Theme.muted;
     }
 }
@@ -87,7 +87,7 @@ component SideTab inherits Rectangle {
         height: parent.height;
         text: root.text;
         vertical-alignment: center;
-        font-size: 12px;
+        font-size: 12px * Theme.font-scale;
         font-weight: root.active ? 600 : 400;
         color: Theme.text;
     }
@@ -114,7 +114,7 @@ component TabBtn inherits Rectangle {
         text: root.text;
         horizontal-alignment: center;
         vertical-alignment: center;
-        font-size: 12px;
+        font-size: 12px * Theme.font-scale;
         font-weight: root.active ? 600 : 400;
         color: Theme.text;
     }
@@ -205,7 +205,7 @@ export component ColumnsDialog inherits ThemedWindow {
         Text {
             text: @tr("File Name (always shown)");
             color: Theme.muted;
-            font-size: 12px;
+            font-size: 12px * Theme.font-scale;
         }
         CheckBox {
             text: @tr("Q (queue number)");
@@ -667,7 +667,7 @@ export component PropertiesDialog inherits ThemedWindow {
                 text: @tr("Result: {}", root.result);
                 vertical-alignment: center;
                 overflow: elide;
-                font-size: 11px;
+                font-size: 11px * Theme.font-scale;
                 color: root.done ? Theme.ok : Theme.err;
             }
         }
@@ -796,7 +796,7 @@ export component CountdownDialog inherits ThemedWindow {
         spacing: 12px;
         Text {
             text: @tr("All downloads are finished.");
-            font-size: 14px;
+            font-size: 14px * Theme.font-scale;
             font-weight: 700;
             color: Theme.ok;
         }
@@ -1392,7 +1392,7 @@ export component GrabberDialog inherits ThemedWindow {
                 }
                 Text {
                     text: root.progress-text;
-                    font-size: 11px;
+                    font-size: 11px * Theme.font-scale;
                     color: root.exploring ? Theme.accent : Theme.muted;
                     overflow: elide;
                 }
@@ -1525,7 +1525,7 @@ export component GrabberDialog inherits ThemedWindow {
                                 text: l.url;
                                 horizontal-stretch: 1;
                                 color: Theme.accent;
-                                font-size: 11px;
+                                font-size: 11px * Theme.font-scale;
                             }
                         }
                     }
@@ -1633,7 +1633,7 @@ export component TipDialog inherits ThemedWindow {
                 horizontal-stretch: 1;
                 Text {
                     text: @tr("Did you know…");
-                    font-size: 14px;
+                    font-size: 14px * Theme.font-scale;
                     font-weight: 700;
                     color: Theme.text;
                 }
@@ -1641,13 +1641,13 @@ export component TipDialog inherits ThemedWindow {
                     text: root.tip;
                     wrap: word-wrap;
                     color: Theme.text;
-                    font-size: 12px;
+                    font-size: 12px * Theme.font-scale;
                     min-height: 70px;
                 }
                 Text {
                     text: root.counter;
                     color: Theme.muted;
-                    font-size: 11px;
+                    font-size: 11px * Theme.font-scale;
                 }
             }
         }
@@ -1710,7 +1710,7 @@ export component RefreshDialog inherits ThemedWindow {
             Text {
                 text: root.page;
                 color: Theme.muted;
-                font-size: 11px;
+                font-size: 11px * Theme.font-scale;
                 overflow: elide;
                 horizontal-stretch: 1;
                 vertical-alignment: center;
@@ -1801,6 +1801,15 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <float> window-opacity: 100;
     // called while the slider moves, so the window shows it at once
     callback preview-opacity(float);
+    // text size (percent) and font of every window
+    in-out property <float> text-size: 100;
+    in-out property <int> font-index;
+    // a picture behind the main window instead of the theme's color
+    in-out property <string> bg-image;
+    in-out property <float> bg-strength: 45;
+    callback browse-bg();
+    // the look changed: show it at once (the settings are kept on OK)
+    callback preview-look();
     in-out property <bool> start-with-windows;
     in-out property <bool> close-to-tray;
     in-out property <bool> clipboard;
@@ -1899,7 +1908,7 @@ export component SettingsDialog inherits ThemedWindow {
                 VerticalLayout {
                     padding: 3px;
                     alignment: start;
-                    for t[i] in [@tr("General"), @tr("File Types"), @tr("Save To"), @tr("Downloads"), @tr("Connection"), @tr("Proxy / Server"), @tr("Site Logins"), @tr("Sounds"), @tr("Speed Limiter")]: SideTab {
+                    for t[i] in [@tr("General"), @tr("File Types"), @tr("Save To"), @tr("Downloads"), @tr("Connection"), @tr("Proxy / Server"), @tr("Site Logins"), @tr("Sounds"), @tr("Speed Limiter"), @tr("Appearance")]: SideTab {
                         text: t;
                         active: root.tab == i;
                         clicked => {
@@ -1914,25 +1923,11 @@ export component SettingsDialog inherits ThemedWindow {
                 border-width: 1px;
                 border-color: Theme.line;
 
-                // ---------------- General
-                if root.tab == 0: VerticalLayout {
+                // ---------------- Appearance
+                if root.tab == 9: VerticalLayout {
                     padding: 14px;
-                    spacing: 8px;
+                    spacing: 10px;
                     alignment: start;
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Label {
-                            text: @tr("Language");
-                        }
-                        ComboBox {
-                            width: 200px;
-                            model: ["English", "العربية", "Français", "Español", "Deutsch", "Português", "Türkçe", "Русский"];
-                            current-index <=> root.language;
-                        }
-                        Rectangle {
-                            horizontal-stretch: 1;
-                        }
-                    }
                     HorizontalLayout {
                         spacing: 8px;
                         Label {
@@ -1963,6 +1958,112 @@ export component SettingsDialog inherits ThemedWindow {
                         }
                         Label {
                             text: Math.round(root.window-opacity) + "%";
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Text size");
+                        }
+                        Slider {
+                            width: 200px;
+                            minimum: 80;
+                            maximum: 150;
+                            value <=> root.text-size;
+                            changed(v) => {
+                                root.preview-look();
+                            }
+                        }
+                        Label {
+                            text: Math.round(root.text-size) + "%";
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Font");
+                        }
+                        ComboBox {
+                            width: 200px;
+                            model: [@tr("Default (Segoe UI)"), "Tahoma", "Arial", "Calibri", "Verdana", "Times New Roman", "Courier New"];
+                            current-index <=> root.font-index;
+                            selected => {
+                                root.preview-look();
+                            }
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Background picture");
+                        }
+                        LineEdit {
+                            horizontal-stretch: 1;
+                            read-only: true;
+                            placeholder-text: @tr("none (the theme's colors)");
+                            text: root.bg-image;
+                        }
+                        Button {
+                            text: @tr("Browse…");
+                            clicked => {
+                                root.browse-bg();
+                            }
+                        }
+                        Button {
+                            text: @tr("Remove");
+                            enabled: root.bg-image != "";
+                            clicked => {
+                                root.bg-image = "";
+                                root.preview-look();
+                            }
+                        }
+                    }
+                    if root.bg-image != "": HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Picture visibility");
+                        }
+                        Slider {
+                            width: 200px;
+                            minimum: 10;
+                            maximum: 80;
+                            value <=> root.bg-strength;
+                            changed(v) => {
+                                root.preview-look();
+                            }
+                        }
+                        Label {
+                            text: Math.round(root.bg-strength) + "%";
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                // ---------------- General
+                if root.tab == 0: VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+                    alignment: start;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Language");
+                        }
+                        ComboBox {
+                            width: 200px;
+                            model: ["English", "العربية", "Français", "Español", "Deutsch", "Português", "Türkçe", "Русский"];
+                            current-index <=> root.language;
                         }
                         Rectangle {
                             horizontal-stretch: 1;
@@ -2079,7 +2180,7 @@ export component SettingsDialog inherits ThemedWindow {
                     TextEdit {
                         text <=> root.capture-exts;
                         min-height: 80px;
-                        font-size: 12px;
+                        font-size: 12px * Theme.font-scale;
                         wrap: word-wrap;
                     }
                     HorizontalLayout {
@@ -2104,7 +2205,7 @@ export component SettingsDialog inherits ThemedWindow {
                     TextEdit {
                         text <=> root.skip-addresses;
                         min-height: 60px;
-                        font-size: 12px;
+                        font-size: 12px * Theme.font-scale;
                     }
                     Rectangle {
                         height: 1px;
@@ -2759,13 +2860,13 @@ export component PlaylistDialog inherits ThemedWindow {
         }
         Text {
             text: root.status;
-            font-size: 11px;
+            font-size: 11px * Theme.font-scale;
             color: Theme.muted;
             overflow: elide;
         }
         if root.playlist-title != "": Text {
             text: root.playlist-title;
-            font-size: 14px;
+            font-size: 14px * Theme.font-scale;
             font-weight: 700;
             color: Theme.text;
             overflow: elide;
@@ -3028,14 +3129,14 @@ component BrowserCard inherits Rectangle {
         Text {
             text: root.data.name;
             horizontal-alignment: center;
-            font-size: 14px;
+            font-size: 14px * Theme.font-scale;
             font-weight: 700;
             color: Theme.text;
         }
         Text {
             text: root.data.installed ? root.data.action : @tr("Not installed on this computer");
             horizontal-alignment: center;
-            font-size: 11px;
+            font-size: 11px * Theme.font-scale;
             color: root.data.installed ? Theme.accent : Theme.muted;
             wrap: word-wrap;
         }
@@ -3060,7 +3161,7 @@ export component BrowserDialog inherits ThemedWindow {
         spacing: 12px;
         Text {
             text: @tr("Click your browser:");
-            font-size: 14px;
+            font-size: 14px * Theme.font-scale;
             font-weight: 700;
             color: Theme.text;
         }
@@ -3088,7 +3189,7 @@ export component BrowserDialog inherits ThemedWindow {
                 Text {
                     text: root.steps;
                     wrap: word-wrap;
-                    font-size: 12px;
+                    font-size: 12px * Theme.font-scale;
                     color: Theme.text;
                 }
             }
@@ -3097,7 +3198,7 @@ export component BrowserDialog inherits ThemedWindow {
             spacing: 8px;
             Text {
                 text: root.folder;
-                font-size: 11px;
+                font-size: 11px * Theme.font-scale;
                 color: Theme.muted;
                 overflow: elide;
                 vertical-alignment: center;
@@ -3151,7 +3252,7 @@ export component AboutDialog inherits ThemedWindow {
         Text {
             text: "Ezoo Download";
             horizontal-alignment: center;
-            font-size: 20px;
+            font-size: 20px * Theme.font-scale;
             font-weight: 700;
             color: Theme.text;
         }
@@ -3163,7 +3264,7 @@ export component AboutDialog inherits ThemedWindow {
         Text {
             text: @tr("Coded by Ahmed Ezzat");
             horizontal-alignment: center;
-            font-size: 13px;
+            font-size: 13px * Theme.font-scale;
             color: Theme.text;
         }
         HorizontalLayout {
@@ -3185,7 +3286,7 @@ export component AboutDialog inherits ThemedWindow {
         Text {
             text: @tr("Like Ezoo Download? You can support its development:");
             horizontal-alignment: center;
-            font-size: 12px;
+            font-size: 12px * Theme.font-scale;
             color: Theme.muted;
             wrap: word-wrap;
         }
@@ -3210,6 +3311,92 @@ export component AboutDialog inherits ThemedWindow {
             Button {
                 text: @tr("Close");
                 primary: true;
+                clicked => {
+                    root.close-window();
+                }
+            }
+        }
+    }
+}
+
+// Help > Check for updates: looks for a new version, says when
+// this one is the newest, otherwise downloads the new one right here and
+// installs it in front of the user.
+export component UpdateDialog inherits ThemedWindow {
+    // set for a moment so the window comes in front
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Check for updates");
+    preferred-width: 460px;
+    // 0 checking, 1 newest already, 2 downloading, 3 installing, 4 problem
+    in property <int> state;
+    in property <string> heading;
+    in property <string> detail;
+    // 0..1 while downloading (-1 = size unknown)
+    in property <float> progress: -1;
+    callback close-window();
+    VerticalLayout {
+        padding: 18px;
+        spacing: 12px;
+        HorizontalLayout {
+            spacing: 14px;
+            Rectangle {
+                width: 44px;
+                height: 44px;
+                border-radius: 22px;
+                background: root.state == 1 ? Theme.ok : root.state == 4 ? Theme.err : Theme.accent;
+                Glyph {
+                    x: 14px;
+                    y: 14px;
+                    kind: root.state == 1 ? "check" : root.state == 4 ? "warn" : "down";
+                    tint: white;
+                }
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 4px;
+                Text {
+                    text: root.heading;
+                    font-size: 14px * Theme.font-scale;
+                    font-weight: 700;
+                    color: Theme.text;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: root.detail;
+                    color: Theme.muted;
+                    wrap: word-wrap;
+                }
+            }
+        }
+        if root.state == 0 || root.state == 2 || root.state == 3: Rectangle {
+            height: 10px;
+            border-radius: 5px;
+            background: Theme.bar-bg;
+            clip: true;
+            // known size: how far it is; otherwise a moving piece
+            if root.state == 2 && root.progress >= 0: Rectangle {
+                x: 0;
+                width: parent.width * clamp(root.progress, 0, 1);
+                height: parent.height;
+                border-radius: 5px;
+                background: Theme.accent;
+                animate width { duration: 150ms; }
+            }
+            if !(root.state == 2 && root.progress >= 0): Rectangle {
+                width: parent.width * 0.3;
+                height: parent.height;
+                border-radius: 5px;
+                background: Theme.accent;
+                x: mod(animation-tick() / 1ms, 1600) / 1600 * (parent.width * 1.3) - parent.width * 0.3;
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            Button {
+                text: root.state == 2 || root.state == 3 ? @tr("Hide") : @tr("Close");
+                primary: root.state == 1 || root.state == 4;
+                enabled: root.state != 3;
                 clicked => {
                     root.close-window();
                 }

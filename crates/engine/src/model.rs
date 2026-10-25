@@ -51,12 +51,15 @@ pub enum DownloadKind {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestHeaders {
     pub referer: Option<String>,
+    /// the site's login cookies: encrypted on the disk (secret.rs)
+    #[serde(default, with = "crate::secret::opt")]
     pub cookies: Option<String>,
     pub user_agent: Option<String>,
     #[serde(default)]
     pub extra: Vec<(String, String)>,
     /// user name + password for the server ("Use authorization")
-    #[serde(default)]
+    /// encrypted on the disk (secret.rs)
+    #[serde(default, with = "crate::secret::pair")]
     pub auth: Option<(String, String)>,
 }
 

@@ -2,7 +2,7 @@
 //! Duplicate link, shut down countdown, Tip of the day, Refresh download
 //! address, and Export / Import of the list.
 
-use crate::to_front;
+use crate::open_window;
 use crate::*;
 use swiftget_engine::config::{CategoryDef, ALL_COLUMNS, DEFAULT_COLUMNS};
 use swiftget_engine::ef2::{self, Ef2Item};
@@ -14,8 +14,7 @@ use crate::i18n::{t, tf};
 pub(crate) fn open_columns(ui: &Ui) {
     let Some(d) = ui.columns.upgrade() else { return };
     d.set_cols(cols_from(&ui.ctx.mgr.settings()));
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 fn cols_to_list(c: &Cols) -> Vec<String> {
@@ -57,8 +56,7 @@ pub(crate) fn open_category(ui: &Ui, name: Option<String>) {
             d.set_folder(s.category_dirs.get(n).map(|p| p.display().to_string()).unwrap_or_default().into());
         }
     }
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 fn save_category(ui: &Ui) {
@@ -148,8 +146,7 @@ pub(crate) fn delete_category(ui: &Ui, name: &str) {
 pub(crate) fn open_find(ui: &Ui) {
     if let Some(d) = ui.find.upgrade() {
         d.set_message(SharedString::new());
-        let _ = d.show();
-        to_front!(d);
+        open_window!(d);
     }
 }
 
@@ -245,8 +242,7 @@ pub(crate) fn open_properties(ui: &Ui, id: u64) {
     d.set_user(v.headers.auth.as_ref().map(|a| a.0.clone()).unwrap_or_default().into());
     d.set_password(v.headers.auth.as_ref().map(|a| a.1.clone()).unwrap_or_default().into());
     d.set_message(SharedString::new());
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 fn save_properties(ui: &Ui) {
@@ -296,8 +292,7 @@ pub(crate) fn ask_duplicate(ui: &Ui, p: PendingAdd) {
     d.set_choice(1);
     d.set_remember(false);
     *ui.pending.borrow_mut() = Some(p);
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 // ---------------------------------------------------------------- shut down countdown
@@ -315,8 +310,7 @@ pub(crate) fn start_countdown(ui: &Ui, action: AfterDone) {
     d.set_seconds_total(COUNTDOWN);
     d.set_seconds_left(COUNTDOWN);
     *ui.power.borrow_mut() = Some((action, COUNTDOWN));
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 pub(crate) fn tick_countdown(ui: &Ui) {
@@ -347,18 +341,31 @@ fn power_now(ui: &Ui) {
 
 // ---------------------------------------------------------------- tips
 
+/// http:// or https:// with a host: safe to hand to the browser.
+pub(crate) fn is_web_address(s: &str) -> bool {
+    url::Url::parse(s.trim())
+        .map(|u| matches!(u.scheme(), "http" | "https") && u.host_str().is_some_and(|h| !h.is_empty()))
+        .unwrap_or(false)
+}
+
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 10] = [
-    "A \"Download this video\" button on every video of a page, and you can drag it anywhere on the video.",
-    "Videos with several sound tracks: the original language is downloaded, not a dubbed one.",
-    "New languages: French, Spanish, German, Portuguese, Turkish and Russian.",
-    "Five new themes and a window opacity setting (View > Theme).",
-    "Brave is supported (Help > Add Ezoo Download to my browser).",
-    "Firefox: the add-on stays in Firefox after it is closed.",
-    "The browser add-in window is bigger; its settings moved to the add-in's own settings page.",
-    "Windows of the program open in front of the main window.",
-    "A new playlist icon, and a smaller icon on the window title.",
-    "Support Ezoo Download with PayPal from Help > About.",
+const WHATS_NEW: [&str; 16] = [
+    "The main window can be maximized to the full screen.",
+    "Columns of the list can be resized and moved by dragging their titles.",
+    "Toolbar names are bold, and the size of the video button can be chosen in the add-in's window.",
+    "Text size, font and a picture behind the main window (Options > Appearance).",
+    "Windows open in the middle of the screen; only the main window can be maximized.",
+    "Drag a finished file from the list onto the desktop or into a folder.",
+    "The progress of a download shows on its taskbar button.",
+    "Check for updates shows the check, the download and the installation in its own window.",
+    "Playlist videos are saved with their own original titles and their original sound.",
+    "Closing a download's window (X) stops the download; Resume opens it again.",
+    "The download button on videos in the browser is smaller, and its size can be changed in the add-in's settings.",
+    "Updates are signed: Ezoo Download installs only updates made by its developer.",
+    "Downloaded files are marked as coming from the internet, so Windows warns before opening an unsafe file.",
+    "Saved passwords and site logins are encrypted with your Windows account.",
+    "The video helpers (yt-dlp and ffmpeg) are checked before they are used.",
+    "More protection against harmful web pages and links.",
 ];
 
 pub(crate) fn whats_new() {
@@ -401,8 +408,7 @@ pub(crate) fn show_tip(ui: &Ui, from_menu: bool) {
         s.tip_index = ((i + 1) % TIPS.len()) as u32;
         let _ = ui.ctx.mgr.set_settings(s);
     }
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 // ---------------------------------------------------------------- refresh download address
@@ -418,8 +424,7 @@ pub(crate) fn open_refresh(ui: &Ui, id: u64) {
     d.set_page(v.parent_page.clone().unwrap_or_default().into());
     d.set_waiting(true);
     d.set_new_url(SharedString::new());
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 /// The browser sent a download while we were waiting for a new address.
@@ -530,8 +535,7 @@ pub(crate) fn wire(ui: &Ui) {
             let w = d.as_weak();
             d.on_reset(move || {
                 if let Some(d) = w.upgrade() {
-                    let mut s = Settings::default();
-                    s.columns = DEFAULT_COLUMNS.iter().map(|c| c.to_string()).collect();
+                    let s = Settings { columns: DEFAULT_COLUMNS.iter().map(|c| c.to_string()).collect(), ..Default::default() };
                     d.set_cols(cols_from(&s));
                 }
             });
@@ -699,8 +703,10 @@ pub(crate) fn wire(ui: &Ui) {
             d.on_open_page(move || {
                 if let Some(d) = w.upgrade() {
                     let page = d.get_page().to_string();
-                    if !page.is_empty() {
-                        let _ = open::that(page);
+                    // only a web page: the address came from the browser or
+                    // a list file and must never start a program
+                    if is_web_address(&page) {
+                        let _ = open::that(page.trim());
                     }
                 }
             });
@@ -733,6 +739,28 @@ pub(crate) fn wire(ui: &Ui) {
                 ui.refresh_id.set(None);
                 slint::CloseRequestResponse::HideWindow
             });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_web_address;
+
+    #[test]
+    fn only_web_pages_are_opened() {
+        assert!(is_web_address("https://example.com/page"));
+        assert!(is_web_address(" http://example.com "));
+        for bad in [
+            "C:\\Windows\\System32\\calc.exe",
+            "\\\\server\\share\\x.exe",
+            "file:///C:/x.exe",
+            "javascript:alert(1)",
+            "ms-settings:",
+            "https://",
+            "",
+        ] {
+            assert!(!is_web_address(bad), "{bad}");
         }
     }
 }

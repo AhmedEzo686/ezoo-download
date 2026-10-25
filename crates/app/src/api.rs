@@ -8,6 +8,7 @@
 use serde::Deserialize;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tiny_http::{Header, Method, Request, Response, Server};
 
@@ -177,18 +178,43 @@ fn reply(req: Request, code: u16, body: &str) {
     let _ = req.respond(resp);
 }
 
+/// The request was made to this computer by its own name. A web page that
+/// points its own domain at 127.0.0.1 (DNS rebinding) sends its domain here.
+fn host_allowed(host: Option<&str>) -> bool {
+    let Some(host) = host else { return true }; // HTTP/1.0: no Host at all
+    let h = host.trim().to_ascii_lowercase();
+    let name = if let Some(rest) = h.strip_prefix('[') {
+        rest.split(']').next().unwrap_or("")
+    } else {
+        h.split(':').next().unwrap_or("")
+    };
+    matches!(name, "127.0.0.1" | "localhost" | "::1")
+}
+
+/// Only these may call the API (a web page has an http(s) origin).
+fn origin_allowed(origin: Option<&str>) -> bool {
+    match origin {
+        None => true,
+        Some(o) => {
+            o.starts_with("chrome-extension://") || o.starts_with("moz-extension://") || o.starts_with("extension://")
+        }
+    }
+}
+
+/// Video look-ups running now (each one is a yt-dlp process).
+static RESOLVING: AtomicUsize = AtomicUsize::new(0);
+const MAX_RESOLVING: usize = 4;
+
 fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(ApiEvent)) {
     // never answer CORS preflights: web pages must not reach this API
     if *req.method() == Method::Options {
         return reply(req, 403, r#"{"error":"forbidden"}"#);
     }
-    if let Some(origin) = header(&req, "Origin") {
-        let allowed = origin.starts_with("chrome-extension://")
-            || origin.starts_with("moz-extension://")
-            || origin.starts_with("extension://");
-        if !allowed {
-            return reply(req, 403, r#"{"error":"forbidden"}"#);
-        }
+    if !host_allowed(header(&req, "Host").as_deref()) {
+        return reply(req, 403, r#"{"error":"forbidden"}"#);
+    }
+    if !origin_allowed(header(&req, "Origin").as_deref()) {
+        return reply(req, 403, r#"{"error":"forbidden"}"#);
     }
     if header(&req, "X-SwiftGet").is_none() {
         return reply(req, 403, r#"{"error":"missing header"}"#);
@@ -262,7 +288,18 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
             if !is_http(&r.url) {
                 return reply(req, 400, r#"{"error":"not a web address"}"#);
             }
+            if RESOLVING.fetch_add(1, Ordering::SeqCst) >= MAX_RESOLVING {
+                RESOLVING.fetch_sub(1, Ordering::SeqCst);
+                return reply(req, 429, r#"{"ok":false,"error":"busy, try again in a moment"}"#);
+            }
             std::thread::spawn(move || {
+                struct Done;
+                impl Drop for Done {
+                    fn drop(&mut self) {
+                        RESOLVING.fetch_sub(1, Ordering::SeqCst);
+                    }
+                }
+                let _done = Done;
                 let cookies = (!r.cookie_list.is_empty()).then_some(r.cookie_list.as_slice());
                 let body = match swiftget_engine::ytdlp::resolve(&r.url, cookies) {
                     Ok(info) => serde_json::json!({
@@ -274,5 +311,30 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
             });
         }
         _ => reply(req, 404, r#"{"error":"not found"}"#),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_this_computer_by_its_own_name() {
+        for ok in [None, Some("127.0.0.1:9614"), Some("localhost:9614"), Some("127.0.0.1"), Some("[::1]:9614")] {
+            assert!(host_allowed(ok), "{ok:?}");
+        }
+        // DNS rebinding: the attacker's own name pointed at 127.0.0.1
+        for bad in [Some("evil.example:9614"), Some("127.0.0.1.evil.example"), Some("localhost.evil:9614"), Some("")] {
+            assert!(!host_allowed(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn only_browser_add_ins() {
+        assert!(origin_allowed(None));
+        assert!(origin_allowed(Some("chrome-extension://abcdef")));
+        assert!(origin_allowed(Some("moz-extension://1234-5678")));
+        assert!(!origin_allowed(Some("https://evil.example")));
+        assert!(!origin_allowed(Some("null")));
     }
 }

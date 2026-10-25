@@ -1,7 +1,7 @@
 //! The Scheduler window: every queue with its schedule, its files (in
 //! download order) and its options.
 
-use crate::to_front;
+use crate::open_window;
 use crate::*;
 use swiftget_engine::config::{parse_hhmm, QueueDef};
 use crate::i18n::{t, tf};
@@ -40,8 +40,7 @@ pub(crate) fn open(ui: &Ui, queue: Option<u64>) {
     fill_list(ui, &d);
     select(ui, &d, wanted);
     d.set_message(SharedString::new());
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
     d.window().set_minimized(false);
 }
 

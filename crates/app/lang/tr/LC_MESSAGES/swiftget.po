@@ -79,6 +79,42 @@ msgstr "Özellikler…"
 msgid "Ezoo Download"
 msgstr "Ezoo Download"
 
+msgid "File Name"
+msgstr "Dosya adı"
+
+msgid "Q"
+msgstr "K"
+
+msgid "Size"
+msgstr "Boyut"
+
+msgid "Status"
+msgstr "Durum"
+
+msgid "Time left"
+msgstr "Kalan süre"
+
+msgid "Transfer rate"
+msgstr "Aktarım hızı"
+
+msgid "Last Try Date"
+msgstr "Son deneme tarihi"
+
+msgid "Description"
+msgstr "Açıklama"
+
+msgid "Date Added"
+msgstr "Eklenme tarihi"
+
+msgid "Save To"
+msgstr "Kaydetme yeri"
+
+msgid "Referer"
+msgstr "Yönlendiren"
+
+msgid "Parent Web Page"
+msgstr "Kaynak web sayfası"
+
 msgid "Tasks"
 msgstr "Görevler"
 
@@ -199,29 +235,11 @@ msgstr "Eklenme sırasına göre"
 msgid "File name"
 msgstr "Dosya adı"
 
-msgid "Size"
-msgstr "Boyut"
-
-msgid "Status"
-msgstr "Durum"
-
-msgid "Time left"
-msgstr "Kalan süre"
-
-msgid "Transfer rate"
-msgstr "Aktarım hızı"
-
 msgid "Last try date"
 msgstr "Son deneme tarihi"
 
-msgid "Description"
-msgstr "Açıklama"
-
 msgid "Save to"
 msgstr "Kaydetme yeri"
-
-msgid "Referer"
-msgstr "Yönlendiren"
 
 msgid "Parent web page"
 msgstr "Kaynak web sayfası"
@@ -271,8 +289,8 @@ msgstr "Turkuaz gece"
 msgid "Rose"
 msgstr "Pembe"
 
-msgid "Transparency…"
-msgstr "Saydamlık…"
+msgid "Appearance…"
+msgstr "Görünüm…"
 
 msgid "Help"
 msgstr "Yardım"
@@ -363,24 +381,6 @@ msgstr "Yeni kuyruk"
 
 msgid "Edit"
 msgstr "Düzenle"
-
-msgid "File Name"
-msgstr "Dosya adı"
-
-msgid "Q"
-msgstr "K"
-
-msgid "Last Try Date"
-msgstr "Son deneme tarihi"
-
-msgid "Date Added"
-msgstr "Eklenme tarihi"
-
-msgid "Save To"
-msgstr "Kaydetme yeri"
-
-msgid "Parent Web Page"
-msgstr "Kaynak web sayfası"
 
 msgid "Nothing matches “{}”."
 msgstr "“{}” ile eşleşen bir şey yok."
@@ -934,8 +934,32 @@ msgstr "Site girişleri"
 msgid "Sounds"
 msgstr "Sesler"
 
+msgid "Appearance"
+msgstr "Görünüm"
+
 msgid "Window opacity"
 msgstr "Pencere opaklığı"
+
+msgid "Text size"
+msgstr "Metin boyutu"
+
+msgid "Font"
+msgstr "Yazı tipi"
+
+msgid "Default (Segoe UI)"
+msgstr "Varsayılan (Segoe UI)"
+
+msgid "Background picture"
+msgstr "Arka plan resmi"
+
+msgid "none (the theme's colors)"
+msgstr "yok (temanın renkleri)"
+
+msgid "Browse…"
+msgstr "Gözat…"
+
+msgid "Picture visibility"
+msgstr "Resim görünürlüğü"
 
 msgid "Launch Ezoo Download on Windows startup"
 msgstr "Ezoo Download'u Windows açılışında başlat"
@@ -1017,9 +1041,6 @@ msgstr "En küçük ses (KB)"
 
 msgid "Main download folder"
 msgstr "Ana indirme klasörü"
-
-msgid "Browse…"
-msgstr "Gözat…"
 
 msgid "Sort files into folders by category (Video, Music, Programs, Compressed, Documents, Images…)"
 msgstr "Dosyaları kategoriye göre klasörlere ayır (Video, Müzik, Programlar, Sıkıştırılmış, Belgeler, Resimler…)"
@@ -1284,3 +1305,6 @@ msgstr "Ezoo Download'u beğendiniz mi? Geliştirilmesine destek olabilirsiniz:"
 
 msgid "Support with PayPal"
 msgstr "PayPal ile destek ol"
+
+msgid "Hide"
+msgstr "Gizle"

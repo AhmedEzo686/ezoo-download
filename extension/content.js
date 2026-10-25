@@ -105,20 +105,41 @@
   // other video is looked up when its bubble is clicked. A bubble can be
   // dragged anywhere on its video and stays there.
   const bubbles = new Map(); // video -> bubble
+  // size of the button: add-in settings > "Size of the Download button"
+  const ZOOM = { small: 0.85, normal: 1, large: 1.25 };
+  let zoom = 1;
+  const applyZoom = () => {
+    for (const b of bubbles.values()) b.host.style.setProperty("--z", String(zoom));
+  };
+  try {
+    chrome.storage.local.get({ bubbleSize: "normal" }, (o) => {
+      zoom = ZOOM[o && o.bubbleSize] || 1;
+      applyZoom();
+    });
+    chrome.storage.onChanged.addListener((ch) => {
+      if (ch.bubbleSize) {
+        zoom = ZOOM[ch.bubbleSize.newValue] || 1;
+        applyZoom();
+        for (const b of bubbles.values()) placeOne(b);
+      }
+    });
+  } catch (_) {
+    // storage not reachable (add-in reloading): default size
+  }
   const STYLE = `
     :host { all: initial; }
-    .wrap { font: 12px/1.3 "Segoe UI", system-ui, sans-serif; color: #1f2733; width: 230px; }
-    .btn { display: flex; align-items: center; gap: 7px; color: #fff; border: 1px solid #0f4fb5;
-           background: linear-gradient(#3f8cf5, #1d63d6); border-radius: 4px; padding: 5px 8px;
-           cursor: grab; box-shadow: 0 2px 8px rgba(0,0,0,.35); font: inherit; font-weight: 600;
-           width: 100%; opacity: .88; transition: opacity .15s; user-select: none; }
+    .wrap { font: 11px/1.25 "Segoe UI", system-ui, sans-serif; color: #1f2733; display: inline-block; zoom: var(--z, 1); }
+    .btn { display: inline-flex; align-items: center; gap: 5px; color: #fff; border: 1px solid #0f4fb5;
+           background: linear-gradient(#3f8cf5, #1d63d6); border-radius: 3px; padding: 3px 7px;
+           cursor: grab; box-shadow: 0 1px 6px rgba(0,0,0,.35); font: inherit; font-weight: 600;
+           opacity: .88; transition: opacity .15s; user-select: none; white-space: nowrap; }
     .btn:hover { opacity: 1; background: linear-gradient(#4b96fa, #1a5bc7); }
     .btn.drag { cursor: grabbing; opacity: 1; }
-    .ico { width: 16px; height: 16px; flex: none; }
+    .ico { width: 13px; height: 13px; flex: none; }
     .caret { font-size: 9px; opacity: .9; }
     .x { margin-left: auto; opacity: .8; padding: 0 2px; cursor: pointer; }
     .x:hover { opacity: 1; }
-    .list { margin-top: 6px; background: #fff; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25);
+    .list { width: 240px; margin-top: 4px; background: #fff; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.25);
             overflow: hidden; max-height: 320px; overflow-y: auto; }
     .item { padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #eef1f5; }
     .item:last-child { border-bottom: 0; }
@@ -144,6 +165,7 @@
     host.style.all = "initial";
     host.style.position = "fixed";
     host.style.zIndex = "2147483647";
+    host.style.setProperty("--z", String(zoom));
     const root = host.attachShadow({ mode: "closed" });
     // built element by element (no HTML strings)
     const el = (tag, props = {}, ...kids) => {
@@ -294,7 +316,8 @@
     const onScreen = r.bottom > 0 && r.top < innerHeight && r.width >= 200 && r.height >= 100 && b.video.isConnected;
     b.host.style.display = onScreen ? "block" : "none";
     if (!onScreen) return;
-    const w = 236;
+    // its real size (the user can make the button smaller or bigger)
+    const w = b.host.getBoundingClientRect().width || 170;
     let x = b.dx == null ? r.right - w - 8 : r.left + b.dx;
     let y = b.dy == null ? r.top + 8 : r.top + b.dy;
     x = Math.max(r.left, Math.min(x, r.right - 60));

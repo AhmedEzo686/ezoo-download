@@ -101,6 +101,18 @@ Remove-Item "$stage\extension\manifest.firefox.json" -Force -ErrorAction Silentl
 
 # ffmpeg (joins video + audio) and yt-dlp (finds video links): downloaded
 # once into build-cache, the app keeps them updated by itself afterwards
+# The SHA-256 of a file from a checksum list ("<sha256>  <name>" lines), checked.
+function Assert-Sha256($file, $sumsUrl, $name) {
+    $text = (Invoke-WebRequest $sumsUrl -UseBasicParsing).Content
+    if ($text -is [byte[]]) { $text = [Text.Encoding]::UTF8.GetString($text) }
+    $want = ($text -split "`n" | Where-Object { $_ -match "^([0-9a-fA-F]{64})\s+\*?$([regex]::Escape($name))\s*$" } |
+        ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
+    $got = (Get-FileHash $file -Algorithm SHA256).Hash
+    if (-not $want -or $got -ne $want.ToUpper()) {
+        Remove-Item -Force $file -ErrorAction SilentlyContinue
+        throw "$name does not match its published SHA-256"
+    }
+}
 if (-not (Test-Path "$cache\ffmpeg.exe")) {
     Step "Downloading ffmpeg (joins video + audio)"
     try {
@@ -112,6 +124,8 @@ if (-not (Test-Path "$cache\ffmpeg.exe")) {
         $zip = Join-Path $env:TEMP "ezoo-ffmpeg.zip"
         $tmp = Join-Path $env:TEMP "ezoo-ffmpeg"
         Invoke-WebRequest $asset.browser_download_url -OutFile $zip
+        $sums = $rel.assets | Where-Object { $_.name -eq "checksums.sha256" } | Select-Object -First 1
+        Assert-Sha256 $zip $sums.browser_download_url $asset.name
         if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
         Expand-Archive $zip -DestinationPath $tmp
         $ff = Get-ChildItem $tmp -Recurse -Filter ffmpeg.exe | Select-Object -First 1
@@ -129,7 +143,11 @@ if (-not (Test-Path "$cache\ffmpeg.exe")) {
 if (-not (Test-Path "$cache\yt-dlp.exe")) {
     Step "Downloading yt-dlp (finds the links of videos)"
     try {
-        Invoke-WebRequest "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$cache\yt-dlp.exe"
+        $yt = Invoke-RestMethod "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest" -Headers @{ "User-Agent" = "EzooDownload-build" }
+        $ytExe = $yt.assets | Where-Object { $_.name -eq "yt-dlp.exe" } | Select-Object -First 1
+        $ytSums = $yt.assets | Where-Object { $_.name -eq "SHA2-256SUMS" } | Select-Object -First 1
+        Invoke-WebRequest $ytExe.browser_download_url -OutFile "$cache\yt-dlp.exe"
+        Assert-Sha256 "$cache\yt-dlp.exe" $ytSums.browser_download_url "yt-dlp.exe"
     } catch {
         Write-Host "Could not download yt-dlp now. Ezoo Download gets it by itself later." -ForegroundColor Yellow
     }
@@ -142,7 +160,8 @@ New-Item -ItemType Directory -Force $redist | Out-Null
 if (Test-Path "$cache\vc_redist.x64.exe") { Copy-Item "$cache\vc_redist.x64.exe" $redist -Force }
 Copy-Item "THIRD-PARTY-NOTICES.txt" $stage -Force
 # the Firefox add-on signed by Mozilla for this version (stays in Firefox for good)
-$signedXpi = "extension-signed\ezoo-download-firefox-$version.xpi"
+$extVersion = (Get-Content (Join-Path $PSScriptRoot "extension\manifest.firefox.json") -Raw | ConvertFrom-Json).version
+$signedXpi = "extension-signed\ezoo-download-firefox-$extVersion.xpi"
 if (Test-Path $signedXpi) { Copy-Item $signedXpi (Join-Path $stage "ezoo-download-firefox.xpi") -Force }
 foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt")) {
     if (Test-Path "$cache\$f") { Copy-Item "$cache\$f" $tools -Force }

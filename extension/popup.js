@@ -15,6 +15,17 @@ async function init() {
     window.close();
   });
 
+  // size of the "Download this video" button on pages (also in the settings page)
+  const sizes = [...document.querySelectorAll("#sizes button")];
+  const mark = (v) => sizes.forEach((b) => b.classList.toggle("on", b.dataset.size === v));
+  chrome.storage.local.get({ bubbleSize: "normal" }, (o) => mark(["small", "normal", "large"].includes(o.bubbleSize) ? o.bubbleSize : "normal"));
+  sizes.forEach((b) =>
+    b.addEventListener("click", () => {
+      chrome.storage.local.set({ bubbleSize: b.dataset.size });
+      mark(b.dataset.size);
+    })
+  );
+
   chrome.runtime.sendMessage({ type: "swiftget-status" }, (res) => {
     const el = document.getElementById("status");
     const ok = res && res.ok;
