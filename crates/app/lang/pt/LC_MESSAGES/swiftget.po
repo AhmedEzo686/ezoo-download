@@ -4,6 +4,51 @@ msgstr ""
 "Language: pt\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid "Download a file from an address you type or paste (Ctrl+N)."
+msgstr "Baixar um arquivo de um endereço digitado ou colado (Ctrl+N)."
+
+msgid "Download many links at once, or numbered files from one address (Ctrl+B)."
+msgstr "Baixar muitos links de uma vez, ou arquivos numerados de um mesmo endereço (Ctrl+B)."
+
+msgid "Continue the selected downloads from where they stopped."
+msgstr "Continuar os downloads selecionados de onde pararam."
+
+msgid "Pause the selected downloads; they can be resumed later."
+msgstr "Pausar os downloads selecionados; eles podem continuar depois."
+
+msgid "Pause every running download."
+msgstr "Pausar todos os downloads em andamento."
+
+msgid "Remove the selected downloads from the list. The files stay on your computer."
+msgstr "Remover da lista os downloads selecionados. Os arquivos continuam no seu computador."
+
+msgid "Remove all finished downloads from the list. The files stay on your computer."
+msgstr "Remover da lista todos os downloads concluídos. Os arquivos continuam no seu computador."
+
+msgid "All the settings of the program."
+msgstr "Todas as configurações do programa."
+
+msgid "Start or stop queues at the times you choose."
+msgstr "Iniciar ou parar as filas nos horários que você escolher."
+
+msgid "Limit the download speed so the internet stays usable for other things."
+msgstr "Limitar a velocidade para a internet continuar usável para outras coisas."
+
+msgid "Start the files of a queue, one after another."
+msgstr "Iniciar os arquivos de uma fila, um após o outro."
+
+msgid "Stop the files of a queue."
+msgstr "Parar os arquivos de uma fila."
+
+msgid "Collect the files of a web site: pictures, videos, archives…"
+msgstr "Reunir os arquivos de um site: imagens, vídeos, compactados…"
+
+msgid "Download all or some videos of a playlist."
+msgstr "Baixar todos ou alguns vídeos de uma playlist."
+
+msgid "Download a .torrent file or a magnet link."
+msgstr "Baixar um arquivo .torrent ou um link magnet."
+
 msgid "{} downloads selected"
 msgstr "{} downloads selecionados"
 
@@ -15,6 +60,9 @@ msgstr "Mostrar o progresso"
 
 msgid "Open with…"
 msgstr "Abrir com…"
+
+msgid "Play while downloading"
+msgstr "Reproduzir enquanto baixa"
 
 msgid "Open folder"
 msgstr "Abrir pasta"
@@ -132,6 +180,9 @@ msgstr "Executar o capturador de sites…"
 
 msgid "Download a playlist…"
 msgstr "Baixar uma playlist…"
+
+msgid "Add a torrent / magnet link…"
+msgstr "Adicionar torrent / link magnet…"
 
 msgid "Export"
 msgstr "Exportar"
@@ -355,6 +406,9 @@ msgstr "Capturador"
 msgid "Playlist"
 msgstr "Playlist"
 
+msgid "Torrent"
+msgstr "Torrent"
+
 msgid "Filter the list…"
 msgstr "Filtrar a lista…"
 
@@ -543,6 +597,9 @@ msgstr "<< Ocultar detalhes"
 
 msgid "Show details >>"
 msgstr "Mostrar detalhes >>"
+
+msgid "Hide to tray"
+msgstr "Ocultar perto do relógio"
 
 msgid "Pause"
 msgstr "Pausar"
@@ -937,6 +994,9 @@ msgstr "Sons"
 msgid "Appearance"
 msgstr "Aparência"
 
+msgid "Torrents"
+msgstr "Torrents"
+
 msgid "Window opacity"
 msgstr "Opacidade da janela"
 
@@ -1225,6 +1285,36 @@ msgstr "Sempre ligar o limitador ao iniciar o Ezoo Download"
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "Cada download também pode ter seu próprio limite: a janela de progresso dele > aba Limitador de velocidade."
 
+msgid "Keep sharing a finished torrent for (minutes)"
+msgstr "Continuar compartilhando um torrent concluído por (minutos)"
+
+msgid "0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent."
+msgstr "0 = parar assim que todos os arquivos chegarem. Compartilhar por mais tempo ajuda quem baixa o mesmo torrent."
+
+msgid "Maximum upload speed (KB/s, 0 = no limit)"
+msgstr "Velocidade máxima de envio (KB/s, 0 = sem limite)"
+
+msgid "While a torrent downloads it also sends pieces to others (that is how torrents work). A limit keeps your internet free for other things."
+msgstr "Enquanto baixa, um torrent também envia pedaços para outros (é assim que torrents funcionam). Um limite deixa a internet livre para outras coisas."
+
+msgid "Add a torrent"
+msgstr "Adicionar torrent"
+
+msgid "A magnet link, or a .torrent file:"
+msgstr "Um link magnet, ou um arquivo .torrent:"
+
+msgid "magnet:?xt=urn:btih:…  or  C:\\…\\file.torrent"
+msgstr "magnet:?xt=urn:btih:…  ou  C:\\…\\file.torrent"
+
+msgid "Open .torrent file…"
+msgstr "Abrir arquivo .torrent…"
+
+msgid "A magnet link brings its file list from the other computers when it starts: all its files are downloaded."
+msgstr "Um link magnet traz a lista de arquivos dos outros computadores ao começar: todos os arquivos são baixados."
+
+msgid "Paste a magnet link or open a .torrent file: what it shares shows up here."
+msgstr "Cole um link magnet ou abra um arquivo .torrent: o que ele compartilha aparece aqui."
+
 msgid "Download a playlist"
 msgstr "Baixar uma playlist"
 
@@ -1258,20 +1348,29 @@ msgstr "Qualidade"
 msgid "Best quality (MP4)"
 msgstr "Melhor qualidade (MP4)"
 
-msgid "1080p"
-msgstr "1080p"
+msgid "2160p 4K"
+msgstr "2160p 4K"
 
-msgid "720p"
-msgstr "720p"
+msgid "1440p 2K"
+msgstr "1440p 2K"
 
-msgid "480p"
-msgstr "480p"
+msgid "1080p Full HD"
+msgstr "1080p Full HD"
 
-msgid "360p"
-msgstr "360p"
+msgid "720p HD"
+msgstr "720p HD"
+
+msgid "480p SD"
+msgstr "480p SD"
+
+msgid "360p SD"
+msgstr "360p SD"
 
 msgid "Audio only (M4A)"
 msgstr "Só áudio (M4A)"
+
+msgid "Audio MP3"
+msgstr "Áudio MP3"
 
 msgid "Files at the same time"
 msgstr "Arquivos ao mesmo tempo"

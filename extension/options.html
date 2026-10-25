@@ -11,6 +11,8 @@
   label { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
   select { padding: 3px 6px; border: 1px solid #d5dbe4; border-radius: 6px; font: inherit; }
   input[type=number] { width: 90px; padding: 4px 8px; border: 1px solid #d5dbe4; border-radius: 6px; font: inherit; }
+  input[type=range] { flex: 1; accent-color: #1f6feb; }
+  output { min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
   .saved { color: #1a9e5a; font-size: 12px; height: 16px; margin-top: 8px; }
 </style>
 </head>
@@ -21,11 +23,8 @@
     <label>Ignore files smaller than <input type="number" id="minSize" min="0"> KB</label>
     <label>App port <input type="number" id="port" min="1024" max="65535"></label>
     <label>Size of the "Download this video" button
-      <select id="bubbleSize">
-        <option value="small">Small</option>
-        <option value="normal">Normal</option>
-        <option value="large">Large</option>
-      </select>
+      <input type="range" id="bubbleScale" min="50" max="200" step="5" value="100">
+      <output id="bubbleScaleText">100%</output>
     </label>
   </div>
   <div class="saved" id="saved"></div>

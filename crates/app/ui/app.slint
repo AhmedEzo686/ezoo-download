@@ -3,10 +3,10 @@
 // queue tree, detailed list, one progress window per download. Nine themes.
 
 import { Button, LineEdit, SpinBox, CheckBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
-import { DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph } from "common.slint";
+import { ToolTip, DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph } from "common.slint";
 export { DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme }
 export { BrowserRow } from "dialogs.slint";
-export { ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, BrowserDialog, AboutDialog, UpdateDialog } from "dialogs.slint";
+export { ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, TorrentDialog, BrowserDialog, AboutDialog, UpdateDialog } from "dialogs.slint";
 
 component DownloadItem inherits Rectangle {
     in property <DownloadRow> data;
@@ -106,6 +106,14 @@ component DownloadItem inherits Rectangle {
                     enabled: root.done;
                     clicked => {
                         root.action("openwith");
+                    }
+                }
+                if !root.done && (root.data.kind == "video" || root.data.kind == "audio"): MenuEntry {
+                    text: @tr("Play while downloading");
+                    glyph: "play";
+                    glyph-color: #d6631d;
+                    clicked => {
+                        root.action("preview");
                     }
                 }
                 MenuEntry {
@@ -563,6 +571,7 @@ export component MainWindow inherits ThemedWindow {
     callback find-next();
     callback grabber();
     callback playlist();
+    callback torrent();
     callback browsers();
     callback tips();
     callback about();
@@ -599,6 +608,12 @@ export component MainWindow inherits ThemedWindow {
                 title: @tr("Download a playlist…");
                 activated => {
                     root.playlist();
+                }
+            }
+            MenuItem {
+                title: @tr("Add a torrent / magnet link…");
+                activated => {
+                    root.torrent();
                 }
             }
             MenuSeparator { }
@@ -699,6 +714,13 @@ export component MainWindow inherits ThemedWindow {
                 }
             }
             MenuItem {
+                title: @tr("Play while downloading");
+                enabled: root.selected-id >= 0 && root.selected-state != 3;
+                activated => {
+                    root.row-action(root.selected-id, "preview");
+                }
+            }
+            MenuItem {
                 title: @tr("Open folder");
                 enabled: root.selected-id >= 0;
                 activated => {
@@ -789,9 +811,9 @@ export component MainWindow inherits ThemedWindow {
             Menu {
                 title: @tr("Speed Limiter");
                 MenuItem {
-                    title: @tr("Turn on");
-                    checkable: true;
-                    checked: root.limiter-on;
+                    // a mark in the name, not "checkable": a checkable item flips by itself
+                    // and then keeps its mark (two marks at once)
+                    title: (root.limiter-on ? "● " : "○ ") + @tr("Turn on");
                     activated => {
                         if (!root.limiter-on) {
                             root.toggle-limiter();
@@ -799,9 +821,7 @@ export component MainWindow inherits ThemedWindow {
                     }
                 }
                 MenuItem {
-                    title: @tr("Turn off");
-                    checkable: true;
-                    checked: !root.limiter-on;
+                    title: (!root.limiter-on ? "● " : "○ ") + @tr("Turn off");
                     activated => {
                         if (root.limiter-on) {
                             root.toggle-limiter();
@@ -819,41 +839,31 @@ export component MainWindow inherits ThemedWindow {
             Menu {
                 title: @tr("When all downloads finish");
                 MenuItem {
-                    title: @tr("Do nothing");
-                    checkable: true;
-                    checked: root.all-done == 0;
+                    title: (root.all-done == 0 ? "● " : "○ ") + @tr("Do nothing");
                     activated => {
                         root.set-all-done(0);
                     }
                 }
                 MenuItem {
-                    title: @tr("Shut down the computer");
-                    checkable: true;
-                    checked: root.all-done == 1;
+                    title: (root.all-done == 1 ? "● " : "○ ") + @tr("Shut down the computer");
                     activated => {
                         root.set-all-done(1);
                     }
                 }
                 MenuItem {
-                    title: @tr("Sleep");
-                    checkable: true;
-                    checked: root.all-done == 2;
+                    title: (root.all-done == 2 ? "● " : "○ ") + @tr("Sleep");
                     activated => {
                         root.set-all-done(2);
                     }
                 }
                 MenuItem {
-                    title: @tr("Hibernate");
-                    checkable: true;
-                    checked: root.all-done == 4;
+                    title: (root.all-done == 4 ? "● " : "○ ") + @tr("Hibernate");
                     activated => {
                         root.set-all-done(4);
                     }
                 }
                 MenuItem {
-                    title: @tr("Exit Ezoo Download");
-                    checkable: true;
-                    checked: root.all-done == 3;
+                    title: (root.all-done == 3 ? "● " : "○ ") + @tr("Exit Ezoo Download");
                     activated => {
                         root.set-all-done(3);
                     }
@@ -876,9 +886,7 @@ export component MainWindow inherits ThemedWindow {
         Menu {
             title: @tr("View");
             MenuItem {
-                title: @tr("Show categories");
-                checkable: true;
-                checked: !root.hide-categories;
+                title: (!root.hide-categories ? "☑ " : "☐ ") + @tr("Show categories");
                 activated => {
                     root.toggle-categories();
                 }
@@ -898,9 +906,7 @@ export component MainWindow inherits ThemedWindow {
                     { key: "referer", title: @tr("Referer") },
                     { key: "parent", title: @tr("Parent web page") }
                 ]: MenuItem {
-                    title: a.title;
-                    checkable: true;
-                    checked: root.sort-by == a.key;
+                    title: (root.sort-by == a.key ? "● " : "○ ") + a.title;
                     activated => {
                         root.sort(a.key);
                     }
@@ -909,17 +915,13 @@ export component MainWindow inherits ThemedWindow {
             Menu {
                 title: @tr("Toolbar");
                 MenuItem {
-                    title: @tr("Large buttons");
-                    checkable: true;
-                    checked: !root.toolbar-small;
+                    title: (!root.toolbar-small ? "● " : "○ ") + @tr("Large buttons");
                     activated => {
                         root.set-toolbar-small(false);
                     }
                 }
                 MenuItem {
-                    title: @tr("Small buttons");
-                    checkable: true;
-                    checked: root.toolbar-small;
+                    title: (root.toolbar-small ? "● " : "○ ") + @tr("Small buttons");
                     activated => {
                         root.set-toolbar-small(true);
                     }
@@ -934,65 +936,49 @@ export component MainWindow inherits ThemedWindow {
             Menu {
                 title: @tr("Language");
                 MenuItem {
-                    title: "English";
-                    checkable: true;
-                    checked: root.language == "en";
+                    title: (root.language == "en" ? "● " : "○ ") + "English";
                     activated => {
                         root.set-language("en");
                     }
                 }
                 MenuItem {
-                    title: "العربية";
-                    checkable: true;
-                    checked: root.language == "ar";
+                    title: (root.language == "ar" ? "● " : "○ ") + "العربية";
                     activated => {
                         root.set-language("ar");
                     }
                 }
                 MenuItem {
-                    title: "Français";
-                    checkable: true;
-                    checked: root.language == "fr";
+                    title: (root.language == "fr" ? "● " : "○ ") + "Français";
                     activated => {
                         root.set-language("fr");
                     }
                 }
                 MenuItem {
-                    title: "Español";
-                    checkable: true;
-                    checked: root.language == "es";
+                    title: (root.language == "es" ? "● " : "○ ") + "Español";
                     activated => {
                         root.set-language("es");
                     }
                 }
                 MenuItem {
-                    title: "Deutsch";
-                    checkable: true;
-                    checked: root.language == "de";
+                    title: (root.language == "de" ? "● " : "○ ") + "Deutsch";
                     activated => {
                         root.set-language("de");
                     }
                 }
                 MenuItem {
-                    title: "Português";
-                    checkable: true;
-                    checked: root.language == "pt";
+                    title: (root.language == "pt" ? "● " : "○ ") + "Português";
                     activated => {
                         root.set-language("pt");
                     }
                 }
                 MenuItem {
-                    title: "Türkçe";
-                    checkable: true;
-                    checked: root.language == "tr";
+                    title: (root.language == "tr" ? "● " : "○ ") + "Türkçe";
                     activated => {
                         root.set-language("tr");
                     }
                 }
                 MenuItem {
-                    title: "Русский";
-                    checkable: true;
-                    checked: root.language == "ru";
+                    title: (root.language == "ru" ? "● " : "○ ") + "Русский";
                     activated => {
                         root.set-language("ru");
                     }
@@ -1001,73 +987,55 @@ export component MainWindow inherits ThemedWindow {
             Menu {
                 title: @tr("Theme");
                 MenuItem {
-                    title: @tr("Light");
-                    checkable: true;
-                    checked: Theme.mode == 0;
+                    title: (Theme.mode == 0 ? "● " : "○ ") + @tr("Light");
                     activated => {
                         root.set-theme(0);
                     }
                 }
                 MenuItem {
-                    title: @tr("Dark");
-                    checkable: true;
-                    checked: Theme.mode == 1;
+                    title: (Theme.mode == 1 ? "● " : "○ ") + @tr("Dark");
                     activated => {
                         root.set-theme(1);
                     }
                 }
                 MenuItem {
-                    title: @tr("Ocean blue");
-                    checkable: true;
-                    checked: Theme.mode == 2;
+                    title: (Theme.mode == 2 ? "● " : "○ ") + @tr("Ocean blue");
                     activated => {
                         root.set-theme(2);
                     }
                 }
                 MenuItem {
-                    title: @tr("Midnight purple");
-                    checkable: true;
-                    checked: Theme.mode == 3;
+                    title: (Theme.mode == 3 ? "● " : "○ ") + @tr("Midnight purple");
                     activated => {
                         root.set-theme(3);
                     }
                 }
                 MenuItem {
-                    title: @tr("Forest green");
-                    checkable: true;
-                    checked: Theme.mode == 4;
+                    title: (Theme.mode == 4 ? "● " : "○ ") + @tr("Forest green");
                     activated => {
                         root.set-theme(4);
                     }
                 }
                 MenuItem {
-                    title: @tr("Black");
-                    checkable: true;
-                    checked: Theme.mode == 5;
+                    title: (Theme.mode == 5 ? "● " : "○ ") + @tr("Black");
                     activated => {
                         root.set-theme(5);
                     }
                 }
                 MenuItem {
-                    title: @tr("Sunset");
-                    checkable: true;
-                    checked: Theme.mode == 6;
+                    title: (Theme.mode == 6 ? "● " : "○ ") + @tr("Sunset");
                     activated => {
                         root.set-theme(6);
                     }
                 }
                 MenuItem {
-                    title: @tr("Teal night");
-                    checkable: true;
-                    checked: Theme.mode == 7;
+                    title: (Theme.mode == 7 ? "● " : "○ ") + @tr("Teal night");
                     activated => {
                         root.set-theme(7);
                     }
                 }
                 MenuItem {
-                    title: @tr("Rose");
-                    checkable: true;
-                    checked: Theme.mode == 8;
+                    title: (Theme.mode == 8 ? "● " : "○ ") + @tr("Rose");
                     activated => {
                         root.set-theme(8);
                     }
@@ -1355,6 +1323,14 @@ export component MainWindow inherits ThemedWindow {
                         small: root.toolbar-small;
                         clicked => {
                             root.playlist();
+                        }
+                    }
+                    ToolBtn {
+                        icon: "torrent";
+                        text: @tr("Torrent");
+                        small: root.toolbar-small;
+                        clicked => {
+                            root.torrent();
                         }
                     }
                     Rectangle {
@@ -1689,6 +1665,42 @@ export component MainWindow inherits ThemedWindow {
                         color: root.limiter-on ? Theme.warn : Theme.muted;
                     }
                 }
+            }
+        }
+    }
+    // the note of the toolbar button the mouse rests on (drawn above everything)
+    Timer {
+        interval: 600ms;
+        running: ToolTip.pending;
+        triggered => {
+            ToolTip.pending = false;
+            ToolTip.shown = true;
+        }
+    }
+    if ToolTip.shown && ToolTip.text != "": Rectangle {
+        x: min(ToolTip.x, root.width - self.width - 6px);
+        y: ToolTip.y;
+        width: min(320px, tip-box.preferred-width);
+        height: tip-box.preferred-height;
+        background: Theme.input-bg;
+        border-width: 1px;
+        border-color: Theme.line;
+        border-radius: 4px;
+        drop-shadow-blur: 8px;
+        drop-shadow-color: #00000044;
+        drop-shadow-offset-y: 2px;
+        tip-box := VerticalLayout {
+            padding: 8px;
+            spacing: 3px;
+            Text {
+                text: ToolTip.title;
+                font-weight: 700;
+                color: Theme.text;
+            }
+            Text {
+                text: ToolTip.text;
+                wrap: word-wrap;
+                color: Theme.muted;
             }
         }
     }
@@ -2314,6 +2326,7 @@ export component DetailsDialog inherits ThemedWindow {
     callback resume();
     callback cancel-download();
     callback close-window();
+    callback hide-to-tray();
     callback limit-changed();
     callback completion-changed();
 
@@ -2605,6 +2618,14 @@ export component DetailsDialog inherits ThemedWindow {
                     root.show-details = !root.show-details;
                 }
             }
+            // the window goes away (to the icon next to the clock); the
+            // download goes on, double click it in the list to see it again
+            if root.state != 3: Button {
+                text: @tr("Hide to tray");
+                clicked => {
+                    root.hide-to-tray();
+                }
+            }
             Rectangle {
                 horizontal-stretch: 1;
             }
@@ -2812,12 +2833,8 @@ export component CompleteDialog inherits ThemedWindow {
                     root.open-file();
                 }
             }
-            Button {
-                text: @tr("Open with…");
-                clicked => {
-                    root.open-with();
-                }
-            }
+            // no "Open with…" here: picked by mistake it changes which
+            // program opens this kind of file (still in the list's menu)
             Button {
                 text: @tr("Open folder");
                 clicked => {

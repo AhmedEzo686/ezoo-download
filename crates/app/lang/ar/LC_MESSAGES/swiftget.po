@@ -4,6 +4,51 @@ msgstr ""
 "Language: ar\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid "Download a file from an address you type or paste (Ctrl+N)."
+msgstr "تحميل ملف من رابط تكتبه أو تلصقه (Ctrl+N)."
+
+msgid "Download many links at once, or numbered files from one address (Ctrl+B)."
+msgstr "تحميل روابط كثيرة مرة واحدة، أو ملفات مرقمة من رابط واحد (Ctrl+B)."
+
+msgid "Continue the selected downloads from where they stopped."
+msgstr "استكمال التحميلات المحددة من حيث توقفت."
+
+msgid "Pause the selected downloads; they can be resumed later."
+msgstr "إيقاف التحميلات المحددة مؤقتًا؛ يمكن استكمالها لاحقًا."
+
+msgid "Pause every running download."
+msgstr "إيقاف كل التحميلات الجارية مؤقتًا."
+
+msgid "Remove the selected downloads from the list. The files stay on your computer."
+msgstr "حذف التحميلات المحددة من القائمة. الملفات تبقى على جهازك."
+
+msgid "Remove all finished downloads from the list. The files stay on your computer."
+msgstr "حذف كل التحميلات المكتملة من القائمة. الملفات تبقى على جهازك."
+
+msgid "All the settings of the program."
+msgstr "كل إعدادات البرنامج."
+
+msgid "Start or stop queues at the times you choose."
+msgstr "تشغيل قوائم الانتظار أو إيقافها في الأوقات التي تختارها."
+
+msgid "Limit the download speed so the internet stays usable for other things."
+msgstr "تحديد سرعة التحميل حتى يبقى الإنترنت صالحًا لأشياء أخرى."
+
+msgid "Start the files of a queue, one after another."
+msgstr "تشغيل ملفات قائمة انتظار، واحدًا تلو الآخر."
+
+msgid "Stop the files of a queue."
+msgstr "إيقاف ملفات قائمة انتظار."
+
+msgid "Collect the files of a web site: pictures, videos, archives…"
+msgstr "جمع ملفات موقع ويب: صور، فيديوهات، ملفات مضغوطة…"
+
+msgid "Download all or some videos of a playlist."
+msgstr "تحميل كل فيديوهات قائمة تشغيل أو بعضها."
+
+msgid "Download a .torrent file or a magnet link."
+msgstr "تحميل ملف ‎.torrent أو رابط magnet."
+
 msgid "{} downloads selected"
 msgstr "تم تحديد {} تحميلات"
 
@@ -15,6 +60,9 @@ msgstr "عرض تقدّم التحميل"
 
 msgid "Open with…"
 msgstr "فتح باستخدام…"
+
+msgid "Play while downloading"
+msgstr "تشغيل أثناء التحميل"
 
 msgid "Open folder"
 msgstr "فتح المجلد"
@@ -132,6 +180,9 @@ msgstr "تشغيل جامع المواقع…"
 
 msgid "Download a playlist…"
 msgstr "تحميل قائمة تشغيل…"
+
+msgid "Add a torrent / magnet link…"
+msgstr "إضافة تورنت / رابط magnet…"
 
 msgid "Export"
 msgstr "تصدير"
@@ -355,6 +406,9 @@ msgstr "الجامع"
 msgid "Playlist"
 msgstr "قائمة تشغيل"
 
+msgid "Torrent"
+msgstr "تورنت"
+
 msgid "Filter the list…"
 msgstr "تصفية القائمة…"
 
@@ -543,6 +597,9 @@ msgstr "<< إخفاء التفاصيل"
 
 msgid "Show details >>"
 msgstr "إظهار التفاصيل >>"
+
+msgid "Hide to tray"
+msgstr "إخفاء بجوار الساعة"
 
 msgid "Pause"
 msgstr "إيقاف مؤقت"
@@ -937,6 +994,9 @@ msgstr "الأصوات"
 msgid "Appearance"
 msgstr "المظهر"
 
+msgid "Torrents"
+msgstr "التورنت"
+
 msgid "Window opacity"
 msgstr "شفافية النافذة"
 
@@ -1225,6 +1285,36 @@ msgstr "تشغيل محدد السرعة دائماً عند بدء Ezoo Downloa
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "يمكن أن يكون لكل تحميل حد خاص: نافذة تقدّمه > تبويب محدد السرعة."
 
+msgid "Keep sharing a finished torrent for (minutes)"
+msgstr "استمرار مشاركة التورنت بعد اكتماله لمدة (دقائق)"
+
+msgid "0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent."
+msgstr "0 = التوقف بمجرد وصول كل الملفات. المشاركة لمدة أطول تساعد الآخرين الذين يحمّلون نفس التورنت."
+
+msgid "Maximum upload speed (KB/s, 0 = no limit)"
+msgstr "أقصى سرعة رفع (كيلوبايت/ث، 0 = بدون حد)"
+
+msgid "While a torrent downloads it also sends pieces to others (that is how torrents work). A limit keeps your internet free for other things."
+msgstr "أثناء تحميل التورنت يرسل أيضًا أجزاءً للآخرين (هكذا يعمل التورنت). الحد يترك الإنترنت متاحًا لأشياء أخرى."
+
+msgid "Add a torrent"
+msgstr "إضافة تورنت"
+
+msgid "A magnet link, or a .torrent file:"
+msgstr "رابط magnet، أو ملف ‎.torrent:"
+
+msgid "magnet:?xt=urn:btih:…  or  C:\\…\\file.torrent"
+msgstr "magnet:?xt=urn:btih:…  أو  C:\\…\\file.torrent"
+
+msgid "Open .torrent file…"
+msgstr "فتح ملف ‎.torrent…"
+
+msgid "A magnet link brings its file list from the other computers when it starts: all its files are downloaded."
+msgstr "رابط magnet يجلب قائمة ملفاته من الأجهزة الأخرى عند البدء: يتم تحميل كل ملفاته."
+
+msgid "Paste a magnet link or open a .torrent file: what it shares shows up here."
+msgstr "الصق رابط magnet أو افتح ملف ‎.torrent: ما يشاركه يظهر هنا."
+
 msgid "Download a playlist"
 msgstr "تحميل قائمة تشغيل"
 
@@ -1258,20 +1348,29 @@ msgstr "الجودة"
 msgid "Best quality (MP4)"
 msgstr "أفضل جودة (MP4)"
 
-msgid "1080p"
-msgstr "1080p"
+msgid "2160p 4K"
+msgstr "2160p 4K"
 
-msgid "720p"
-msgstr "720p"
+msgid "1440p 2K"
+msgstr "1440p 2K"
 
-msgid "480p"
-msgstr "480p"
+msgid "1080p Full HD"
+msgstr "1080p Full HD"
 
-msgid "360p"
-msgstr "360p"
+msgid "720p HD"
+msgstr "720p HD"
+
+msgid "480p SD"
+msgstr "480p SD"
+
+msgid "360p SD"
+msgstr "360p SD"
 
 msgid "Audio only (M4A)"
 msgstr "صوت فقط (M4A)"
+
+msgid "Audio MP3"
+msgstr "صوت MP3"
 
 msgid "Files at the same time"
 msgstr "ملفات في نفس الوقت"

@@ -16,21 +16,37 @@ async function init() {
   });
 
   // size of the "Download this video" button on pages (also in the settings page)
-  const sizes = [...document.querySelectorAll("#sizes button")];
-  const mark = (v) => sizes.forEach((b) => b.classList.toggle("on", b.dataset.size === v));
-  chrome.storage.local.get({ bubbleSize: "normal" }, (o) => mark(["small", "normal", "large"].includes(o.bubbleSize) ? o.bubbleSize : "normal"));
-  sizes.forEach((b) =>
-    b.addEventListener("click", () => {
-      chrome.storage.local.set({ bubbleSize: b.dataset.size });
-      mark(b.dataset.size);
-    })
+  const scale = document.getElementById("scale");
+  const scaleText = document.getElementById("scaleText");
+  const OLD = { small: 85, normal: 100, large: 125 };
+  const show = (v) => {
+    scale.value = String(v);
+    scaleText.textContent = `${v}%`;
+  };
+  chrome.storage.local.get({ bubbleScale: null, bubbleSize: "normal" }, (o) =>
+    show(o.bubbleScale != null ? Math.round(o.bubbleScale * 100) : OLD[o.bubbleSize] || 100)
   );
+  const save = (v) => {
+    show(v);
+    chrome.storage.local.set({ bubbleScale: v / 100 });
+  };
+  scale.addEventListener("input", () => save(Number(scale.value)));
+  document.getElementById("scaleReset").addEventListener("click", () => save(100));
 
   chrome.runtime.sendMessage({ type: "swiftget-status" }, (res) => {
     const el = document.getElementById("status");
     const ok = res && res.ok;
     el.textContent = ok ? "connected" : "app not running";
     el.classList.toggle("on", !!ok);
+    if (!ok) {
+      // the program registers "ezoo-download:" when it is installed
+      const open = document.createElement("a");
+      open.href = "ezoo-download://open";
+      open.className = "open";
+      open.textContent = "Open Ezoo Download";
+      open.addEventListener("click", () => setTimeout(() => window.close(), 300));
+      document.querySelector("section").appendChild(open);
+    }
   });
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -40,6 +56,23 @@ async function init() {
     const box = document.getElementById("media");
     box.replaceChildren();
     const title = (tab.title || "video").replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").slice(0, 120);
+    // a YouTube playlist: all of its videos in the app's playlist window
+    if (/youtube\.com/i.test(tab.url || "") && /[?&]list=/.test(tab.url || "")) {
+      const row = document.createElement("div");
+      row.className = "media";
+      const info = document.createElement("div");
+      info.textContent = "All videos of this playlist";
+      const btn = document.createElement("button");
+      btn.className = "all";
+      btn.textContent = "Download all";
+      btn.addEventListener("click", () =>
+        chrome.runtime.sendMessage({ type: "swiftget-playlist", url: tab.url }, (res) => {
+          btn.textContent = res && res.ok ? "Opened ✔" : "App not running";
+        })
+      );
+      row.append(info, btn);
+      box.appendChild(row);
+    }
     items.forEach((m) => {
       const row = document.createElement("div");
       row.className = "media";

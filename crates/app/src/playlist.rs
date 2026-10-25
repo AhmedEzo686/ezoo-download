@@ -6,7 +6,7 @@ use crate::*;
 
 use crate::i18n::{t, tf};
 
-const QUALITIES: [&str; 6] = ["best", "1080", "720", "480", "360", "audio"];
+const QUALITIES: [&str; 9] = ["best", "2160", "1440", "1080", "720", "480", "360", "audio", "mp3"];
 
 pub(crate) fn open(ui: &Ui) {
     let Some(d) = ui.playlist.upgrade() else { return };
@@ -21,6 +21,19 @@ pub(crate) fn open(ui: &Ui) {
     }
     open_window!(d);
     d.window().set_minimized(false);
+}
+
+/// The browser's "Download all" on a playlist page: the window with that
+/// list, already looking up its videos.
+pub(crate) fn open_url(ui: &Ui, url: &str) {
+    let Some(d) = ui.playlist.upgrade() else { return };
+    d.set_url(url.into());
+    d.set_message(SharedString::new());
+    open_window!(d);
+    d.window().set_minimized(false);
+    if !d.get_busy() {
+        d.invoke_fetch();
+    }
 }
 
 fn fmt_len(secs: u64) -> String {
@@ -88,7 +101,7 @@ pub(crate) fn wire(ui: &Ui) {
                             let folder = base.join(filename::sanitize(&p.title));
                             d.set_folder(folder.display().to_string().into());
                         }
-                        Err(e) => d.set_status(tf("Could not get the list: {}", &[&format!("{e:#}")]).into()),
+                        Err(e) => d.set_status(tf("Could not get the list: {}", &[&crate::err_text(&format!("{e:#}"))]).into()),
                     }
                 });
             });
@@ -145,8 +158,8 @@ pub(crate) fn wire(ui: &Ui) {
                 return;
             }
             let folder = PathBuf::from(folder);
-            let quality = QUALITIES[d.get_quality().clamp(0, 5) as usize].to_string();
-            let ext = if quality == "audio" { "m4a" } else { "mp4" };
+            let quality = QUALITIES[d.get_quality().clamp(0, QUALITIES.len() as i32 - 1) as usize].to_string();
+            let ext = match quality.as_str() { "audio" => "m4a", "mp3" => "mp3", _ => "mp4" };
             let title = d.get_playlist_title().to_string();
             // its own queue: N videos at a time, all into the folder
             let name = if title.trim().is_empty() { "Playlist".to_string() } else { title.trim().chars().take(60).collect() };

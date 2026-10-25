@@ -53,7 +53,8 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   }
   const last = tabMsgs[tabMsgs.length - 1];
   assert.strictEqual(last.type, "swiftget-media");
-  assert.strictEqual(last.items[0].label, "1080p · MP4");
+  assert.strictEqual(last.items[0].label, "1080p Full HD · MP4");
+  assert.strictEqual(last.items[0].yt.tag, "Full HD");
   console.log("button shows:", last.items.map((i) => i.label).join(" | "));
 
   // user clicks 1080p on the page

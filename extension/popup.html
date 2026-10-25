@@ -21,11 +21,13 @@
   button:hover { background: #1a5fcc; }
   .empty { color: #6b7686; }
   .size { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e6eaf0; font-size: 13px; color: #6b7686; }
-  .size .seg { display: flex; margin-left: auto; border: 1px solid #d5dbe4; border-radius: 6px; overflow: hidden; }
-  .size .seg button { background: #fff; color: #1f2733; border-radius: 0; padding: 3px 12px; border-right: 1px solid #d5dbe4; }
-  .size .seg button:last-child { border-right: 0; }
-  .size .seg button:hover { background: #eef4fe; }
-  .size .seg button.on { background: #1f6feb; color: #fff; }
+  .size input[type=range] { flex: 1; accent-color: #1f6feb; }
+  .size output { min-width: 40px; text-align: right; color: #1f2733; font-variant-numeric: tabular-nums; }
+  .size .reset { background: none; color: #1f6feb; padding: 0 2px; font-size: 12px; }
+  .size .reset:hover { background: none; text-decoration: underline; }
+  .media .all { background: #e8f0fe; color: #1f6feb; }
+  .media .all:hover { background: #d6e4fd; }
+  .open { margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -37,11 +39,9 @@
   </header>
   <div class="size">
     <span>Download button size</span>
-    <div class="seg" id="sizes">
-      <button data-size="small">Small</button>
-      <button data-size="normal">Normal</button>
-      <button data-size="large">Large</button>
-    </div>
+    <input type="range" id="scale" min="50" max="200" step="5" value="100" aria-label="Download button size">
+    <output id="scaleText">100%</output>
+    <button class="reset" id="scaleReset" title="Back to normal size">Reset</button>
   </div>
   <section>
     <h3>Media on this page</h3>

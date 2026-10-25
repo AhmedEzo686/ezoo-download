@@ -41,9 +41,20 @@ assert(opts[0].videoUrl.includes("itag=137") && opts[0].videoUrl.includes("dur=2
 assert(opts[0].audioUrl.includes("itag=140"));
 const webm = opts.find((o) => o.ext === "webm");
 assert(webm.audioUrl.includes("itag=251"));
-const audioOnly = opts[opts.length - 1];
+const audioOnly = opts[opts.length - 2];
 assert.strictEqual(audioOnly.quality, "audio");
 assert.strictEqual(audioOnly.audioUrl, null);
+// the MP3 choice: same sound, the app makes the MP3 file
+const mp3 = opts[opts.length - 1];
+assert.strictEqual(mp3.key, "audio|MP3");
+assert.strictEqual(mp3.ext, "mp3");
+assert.strictEqual(mp3.videoUrl, audioOnly.videoUrl);
+assert(mp3.size > 0 && mp3.duration === 212);
+// the resolution in plain words
+assert.strictEqual(opts[0].tag, "Full HD");
+assert(opts[0].label.startsWith("1080p Full HD"));
+const { qualityTag } = require("../yt-core.js");
+assert.deepStrictEqual([4320, 2160, 1440, 1080, 720, 480, 0].map(qualityTag), ["8K", "4K", "2K", "Full HD", "HD", "SD", ""]);
 assert(opts.every((o) => !o.videoUrl.includes("dur=15")), "ad streams must be ignored");
 
 // no audio captured yet -> only progressive or nothing

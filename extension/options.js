@@ -1,4 +1,5 @@
-const DEFAULTS = { port: 9614, intercept: true, minSizeKB: 0, bubbleSize: "normal" };
+const DEFAULTS = { port: 9614, intercept: true, minSizeKB: 0, bubbleSize: "normal", bubbleScale: null };
+const OLD_SIZES = { small: 85, normal: 100, large: 125 };
 
 function saved() {
   const el = document.getElementById("saved");
@@ -14,9 +15,16 @@ async function init() {
   intercept.checked = opts.intercept;
   minSize.value = opts.minSizeKB;
   port.value = opts.port;
-  const size = document.getElementById("bubbleSize");
-  size.value = ["small", "normal", "large"].includes(opts.bubbleSize) ? opts.bubbleSize : "normal";
-  size.addEventListener("change", () => chrome.storage.local.set({ bubbleSize: size.value }).then(saved));
+  const scale = document.getElementById("bubbleScale");
+  const scaleText = document.getElementById("bubbleScaleText");
+  const pct = opts.bubbleScale != null ? Math.round(opts.bubbleScale * 100) : OLD_SIZES[opts.bubbleSize] || 100;
+  scale.value = String(pct);
+  scaleText.textContent = `${pct}%`;
+  scale.addEventListener("input", () => {
+    scaleText.textContent = `${scale.value}%`;
+    chrome.storage.local.set({ bubbleScale: Number(scale.value) / 100 });
+  });
+  scale.addEventListener("change", saved);
   intercept.addEventListener("change", () => chrome.storage.local.set({ intercept: intercept.checked }).then(saved));
   minSize.addEventListener("change", () =>
     chrome.storage.local.set({ minSizeKB: Math.max(0, Number(minSize.value) || 0) }).then(saved)

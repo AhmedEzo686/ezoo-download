@@ -21,6 +21,80 @@ pub struct Progress {
     pub parts_total: AtomicU32,
     pub parts_done: AtomicU32,
     pub assembling: AtomicBool,
+    /// the connection dropped: waiting for the internet to come back
+    pub waiting: AtomicBool,
+    /// woken when data flows again, so every waiting part retries at once
+    pub back_online: tokio::sync::Notify,
+}
+
+impl Progress {
+    /// Data arrived: the connection works (again).
+    pub fn online(&self) {
+        if self.waiting.swap(false, Ordering::Relaxed) {
+            self.back_online.notify_waiters();
+        }
+    }
+}
+
+/// The connection broke while receiving (stall, early close).
+#[derive(Debug)]
+pub struct NetDrop(pub &'static str);
+impl std::fmt::Display for NetDrop {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+impl std::error::Error for NetDrop {}
+
+/// The server answered with an error status.
+#[derive(Debug)]
+pub struct HttpStatus(pub u16);
+impl std::fmt::Display for HttpStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "server answered HTTP {}", self.0)
+    }
+}
+impl std::error::Error for HttpStatus {}
+
+/// A problem of the connection (no internet, DNS, reset, timeout), not of
+/// the file or the link: worth waiting for and trying again without limit.
+pub fn is_network_error(e: &anyhow::Error) -> bool {
+    use std::io::ErrorKind as K;
+    e.chain().any(|c| {
+        if c.is::<NetDrop>() {
+            return true;
+        }
+        if let Some(r) = c.downcast_ref::<reqwest::Error>() {
+            return r.status().is_none() && !r.is_builder() && !r.is_redirect()
+                && (r.is_connect() || r.is_timeout() || r.is_request() || r.is_body() || r.is_decode());
+        }
+        if let Some(io) = c.downcast_ref::<std::io::Error>() {
+            return matches!(
+                io.kind(),
+                K::ConnectionReset | K::ConnectionAborted | K::ConnectionRefused | K::NotConnected
+                    | K::TimedOut | K::BrokenPipe | K::UnexpectedEof | K::HostUnreachable
+                    | K::NetworkUnreachable | K::NetworkDown
+            );
+        }
+        false
+    })
+}
+
+/// The server's status code, if the error is one.
+pub fn http_status_of(e: &anyhow::Error) -> Option<u16> {
+    e.chain().find_map(|c| c.downcast_ref::<HttpStatus>().map(|s| s.0))
+}
+
+/// How long to wait before trying again after `n` failures in a row while
+/// the connection is down: quick at first, then every 10 seconds.
+pub fn reconnect_delay(n: u32) -> Duration {
+    Duration::from_secs(match n {
+        0 | 1 => 2,
+        2 => 3,
+        3 => 5,
+        4 => 8,
+        _ => 10,
+    })
 }
 
 /// Counts an open connection for as long as it lives.

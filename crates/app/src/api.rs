@@ -103,6 +103,8 @@ pub enum ApiEvent {
     Add(AddRequest),
     Links(LinksRequest),
     Show,
+    /// "Download all" on a playlist page: open the playlist window with it
+    Playlist(String),
 }
 
 /// What the extension needs to know from Options (file types to take,
@@ -260,6 +262,19 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
             on_event(ApiEvent::Show);
             reply(req, 200, r#"{"ok":true,"app":"Ezoo"}"#)
         }
+        (Method::Post, "/playlist") => {
+            let mut body = String::new();
+            if req.as_reader().take(1 << 16).read_to_string(&mut body).is_err() {
+                return reply(req, 400, r#"{"error":"bad body"}"#);
+            }
+            match serde_json::from_str::<serde_json::Value>(&body).ok().and_then(|v| v["url"].as_str().map(String::from)) {
+                Some(url) if is_http(&url) => {
+                    on_event(ApiEvent::Playlist(url));
+                    reply(req, 200, r#"{"ok":true}"#)
+                }
+                _ => reply(req, 400, r#"{"error":"invalid request"}"#),
+            }
+        }
         (Method::Post, "/add") => {
             let mut body = String::new();
             if req.as_reader().take(1 << 20).read_to_string(&mut body).is_err() {
@@ -267,7 +282,8 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
             }
             match serde_json::from_str::<AddRequest>(&body) {
                 Ok(add)
-                    if is_http(&add.url) && add.audio_url.as_deref().map(is_http).unwrap_or(true) =>
+                    if (is_http(&add.url) || swiftget_engine::torrent::is_magnet(&add.url))
+                        && add.audio_url.as_deref().map(is_http).unwrap_or(true) =>
                 {
                     on_event(ApiEvent::Add(add));
                     reply(req, 200, r#"{"ok":true}"#)
@@ -305,7 +321,7 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
                     Ok(info) => serde_json::json!({
                         "ok": true, "title": info.title, "site": info.site, "options": info.options
                     }),
-                    Err(e) => serde_json::json!({ "ok": false, "error": format!("{e:#}") }),
+                    Err(e) => serde_json::json!({ "ok": false, "error": crate::err_text(&format!("{e:#}")) }),
                 };
                 reply(req, 200, &body.to_string());
             });

@@ -12,6 +12,12 @@ FFmpeg - https://github.com/FFmpeg/FFmpeg
   License version 3 (see ffmpeg-LICENSE.txt in the "tools" folder).
   Its source code is available at https://github.com/FFmpeg/FFmpeg.
 
+aria2 - https://github.com/aria2/aria2
+  The aria2c program in the "tools" folder (used for torrents) is an
+  unmodified release build licensed under the GNU General Public License
+  version 2 or later (see aria2-COPYING.txt in the "tools" folder). Its source
+  code is available at https://github.com/aria2/aria2.
+
 Rust crates (tokio, reqwest, serde, chrono, tiny_http, arboard, rfd, tray-icon,
 regex, sha2, aes, cbc, url, directories, filetime and their dependencies)
   MIT and/or Apache-2.0 licenses.

@@ -227,7 +227,7 @@ pub(crate) fn open_properties(ui: &Ui, id: u64) {
     d.set_last_try(v.finished_at.or(v.last_try).map(fmt_time).unwrap_or_default().into());
     d.set_result(
         match (&v.error, v.status) {
-            (Some(e), _) => e.clone(),
+            (Some(e), _) => crate::err_text(e),
             (None, Status::Completed) => t("The file was downloaded successfully"),
             _ => String::new(),
         }
@@ -349,23 +349,21 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 16] = [
-    "The main window can be maximized to the full screen.",
-    "Columns of the list can be resized and moved by dragging their titles.",
-    "Toolbar names are bold, and the size of the video button can be chosen in the add-in's window.",
-    "Text size, font and a picture behind the main window (Options > Appearance).",
-    "Windows open in the middle of the screen; only the main window can be maximized.",
-    "Drag a finished file from the list onto the desktop or into a folder.",
-    "The progress of a download shows on its taskbar button.",
-    "Check for updates shows the check, the download and the installation in its own window.",
-    "Playlist videos are saved with their own original titles and their original sound.",
-    "Closing a download's window (X) stops the download; Resume opens it again.",
-    "The download button on videos in the browser is smaller, and its size can be changed in the add-in's settings.",
-    "Updates are signed: Ezoo Download installs only updates made by its developer.",
-    "Downloaded files are marked as coming from the internet, so Windows warns before opening an unsafe file.",
-    "Saved passwords and site logins are encrypted with your Windows account.",
-    "The video helpers (yt-dlp and ffmpeg) are checked before they are used.",
-    "More protection against harmful web pages and links.",
+const WHATS_NEW: [&str; 14] = [
+    "Torrents: open a .torrent file or a magnet link and choose which of its files to download.",
+    "A dropped internet connection no longer stops a download: it waits and goes on by itself from where it was.",
+    "An expired link or a removed file is explained in plain words, with what to do about it.",
+    "Watch a video or listen to a song while it is still downloading (right-click > Play while downloading).",
+    "YouTube videos can be saved as MP3 files.",
+    "Qualities are shown in plain words too: SD, HD, Full HD, 2K, 4K.",
+    "The video button in the browser lists every quality with its format, length and size, has a size slider, and works on videos in frames, in full screen and in more players.",
+    "Videos that need a login or an age check use your browser's sign-in, also in playlists.",
+    "Toolbar buttons explain what they do when the mouse rests on them.",
+    "A download's window can be hidden next to the clock.",
+    "File icons are easier to tell apart.",
+    "Menus show one clear mark on the chosen option.",
+    "The window of a finished download no longer offers \"Open with…\", so a file can't be changed by mistake.",
+    "Fixed a crash around the Tips window.",
 ];
 
 pub(crate) fn whats_new() {
@@ -395,6 +393,15 @@ const TIPS: [&str; 14] = [
     "Tasks > Run site grabber collects every image, video or archive of a web site.",
     "Hold Alt while clicking a link in the browser to let the browser download it by itself.",
 ];
+
+/// The tip at start, once no message box is open (they must not mix).
+pub(crate) fn show_tip_when_free(ui: Ui) {
+    if modal_open() {
+        slint::Timer::single_shot(std::time::Duration::from_millis(700), move || show_tip_when_free(ui));
+        return;
+    }
+    show_tip(&ui, false);
+}
 
 pub(crate) fn show_tip(ui: &Ui, from_menu: bool) {
     let Some(d) = ui.tips.upgrade() else { return };
@@ -608,7 +615,7 @@ pub(crate) fn wire(ui: &Ui) {
             let ui = ui.clone();
             d.on_open_file(move || {
                 if let Some(v) = ui.props_id.get().and_then(|id| ui.ctx.mgr.get(id)) {
-                    let _ = open::that(&v.save_path);
+                    crate::open_download(&v.save_path);
                 }
             });
         }

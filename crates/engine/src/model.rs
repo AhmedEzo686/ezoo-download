@@ -44,6 +44,8 @@ pub enum DownloadKind {
     /// Separate video and audio streams (YouTube style, "DASH"):
     /// both are downloaded, then merged into one file with ffmpeg
     Dash,
+    /// a .torrent file or a magnet link, shared with other computers (aria2)
+    Torrent,
 }
 
 /// Extra request data, usually handed over by the browser extension so that
@@ -114,6 +116,8 @@ pub struct NewDownload {
     /// (its name and folder can change until the user confirms)
     pub early: bool,
     pub start: bool,
+    /// torrents: the files to get, 1-based ("1,3,4"); None = all
+    pub torrent_select: Option<String>,
 }
 
 /// Persisted state of one download.
@@ -191,6 +195,13 @@ pub struct DownloadRecord {
     /// folder may still change
     #[serde(default)]
     pub work_stem: Option<String>,
+    /// torrents: the files to get, 1-based ("1,3,4"); None = all
+    #[serde(default)]
+    pub torrent_select: Option<String>,
+    /// torrents: the files it writes, relative to `save_dir` (learnt while
+    /// it runs; a magnet link only knows them then)
+    #[serde(default)]
+    pub torrent_files: Vec<String>,
 }
 
 impl DownloadRecord {
@@ -236,8 +247,35 @@ impl DownloadRecord {
     pub fn audio_part_path(&self) -> PathBuf {
         self.work_dir().join(format!(".{}.audio.sgpart", self.temp_stem()))
     }
+    /// Torrents: every file it writes (only those: the torrent's folder may
+    /// have the name of a folder that was there before).
+    pub fn torrent_data_paths(&self) -> Vec<PathBuf> {
+        if !self.torrent_files.is_empty() {
+            return self.torrent_files.iter().map(|f| self.save_dir.join(f)).collect();
+        }
+        let Some(info) = std::fs::read(&self.url).ok().and_then(|d| crate::torrent::parse_torrent(&d).ok()) else {
+            return Vec::new();
+        };
+        let single = info.files.len() == 1 && info.files[0].path == info.name;
+        info.files
+            .iter()
+            .map(|f| {
+                let rel: PathBuf = f.path.split('/').map(crate::filename::sanitize).collect();
+                if single {
+                    self.save_dir.join(&self.file_name)
+                } else {
+                    self.save_dir.join(&self.file_name).join(rel)
+                }
+            })
+            .collect()
+    }
+
     /// Every temporary file/folder this download may leave behind.
     pub fn temp_paths(&self) -> Vec<PathBuf> {
+        if self.kind == DownloadKind::Torrent {
+            // aria2's notes of what it has
+            return vec![self.save_dir.join(format!("{}.aria2", self.file_name))];
+        }
         vec![self.part_path(), self.hls_temp_dir(), self.video_part_path(), self.audio_part_path()]
     }
     pub fn request_url(&self) -> &str {
@@ -278,6 +316,8 @@ pub struct DownloadView {
     /// page the download came from
     pub parent_page: Option<String>,
     pub queue_pos: u64,
+    /// the connection dropped: waiting for the internet to come back
+    pub waiting: bool,
 }
 
 impl DownloadView {

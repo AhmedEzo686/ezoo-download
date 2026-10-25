@@ -486,7 +486,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 
 async function downloadVideo(option, pageTitle, pageUrl) {
   const title = cleanYoutubeTitle(option.title || pageTitle);
-  const name = `${title} [${option.quality}].${option.ext}`;
+  const name = option.quality === "mp3" ? `${title}.mp3` : `${title} [${option.quality}].${option.ext}`;
   await sendToApp({
     url: option.videoUrl,
     audioUrl: option.audioUrl,
@@ -496,6 +496,17 @@ async function downloadVideo(option, pageTitle, pageUrl) {
     sourcePage: option.source,
     sourceKey: option.key,
   });
+}
+
+async function sendPlaylist(url) {
+  if (!/^https?:/i.test(url || "")) throw new Error("bad address");
+  const { port } = await getOpts();
+  const r = await fetchWithTimeout(
+    apiUrl(port, "/playlist"),
+    { method: "POST", headers: { "Content-Type": "application/json", "X-SwiftGet": "1" }, body: JSON.stringify({ url }) },
+    5000
+  );
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
 }
 
 // Ask the app (yt-dlp) for the qualities of a video page.
@@ -699,7 +710,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
     case "swiftget-download": {
       const item = msg.item || {};
-      const referrer = sender.tab ? sender.tab.url : msg.referrer;
+      // a video inside a frame (embedded player): that frame's page
+      const referrer = sender.frameId && msg.referrer ? msg.referrer : sender.tab ? sender.tab.url : msg.referrer;
       if (item.yt) return reply(downloadVideo(item.yt, msg.title, referrer), sendResponse);
       return reply(sendToApp({ url: item.url, referrer, fileName: msg.fileName }), sendResponse);
     }
@@ -721,6 +733,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // one of several videos on the page: its own file, or its own link
       resolveOneVideo(msg, sender.tab).then(sendResponse);
       return true;
+    case "swiftget-magnet":
+      // a torrent's magnet link clicked on a page
+      return reply(
+        getOpts().then((o) => {
+          if (!o.intercept) throw new Error("sending is off");
+          return sendToApp({ url: msg.url, referrer: sender.tab ? sender.tab.url : "" });
+        }),
+        sendResponse
+      );
+    case "swiftget-playlist":
+      // "Download all" on a playlist page: the app's playlist window
+      return reply(sendPlaylist(msg.url), sendResponse);
     case "swiftget-status":
       appAlive().then((ok) => sendResponse({ ok }));
       return true;

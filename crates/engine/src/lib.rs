@@ -27,6 +27,7 @@ pub mod selfupdate;
 pub mod store;
 pub mod system;
 pub mod tools;
+pub mod torrent;
 pub mod ytdlp;
 
 pub use config::{AfterDone, Schedule, Settings};

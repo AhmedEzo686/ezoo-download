@@ -83,6 +83,31 @@ pub fn merge(video: &Path, audio: &Path, output: &Path, final_name: &str) -> any
     Ok(())
 }
 
+/// Turn a downloaded sound (or video) file into an MP3 file.
+pub fn to_mp3(input: &Path, output: &Path, kbps: u64) -> anyhow::Result<()> {
+    let Some(ffmpeg) = find_ffmpeg() else {
+        bail!(
+            "ffmpeg.exe is missing. Ezoo Download gets it by itself in a few minutes \
+             (internet needed) - then press Resume to make the MP3 file"
+        );
+    };
+    let mut cmd = Command::new(&ffmpeg);
+    cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
+        .arg(input)
+        .args(["-vn", "-map", "0:a:0", "-c:a", "libmp3lame", "-b:a"])
+        .arg(format!("{kbps}k"))
+        .args(["-f", "mp3"])
+        .arg(output);
+    hide_window(&mut cmd);
+    let out = cmd.output().context("could not start ffmpeg")?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let last = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("unknown error");
+        bail!("ffmpeg could not make the MP3 file: {last}");
+    }
+    Ok(())
+}
+
 pub(crate) fn hide_window(cmd: &mut Command) {
     #[cfg(windows)]
     {
@@ -97,6 +122,25 @@ pub(crate) fn hide_window(cmd: &mut Command) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn makes_mp3() {
+        let Some(ffmpeg) = find_ffmpeg() else { return };
+        let dir = std::env::temp_dir().join("swiftget-mp3-test");
+        let _ = std::fs::create_dir_all(&dir);
+        let a = dir.join("a.m4a.sgpart");
+        let ok = Command::new(&ffmpeg)
+            .args(["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "aac", "-f", "mp4"])
+            .arg(&a)
+            .status()
+            .unwrap();
+        assert!(ok.success());
+        let out = dir.join("song.mp3.tmp");
+        to_mp3(&a, &out, 192).unwrap();
+        let probe = Command::new(&ffmpeg).arg("-i").arg(&out).output().unwrap();
+        assert!(String::from_utf8_lossy(&probe.stderr).contains("Audio: mp3"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Real merge, only when ffmpeg is installed (skipped otherwise).
     #[test]
     fn merges_video_and_audio() {

@@ -261,6 +261,12 @@ pub struct Settings {
     pub last_version: String,
     /// speed limiter switched on (the limit itself is speed_limit_kb)
     pub speed_limit_on: bool,
+    /// torrents: minutes of sharing after one is complete (0 = stop at once)
+    #[serde(default)]
+    pub torrent_seed_minutes: u32,
+    /// torrents: most upload speed in KB/s (0 = no limit)
+    #[serde(default)]
+    pub torrent_upload_kb: u64,
     /// "remember this path for this category" from the download dialog
     pub category_dirs: std::collections::BTreeMap<String, PathBuf>,
     pub hide_categories: bool,
@@ -383,6 +389,8 @@ impl Default for Settings {
             background_strength: 45,
             last_version: String::new(),
             speed_limit_on: false,
+            torrent_seed_minutes: 0,
+            torrent_upload_kb: 0,
             category_dirs: Default::default(),
             hide_categories: false,
             sort_by: "date".into(),

@@ -4,6 +4,51 @@ msgstr ""
 "Language: ru\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid "Download a file from an address you type or paste (Ctrl+N)."
+msgstr "Скачать файл по введённому или вставленному адресу (Ctrl+N)."
+
+msgid "Download many links at once, or numbered files from one address (Ctrl+B)."
+msgstr "Скачать много ссылок сразу или пронумерованные файлы с одного адреса (Ctrl+B)."
+
+msgid "Continue the selected downloads from where they stopped."
+msgstr "Продолжить выбранные загрузки с того места, где они остановились."
+
+msgid "Pause the selected downloads; they can be resumed later."
+msgstr "Приостановить выбранные загрузки; их можно продолжить позже."
+
+msgid "Pause every running download."
+msgstr "Приостановить все идущие загрузки."
+
+msgid "Remove the selected downloads from the list. The files stay on your computer."
+msgstr "Убрать выбранные загрузки из списка. Файлы остаются на компьютере."
+
+msgid "Remove all finished downloads from the list. The files stay on your computer."
+msgstr "Убрать из списка все завершённые загрузки. Файлы остаются на компьютере."
+
+msgid "All the settings of the program."
+msgstr "Все настройки программы."
+
+msgid "Start or stop queues at the times you choose."
+msgstr "Запускать или останавливать очереди в выбранное время."
+
+msgid "Limit the download speed so the internet stays usable for other things."
+msgstr "Ограничить скорость, чтобы интернетом можно было пользоваться для другого."
+
+msgid "Start the files of a queue, one after another."
+msgstr "Запустить файлы очереди один за другим."
+
+msgid "Stop the files of a queue."
+msgstr "Остановить файлы очереди."
+
+msgid "Collect the files of a web site: pictures, videos, archives…"
+msgstr "Собрать файлы сайта: картинки, видео, архивы…"
+
+msgid "Download all or some videos of a playlist."
+msgstr "Скачать все или некоторые видео плейлиста."
+
+msgid "Download a .torrent file or a magnet link."
+msgstr "Скачать файл .torrent или magnet-ссылку."
+
 msgid "{} downloads selected"
 msgstr "Выбрано загрузок: {}"
 
@@ -15,6 +60,9 @@ msgstr "Показать ход загрузки"
 
 msgid "Open with…"
 msgstr "Открыть с помощью…"
+
+msgid "Play while downloading"
+msgstr "Воспроизвести во время загрузки"
 
 msgid "Open folder"
 msgstr "Открыть папку"
@@ -132,6 +180,9 @@ msgstr "Запустить сборщик сайтов…"
 
 msgid "Download a playlist…"
 msgstr "Скачать плейлист…"
+
+msgid "Add a torrent / magnet link…"
+msgstr "Добавить торрент / magnet-ссылку…"
 
 msgid "Export"
 msgstr "Экспорт"
@@ -355,6 +406,9 @@ msgstr "Сборщик"
 msgid "Playlist"
 msgstr "Плейлист"
 
+msgid "Torrent"
+msgstr "Торрент"
+
 msgid "Filter the list…"
 msgstr "Фильтр списка…"
 
@@ -543,6 +597,9 @@ msgstr "<< Скрыть подробности"
 
 msgid "Show details >>"
 msgstr "Подробнее >>"
+
+msgid "Hide to tray"
+msgstr "Спрятать к часам"
 
 msgid "Pause"
 msgstr "Пауза"
@@ -937,6 +994,9 @@ msgstr "Звуки"
 msgid "Appearance"
 msgstr "Оформление"
 
+msgid "Torrents"
+msgstr "Торренты"
+
 msgid "Window opacity"
 msgstr "Непрозрачность окна"
 
@@ -1225,6 +1285,36 @@ msgstr "Всегда включать ограничитель при запус
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "У каждой загрузки может быть свой лимит: её окно хода загрузки > вкладка «Ограничитель скорости»."
 
+msgid "Keep sharing a finished torrent for (minutes)"
+msgstr "Раздавать завершённый торрент ещё (минут)"
+
+msgid "0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent."
+msgstr "0 = остановиться, как только все файлы получены. Раздача подольше помогает тем, кто качает тот же торрент."
+
+msgid "Maximum upload speed (KB/s, 0 = no limit)"
+msgstr "Наибольшая скорость отдачи (КБ/с, 0 = без ограничения)"
+
+msgid "While a torrent downloads it also sends pieces to others (that is how torrents work). A limit keeps your internet free for other things."
+msgstr "Во время загрузки торрент ещё и отдаёт части другим (так устроены торренты). Ограничение оставляет интернет свободным для другого."
+
+msgid "Add a torrent"
+msgstr "Добавить торрент"
+
+msgid "A magnet link, or a .torrent file:"
+msgstr "Magnet-ссылка или файл .torrent:"
+
+msgid "magnet:?xt=urn:btih:…  or  C:\\…\\file.torrent"
+msgstr "magnet:?xt=urn:btih:…  или  C:\\…\\file.torrent"
+
+msgid "Open .torrent file…"
+msgstr "Открыть файл .torrent…"
+
+msgid "A magnet link brings its file list from the other computers when it starts: all its files are downloaded."
+msgstr "Magnet-ссылка получает список файлов от других компьютеров при запуске: скачиваются все её файлы."
+
+msgid "Paste a magnet link or open a .torrent file: what it shares shows up here."
+msgstr "Вставьте magnet-ссылку или откройте файл .torrent: его содержимое появится здесь."
+
 msgid "Download a playlist"
 msgstr "Скачать плейлист"
 
@@ -1258,20 +1348,29 @@ msgstr "Качество"
 msgid "Best quality (MP4)"
 msgstr "Лучшее качество (MP4)"
 
-msgid "1080p"
-msgstr "1080p"
+msgid "2160p 4K"
+msgstr "2160p 4K"
 
-msgid "720p"
-msgstr "720p"
+msgid "1440p 2K"
+msgstr "1440p 2K"
 
-msgid "480p"
-msgstr "480p"
+msgid "1080p Full HD"
+msgstr "1080p Full HD"
 
-msgid "360p"
-msgstr "360p"
+msgid "720p HD"
+msgstr "720p HD"
+
+msgid "480p SD"
+msgstr "480p SD"
+
+msgid "360p SD"
+msgstr "360p SD"
 
 msgid "Audio only (M4A)"
 msgstr "Только аудио (M4A)"
+
+msgid "Audio MP3"
+msgstr "Аудио MP3"
 
 msgid "Files at the same time"
 msgstr "Файлов одновременно"

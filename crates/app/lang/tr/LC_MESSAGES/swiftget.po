@@ -4,6 +4,51 @@ msgstr ""
 "Language: tr\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid "Download a file from an address you type or paste (Ctrl+N)."
+msgstr "Yazdığınız ya da yapıştırdığınız bir adresten dosya indirin (Ctrl+N)."
+
+msgid "Download many links at once, or numbered files from one address (Ctrl+B)."
+msgstr "Birçok bağlantıyı tek seferde ya da tek adresten numaralı dosyaları indirin (Ctrl+B)."
+
+msgid "Continue the selected downloads from where they stopped."
+msgstr "Seçili indirmeleri kaldıkları yerden sürdürün."
+
+msgid "Pause the selected downloads; they can be resumed later."
+msgstr "Seçili indirmeleri duraklatın; daha sonra sürdürülebilirler."
+
+msgid "Pause every running download."
+msgstr "Süren tüm indirmeleri duraklatın."
+
+msgid "Remove the selected downloads from the list. The files stay on your computer."
+msgstr "Seçili indirmeleri listeden kaldırın. Dosyalar bilgisayarınızda kalır."
+
+msgid "Remove all finished downloads from the list. The files stay on your computer."
+msgstr "Biten tüm indirmeleri listeden kaldırın. Dosyalar bilgisayarınızda kalır."
+
+msgid "All the settings of the program."
+msgstr "Programın tüm ayarları."
+
+msgid "Start or stop queues at the times you choose."
+msgstr "Kuyrukları seçtiğiniz saatlerde başlatın ya da durdurun."
+
+msgid "Limit the download speed so the internet stays usable for other things."
+msgstr "İnternet başka işler için de kullanılabilsin diye hızı sınırlayın."
+
+msgid "Start the files of a queue, one after another."
+msgstr "Bir kuyruğun dosyalarını sırayla başlatın."
+
+msgid "Stop the files of a queue."
+msgstr "Bir kuyruğun dosyalarını durdurun."
+
+msgid "Collect the files of a web site: pictures, videos, archives…"
+msgstr "Bir web sitesinin dosyalarını toplayın: resimler, videolar, arşivler…"
+
+msgid "Download all or some videos of a playlist."
+msgstr "Bir oynatma listesinin videolarının hepsini ya da bir kısmını indirin."
+
+msgid "Download a .torrent file or a magnet link."
+msgstr "Bir .torrent dosyası ya da magnet bağlantısı indirin."
+
 msgid "{} downloads selected"
 msgstr "{} indirme seçildi"
 
@@ -15,6 +60,9 @@ msgstr "İndirme ilerlemesini göster"
 
 msgid "Open with…"
 msgstr "Birlikte aç…"
+
+msgid "Play while downloading"
+msgstr "İnerken oynat"
 
 msgid "Open folder"
 msgstr "Klasörü aç"
@@ -132,6 +180,9 @@ msgstr "Site toplayıcıyı çalıştır…"
 
 msgid "Download a playlist…"
 msgstr "Oynatma listesi indir…"
+
+msgid "Add a torrent / magnet link…"
+msgstr "Torrent / magnet bağlantısı ekle…"
 
 msgid "Export"
 msgstr "Dışa aktar"
@@ -355,6 +406,9 @@ msgstr "Toplayıcı"
 msgid "Playlist"
 msgstr "Liste"
 
+msgid "Torrent"
+msgstr "Torrent"
+
 msgid "Filter the list…"
 msgstr "Listeyi filtrele…"
 
@@ -543,6 +597,9 @@ msgstr "<< Ayrıntıları gizle"
 
 msgid "Show details >>"
 msgstr "Ayrıntıları göster >>"
+
+msgid "Hide to tray"
+msgstr "Saatin yanına gizle"
 
 msgid "Pause"
 msgstr "Duraklat"
@@ -937,6 +994,9 @@ msgstr "Sesler"
 msgid "Appearance"
 msgstr "Görünüm"
 
+msgid "Torrents"
+msgstr "Torrentler"
+
 msgid "Window opacity"
 msgstr "Pencere opaklığı"
 
@@ -1225,6 +1285,36 @@ msgstr "Ezoo Download açılınca hız sınırlayıcıyı her zaman aç"
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "Her indirmenin kendi sınırı da olabilir: ilerleme penceresi > Hız sınırlayıcı sekmesi."
 
+msgid "Keep sharing a finished torrent for (minutes)"
+msgstr "Biten torrenti paylaşmaya devam etme süresi (dakika)"
+
+msgid "0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent."
+msgstr "0 = tüm dosyalar gelir gelmez dur. Daha uzun paylaşmak aynı torrenti indiren diğerlerine yardım eder."
+
+msgid "Maximum upload speed (KB/s, 0 = no limit)"
+msgstr "En yüksek yükleme hızı (KB/s, 0 = sınırsız)"
+
+msgid "While a torrent downloads it also sends pieces to others (that is how torrents work). A limit keeps your internet free for other things."
+msgstr "Torrent inerken başkalarına da parçalar gönderir (torrent böyle çalışır). Bir sınır internetinizi başka işler için boş tutar."
+
+msgid "Add a torrent"
+msgstr "Torrent ekle"
+
+msgid "A magnet link, or a .torrent file:"
+msgstr "Bir magnet bağlantısı ya da .torrent dosyası:"
+
+msgid "magnet:?xt=urn:btih:…  or  C:\\…\\file.torrent"
+msgstr "magnet:?xt=urn:btih:…  ya da  C:\\…\\file.torrent"
+
+msgid "Open .torrent file…"
+msgstr ".torrent dosyası aç…"
+
+msgid "A magnet link brings its file list from the other computers when it starts: all its files are downloaded."
+msgstr "Magnet bağlantısı dosya listesini başlarken diğer bilgisayarlardan alır: tüm dosyaları indirilir."
+
+msgid "Paste a magnet link or open a .torrent file: what it shares shows up here."
+msgstr "Bir magnet bağlantısı yapıştırın ya da .torrent dosyası açın: paylaştıkları burada görünür."
+
 msgid "Download a playlist"
 msgstr "Oynatma listesi indir"
 
@@ -1258,20 +1348,29 @@ msgstr "Kalite"
 msgid "Best quality (MP4)"
 msgstr "En iyi kalite (MP4)"
 
-msgid "1080p"
-msgstr "1080p"
+msgid "2160p 4K"
+msgstr "2160p 4K"
 
-msgid "720p"
-msgstr "720p"
+msgid "1440p 2K"
+msgstr "1440p 2K"
 
-msgid "480p"
-msgstr "480p"
+msgid "1080p Full HD"
+msgstr "1080p Full HD"
 
-msgid "360p"
-msgstr "360p"
+msgid "720p HD"
+msgstr "720p HD"
+
+msgid "480p SD"
+msgstr "480p SD"
+
+msgid "360p SD"
+msgstr "360p SD"
 
 msgid "Audio only (M4A)"
 msgstr "Yalnızca ses (M4A)"
+
+msgid "Audio MP3"
+msgstr "Ses MP3"
 
 msgid "Files at the same time"
 msgstr "Aynı anda dosya"

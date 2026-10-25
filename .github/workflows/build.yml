@@ -38,10 +38,13 @@ jobs:
         run: |
           cargo test -p swiftget-engine --no-fail-fast 2>&1 | Tee-Object -FilePath tests.txt
           $code = $LASTEXITCODE
-          # failures show up as annotations on the run page
-          Select-String -Path tests.txt -Pattern "^error|panicked|FAILED|failures:|^    [a-z_:]+$" |
-            Select-Object -First 40 | ForEach-Object { Write-Host "::error::$($_.Line.Trim())" }
-          if ($code -ne 0) { Write-Host "::warning::engine tests failed (exit $code)" }
+          # failures (only real ones) show up as annotations on the run page;
+          # case-sensitive, or every "0 failed" summary line looked like one
+          if ($code -ne 0) {
+            Select-String -CaseSensitive -Path tests.txt -Pattern "^error(\[|:)|panicked at|^test .* FAILED$|^---- " |
+              Select-Object -First 40 | ForEach-Object { Write-Host "::error::$($_.Line.Trim())" }
+            Write-Host "::warning::engine tests failed (exit $code)"
+          }
           exit 0
       - name: Check dependencies for known vulnerabilities
         shell: pwsh
@@ -131,6 +134,14 @@ jobs:
           $yWant = ($ySumText -split "`n" | Where-Object { $_ -match "^([0-9a-fA-F]{64})\s+\*?yt-dlp\.exe\s*$" } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
           $yGot = (Get-FileHash "$p/tools/yt-dlp.exe" -Algorithm SHA256).Hash
           if (-not $yWant -or $yGot -ne $yWant.ToUpper()) { throw "yt-dlp.exe does not match its published SHA-256" }
+          # aria2 (torrents): one fixed build, checked against its known SHA-256
+          Invoke-WebRequest "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" -OutFile aria2.zip
+          if ((Get-FileHash aria2.zip -Algorithm SHA256).Hash -ne "67D015301EEF0B612191212D564C5BB0A14B5B9C4796B76454276A4D28D9B288") { throw "aria2.zip does not match its SHA-256" }
+          Expand-Archive aria2.zip -DestinationPath aria2-tmp
+          $a2 = Get-ChildItem aria2-tmp -Recurse -Filter aria2c.exe | Select-Object -First 1
+          if ((Get-FileHash $a2.FullName -Algorithm SHA256).Hash -ne "BE2099C214F63A3CB4954B09A0BECD6E2E34660B886D4C898D260FEBFE9D70C2") { throw "aria2c.exe does not match its SHA-256" }
+          Copy-Item $a2.FullName "$p/tools/"
+          Copy-Item (Get-ChildItem aria2-tmp -Recurse -Filter COPYING | Select-Object -First 1).FullName "$p/tools/aria2-COPYING.txt"
           choco install innosetup -y --no-progress
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DMyAppVersion=$version" installer\ezoo.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }

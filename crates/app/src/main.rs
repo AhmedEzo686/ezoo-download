@@ -13,6 +13,8 @@ mod grab;
 mod i18n;
 mod options;
 mod playlist;
+mod preview;
+mod torrent_ui;
 mod scheduler;
 mod sound;
 mod tray;
@@ -140,6 +142,8 @@ pub(crate) struct Ui {
     sel: Rc<RefCell<Selection>>,
     playlist: Weak<PlaylistDialog>,
     playlist_rows: Rc<VecModel<LinkRow>>,
+    torrent: Weak<TorrentDialog>,
+    torrent_rows: Rc<VecModel<LinkRow>>,
     browsers: Weak<BrowserDialog>,
     updater: Weak<UpdateDialog>,
     /// the download list's columns (order + widths) as the header shows them
@@ -147,7 +151,41 @@ pub(crate) struct Ui {
     browser_list: Rc<RefCell<Vec<browser::Browser>>>,
 }
 
+/// A crash leaves a note (what and where, no personal data) in crash.log in
+/// the program's data folder, so it can be found and fixed.
+fn install_crash_log() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let path = default_data_dir().join("crash.log");
+        // keep the file small: start again when it gets big
+        if std::fs::metadata(&path).map(|m| m.len() > 256 * 1024).unwrap_or(false) {
+            let _ = std::fs::remove_file(&path);
+        }
+        let place = info.location().map(|l| format!("{}:{}", l.file(), l.line())).unwrap_or_default();
+        let what = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        let line = format!(
+            "{} version {} thread {:?}: {} at {}\n",
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+            env!("CARGO_PKG_VERSION"),
+            std::thread::current().name().unwrap_or("?"),
+            what,
+            place
+        );
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+            let _ = f.write_all(line.as_bytes());
+        }
+        previous(info);
+    }));
+}
+
 fn main() -> anyhow::Result<()> {
+    install_crash_log();
     // started by Windows at sign-in: stay next to the clock, no window
     let background = std::env::args().any(|a| a == "--background");
     let data_dir = default_data_dir();
@@ -188,6 +226,7 @@ fn main() -> anyhow::Result<()> {
     let tips = TipDialog::new()?;
     let refresh_dlg = RefreshDialog::new()?;
     let playlist_dlg = PlaylistDialog::new()?;
+    let torrent_dlg = TorrentDialog::new()?;
     let browsers_dlg = BrowserDialog::new()?;
     let updater_dlg = UpdateDialog::new()?;
     let about_dlg = AboutDialog::new()?;
@@ -243,6 +282,8 @@ fn main() -> anyhow::Result<()> {
         sel: Rc::new(RefCell::new(Selection::default())),
         playlist: playlist_dlg.as_weak(),
         playlist_rows: Rc::new(VecModel::default()),
+        torrent: torrent_dlg.as_weak(),
+        torrent_rows: Rc::new(VecModel::default()),
         browsers: browsers_dlg.as_weak(),
         updater: updater_dlg.as_weak(),
         columns_model: Rc::new(VecModel::default()),
@@ -285,6 +326,7 @@ fn main() -> anyhow::Result<()> {
     grab::wire(&ui);
     extra::wire(&ui);
     playlist::wire(&ui);
+    torrent_ui::wire(&ui);
     browser::wire(&ui);
 
     // ------------------------------------------------------------ browser + clipboard
@@ -409,6 +451,7 @@ fn main() -> anyhow::Result<()> {
         });
     }
     // after an update: what is new, once, in the language of the program
+    let mut just_updated = false;
     {
         let mut s = mgr.settings();
         let now = env!("CARGO_PKG_VERSION");
@@ -417,6 +460,7 @@ fn main() -> anyhow::Result<()> {
             let updated = if s.last_version.is_empty() { s.extension_prompted } else { true };
             s.last_version = now.into();
             let _ = mgr.set_settings(s);
+            just_updated = updated;
             if updated {
                 Timer::single_shot(Duration::from_millis(1500), extra::whats_new);
             }
@@ -434,12 +478,14 @@ fn main() -> anyhow::Result<()> {
             let _ = mgr.set_settings(s);
             let ui = ui.clone();
             Timer::single_shot(Duration::from_millis(800), move || browser::open(&ui));
-        } else if s.show_tips {
+        } else if s.show_tips && !just_updated {
+            // never together with a message box (What's new, a question…)
             let ui = ui.clone();
-            Timer::single_shot(Duration::from_millis(600), move || extra::show_tip(&ui, false));
+            Timer::single_shot(Duration::from_millis(600), move || extra::show_tip_when_free(ui));
         }
     }
     slint::run_event_loop_until_quit()?;
+    preview::clean_all();
 
     // save everything and stop downloads cleanly (they resume next time)
     drop(timer);
@@ -660,7 +706,7 @@ fn wire_main(ui: &Ui) {
             if ui.ctx.mgr.settings().double_click == 1 {
                 extra::open_properties(&ui, v.id);
             } else if v.status == Status::Completed {
-                let _ = open::that(&v.save_path);
+                open_download(&v.save_path);
             } else {
                 open_progress(&ui, v.id);
             }
@@ -841,6 +887,10 @@ fn wire_main(ui: &Ui) {
     {
         let ui = ui.clone();
         main.on_playlist(move || playlist::open(&ui));
+    }
+    {
+        let ui = ui.clone();
+        main.on_torrent(move || torrent_ui::open(&ui, None));
     }
     {
         let ui = ui.clone();
@@ -1042,6 +1092,8 @@ fn handle_events(ui: &Ui) {
     }
     let s = ui.ctx.mgr.settings();
     let early = early_download(&ui.ctx);
+    // a finished file: the preview names of it are not needed any more
+    preview::clean_up();
     for ev in events {
         match ev {
             Event::Completed(id) | Event::Failed(id) if Some(id) == early => {}
@@ -1055,7 +1107,7 @@ fn handle_events(ui: &Ui) {
             )),
             Event::OpenFile(id) => {
                 if let Some(v) = ui.ctx.mgr.get(id) {
-                    let _ = open::that(&v.save_path);
+                    open_download(&v.save_path);
                 }
             }
             _ => {}
@@ -1071,6 +1123,7 @@ thread_local! {
 fn handle_api(ui: &Ui, event: api::ApiEvent) {
     match event {
         api::ApiEvent::Show => bring_to_front(&ui.ctx),
+        api::ApiEvent::Playlist(url) => playlist::open_url(ui, &url),
         api::ApiEvent::Links(l) => grab::open_links(ui, l),
         api::ApiEvent::Add(req) => {
             // the same address again within a few seconds (an older browser
@@ -1141,6 +1194,12 @@ fn wire_add(ui: &Ui) {
                 // another address: the download started for the old one stops
                 if url != ctx.add_state.lock().unwrap().origin_url {
                     cancel_early(&ctx);
+                }
+                if swiftget_engine::torrent::is_magnet(&url) {
+                    // typed / pasted a magnet link: that is the torrent window's job
+                    let _ = d.hide();
+                    torrent_ui::open_source(&url);
+                    return;
                 }
                 if !url.is_empty() {
                     start_probe(&ctx, url);
@@ -1394,7 +1453,7 @@ fn wire_complete(ui: &Ui) {
         let ui = ui.clone();
         complete.on_open_file(move || {
             if let Some(v) = ui.complete_id.get().and_then(|i| ui.ctx.mgr.get(i)) {
-                let _ = open::that(&v.save_path);
+                open_download(&v.save_path);
             }
             close_complete(&ui);
         });
@@ -1511,6 +1570,7 @@ pub(crate) fn kind_for(name: &str) -> &'static str {
         "txt" | "md" | "log" | "json" | "xml" => "text",
         "exe" | "msi" | "msix" | "appx" | "bat" | "jar" | "deb" | "rpm" => "exe",
         "apk" | "xapk" => "apk",
+        "torrent" => "torrent",
         "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp" | "svg" | "tif" | "tiff" | "heic" | "ico" | "psd" => "image",
         _ => "general",
     }
@@ -1672,6 +1732,7 @@ pub(crate) fn apply_look(ui: &Ui, look: &Look) {
         ui.tips,
         ui.refresh_dlg,
         ui.playlist,
+        ui.torrent,
         ui.browsers,
         ui.updater
     );
@@ -1804,6 +1865,11 @@ fn show_name_in_dialog(ctx: &Ctx, d: &AddDialog, name: &str, url: &str) -> Strin
 }
 
 pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, name_hint: Option<String>, extra: VideoExtra) {
+    // a magnet link: the torrent window
+    if swiftget_engine::torrent::is_magnet(&url) {
+        torrent_ui::open_source(&url);
+        return;
+    }
     let Some(d) = ctx.add.upgrade() else { return };
     let s = ctx.mgr.settings();
     if d.window().is_visible() {
@@ -2046,6 +2112,7 @@ fn confirm_add(ui: &Ui, start: bool) {
             pick_quality: None,
             early: false,
             start,
+            torrent_select: None,
         }
     };
     let _ = d.hide();
@@ -2160,10 +2227,11 @@ fn row_action(ui: &Ui, id: u64, action: &str) {
     let Some(v) = ui.ctx.mgr.get(id) else { return };
     match action {
         "open" => {
-            let _ = open::that(&v.save_path);
+            open_download(&v.save_path);
         }
         "folder" => reveal_in_folder(&v),
         "openwith" => open_with(&v.save_path),
+        "preview" => play_while_downloading(ui, id),
         "resume" => {
             ui.ctx.mgr.start(id);
             show_progress_for_start(ui, id);
@@ -2372,6 +2440,47 @@ pub(crate) fn fmt_time(t: chrono::DateTime<chrono::Utc>) -> String {
     t.with_timezone(&chrono::Local).format("%b %d %H:%M").to_string()
 }
 
+/// Open what is already downloaded of a video / song in the player.
+pub(crate) fn play_while_downloading(ui: &Ui, id: u64) {
+    let Some(v) = ui.ctx.mgr.get(id) else { return };
+    let kind = kind_for(&v.file_name);
+    if kind != "video" && kind != "audio" {
+        return message(&t("Only videos and sound files can be played while they download."));
+    }
+    match ui.ctx.mgr.preview_file(id) {
+        None if v.kind == DownloadKind::Hls => {
+            message(&t("This video comes in many small pieces that are joined at the end: it can be played when the download is done."))
+        }
+        None => message(&t("Nothing to play yet: wait until a part of the file is downloaded, then try again.")),
+        Some((path, _ready)) => {
+            if let Err(e) = preview::play(&path, &v.file_name) {
+                message(&tf("Could not open the player: {}", &[&e]));
+            }
+        }
+    }
+}
+
+/// Open a finished download. A .torrent file opens in our own torrent
+/// window (what it shares is the real download).
+pub(crate) fn open_download(path: &std::path::Path) {
+    if path.extension().map(|e| e.eq_ignore_ascii_case("torrent")).unwrap_or(false) && path.is_file() {
+        torrent_ui::open_source(&path.display().to_string());
+    } else {
+        let _ = open::that(path);
+    }
+}
+
+/// An error of the engine in words the user understands, in their language.
+pub(crate) fn err_text(e: &str) -> String {
+    if e.contains("needs a login or an age check") {
+        t("This video needs a login or an age check. Open it once in the browser where you are signed in (with the Ezoo Download extension), then try again.")
+    } else if e.contains("the link has expired or the file was removed") {
+        t("The link has expired or the file was removed. Right-click the download and use \"Refresh download address\".")
+    } else {
+        e.to_string()
+    }
+}
+
 fn row_of(v: &DownloadView, sel: bool) -> DownloadRow {
     let pct = v.progress();
     let size = match v.total_size {
@@ -2380,6 +2489,8 @@ fn row_of(v: &DownloadView, sel: bool) -> DownloadRow {
         None => String::new(),
     };
     let status = match v.status {
+        _ if v.waiting => t("Waiting for connection…"),
+        Status::Downloading if v.kind == DownloadKind::Torrent && v.total_size.is_none() => t("Getting the file list…"),
         Status::Downloading | Status::Paused if v.total_size.is_some() => format!("{:.2}%", pct * 100.0),
         Status::Downloading if v.parts_total > 0 => tf("{}/{} parts", &[&v.parts_done, &v.parts_total]),
         Status::Downloading => fmt_size(v.downloaded),
@@ -2394,16 +2505,18 @@ fn row_of(v: &DownloadView, sel: bool) -> DownloadRow {
         String::new()
     };
     let description = match (&v.error, &v.description, v.kind) {
-        (Some(e), _, _) if v.status == Status::Failed => e.clone(),
+        (Some(e), _, _) if v.status == Status::Failed => err_text(e),
         (_, Some(d), _) => d.clone(),
         (_, _, DownloadKind::Dash) => tf("{}: video + audio", &[&t(&v.category)]),
         (_, _, DownloadKind::Hls) => tf("{}: stream", &[&t(&v.category)]),
+        (_, _, DownloadKind::Torrent) if v.status.is_running() => tf("Torrent: {} peers", &[&v.active_connections]),
+        (_, _, DownloadKind::Torrent) => t("Torrent"),
         _ => t(&v.category),
     };
     DownloadRow {
         id: v.id as i32,
         name: v.file_name.clone().into(),
-        kind: kind_for(&v.file_name).into(),
+        kind: if v.kind == DownloadKind::Torrent { "torrent" } else { kind_for(&v.file_name) }.into(),
         category: v.category.clone().into(),
         queue: v.queue.map(|q| q.to_string()).unwrap_or_default().into(),
         size: size.into(),
@@ -2660,6 +2773,11 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
         d.on_close_window(move || close_progress(&map, id));
     }
     {
+        // "Hide to tray": only the window goes, the download goes on
+        let map = ui.progress.clone();
+        d.on_hide_to_tray(move || close_progress(&map, id));
+    }
+    {
         // the window's X stops the download
         let (map, mgr) = (ui.progress.clone(), ui.ctx.mgr.clone());
         d.window().on_close_requested(move || {
@@ -2718,6 +2836,8 @@ fn taskbar_state(v: &DownloadView) -> winfx::TaskbarProgress {
         _ => None,
     };
     match (v.status, amount) {
+        // waiting for the internet: yellow, like paused
+        (_, Some((d, t))) if v.waiting => P::Paused(d, t),
         (Status::Failed, Some((d, t))) => P::Error(d, t),
         (Status::Failed, None) => P::Error(1, 1),
         (Status::Paused | Status::Queued, Some((d, t))) => P::Paused(d, t),
@@ -2734,6 +2854,7 @@ fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) 
     d.set_percent(format!("{:.0}%", pct * 100.0).into());
     d.set_url(v.url.clone().into());
     let status = match v.status {
+        _ if v.waiting => t("No internet connection - it will continue by itself when it is back…"),
         Status::Downloading => t("Receiving data…"),
         Status::Assembling => t("Joining the parts…"),
         Status::Failed => t("Error"),
@@ -2752,7 +2873,7 @@ fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) 
     d.set_eta(v.eta_secs.map(fmt_duration).unwrap_or_else(|| "—".into()).into());
     d.set_resumable(t(if v.resumable { "Yes" } else { "No" }).into());
     d.set_resumable_ok(v.resumable);
-    d.set_error(v.error.clone().unwrap_or_default().into());
+    d.set_error(err_text(v.error.as_deref().unwrap_or_default()).into());
     d.set_progress(pct);
     d.set_state(state_of(v.status));
 

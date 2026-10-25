@@ -1604,7 +1604,12 @@ export component TipDialog inherits ThemedWindow {
     in property <bool> front;
     always-on-top: root.front;
     title: @tr("Tip of the day");
+    // a set size: a wrapped text that decides the window's size can make the
+    // window measure itself again and again
     preferred-width: 480px;
+    preferred-height: 210px;
+    min-width: 420px;
+    min-height: 200px;
     in property <string> tip;
     in property <string> counter;
     in-out property <bool> show-on-start: true;
@@ -1642,7 +1647,7 @@ export component TipDialog inherits ThemedWindow {
                     wrap: word-wrap;
                     color: Theme.text;
                     font-size: 12px * Theme.font-scale;
-                    min-height: 70px;
+                    vertical-stretch: 1;
                 }
                 Text {
                     text: root.counter;
@@ -1879,6 +1884,9 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <bool> limiter-on;
     in-out property <int> speed-limit;
     in-out property <bool> limiter-startup;
+    // Torrents tab
+    in-out property <int> seed-minutes;
+    in-out property <int> torrent-upload;
     in property <string> message;
 
     callback browse(string);
@@ -1908,7 +1916,7 @@ export component SettingsDialog inherits ThemedWindow {
                 VerticalLayout {
                     padding: 3px;
                     alignment: start;
-                    for t[i] in [@tr("General"), @tr("File Types"), @tr("Save To"), @tr("Downloads"), @tr("Connection"), @tr("Proxy / Server"), @tr("Site Logins"), @tr("Sounds"), @tr("Speed Limiter"), @tr("Appearance")]: SideTab {
+                    for t[i] in [@tr("General"), @tr("File Types"), @tr("Save To"), @tr("Downloads"), @tr("Connection"), @tr("Proxy / Server"), @tr("Site Logins"), @tr("Sounds"), @tr("Speed Limiter"), @tr("Appearance"), @tr("Torrents")]: SideTab {
                         text: t;
                         active: root.tab == i;
                         clicked => {
@@ -2777,6 +2785,45 @@ export component SettingsDialog inherits ThemedWindow {
                         text: @tr("Every download can also have its own limit: its progress window > Speed Limiter tab.");
                     }
                 }
+                if root.tab == 10: VerticalLayout {
+                    padding: 14px;
+                    spacing: 10px;
+                    alignment: start;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Keep sharing a finished torrent for (minutes)");
+                        }
+                        SpinBox {
+                            minimum: 0;
+                            maximum: 10080;
+                            value <=> root.seed-minutes;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    Hint {
+                        text: @tr("0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent.");
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Maximum upload speed (KB/s, 0 = no limit)");
+                        }
+                        SpinBox {
+                            minimum: 0;
+                            maximum: 1000000;
+                            value <=> root.torrent-upload;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    Hint {
+                        text: @tr("While a torrent downloads it also sends pieces to others (that is how torrents work). A limit keeps your internet free for other things.");
+                    }
+                }
             }
         }
         HorizontalLayout {
@@ -2799,6 +2846,247 @@ export component SettingsDialog inherits ThemedWindow {
                 text: @tr("Cancel");
                 clicked => {
                     root.cancel();
+                }
+            }
+        }
+    }
+}
+
+
+// ------------------------------------------------------------------ torrents
+
+export component TorrentDialog inherits ThemedWindow {
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Add a torrent");
+    preferred-width: 700px;
+    preferred-height: 540px;
+    min-width: 560px;
+    min-height: 420px;
+    // a magnet link or the path of a .torrent file
+    in-out property <string> source;
+    in property <string> name;
+    in property <string> info;
+    in property <[LinkRow]> files;
+    in-out property <string> folder;
+    in-out property <bool> start-now: true;
+    in property <string> checked-text;
+    in property <string> message;
+    in property <bool> magnet;
+    callback pick-file();
+    callback load();
+    callback toggle(int);
+    callback check-all(bool);
+    callback browse();
+    callback download();
+    callback close-window();
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        Label {
+            text: @tr("A magnet link, or a .torrent file:");
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            LineEdit {
+                text <=> root.source;
+                placeholder-text: @tr("magnet:?xt=urn:btih:…  or  C:\\…\\file.torrent");
+                horizontal-stretch: 1;
+                accepted(t) => {
+                    root.load();
+                }
+                edited(t) => {
+                    root.load();
+                }
+            }
+            Button {
+                text: @tr("Open .torrent file…");
+                clicked => {
+                    root.pick-file();
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            if root.name != "": TypeIcon {
+                kind: "torrent";
+                width: 32px;
+                height: 32px;
+            }
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: root.name;
+                    font-size: 14px * Theme.font-scale;
+                    font-weight: 700;
+                    color: Theme.text;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.info;
+                    font-size: 11px * Theme.font-scale;
+                    color: Theme.muted;
+                    overflow: elide;
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            visible: root.files.length > 1;
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("Check all");
+                clicked => {
+                    root.check-all(true);
+                }
+            }
+            Button {
+                text: @tr("Uncheck all");
+                clicked => {
+                    root.check-all(false);
+                }
+            }
+        }
+        Rectangle {
+            vertical-stretch: 1;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            VerticalLayout {
+                padding: 1px;
+                Rectangle {
+                    height: 22px;
+                    background: @linear-gradient(180deg, Theme.header-top 0%, Theme.header-bottom 100%);
+                    HorizontalLayout {
+                        HeaderCell {
+                            text: "";
+                            width: 34px;
+                        }
+                        HeaderCell {
+                            text: @tr("File");
+                            horizontal-stretch: 1;
+                        }
+                        HeaderCell {
+                            text: @tr("Size");
+                            width: 90px;
+                        }
+                    }
+                }
+                ListView {
+                    vertical-stretch: 1;
+                    for f[i] in root.files: Rectangle {
+                        height: 24px;
+                        background: fa.has-hover ? Theme.hover : transparent;
+                        fa := TouchArea {
+                            clicked => {
+                                root.toggle(i);
+                            }
+                        }
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            spacing: 4px;
+                            Rectangle {
+                                width: 26px;
+                                Rectangle {
+                                    y: (parent.height - 14px) / 2;
+                                    width: 14px;
+                                    height: 14px;
+                                    border-width: 1px;
+                                    border-radius: 2px;
+                                    border-color: f.checked ? Theme.accent : Theme.muted;
+                                    background: f.checked ? Theme.accent : Theme.input-bg;
+                                    if f.checked: Glyph {
+                                        x: 1px;
+                                        y: 1px;
+                                        width: 12px;
+                                        height: 12px;
+                                        kind: "check";
+                                        tint: white;
+                                    }
+                                }
+                            }
+                            TypeIcon {
+                                kind: f.kind;
+                                width: 16px;
+                                height: 16px;
+                                y: 4px;
+                            }
+                            Cell {
+                                text: f.name;
+                                horizontal-stretch: 1;
+                            }
+                            Cell {
+                                text: f.ext;
+                                width: 86px;
+                                color: Theme.muted;
+                                horizontal-alignment: right;
+                            }
+                        }
+                    }
+                }
+            }
+            if root.files.length == 0: Text {
+                y: 60px;
+                width: parent.width - 40px;
+                x: 20px;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                text: root.magnet
+                    ? @tr("A magnet link brings its file list from the other computers when it starts: all its files are downloaded.")
+                    : @tr("Paste a magnet link or open a .torrent file: what it shares shows up here.");
+                color: Theme.muted;
+            }
+        }
+        GridLayout {
+            spacing: 8px;
+            Row {
+                Label {
+                    text: @tr("Save to");
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    LineEdit {
+                        text <=> root.folder;
+                        horizontal-stretch: 1;
+                    }
+                    Button {
+                        text: "…";
+                        clicked => {
+                            root.browse();
+                        }
+                    }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            CheckBox {
+                text: @tr("Start now");
+                checked <=> root.start-now;
+            }
+            Text {
+                text: root.message != "" ? root.message : root.checked-text;
+                color: root.message != "" ? Theme.err : Theme.muted;
+                vertical-alignment: center;
+                horizontal-alignment: right;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            Button {
+                text: @tr("Download");
+                primary: true;
+                enabled: root.name != "";
+                clicked => {
+                    root.download();
+                }
+            }
+            Button {
+                text: @tr("Close");
+                clicked => {
+                    root.close-window();
                 }
             }
         }
@@ -2988,7 +3276,7 @@ export component PlaylistDialog inherits ThemedWindow {
                     spacing: 8px;
                     ComboBox {
                         width: 240px;
-                        model: [@tr("Best quality (MP4)"), @tr("1080p"), @tr("720p"), @tr("480p"), @tr("360p"), @tr("Audio only (M4A)")];
+                        model: [@tr("Best quality (MP4)"), @tr("2160p 4K"), @tr("1440p 2K"), @tr("1080p Full HD"), @tr("720p HD"), @tr("480p SD"), @tr("360p SD"), @tr("Audio only (M4A)"), @tr("Audio MP3")];
                         current-index <=> root.quality;
                     }
                     Label {
