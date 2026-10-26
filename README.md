@@ -56,7 +56,9 @@
 
 ### macOS (Apple Silicon وIntel)
 
-عند توفر بناء macOS في **GitHub Releases**، اختر `EzooDownload-macos-arm64.zip` لأجهزة Apple Silicon (M1 وما بعده)، أو `EzooDownload-macos-x86_64.zip` لأجهزة Intel. فك الضغط وانقل **Ezoo Download.app** إلى مجلد **Applications** أو **~/Applications**.
+عند توفر بناء macOS في **GitHub Releases**، اختر `EzooDownload-macos-arm64.dmg` لأجهزة Apple Silicon (M1 وما بعده)، أو `EzooDownload-macos-x86_64.dmg` لأجهزة Intel. افتح ملف DMG واسحب **Ezoo Download.app** إلى اختصار **Applications** داخل النافذة، ثم أخرج القرص وشغّل التطبيق من مجلد **Applications**.
+
+تتوفر أيضًا نسخة ZIP بالاسم نفسه وامتداد `.zip`. فك الضغط وانقل **Ezoo Download.app** إلى **Applications** أو **~/Applications**. لكل ملف DMG أو ZIP ملف `.sha256` للتحقق من سلامة التنزيل.
 
 تنزيل الملفات العادية لا يحتاج إلى أدوات إضافية. للفيديو والصوت والتورنت، ثبّت الأدوات عبر [Homebrew](https://brew.sh):
 
@@ -68,13 +70,13 @@ brew install yt-dlp ffmpeg aria2
 
 #### البناء على Mac
 
-ثبّت [Rust stable](https://rustup.rs) وأدوات Apple Command Line Tools (`xcode-select --install`)، ثم شغّل من مجلد المشروع:
+ثبّت [Rust stable](https://rustup.rs) وأدوات Apple Command Line Tools (`xcode-select --install`) و**Python 3.10 أو أحدث**، ثم شغّل من مجلد المشروع. تنشئ أداة تغليف DMG تلقائيًا بيئة Python معزولة في `build-cache` وتثبّت الحزم بالإصدارات المحددة في `packaging/dmg-requirements.txt`. تُستخدم Python وهذه الحزم أثناء البناء فقط، ولا تُضمَّن في التطبيق أو ملف DMG:
 
 ```sh
 ./build-macos.sh
 ```
 
-ينتج البناء تطبيقًا في `dist/macos-arm64/Ezoo Download.app` أو `dist/macos-x86_64/Ezoo Download.app` حسب الجهاز، بالإضافة إلى ملف ZIP وبصمة SHA-256 في `dist`. الحد الأدنى الافتراضي للبناء هو macOS 11؛ يمكن تغييره عبر `MACOSX_DEPLOYMENT_TARGET`. يبني GitHub Actions النسختين ويحتفظ بهما كملفات Artifact، ويضيفهما إلى الإصدار عند نشر إصدار Windows المعتاد برسالة commit تحتوي `[release]`.
+ينتج البناء تطبيقًا في `dist/macos-arm64/Ezoo Download.app` أو `dist/macos-x86_64/Ezoo Download.app` حسب الجهاز، بالإضافة إلى ملفي DMG وZIP وبصمة SHA-256 لكل منهما في `dist`. يتضمن DMG اختصار **Applications** للتثبيت بالسحب والإفلات. الحد الأدنى الافتراضي للبناء هو macOS 11؛ يمكن تغييره عبر `MACOSX_DEPLOYMENT_TARGET`. يبني GitHub Actions النسختين ويحتفظ بحزم DMG وZIP وبصماتها كملفات Artifact، ويضيفها إلى الإصدار عند نشر إصدار Windows المعتاد برسالة commit تحتوي `[release]`.
 
 للبناء لهندسة محددة، أضف هدف Rust المناسب أولًا:
 
@@ -149,7 +151,7 @@ rustup target add aarch64-apple-darwin
 │  └─ lang/            ترجمات الواجهة
 ├─ extension/          إضافة المتصفح
 ├─ BUILD.bat           البناء على Windows
-└─ build-macos.sh      بناء تطبيق macOS وملف ZIP
+└─ build-macos.sh      بناء تطبيق macOS وملفي DMG وZIP
 ```
 
 ---

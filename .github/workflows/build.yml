@@ -66,6 +66,8 @@ jobs:
         with:
           name: EzooDownload-macos-${{ matrix.arch }}
           path: |
+            dist/EzooDownload-macos-${{ matrix.arch }}.dmg
+            dist/EzooDownload-macos-${{ matrix.arch }}.dmg.sha256
             dist/EzooDownload-macos-${{ matrix.arch }}.zip
             dist/EzooDownload-macos-${{ matrix.arch }}.zip.sha256
           if-no-files-found: error
@@ -83,12 +85,12 @@ jobs:
           pattern: EzooDownload-macos-*
           path: macos-artifacts
           merge-multiple: true
-      - name: Attach macOS archives to release
+      - name: Attach macOS packages to release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' Cargo.toml | head -n 1)
-          gh release upload "v$version" macos-artifacts/*.zip macos-artifacts/*.sha256 --repo "${{ github.repository }}" --clobber
+          gh release upload "v$version" macos-artifacts/*.dmg macos-artifacts/*.dmg.sha256 macos-artifacts/*.zip macos-artifacts/*.zip.sha256 --repo "${{ github.repository }}" --clobber
 
   windows:
     # Platform-specific macOS release tags must never package a Windows update.

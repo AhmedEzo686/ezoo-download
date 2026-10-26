@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build a native macOS app bundle and a ZIP suitable for GitHub Releases.
+# Build a native macOS app bundle, DMG, and ZIP for GitHub Releases.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -132,6 +132,7 @@ codesign --verify --strict "$app"
 rm -f "$archive"
 ditto -c -k --sequesterRsrc --keepParent "$app" "$archive"
 (cd dist && shasum -a 256 "$(basename "$archive")" > "$(basename "$archive").sha256")
+./package-macos-dmg.sh "$app" "dist/EzooDownload-macos-$arch.dmg"
 
 echo "Built: $app"
 echo "Archive: $archive"
