@@ -189,7 +189,7 @@ export component QuietField inherits Rectangle {
     accessible-role: text-input;
     accessible-label: root.label;
     accessible-enabled: root.enabled;
-    accessible-value <=> root.text;
+    accessible-value: root.input-type == InputType.password ? "" : root.text;
     accessible-placeholder-text: root.placeholder-text;
     accessible-read-only: root.read-only;
     accessible-action-set-value(v) => { root.text = v; root.edited(v); }
@@ -221,6 +221,7 @@ export component QuietField inherits Rectangle {
             height: parent.height;
             vertical-alignment: center;
             single-line: true;
+            accessible-role: none;
             enabled: root.enabled;
             read-only: root.read-only;
             text <=> root.text;

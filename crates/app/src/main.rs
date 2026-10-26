@@ -2112,6 +2112,9 @@ fn sync_add_destination(d: &AddDialog) {
     let name = path.file_name().map(|v| v.to_string_lossy().into_owned()).unwrap_or_default();
     let destination = path.parent().and_then(|folder| {
         let name = folder.file_name()?.to_string_lossy();
+        if matches!(name.as_ref(), "Downloads" | "Desktop" | "Documents" | "Movies" | "Music" | "Pictures") {
+            return Some(name.into_owned());
+        }
         Some(match folder.parent().and_then(|p| p.file_name()) {
             Some(parent) => format!("{} / {}", parent.to_string_lossy(), name),
             None => name.into_owned(),
