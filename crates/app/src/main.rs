@@ -2222,6 +2222,11 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, mut headers: RequestHeader
     d.set_can_use_browser(false);
     d.set_info_error(false);
     d.set_probing(false);
+    // Reusing the manual-link window must not stretch the shorter browser form.
+    let scale = d.window().scale_factor().max(0.1);
+    let existing_width = d.window().size().width as f32 / scale;
+    let width = if existing_width >= 500.0 { existing_width } else { 540.0 };
+    d.window().set_size(slint::LogicalSize::new(width, d.get_natural_height().max(280.0)));
     open_window!(d);
     // it already downloads while the window is open
     if !url.is_empty() && s.start_while_info && ctx.mgr.find_url(&url).is_none() {
