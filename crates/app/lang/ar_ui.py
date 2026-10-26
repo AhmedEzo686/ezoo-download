@@ -494,4 +494,7 @@ AR = {
     "What's new in Ezoo Download": "الجديد في Ezoo Download",
     "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal. Thank you!": "برنامج Ezoo Download مجاني تمامًا وبدون إعلانات. لو البرنامج بيفيدك وحابب تدعم تطويره، تقدر تبعت دعمك عن طريق PayPal. شكرًا لك!",
     "Some pages make their links only in the browser (with scripts, or as plain text). For them: open the page in the browser, right-click it and choose \\\"Download all links with Ezoo Download\\\": every link you see there is collected.": "بعض الصفحات تصنع روابطها داخل المتصفح فقط (بالسكربتات، أو كنص عادي). لهذه الصفحات: افتح الصفحة في المتصفح، واضغط عليها بزر الفأرة الأيمن واختر \\\"Download all links with Ezoo Download\\\": كل رابط تراه هناك يُجمع.",
+    "Support with InstaPay": "ادعم عبر InstaPay",
+    "InstaPay: a7medek@instapay (scan the code with your bank's app)": "امسح الكود بتطبيق البنك أو InstaPay — a7medek@instapay",
+    "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal or InstaPay. Thank you!": "برنامج Ezoo Download مجاني تمامًا وبدون إعلانات. لو البرنامج بيفيدك وحابب تدعم تطويره، تقدر تبعت دعمك عن طريق PayPal أو InstaPay. شكرًا لك!",
 }

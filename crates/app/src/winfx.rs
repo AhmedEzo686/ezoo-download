@@ -85,7 +85,12 @@ fn place_now(w: &slint::Window, maximizable: bool) -> bool {
 fn place_winit(win: &slint::winit_030::winit::window::Window, maximizable: bool) {
     use slint::winit_030::winit;
     use winit::window::WindowButtons;
-    if maximizable {
+    if !win.is_decorated() {
+        // a window drawn without the Windows frame (the progress window):
+        // changing its buttons gives it back a hidden Windows title bar on
+        // Windows 10, and everything drawn then answers the mouse about one
+        // title bar higher than it shows. Only its place is set.
+    } else if maximizable {
         // the main window: its maximize button (full screen)
         win.set_resizable(true);
         win.set_enabled_buttons(WindowButtons::all());

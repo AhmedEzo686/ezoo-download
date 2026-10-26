@@ -243,7 +243,9 @@ fn main() -> anyhow::Result<()> {
     let about_dlg = AboutDialog::new()?;
     {
         about_dlg.on_open_link(|u| {
-            let _ = open::that(u.as_str());
+            if u.starts_with("https://") {
+                let _ = open::that(u.as_str());
+            }
         });
         let w = about_dlg.as_weak();
         about_dlg.on_close_window(move || {

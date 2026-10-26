@@ -3761,6 +3761,7 @@ export component AboutDialog inherits ThemedWindow {
         }
         HRow {
             alignment: center;
+            spacing: 10px;
             Button {
                 text: @tr("Support with PayPal");
                 primary: true;
@@ -3768,6 +3769,29 @@ export component AboutDialog inherits ThemedWindow {
                     root.open-link("https://www.paypal.com/paypalme/ahmedezzat99");
                 }
             }
+            Button {
+                text: @tr("Support with InstaPay");
+                primary: true;
+                clicked => {
+                    root.open-link("https://ipn.eg/S/a7medek/instapay/1pmCQ7");
+                }
+            }
+        }
+        // InstaPay (Egypt): scan the code with the bank's app
+        HRow {
+            alignment: center;
+            Image {
+                source: @image-url("instapay-qr.png");
+                width: 120px;
+                height: 120px;
+            }
+        }
+        Text {
+            text: @tr("InstaPay: a7medek@instapay (scan the code with your bank's app)");
+            horizontal-alignment: center;
+            font-size: 11px * Theme.font-scale;
+            color: Theme.muted;
+            wrap: word-wrap;
         }
         Rectangle {
             height: 6px;
@@ -3875,7 +3899,7 @@ export component WhatsNewDialog inherits ThemedWindow {
                 padding: 12px;
                 spacing: 8px;
                 Text {
-                    text: @tr("Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal. Thank you!");
+                    text: @tr("Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal or InstaPay. Thank you!");
                     color: Theme.text;
                     wrap: word-wrap;
                     horizontal-alignment: root.side;
@@ -3883,12 +3907,29 @@ export component WhatsNewDialog inherits ThemedWindow {
                 // an HRow already starts on the right in Arabic
                 HRow {
                     alignment: start;
-                    Button {
-                        text: @tr("Support with PayPal");
-                        primary: true;
-                        clicked => {
-                            root.open-link("https://www.paypal.com/paypalme/ahmedezzat99");
+                    spacing: 12px;
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 8px;
+                        Button {
+                            text: @tr("Support with PayPal");
+                            primary: true;
+                            clicked => {
+                                root.open-link("https://www.paypal.com/paypalme/ahmedezzat99");
+                            }
                         }
+                        Button {
+                            text: @tr("Support with InstaPay");
+                            primary: true;
+                            clicked => {
+                                root.open-link("https://ipn.eg/S/a7medek/instapay/1pmCQ7");
+                            }
+                        }
+                    }
+                    Image {
+                        source: @image-url("instapay-qr.png");
+                        width: 96px;
+                        height: 96px;
                     }
                 }
             }

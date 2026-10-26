@@ -1408,11 +1408,17 @@ msgstr "Vous aimez Ezoo Download ? Vous pouvez soutenir son développement :"
 msgid "Support with PayPal"
 msgstr "Soutenir avec PayPal"
 
+msgid "Support with InstaPay"
+msgstr "Soutenir avec InstaPay"
+
+msgid "InstaPay: a7medek@instapay (scan the code with your bank's app)"
+msgstr "InstaPay : a7medek@instapay (scannez le code avec l'application de votre banque)"
+
 msgid "What's new in Ezoo Download"
 msgstr "Nouveautés de Ezoo Download"
 
-msgid "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal. Thank you!"
-msgstr "Ezoo Download est gratuit et sans publicité. S'il vous est utile et que vous voulez soutenir son développement, vous pouvez faire un don avec PayPal. Merci !"
+msgid "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal or InstaPay. Thank you!"
+msgstr "Ezoo Download est gratuit et sans publicité. S'il vous est utile et que vous voulez soutenir son développement, vous pouvez faire un don avec PayPal ou InstaPay. Merci !"
 
 msgid "Hide"
 msgstr "Masquer"

@@ -1408,11 +1408,17 @@ msgstr "أعجبك Ezoo Download؟ يمكنك دعم تطويره:"
 msgid "Support with PayPal"
 msgstr "ادعم عبر PayPal"
 
+msgid "Support with InstaPay"
+msgstr "ادعم عبر InstaPay"
+
+msgid "InstaPay: a7medek@instapay (scan the code with your bank's app)"
+msgstr "امسح الكود بتطبيق البنك أو InstaPay — a7medek@instapay"
+
 msgid "What's new in Ezoo Download"
 msgstr "الجديد في Ezoo Download"
 
-msgid "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal. Thank you!"
-msgstr "برنامج Ezoo Download مجاني تمامًا وبدون إعلانات. لو البرنامج بيفيدك وحابب تدعم تطويره، تقدر تبعت دعمك عن طريق PayPal. شكرًا لك!"
+msgid "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal or InstaPay. Thank you!"
+msgstr "برنامج Ezoo Download مجاني تمامًا وبدون إعلانات. لو البرنامج بيفيدك وحابب تدعم تطويره، تقدر تبعت دعمك عن طريق PayPal أو InstaPay. شكرًا لك!"
 
 msgid "Hide"
 msgstr "إخفاء"
