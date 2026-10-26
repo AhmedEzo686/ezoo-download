@@ -6,7 +6,7 @@ import { Button, LineEdit, SpinBox, ComboBox, ListView, TabWidget, TextEdit, Pal
 import { ToolTip, DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, CaptionButton, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph, HRow, CheckBox } from "common.slint";
 export { DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme }
 export { BrowserRow } from "dialogs.slint";
-export { ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, TorrentDialog, BrowserDialog, AboutDialog, UpdateDialog, WhatsNewDialog } from "dialogs.slint";
+export { ConfirmDialog, ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, TorrentDialog, BrowserDialog, AboutDialog, UpdateDialog, WhatsNewDialog } from "dialogs.slint";
 
 component DownloadItem inherits Rectangle {
     in property <DownloadRow> data;
@@ -30,11 +30,21 @@ component DownloadItem inherits Rectangle {
     callback drag-out();
     property <bool> dragged-out;
     height: max(24px, 24px * Theme.font-scale);
-    background: root.selected ? Theme.select : ta.has-hover ? Theme.hover : transparent;
-    border-width: root.selected ? 1px : 0px;
-    border-color: Theme.select-line;
+    // as wide as all the columns (the list then scrolls sideways)
+    out property <length> content-w: cells.min-width;
+    // wide columns: the row is wider than the list. The look and the mouse
+    // cover all of it (in Arabic the name is on the far right side of it)
+    Rectangle {
+        x: 0px;
+        width: cells.width;
+        height: parent.height;
+        background: root.selected ? Theme.select : ta.has-hover ? Theme.hover : transparent;
+        border-width: root.selected ? 1px : 0px;
+        border-color: Theme.select-line;
+    }
     ta := TouchArea {
-        width: parent.width;
+        x: 0px;
+        width: cells.width;
         height: parent.height;
         double-clicked => {
             root.activated();
@@ -220,7 +230,7 @@ component DownloadItem inherits Rectangle {
             }
         }
     }
-    HRow {
+    cells := HRow {
         padding-left: Theme.rtl ? (0px) : (6px);
         padding-right: Theme.rtl ? (6px) : (0px);
         spacing: 0px;
@@ -1607,7 +1617,13 @@ export component MainWindow inherits ThemedWindow {
                             changed rtl-start => {
                                 self.viewport-x = self.rtl-start;
                             }
+                            init => {
+                                self.viewport-x = self.rtl-start;
+                            }
                             for r in root.rows: DownloadItem {
+                                // every row as wide as its columns: the mouse and
+                                // the highlight reach the name in Arabic too
+                                width: max(lv.visible-width, self.content-w);
                                 data: r;
                                 queues: root.queues;
                                 cols: root.cols;

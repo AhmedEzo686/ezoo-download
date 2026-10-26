@@ -827,6 +827,60 @@ export component DuplicateDialog inherits ThemedWindow {
     }
 }
 
+// ------------------------------------------------------------------ yes / no question
+// Our own window instead of a Windows message box: it stays in front of the
+// download windows and never stops the program while it waits.
+export component ConfirmDialog inherits ThemedWindow {
+    title: root.heading;
+    preferred-width: 440px;
+    min-width: 340px;
+    always-on-top: true;
+    // always in front already; kept so every window can be brought forward the same way
+    in property <bool> front;
+    in property <string> heading;
+    in property <string> text;
+    callback answered(bool);
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.answered(false);
+                return accept;
+            }
+            if (event.text == Key.Return) {
+                root.answered(true);
+                return accept;
+            }
+            reject
+        }
+        VerticalLayout {
+            padding: 18px;
+            spacing: 14px;
+            Label {
+                text: root.text;
+                wrap: word-wrap;
+            }
+            HRow {
+                alignment: end;
+                spacing: 8px;
+                Button {
+                    text: @tr("OK");
+                    primary: true;
+                    clicked => {
+                        root.answered(true);
+                    }
+                }
+                Button {
+                    text: @tr("Cancel");
+                    clicked => {
+                        root.answered(false);
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ------------------------------------------------------------------ shut down / sleep countdown
 
 export component CountdownDialog inherits ThemedWindow {

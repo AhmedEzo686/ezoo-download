@@ -624,17 +624,11 @@ fn wire_main(ui: &Ui) {
     {
         let ui = ui.clone();
         main.on_delete_completed(move || {
-            use rfd::{MessageButtons, MessageDialogResult};
-            let _g = ModalGuard::new();
-            let ok = crate::winfx::msg_box()
-                .set_title(APP)
-                .set_description(t("Remove every finished download from the list?\n(The files stay on the disk.)"))
-                .set_buttons(MessageButtons::OkCancel)
-                .show();
-            if matches!(ok, MessageDialogResult::Ok | MessageDialogResult::Yes) {
-                ui.ctx.mgr.remove_completed();
-                refresh(&ui);
-            }
+            let ui2 = ui.clone();
+            confirm(&ui.ctx, APP, &t("Remove every finished download from the list?\n(The files stay on the disk.)"), move || {
+                ui2.ctx.mgr.remove_completed();
+                refresh(&ui2);
+            });
         });
     }
     {
@@ -2415,65 +2409,105 @@ fn delete_downloads(ui: &Ui, ids: Vec<u64>) {
         0 => {}
         1 => delete_download(&ui.ctx, ids[0]),
         n => {
-            use rfd::{MessageButtons, MessageDialogResult};
             // the list only: files on the disk are never deleted from here
-            let _g = ModalGuard::new();
-            let answer = crate::winfx::msg_box()
-                .set_title(t("Delete downloads"))
-                .set_description(tf(
+            let ui2 = ui.clone();
+            confirm(
+                &ui.ctx,
+                &t("Delete downloads"),
+                &tf(
                     "Remove these {} downloads from the download list?\n\nOnly the list entries are removed: the downloaded files stay on your computer.\n(Parts of unfinished downloads are cleaned up.)",
                     &[&n],
-                ))
-                .set_buttons(MessageButtons::OkCancel)
-                .show();
-            if !matches!(answer, MessageDialogResult::Ok | MessageDialogResult::Yes) {
-                return;
-            }
-            ui.ctx.mgr.remove_many(&ids);
-            ui.sel.borrow_mut().ids.clear();
-            if let Some(w) = ui.ctx.main.upgrade() {
-                w.set_selected_id(-1);
-            }
+                ),
+                move || {
+                    ui2.ctx.mgr.remove_many(&ids);
+                    ui2.sel.borrow_mut().ids.clear();
+                    if let Some(w) = ui2.ctx.main.upgrade() {
+                        w.set_selected_id(-1);
+                    }
+                    refresh(&ui2);
+                },
+            );
         }
     }
 }
 
 fn delete_download(ctx: &Ctx, id: u64) {
     let Some(v) = ctx.mgr.get(id) else { return };
-    use rfd::{MessageButtons, MessageDialogResult};
-    if v.status == Status::Completed {
+    let text = if v.status == Status::Completed {
         // the list only: the file stays on the disk
-        let _g = ModalGuard::new();
-        let answer = crate::winfx::msg_box()
-            .set_title(t("Delete download"))
-            .set_description(tf(
-                "Remove “{}” from the download list?\n\nOnly the list entry is removed: the file stays on your computer.",
-                &[&v.file_name],
-            ))
-            .set_buttons(MessageButtons::OkCancel)
-            .show();
-        if matches!(answer, MessageDialogResult::Ok | MessageDialogResult::Yes) {
-            ctx.mgr.remove(id, false);
-        }
+        tf(
+            "Remove “{}” from the download list?\n\nOnly the list entry is removed: the file stays on your computer.",
+            &[&v.file_name],
+        )
     } else {
-        let _g = ModalGuard::new();
-        let answer = crate::winfx::msg_box()
-            .set_title(t("Delete download"))
-            .set_description(tf(
-                "Delete the unfinished download “{}”?\nThe partly downloaded data will be removed.",
-                &[&v.file_name],
-            ))
-            .set_buttons(MessageButtons::OkCancel)
-            .show();
-        if matches!(answer, MessageDialogResult::Ok | MessageDialogResult::Yes) {
-            ctx.mgr.remove(id, false);
+        tf("Delete the unfinished download “{}”?\nThe partly downloaded data will be removed.", &[&v.file_name])
+    };
+    let ctx2 = ctx.clone();
+    confirm(ctx, &t("Delete download"), &text, move || {
+        // its progress window goes away with it
+        ctx2.mgr.remove(id, false);
+        if let Some(w) = ctx2.main.upgrade() {
+            if w.get_selected_id() == id as i32 {
+                w.set_selected_id(-1);
+            }
         }
-    }
-    if let Some(w) = ctx.main.upgrade() {
-        if w.get_selected_id() == id as i32 {
-            w.set_selected_id(-1);
+    });
+}
+
+thread_local! {
+    // the question windows that are open now
+    static CONFIRMS: RefCell<Vec<ConfirmDialog>> = const { RefCell::new(Vec::new()) };
+}
+
+/// What runs when a question is answered with OK.
+type OnOk = Box<dyn FnOnce()>;
+
+/// A yes / no question in a window of our own: it is shown in front of the
+/// download windows and the program goes on working while it waits (a
+/// Windows message box could end up behind them and seem to freeze it all).
+/// `on_ok` runs when OK is pressed.
+pub(crate) fn confirm(ctx: &Ctx, title: &str, text: &str, on_ok: impl FnOnce() + 'static) {
+    let Ok(d) = ConfirmDialog::new() else {
+        if ask(text) {
+            on_ok();
         }
+        return;
+    };
+    set_theme_of(d.global::<Theme>(), &Look::of(&ctx.mgr.settings()));
+    d.set_heading(title.into());
+    d.set_text(text.into());
+    let pending: Rc<RefCell<Option<OnOk>>> = Rc::new(RefCell::new(Some(Box::new(on_ok))));
+    let close = |d: &ConfirmDialog| {
+        let _ = d.hide();
+        // dropped after this event is over
+        Timer::single_shot(Duration::from_millis(1), || {
+            CONFIRMS.with(|c| c.borrow_mut().retain(|x| x.window().is_visible()));
+        });
+    };
+    {
+        let (w, pending) = (d.as_weak(), pending.clone());
+        d.on_answered(move |ok| {
+            let Some(d) = w.upgrade() else { return };
+            close(&d);
+            let f = pending.borrow_mut().take();
+            if ok {
+                if let Some(f) = f {
+                    f();
+                }
+            }
+        });
     }
+    {
+        let w = d.as_weak();
+        d.window().on_close_requested(move || {
+            if let Some(d) = w.upgrade() {
+                close(&d);
+            }
+            slint::CloseRequestResponse::HideWindow
+        });
+    }
+    open_window!(d);
+    CONFIRMS.with(|c| c.borrow_mut().push(d));
 }
 
 pub(crate) fn reveal_in_folder(v: &DownloadView) {
