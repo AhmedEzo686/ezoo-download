@@ -6,11 +6,10 @@
 //! biggest remaining segment, so all connections stay busy until the end.
 
 use crate::fileio::{make_sparse, write_at};
-use crate::http::{http_status_of, is_network_error, reconnect_delay, request, ConnGuard, HttpStatus, NetDrop, Progress, Shared};
+use crate::http::{http_status_of, is_network_error, reconnect_delay, send, ConnGuard, HttpStatus, NetDrop, Progress, Shared};
 use crate::model::RequestHeaders;
 use crate::segments::{self, Segment};
 use anyhow::{anyhow, bail};
-use reqwest::header::RANGE;
 use reqwest::StatusCode;
 use std::fs::{File, OpenOptions};
 use std::path::PathBuf;
@@ -276,11 +275,8 @@ impl Worker {
             Some(limit) if self.segmented => end.min(pos + limit.max(1)),
             _ => end,
         };
-        let mut rb = request(&self.shared.client(), &self.job.url, &self.job.headers, &self.job.user_agent);
-        if self.segmented {
-            rb = rb.header(RANGE, format!("bytes={}-{}", pos, req_end - 1));
-        }
-        let mut resp = rb.send().await?;
+        let range = self.segmented.then(|| format!("bytes={}-{}", pos, req_end - 1));
+        let mut resp = send(&self.shared.client(), &self.job.url, &self.job.headers, &self.job.user_agent, range.as_deref()).await?;
         let status = resp.status();
         if self.segmented {
             if status != StatusCode::PARTIAL_CONTENT {

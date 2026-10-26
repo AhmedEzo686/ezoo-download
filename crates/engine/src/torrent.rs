@@ -279,7 +279,7 @@ impl Aria2 {
             }
         }
         let tool = crate::mux::find_tool("aria2c").ok_or_else(|| {
-            anyhow!("aria2c.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again")
+            anyhow!(crate::tools::missing_tool_message("aria2c"))
         })?;
         let port = std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
         let secret = random_secret();

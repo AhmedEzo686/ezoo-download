@@ -3,6 +3,8 @@
 //! GitHub releases. They live in the "tools" folder
 //! of the install folder. Once a day, silently, Ezoo Download checks for new
 //! versions and updates them, and puts them back if one went missing.
+//! On macOS the helpers are installed and updated separately with Homebrew;
+//! neither a signed app bundle nor package-managed tools are modified.
 
 use crate::mux::hide_window;
 use std::path::{Path, PathBuf};
@@ -61,9 +63,8 @@ fn exe(name: &str) -> String {
 /// Folders searched for the tools, best first.
 pub fn tool_dirs() -> Vec<PathBuf> {
     let mut v = Vec::new();
-    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
-        v.push(dir.join("tools"));
-        v.push(dir);
+    if let Ok(executable) = std::env::current_exe() {
+        v.extend(app_tool_dirs(&executable));
     }
     if let Some(p) = directories::ProjectDirs::from("com", "Ezoo", "EzooDownload") {
         v.push(p.data_dir().join("tools"));
@@ -71,9 +72,53 @@ pub fn tool_dirs() -> Vec<PathBuf> {
     v
 }
 
+fn app_tool_dirs(executable: &Path) -> Vec<PathBuf> {
+    let Some(dir) = executable.parent() else { return Vec::new() };
+    let mut dirs = Vec::new();
+    #[cfg(target_os = "macos")]
+    if dir.file_name().is_some_and(|n| n == "MacOS") {
+        if let Some(contents) = dir.parent().filter(|p| p.file_name().is_some_and(|n| n == "Contents")) {
+            dirs.push(contents.join("Resources").join("tools"));
+        }
+    }
+    dirs.push(dir.join("tools"));
+    dirs.push(dir.to_path_buf());
+    dirs
+}
+
+/// A regular executable file; directories and Unix files without execute
+/// permission must not hide a working copy installed elsewhere.
+pub(crate) fn is_executable(path: &Path) -> bool {
+    let Ok(metadata) = std::fs::metadata(path) else { return false };
+    if !metadata.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
 /// A tool shipped with the app (not one somewhere on PATH).
 pub fn bundled(name: &str) -> Option<PathBuf> {
-    tool_dirs().into_iter().map(|d| d.join(exe(name))).find(|p| p.exists())
+    tool_dirs().into_iter().map(|d| d.join(exe(name))).find(|p| is_executable(p))
+}
+
+/// Installation advice appropriate for the platform running the app.
+pub fn missing_tool_message(name: &str) -> String {
+    if cfg!(target_os = "macos") {
+        let formula = if name == "aria2c" { "aria2" } else { name };
+        format!("{name} is missing. Install it with `brew install {formula}`, then try again.")
+    } else if cfg!(windows) {
+        format!("{name}.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again")
+    } else {
+        format!("{name} is missing. Install it with your package manager, then try again.")
+    }
 }
 
 /// Where new copies go: the install folder's "tools" when we may write
@@ -346,6 +391,9 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
 /// Check both tools now (only does work when a day has passed or one is
 /// missing). Never shows anything; errors just mean "try again later".
 pub async fn update_all(client: reqwest::Client, data_dir: PathBuf) {
+    if cfg!(target_os = "macos") {
+        return;
+    }
     yt_dlp(&client, &data_dir).await;
     let _ = ffmpeg(&client, &data_dir).await;
     let _ = aria2(&client).await;
@@ -359,6 +407,9 @@ pub async fn update_all(client: reqwest::Client, data_dir: PathBuf) {
 
 /// Run `update_all` now and then every few hours while the app is open.
 pub fn spawn_updater(rt: &tokio::runtime::Handle, client: reqwest::Client, data_dir: PathBuf) {
+    if cfg!(target_os = "macos") {
+        return;
+    }
     rt.spawn(async move {
         // let the app start first
         tokio::time::sleep(Duration::from_secs(20)).await;
@@ -372,6 +423,33 @@ pub fn spawn_updater(rt: &tokio::runtime::Handle, client: reqwest::Client, data_
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn mac_bundle_tools_and_installation_advice() {
+        let dirs = app_tool_dirs(Path::new("/Applications/Ezoo Download.app/Contents/MacOS/EzooDownload"));
+        assert_eq!(dirs[0], Path::new("/Applications/Ezoo Download.app/Contents/Resources/tools"));
+        let plain = app_tool_dirs(Path::new("/tmp/target/release/EzooDownload"));
+        assert_eq!(plain[0], Path::new("/tmp/target/release/tools"));
+        assert!(missing_tool_message("aria2c").contains("brew install aria2`"));
+        assert!(!missing_tool_message("ffmpeg").contains(".exe"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_non_executable_helpers() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("ezoo-executable-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let helper = dir.join("ffmpeg");
+        std::fs::write(&helper, b"#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(!is_executable(&helper));
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(is_executable(&helper));
+        assert!(!is_executable(&dir));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn picks_stable_ffmpeg() {
         let a = |n: &str| GhAsset { name: n.into(), browser_download_url: String::new(), updated_at: String::new() };

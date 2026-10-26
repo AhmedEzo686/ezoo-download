@@ -11,18 +11,18 @@ import { Cols, PairRow, LinkRow, QueueRow, DownloadRow, Theme, ThemedWindow, Typ
 component Label inherits Text {
     vertical-alignment: center;
     color: Theme.text;
-    font-size: 12px * Theme.font-scale;
+    font-size: 13px * Theme.font-scale;
 }
 
 component Hint inherits Text {
     color: Theme.muted;
-    font-size: 11px * Theme.font-scale;
+    font-size: 13px * Theme.font-scale;
     wrap: word-wrap;
 }
 
 component Section inherits Text {
     color: Theme.accent;
-    font-size: 12px * Theme.font-scale;
+    font-size: 13px * Theme.font-scale;
     font-weight: 700;
 }
 
@@ -63,7 +63,7 @@ component Radio inherits Rectangle {
         height: parent.height;
         text: root.text;
         vertical-alignment: center;
-        font-size: 12px * Theme.font-scale;
+        font-size: 13px * Theme.font-scale;
         color: root.enabled ? Theme.text : Theme.muted;
     }
 }
@@ -73,12 +73,24 @@ component SideTab inherits Rectangle {
     in property <string> text;
     in property <bool> active;
     callback clicked();
-    height: 28px;
+    height: 32px;
+    border-radius: 7px;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: keyboard;
+    keyboard := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") { root.clicked(); return accept; }
+            reject
+        }
+    }
     background: root.active ? Theme.select : ta.has-hover ? Theme.hover : transparent;
-    border-width: root.active ? 1px : 0px;
-    border-color: Theme.select-line;
+    border-width: keyboard.has-focus ? 2px : 0px;
+    border-color: Theme.accent;
     ta := TouchArea {
         clicked => {
+            keyboard.focus();
             root.clicked();
         }
     }
@@ -87,7 +99,7 @@ component SideTab inherits Rectangle {
         height: parent.height;
         text: root.text;
         vertical-alignment: center;
-        font-size: 12px * Theme.font-scale;
+        font-size: 13px * Theme.font-scale;
         font-weight: root.active ? 600 : 400;
         color: Theme.text;
     }
@@ -114,7 +126,7 @@ component TabBtn inherits Rectangle {
         text: root.text;
         horizontal-alignment: center;
         vertical-alignment: center;
-        font-size: 12px * Theme.font-scale;
+        font-size: 13px * Theme.font-scale;
         font-weight: root.active ? 600 : 400;
         color: Theme.text;
     }
@@ -197,7 +209,7 @@ export component ColumnsDialog inherits ThemedWindow {
     callback reset();
     callback cancel();
     VerticalLayout {
-        padding: 14px;
+        padding: 18px;
         spacing: 6px;
         Label {
             text: @tr("Show these columns in the download list:");
@@ -205,7 +217,7 @@ export component ColumnsDialog inherits ThemedWindow {
         Text {
             text: @tr("File Name (always shown)");
             color: Theme.muted;
-            font-size: 12px * Theme.font-scale;
+            font-size: 13px * Theme.font-scale;
         }
         CheckBox {
             text: @tr("Q (queue number)");
@@ -332,7 +344,7 @@ export component CategoryDialog inherits ThemedWindow {
     callback save();
     callback cancel();
     VerticalLayout {
-        padding: 14px;
+        padding: 18px;
         spacing: 8px;
         GridLayout {
             spacing: 8px;
@@ -430,7 +442,7 @@ export component FindDialog inherits ThemedWindow {
     callback find-next();
     callback close-window();
     VerticalLayout {
-        padding: 14px;
+        padding: 18px;
         spacing: 8px;
         HorizontalLayout {
             spacing: 8px;
@@ -527,7 +539,7 @@ export component PropertiesDialog inherits ThemedWindow {
     callback save();
     callback cancel();
     VerticalLayout {
-        padding: 14px;
+        padding: 18px;
         spacing: 10px;
         HorizontalLayout {
             spacing: 14px;
@@ -667,7 +679,7 @@ export component PropertiesDialog inherits ThemedWindow {
                 text: @tr("Result: {}", root.result);
                 vertical-alignment: center;
                 overflow: elide;
-                font-size: 11px * Theme.font-scale;
+                font-size: 13px * Theme.font-scale;
                 color: root.done ? Theme.ok : Theme.err;
             }
         }
@@ -719,7 +731,7 @@ export component DuplicateDialog inherits ThemedWindow {
     callback ok();
     callback cancel();
     VerticalLayout {
-        padding: 16px;
+        padding: 20px;
         spacing: 8px;
         Label {
             text: @tr("This address is already in the download list:");
@@ -1392,7 +1404,7 @@ export component GrabberDialog inherits ThemedWindow {
                 }
                 Text {
                     text: root.progress-text;
-                    font-size: 11px * Theme.font-scale;
+                    font-size: 13px * Theme.font-scale;
                     color: root.exploring ? Theme.accent : Theme.muted;
                     overflow: elide;
                 }
@@ -1525,7 +1537,7 @@ export component GrabberDialog inherits ThemedWindow {
                                 text: l.url;
                                 horizontal-stretch: 1;
                                 color: Theme.accent;
-                                font-size: 11px * Theme.font-scale;
+                                font-size: 13px * Theme.font-scale;
                             }
                         }
                     }
@@ -1616,7 +1628,7 @@ export component TipDialog inherits ThemedWindow {
     callback next();
     callback close-window();
     VerticalLayout {
-        padding: 16px;
+        padding: 20px;
         spacing: 12px;
         HorizontalLayout {
             spacing: 14px;
@@ -1646,13 +1658,13 @@ export component TipDialog inherits ThemedWindow {
                     text: root.tip;
                     wrap: word-wrap;
                     color: Theme.text;
-                    font-size: 12px * Theme.font-scale;
+                    font-size: 13px * Theme.font-scale;
                     vertical-stretch: 1;
                 }
                 Text {
                     text: root.counter;
                     color: Theme.muted;
-                    font-size: 11px * Theme.font-scale;
+                    font-size: 13px * Theme.font-scale;
                 }
             }
         }
@@ -1698,7 +1710,7 @@ export component RefreshDialog inherits ThemedWindow {
     callback use-url();
     callback stop-waiting();
     VerticalLayout {
-        padding: 16px;
+        padding: 20px;
         spacing: 10px;
         Text {
             text: root.file-name;
@@ -1715,7 +1727,7 @@ export component RefreshDialog inherits ThemedWindow {
             Text {
                 text: root.page;
                 color: Theme.muted;
-                font-size: 11px * Theme.font-scale;
+                font-size: 13px * Theme.font-scale;
                 overflow: elide;
                 horizontal-stretch: 1;
                 vertical-alignment: center;
@@ -1794,7 +1806,7 @@ export component SettingsDialog inherits ThemedWindow {
     // set for a moment so the window comes in front of the browser
     in property <bool> front;
     always-on-top: root.front;
-    title: @tr("Ezoo Download – Options");
+    title: @tr("Settings");
     preferred-width: 820px;
     preferred-height: 600px;
 
@@ -1815,6 +1827,8 @@ export component SettingsDialog inherits ThemedWindow {
     callback browse-bg();
     // the look changed: show it at once (the settings are kept on OK)
     callback preview-look();
+    in property <string> startup-label: @tr("Launch Ezoo Download on Windows startup");
+    in property <bool> windows-features: true;
     in-out property <bool> start-with-windows;
     in-out property <bool> close-to-tray;
     in-out property <bool> clipboard;
@@ -1903,18 +1917,19 @@ export component SettingsDialog inherits ThemedWindow {
     callback cancel();
 
     VerticalLayout {
-        padding: 10px;
-        spacing: 8px;
+        padding: 16px;
+        spacing: 12px;
         HorizontalLayout {
             vertical-stretch: 1;
             spacing: 8px;
             Rectangle {
-                width: 150px;
+                width: 170px;
                 background: Theme.panel;
                 border-width: 1px;
                 border-color: Theme.line;
                 VerticalLayout {
-                    padding: 3px;
+                    padding: 6px;
+                    spacing: 3px;
                     alignment: start;
                     for t[i] in [@tr("General"), @tr("File Types"), @tr("Save To"), @tr("Downloads"), @tr("Connection"), @tr("Proxy / Server"), @tr("Site Logins"), @tr("Sounds"), @tr("Speed Limiter"), @tr("Appearance"), @tr("Torrents")]: SideTab {
                         text: t;
@@ -1933,24 +1948,25 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Appearance
                 if root.tab == 9: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 10px;
                     alignment: start;
                     HorizontalLayout {
                         spacing: 8px;
                         Label {
-                            text: @tr("Theme");
+                            text: @tr("Appearance");
                         }
                         ComboBox {
                             width: 200px;
-                            model: [@tr("Light"), @tr("Dark"), @tr("Ocean blue"), @tr("Midnight purple"), @tr("Forest green"), @tr("Black"), @tr("Sunset"), @tr("Teal night"), @tr("Rose")];
+                            model: [@tr("System"), @tr("Light"), @tr("Dark")];
                             current-index <=> root.theme;
+                            selected(value) => { root.preview-look(); }
                         }
                         Rectangle {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    if root.windows-features: HorizontalLayout {
                         spacing: 8px;
                         Label {
                             text: @tr("Window opacity");
@@ -1959,6 +1975,7 @@ export component SettingsDialog inherits ThemedWindow {
                             width: 200px;
                             minimum: 50;
                             maximum: 100;
+                            enabled: root.windows-features;
                             value <=> root.window-opacity;
                             changed(v) => {
                                 root.preview-opacity(v);
@@ -1999,7 +2016,7 @@ export component SettingsDialog inherits ThemedWindow {
                         }
                         ComboBox {
                             width: 200px;
-                            model: [@tr("Default (Segoe UI)"), "Tahoma", "Arial", "Calibri", "Verdana", "Times New Roman", "Courier New"];
+                            model: [@tr("System Font"), "Tahoma", "Arial", "Calibri", "Verdana", "Times New Roman", "Courier New"];
                             current-index <=> root.font-index;
                             selected => {
                                 root.preview-look();
@@ -2060,7 +2077,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- General
                 if root.tab == 0: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     alignment: start;
                     HorizontalLayout {
@@ -2078,11 +2095,12 @@ export component SettingsDialog inherits ThemedWindow {
                         }
                     }
                     CheckBox {
-                        text: @tr("Launch Ezoo Download on Windows startup");
+                        text: root.startup-label;
                         checked <=> root.start-with-windows;
                     }
                     CheckBox {
                         text: @tr("Keep running next to the clock when the window is closed");
+                        enabled: root.windows-features;
                         checked <=> root.close-to-tray;
                     }
                     CheckBox {
@@ -2120,7 +2138,7 @@ export component SettingsDialog inherits ThemedWindow {
                         text: @tr("Browser integration");
                     }
                     Hint {
-                        text: @tr("Chrome and Edge: load the \"extension\" folder in chrome://extensions (Developer mode > Load unpacked). Downloads, videos and the right click menu then go to Ezoo Download.");
+                        text: @tr("Use the setup assistant to connect your browser. It prepares the extension, opens the right page, and checks the connection.");
                     }
                     HorizontalLayout {
                         spacing: 8px;
@@ -2180,7 +2198,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- File Types
                 if root.tab == 1: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     Label {
                         text: @tr("Automatically start downloading these file types (from the browser):");
@@ -2188,7 +2206,7 @@ export component SettingsDialog inherits ThemedWindow {
                     TextEdit {
                         text <=> root.capture-exts;
                         min-height: 80px;
-                        font-size: 12px * Theme.font-scale;
+                        font-size: 13px * Theme.font-scale;
                         wrap: word-wrap;
                     }
                     HorizontalLayout {
@@ -2213,7 +2231,7 @@ export component SettingsDialog inherits ThemedWindow {
                     TextEdit {
                         text <=> root.skip-addresses;
                         min-height: 60px;
-                        font-size: 12px * Theme.font-scale;
+                        font-size: 13px * Theme.font-scale;
                     }
                     Rectangle {
                         height: 1px;
@@ -2264,7 +2282,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Save To
                 if root.tab == 2: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     alignment: start;
                     Label {
@@ -2324,7 +2342,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Downloads
                 if root.tab == 3: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     alignment: start;
                     CheckBox {
@@ -2424,7 +2442,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Connection
                 if root.tab == 4: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     GridLayout {
                         spacing: 8px;
@@ -2546,7 +2564,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Proxy
                 if root.tab == 5: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     alignment: start;
                     Radio {
@@ -2633,7 +2651,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Site logins
                 if root.tab == 6: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     Label {
                         text: @tr("User names and passwords for sites that ask for them:");
@@ -2702,7 +2720,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Sounds
                 if root.tab == 7: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 10px;
                     alignment: start;
                     CheckBox {
@@ -2756,7 +2774,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Speed limiter
                 if root.tab == 8: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 10px;
                     alignment: start;
                     CheckBox {
@@ -2786,7 +2804,7 @@ export component SettingsDialog inherits ThemedWindow {
                     }
                 }
                 if root.tab == 10: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 10px;
                     alignment: start;
                     HorizontalLayout {
@@ -2836,17 +2854,13 @@ export component SettingsDialog inherits ThemedWindow {
                 horizontal-stretch: 1;
             }
             Button {
-                text: @tr("OK");
-                primary: true;
-                clicked => {
-                    root.save();
-                }
+                text: @tr("Cancel");
+                clicked => { root.cancel(); }
             }
             Button {
-                text: @tr("Cancel");
-                clicked => {
-                    root.cancel();
-                }
+                text: @tr("Save");
+                primary: true;
+                clicked => { root.save(); }
             }
         }
     }
@@ -2925,7 +2939,7 @@ export component TorrentDialog inherits ThemedWindow {
                 }
                 Text {
                     text: root.info;
-                    font-size: 11px * Theme.font-scale;
+                    font-size: 13px * Theme.font-scale;
                     color: Theme.muted;
                     overflow: elide;
                 }
@@ -3148,7 +3162,7 @@ export component PlaylistDialog inherits ThemedWindow {
         }
         Text {
             text: root.status;
-            font-size: 11px * Theme.font-scale;
+            font-size: 13px * Theme.font-scale;
             color: Theme.muted;
             overflow: elide;
         }
@@ -3358,155 +3372,299 @@ export struct BrowserRow {
     action: string,
 }
 
-component BrowserCard inherits Rectangle {
-    in property <BrowserRow> data;
-    callback add();
-    height: 150px;
-    border-radius: 8px;
-    border-width: 1px;
-    border-color: ta.has-hover ? root.data.tint : Theme.line;
-    background: ta.has-hover ? Theme.hover : Theme.panel;
-    opacity: root.data.installed ? 1.0 : 0.55;
-    ta := TouchArea {
-        clicked => {
-            root.add();
-        }
+export component BrowserDialog inherits ThemedWindow {
+    // Native window controls stay available while setup opens the browser.
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Browser Extension Setup");
+    preferred-width: 640px;
+    preferred-height: 680px;
+    min-width: 520px;
+    min-height: 440px;
+    default-font-size: 13px * Theme.font-scale;
+
+    in property <[string]> browser-names;
+    in-out property <int> current-browser: 0;
+    in property <bool> has-browsers;
+    in property <bool> prepared;
+    in property <bool> connected;
+    in property <string> connection-title;
+    in property <string> connection-detail;
+    in property <string> setup-title;
+    in property <string> setup-detail;
+    in property <string> first-title;
+    in property <string> first-detail;
+    in property <string> second-title;
+    in property <string> second-detail;
+    in property <string> notice;
+    in property <string> folder;
+    in property <string> setup-action;
+    in property <string> fallback;
+
+    callback select-browser(int);
+    callback start-setup();
+    callback reopen-browser();
+    callback open-folder();
+    callback copy-folder();
+    callback check-connection();
+    callback close-window();
+
+    property <bool> show-trouble;
+    changed current-browser => {
+        root.show-trouble = false;
     }
+
     VerticalLayout {
-        padding: 12px;
-        spacing: 8px;
-        alignment: center;
-        HorizontalLayout {
-            alignment: center;
-            Rectangle {
-                width: 52px;
-                height: 52px;
-                border-radius: 26px;
-                background: @linear-gradient(135deg, root.data.tint 0%, root.data.tint.darker(40%) 100%);
-                // a globe: the browser
-                Path {
-                    x: 10px;
-                    y: 10px;
-                    width: 32px;
-                    height: 32px;
-                    viewbox-width: 32;
-                    viewbox-height: 32;
-                    stroke: white;
-                    stroke-width: 1.6px;
-                    fill: transparent;
-                    commands: "M 16 3 A 13 13 0 1 1 15.99 3 Z M 3 16 L 29 16 M 16 3 C 9 9 9 23 16 29 M 16 3 C 23 9 23 23 16 29";
+        padding: 20px;
+        spacing: 14px;
+        setup-scroll := ScrollView {
+            vertical-stretch: 1;
+            horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+            VerticalLayout {
+                padding-right: 14px;
+                spacing: 16px;
+                alignment: start;
+                VerticalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: root.setup-title;
+                        color: Theme.text;
+                        font-size: 16px * Theme.font-scale;
+                        font-weight: 700;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: root.setup-detail;
+                        color: Theme.text;
+                        font-size: 13px * Theme.font-scale;
+                        wrap: word-wrap;
+                    }
                 }
-                Rectangle {
-                    x: 34px;
-                    y: 34px;
-                    width: 20px;
-                    height: 20px;
-                    border-radius: 10px;
-                    background: #2e9e4f;
-                    border-width: 2px;
-                    border-color: Theme.panel;
+
+                VerticalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: @tr("Browser");
+                        color: Theme.text;
+                        font-size: 13px * Theme.font-scale;
+                        font-weight: 600;
+                    }
+                    ComboBox {
+                        model: root.browser-names;
+                        current-index <=> root.current-browser;
+                        enabled: root.has-browsers;
+                        min-height: 32px;
+                        accessible-label: @tr("Browser");
+                        selected(v) => {
+                            root.select-browser(root.current-browser);
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        Button {
+                            text: root.setup-action;
+                            enabled: root.has-browsers;
+                            primary: !root.connected;
+                            min-height: 32px;
+                            clicked => {
+                                root.start-setup();
+                            }
+                        }
+                    }
+                }
+
+                if root.prepared && !root.connected: VerticalLayout {
+                    spacing: 10px;
+                    for step[i] in [
+                        { title: root.first-title, detail: root.first-detail },
+                        { title: root.second-title, detail: root.second-detail }
+                    ]: Rectangle {
+                        background: Theme.panel;
+                        border-width: 1px;
+                        border-color: Theme.line;
+                        border-radius: 8px;
+                        HorizontalLayout {
+                            padding: 18px;
+                            spacing: 12px;
+                            Rectangle {
+                                width: 28px * Theme.font-scale;
+                                height: 28px * Theme.font-scale;
+                                border-radius: self.width / 2;
+                                background: Theme.select;
+                                Text {
+                                    width: parent.width;
+                                    height: parent.height;
+                                    text: i + 1;
+                                    color: Theme.text;
+                                    font-size: 13px * Theme.font-scale;
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                spacing: 5px;
+                                Text {
+                                    text: step.title;
+                                    color: Theme.text;
+                                    font-size: 13px * Theme.font-scale;
+                                    font-weight: 700;
+                                    wrap: word-wrap;
+                                }
+                                Text {
+                                    text: step.detail;
+                                    color: Theme.text;
+                                    font-size: 13px * Theme.font-scale;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if root.notice != "": HorizontalLayout {
+                    spacing: 10px;
                     Glyph {
-                        x: 2px;
-                        y: 2px;
-                        kind: "down";
-                        tint: white;
+                        kind: "info";
+                        tint: Theme.text;
+                        width: 18px;
+                        height: 18px;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: root.notice;
+                        color: Theme.text;
+                        font-size: 13px * Theme.font-scale;
+                        wrap: word-wrap;
+                    }
+                }
+
+                Rectangle {
+                    background: Theme.panel;
+                    border-width: 1px;
+                    border-color: Theme.line;
+                    border-radius: 8px;
+                    HorizontalLayout {
+                        padding: 18px;
+                        spacing: 12px;
+                        Glyph {
+                            kind: root.connected ? "check" : "clock";
+                            tint: root.connected ? Theme.ok : Theme.muted;
+                            width: 22px;
+                            height: 22px;
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: 5px;
+                            Text {
+                                text: root.connection-title;
+                                color: Theme.text;
+                                font-size: 13px * Theme.font-scale;
+                                font-weight: 700;
+                                wrap: word-wrap;
+                            }
+                            Text {
+                                text: root.connection-detail;
+                                color: Theme.text;
+                                font-size: 13px * Theme.font-scale;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                }
+
+                if root.prepared: VerticalLayout {
+                    spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        Button {
+                            text: @tr("Open Browser Again…");
+                            enabled: root.has-browsers;
+                            min-height: 32px;
+                            clicked => {
+                                root.reopen-browser();
+                            }
+                        }
+                        Button {
+                            text: @tr("Show Folder…");
+                            enabled: root.folder != "";
+                            min-height: 32px;
+                            clicked => {
+                                root.open-folder();
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        alignment: start;
+                        Button {
+                            text: @tr("Check Connection");
+                            min-height: 32px;
+                            clicked => {
+                                root.check-connection();
+                            }
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    spacing: 10px;
+                    HorizontalLayout {
+                        alignment: start;
+                        Button {
+                            text: root.show-trouble ? "▾ " + @tr("Having Trouble?") : "▸ " + @tr("Having Trouble?");
+                            min-height: 32px;
+                            clicked => {
+                                root.show-trouble = !root.show-trouble;
+                            }
+                        }
+                    }
+                    if root.show-trouble: VerticalLayout {
+                        spacing: 10px;
+                        Text {
+                            text: root.fallback;
+                            color: Theme.text;
+                            font-size: 13px * Theme.font-scale;
+                            wrap: word-wrap;
+                        }
+                        if root.folder != "": VerticalLayout {
+                            spacing: 8px;
+                            Text {
+                                text: @tr("Extension Folder");
+                                color: Theme.text;
+                                font-size: 13px * Theme.font-scale;
+                                font-weight: 600;
+                            }
+                            LineEdit {
+                                text: root.folder;
+                                read-only: true;
+                                min-width: 0px;
+                                min-height: 32px;
+                                accessible-label: @tr("Extension Folder");
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                Button {
+                                    text: @tr("Copy Folder Path");
+                                    min-height: 32px;
+                                    clicked => {
+                                        root.copy-folder();
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-        Text {
-            text: root.data.name;
-            horizontal-alignment: center;
-            font-size: 14px * Theme.font-scale;
-            font-weight: 700;
-            color: Theme.text;
-        }
-        Text {
-            text: root.data.installed ? root.data.action : @tr("Not installed on this computer");
-            horizontal-alignment: center;
-            font-size: 11px * Theme.font-scale;
-            color: root.data.installed ? Theme.accent : Theme.muted;
-            wrap: word-wrap;
-        }
-    }
-}
-
-export component BrowserDialog inherits ThemedWindow {
-    // set for a moment so the window comes in front of the browser
-    in property <bool> front;
-    always-on-top: root.front;
-    title: @tr("Add Ezoo Download to your browser");
-    preferred-width: 880px;
-    in property <[BrowserRow]> browsers;
-    in property <string> steps;
-    in property <string> folder;
-    callback add(int);
-    callback open-folder();
-    callback copy-folder();
-    callback close-window();
-    VerticalLayout {
-        padding: 16px;
-        spacing: 12px;
-        Text {
-            text: @tr("Click your browser:");
-            font-size: 14px * Theme.font-scale;
-            font-weight: 700;
-            color: Theme.text;
-        }
         HorizontalLayout {
-            spacing: 12px;
-            for b[i] in root.browsers: BrowserCard {
-                horizontal-stretch: 1;
-                data: b;
-                add => {
-                    root.add(i);
-                }
-            }
-        }
-        if root.steps != "": Rectangle {
-            background: Theme.panel;
-            border-width: 1px;
-            border-color: Theme.accent;
-            border-radius: 6px;
-            VerticalLayout {
-                padding: 12px;
-                spacing: 6px;
-                Section {
-                    text: @tr("Almost done:");
-                }
-                Text {
-                    text: root.steps;
-                    wrap: word-wrap;
-                    font-size: 12px * Theme.font-scale;
-                    color: Theme.text;
-                }
-            }
-        }
-        HorizontalLayout {
-            spacing: 8px;
-            Text {
-                text: root.folder;
-                font-size: 11px * Theme.font-scale;
-                color: Theme.muted;
-                overflow: elide;
-                vertical-alignment: center;
-                horizontal-stretch: 1;
-            }
-            Button {
-                text: @tr("Copy folder path");
-                clicked => {
-                    root.copy-folder();
-                }
-            }
-            Button {
-                text: @tr("Open folder");
-                clicked => {
-                    root.open-folder();
-                }
-            }
+            alignment: end;
             Button {
                 text: @tr("Close");
-                primary: true;
+                primary: root.connected;
+                min-width: 88px;
+                min-height: 32px;
                 clicked => {
                     root.close-window();
                 }
@@ -3574,7 +3732,7 @@ export component AboutDialog inherits ThemedWindow {
         Text {
             text: @tr("Like Ezoo Download? You can support its development:");
             horizontal-alignment: center;
-            font-size: 12px * Theme.font-scale;
+            font-size: 13px * Theme.font-scale;
             color: Theme.muted;
             wrap: word-wrap;
         }
@@ -3655,7 +3813,7 @@ export component WhatsNewDialog inherits ThemedWindow {
             background: Theme.panel;
             border-width: 1px;
             border-color: Theme.line;
-            border-radius: 4px;
+            border-radius: 8px;
             ScrollView {
                 VerticalLayout {
                     padding: 12px;
@@ -3689,7 +3847,7 @@ export component WhatsNewDialog inherits ThemedWindow {
             background: Theme.input-bg;
             border-width: 1px;
             border-color: Theme.line;
-            border-radius: 4px;
+            border-radius: 8px;
             VerticalLayout {
                 padding: 12px;
                 spacing: 8px;

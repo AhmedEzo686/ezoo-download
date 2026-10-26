@@ -51,13 +51,17 @@ fn show_lists(ui: &Ui, d: &SettingsDialog) {
 fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     // General
     d.set_language(crate::i18n::index_of(crate::i18n::effective(&s.language)) as i32);
-    d.set_theme(s.theme as i32);
+    d.set_theme(crate::appearance::index(&s.appearance));
     d.set_window_opacity(s.opacity.clamp(50, 100) as f32);
     d.set_text_size(s.font_scale.clamp(80, 150) as f32);
     d.set_font_index(crate::FONTS.iter().position(|f| *f == s.font_family).unwrap_or(0) as i32);
     d.set_bg_image(s.background_image.clone().into());
     d.set_bg_strength(s.background_strength.clamp(10, 80) as f32);
     d.set_start_with_windows(autostart::is_enabled());
+    if cfg!(target_os = "macos") {
+        d.set_startup_label(t("Launch Ezoo Download when I sign in").into());
+    }
+    d.set_windows_features(cfg!(windows));
     d.set_close_to_tray(s.close_to_tray);
     d.set_clipboard(s.clipboard_monitor);
     d.set_auto_clipboard(s.auto_start_clipboard);
@@ -144,7 +148,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     }
     // General
     s.language = crate::i18n::LANGS[(d.get_language().max(0) as usize).min(crate::i18n::LANGS.len() - 1)].0.into();
-    s.theme = d.get_theme().clamp(0, 8) as u32;
+    s.appearance = crate::appearance::preference(d.get_theme()).into();
     s.opacity = (d.get_window_opacity().round() as u32).clamp(50, 100);
     s.font_scale = (d.get_text_size().round() as u32).clamp(80, 150);
     s.font_family = crate::FONTS.get(d.get_font_index().max(0) as usize).copied().unwrap_or("").to_string();
@@ -158,8 +162,8 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.browser_port = d.get_port().clamp(1024, 65535) as u16;
     s.skip_key = KEYS[d.get_skip_key().clamp(0, 3) as usize].into();
     s.force_key = KEYS[d.get_force_key().clamp(0, 3) as usize].into();
-    if d.get_start_with_windows() != autostart::is_enabled() {
-        autostart::set(d.get_start_with_windows());
+    if d.get_start_with_windows() != autostart::is_enabled() && !autostart::set(d.get_start_with_windows()) {
+        return Err(t("Could not change the startup setting."));
     }
     // File types
     s.capture_exts = d.get_capture_exts().split_whitespace().collect::<Vec<_>>().join(" ");
@@ -233,7 +237,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
 /// The look the Options window shows now (not saved yet).
 fn look_of(d: &SettingsDialog) -> crate::Look {
     crate::Look {
-        mode: d.get_theme().clamp(0, 8),
+        mode: d.get_theme().clamp(0, 2),
         scale: (d.get_text_size().round() as u32).clamp(80, 150) as f32 / 100.0,
         family: crate::FONTS.get(d.get_font_index().max(0) as usize).copied().unwrap_or("").to_string(),
         background: d.get_bg_image().to_string(),
@@ -287,7 +291,11 @@ pub(crate) fn wire(ui: &Ui) {
                     }
                 }
                 "virus" => {
-                    if let Some(f) = rfd::FileDialog::new().add_filter("Program", &["exe", "com", "bat", "cmd"]).pick_file() {
+                    let mut picker = rfd::FileDialog::new();
+                    if cfg!(windows) {
+                        picker = picker.add_filter("Program", &["exe", "com", "bat", "cmd"]);
+                    }
+                    if let Some(f) = picker.pick_file() {
                         d.set_virus_program(f.display().to_string().into());
                     }
                 }
@@ -445,7 +453,7 @@ pub(crate) fn wire(ui: &Ui) {
             match read(&ui2, &d, old.clone()) {
                 Ok(s) => {
                     let port_changed = s.browser_port != old.browser_port;
-                    let theme = s.theme as i32;
+                    let theme = crate::appearance::index(&s.appearance);
                     let view = s.clone();
                     if let Err(e) = ui2.ctx.mgr.set_settings(s) {
                         d.set_message(tf("Could not save: {}", &[&format!("{e:#}")]).into());

@@ -247,6 +247,9 @@ pub struct Settings {
     /// 0 Light, 1 Dark, 2 Ocean, 3 Midnight, 4 Forest, 5 Black, 6 Sunset,
     /// 7 Teal night, 8 Rose
     pub theme: u32,
+    /// System appearance by default; the legacy theme index remains readable
+    /// by older versions but no longer selects a different color family.
+    pub appearance: String,
     /// how solid the main window is, 50..=100 (%)
     pub opacity: u32,
     /// size of all texts, 80..=150 (%)
@@ -375,13 +378,14 @@ impl Default for Settings {
             speed_limit_kb: 0,
             retries: 10,
             user_agent: DEFAULT_USER_AGENT.into(),
-            clipboard_monitor: true,
-            show_complete_dialog: true,
+            clipboard_monitor: !cfg!(target_os = "macos"),
+            show_complete_dialog: !cfg!(target_os = "macos"),
             browser_port: DEFAULT_PORT,
             min_split_kb: 256,
             schedule: Schedule::default(),
-            show_progress_window: true,
+            show_progress_window: !cfg!(target_os = "macos"),
             theme: 0,
+            appearance: "system".into(),
             opacity: 100,
             font_scale: 100,
             font_family: String::new(),
@@ -402,7 +406,7 @@ impl Default for Settings {
             auto_start_clipboard: false,
             double_click: 0,
             limiter_on_startup: false,
-            show_tips: true,
+            show_tips: !cfg!(target_os = "macos"),
             tip_index: 0,
             capture_exts: DEFAULT_CAPTURE_EXTS.into(),
             skip_sites: String::new(),
@@ -453,10 +457,17 @@ impl Default for Settings {
 
 impl Settings {
     pub fn load(path: &Path) -> Settings {
-        let mut s: Settings = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+        Self::try_load(path).unwrap_or_default()
+    }
+
+    /// Preserve unreadable settings and encrypted secrets instead of silently
+    /// replacing them with defaults when startup cannot unlock credentials.
+    pub fn try_load(path: &Path) -> anyhow::Result<Settings> {
+        let mut s: Settings = match std::fs::read_to_string(path) {
+            Ok(text) => serde_json::from_str(&text)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Self::default(),
+            Err(error) => return Err(error.into()),
+        };
         if s.version < 2 {
             // v2: full speed by default (32 connections, no limit on downloads)
             s.connections = 32;
@@ -495,6 +506,9 @@ impl Settings {
             s.schedule.enabled = false;
         }
         s.version = SETTINGS_VERSION;
+        if !matches!(s.appearance.as_str(), "system" | "light" | "dark") {
+            s.appearance = "system".into();
+        }
         if !s.queues.iter().any(|q| q.id == MAIN_QUEUE) {
             s.queues.insert(0, QueueDef::new(MAIN_QUEUE, "Main download queue", 1, None));
         }
@@ -507,7 +521,7 @@ impl Settings {
         if s.limiter_on_startup {
             s.speed_limit_on = true;
         }
-        s
+        Ok(s)
     }
 
     /// Category of a file: by site first, then by extension; "General" otherwise.
@@ -557,16 +571,13 @@ impl Settings {
     /// Saved login for this address (Options > Site Logins).
     pub fn login_for(&self, url: &str) -> Option<(String, String)> {
         let u = url::Url::parse(url).ok()?;
-        let host = u.host_str()?.to_ascii_lowercase();
-        let path = u.path().to_string();
+        if !matches!(u.scheme(), "http" | "https") {
+            return None;
+        }
         self.logins
             .iter()
             .filter(|l| !l.user.is_empty())
-            .find(|l| {
-                let site = l.site.trim().trim_start_matches("http://").trim_start_matches("https://");
-                let (h, p) = site.split_once('/').map(|(h, p)| (h, format!("/{p}"))).unwrap_or((site, String::new()));
-                host_matches(&host, h) && (p.is_empty() || path.starts_with(&p))
-            })
+            .find(|l| login_scope_matches(&u, &l.site))
             .map(|l| (l.user.clone(), l.password.clone()))
     }
 
@@ -649,6 +660,44 @@ impl Settings {
                 }
             }
         }
+    }
+}
+
+fn login_scope_matches(target: &url::Url, site: &str) -> bool {
+    let site = site.trim();
+    let explicit_scheme = site.starts_with("http://") || site.starts_with("https://");
+    let candidate = if explicit_scheme { site.to_string() } else { format!("http://{site}") };
+    let Ok(scope) = url::Url::parse(&candidate) else { return false };
+    let (Some(host), Some(pattern)) = (target.host_str(), scope.host_str()) else { return false };
+    if !scope.username().is_empty() || scope.password().is_some() || !host_matches(host, pattern) {
+        return false;
+    }
+    if explicit_scheme {
+        if target.scheme() != scope.scheme() || target.port_or_known_default() != scope.port_or_known_default() {
+            return false;
+        }
+    } else {
+        // Host/path patterns retain their HTTP + HTTPS behavior, but an
+        // unspecified port must not authorize an unrelated local service.
+        let authority = site.split('/').next().unwrap_or("");
+        let explicit_port = if authority.starts_with('[') {
+            authority.split_once(']').is_some_and(|(_, tail)| tail.starts_with(':'))
+        } else {
+            authority.contains(':')
+        };
+        if explicit_port {
+            if target.port_or_known_default() != scope.port_or_known_default() {
+                return false;
+            }
+        } else if target.port().is_some() {
+            return false;
+        }
+    }
+    let path = scope.path();
+    path == "/" || target.path() == path || if path.ends_with('/') {
+        target.path().starts_with(path)
+    } else {
+        target.path().strip_prefix(path).is_some_and(|tail| tail.starts_with('/'))
     }
 }
 
@@ -742,11 +791,57 @@ mod tests {
         assert_eq!(s.connections_for("https://a.slow.example.com/x", 32), 2);
         assert_eq!(s.connections_for("https://fast.example.com/x", 32), 32);
     }
+
+    #[test]
+    fn saved_logins_respect_explicit_scheme_ports_and_path_boundaries() {
+        let login = |site: &str| SiteLogin { site: site.into(), user: "synthetic".into(), password: "synthetic".into() };
+        let mut s = Settings::default();
+        s.logins = vec![login("https://example.com/members")];
+        assert!(s.login_for("https://example.com:443/members/file").is_some());
+        for other in ["http://example.com/members/file", "https://example.com:8443/members/file", "https://example.com/members-other/file"] {
+            assert!(s.login_for(other).is_none(), "{other}");
+        }
+        s.logins = vec![login("https://*.example.com:8443/members/")];
+        assert!(s.login_for("https://cdn.example.com:8443/members/file").is_some());
+        assert!(s.login_for("https://cdn.example.com/members/file").is_none());
+        s.logins = vec![login("example.com/members")];
+        assert!(s.login_for("https://www.example.com/members/file").is_some());
+        assert!(s.login_for("http://example.com/members/file").is_some());
+        assert!(s.login_for("http://example.com:8080/members/file").is_none());
+        s.logins = vec![login("example.com:80/members")];
+        assert!(s.login_for("http://example.com/members/file").is_some());
+        assert!(s.login_for("https://example.com/members/file").is_none());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn unavailable_keychain_does_not_replace_saved_settings() {
+        let path = std::env::temp_dir().join(format!("ezoo-locked-settings-{}.json", std::process::id()));
+        let mut settings = Settings::default();
+        settings.proxy_password = "synthetic-secret".into();
+        settings.save(&path).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        crate::secret::with_unavailable_key(|| assert!(Settings::try_load(&path).is_err()));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(Settings::try_load(&path).unwrap().proxy_password, "synthetic-secret");
+        std::fs::remove_file(path).unwrap();
+    }
 }
 
 #[cfg(test)]
 mod column_tests {
     use super::*;
+
+    #[test]
+    fn old_themes_gain_system_appearance_without_losing_legacy_data() {
+        let old: Settings = serde_json::from_str(r#"{"theme":7}"#).unwrap();
+        assert_eq!(old.appearance, "system");
+        assert_eq!(old.theme, 7);
+        let explicit: Settings = serde_json::from_str(r#"{"theme":7,"appearance":"dark"}"#).unwrap();
+        let restored: Settings = serde_json::from_str(&serde_json::to_string(&explicit).unwrap()).unwrap();
+        assert_eq!(restored.appearance, "dark");
+        assert_eq!(restored.theme, 7);
+    }
 
     #[test]
     fn columns_keep_their_order_and_width() {

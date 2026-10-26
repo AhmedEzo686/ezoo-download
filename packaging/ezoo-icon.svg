@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Ezoo Download</title>
+  <desc>Original descending ribbon and receiving bar on a blue rounded square.</desc>
+  <!-- The inset mask is for the app's flattened ICNS/ICO/PNG assets. -->
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="#007AFF"/>
+  <!-- Independently drawn ribbon; the stepped tail is part of Ezoo's mark. -->
+  <path fill="#FFF" d="M376 260H584C606 260 624 278 624 300V482H694C717 482 728 509 712 525L540 697C524 713 500 713 484 697L312 525C296 509 307 482 330 482H424V372H376C345 372 320 347 320 316S345 260 376 260Z"/>
+  <rect x="300" y="752" width="424" height="76" rx="38" fill="#FFF"/>
+</svg>

@@ -377,7 +377,12 @@ pub(crate) fn whats_new(ui: &Ui) {
     let Ok(d) = WhatsNewDialog::new() else { return };
     crate::set_theme_of(d.global::<Theme>(), &crate::Look::of(&ui.ctx.mgr.settings()));
     d.set_rtl(crate::i18n::is_arabic());
-    d.set_heading(tf("Ezoo Download was updated to version {} by itself.", &[&env!("CARGO_PKG_VERSION")]).into());
+    let heading = if cfg!(windows) {
+        "Ezoo Download was updated to version {} by itself."
+    } else {
+        "Ezoo Download version {}."
+    };
+    d.set_heading(tf(heading, &[&env!("CARGO_PKG_VERSION")]).into());
     let items: Vec<SharedString> = WHATS_NEW.iter().map(|l| t(l).into()).collect();
     d.set_items(ModelRc::new(VecModel::from(items)));
     d.on_open_link(|u| {

@@ -141,12 +141,7 @@ pub(crate) fn open_links(ui: &Ui, l: api::LinksRequest) {
     reset(ui, &d, true);
     {
         let mut g = ui.grab_state.borrow_mut();
-        g.headers = RequestHeaders {
-            referer: (!l.page.is_empty()).then(|| l.page.clone()),
-            cookies: l.cookies.clone(),
-            user_agent: l.user_agent.clone(),
-            ..Default::default()
-        };
+        g.headers = page_headers(&l.page, l.cookies.clone(), l.user_agent.clone());
         let mut seen = std::collections::HashSet::new();
         for link in &l.links {
             if seen.insert(link.url.clone()) {
@@ -158,6 +153,25 @@ pub(crate) fn open_links(ui: &Ui, l: api::LinksRequest) {
     show(ui);
     bring_to_front(&ui.ctx);
     open_window!(d);
+}
+
+fn page_headers(page: &str, cookies: Option<String>, user_agent: Option<String>) -> RequestHeaders {
+    let mut headers = RequestHeaders {
+        referer: (!page.is_empty()).then(|| page.to_string()),
+        cookies,
+        user_agent,
+        ..Default::default()
+    };
+    headers.bind_to(page);
+    headers.scoped_for(page)
+}
+
+fn link_headers(headers: &RequestHeaders, destination: &str, page: &str) -> RequestHeaders {
+    let mut headers = headers.clone();
+    if headers.referer.is_none() && !page.is_empty() {
+        headers.referer = Some(page.to_string());
+    }
+    headers.scoped_for(destination)
 }
 
 /// New files from the explorer, and its counters (10 times a second).
@@ -253,7 +267,7 @@ pub(crate) fn wire(ui: &Ui) {
             show(&ui);
             d.set_exploring(true);
             d.set_progress_text(t("Starting…").into());
-            let client = ui.ctx.mgr.client();
+            let client = ui.ctx.mgr.transfer_client();
             ui.ctx.rt.spawn(async move {
                 let sink = incoming.clone();
                 grabber::crawl(client, opts, progress, cancel, move |f| sink.lock().unwrap().push(f)).await;
@@ -329,10 +343,7 @@ pub(crate) fn wire(ui: &Ui) {
                 if ui.ctx.mgr.find_url(&it.url).is_some() {
                     continue;
                 }
-                let mut h = headers.clone();
-                if h.referer.is_none() && !it.page.is_empty() {
-                    h.referer = Some(it.page.clone());
-                }
+                let h = link_headers(&headers, &it.url, &it.page);
                 ui.ctx.mgr.add(NewDownload {
                     url: it.url.clone(),
                     save_dir: (!folder.is_empty()).then(|| PathBuf::from(&folder)),
@@ -366,5 +377,25 @@ pub(crate) fn wire(ui: &Ui) {
                 let _ = d.hide();
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::{link_headers, page_headers};
+
+    #[test]
+    fn mixed_batch_keeps_page_cookies_only_on_their_origin() {
+        let page = "https://members.example/private?token=synthetic";
+        let headers = page_headers(page, Some("session=synthetic".into()), Some("test".into()));
+        let own = link_headers(&headers, "https://members.example/file.pdf", page);
+        assert_eq!(own.cookies.as_deref(), Some("session=synthetic"));
+        for foreign in ["https://files.example/file.pdf", "https://members.example:8443/file.pdf", "http://members.example/file.pdf"] {
+            let safe = link_headers(&headers, foreign, page);
+            assert!(safe.cookies.is_none(), "{foreign}");
+            assert!(!safe.referer.as_deref().unwrap_or("").contains("synthetic"));
+        }
+        let invalid = page_headers("", Some("session=synthetic".into()), None);
+        assert!(link_headers(&invalid, "https://members.example/file.pdf", "").cookies.is_none());
     }
 }

@@ -161,6 +161,16 @@ pub fn build_client() -> anyhow::Result<Client> {
 }
 
 pub fn build_client_with(proxy: &ProxyConfig) -> anyhow::Result<Client> {
+    build_client_for(proxy, false)
+}
+
+/// Public service downloads (signed app updates and helper checksums) do not
+/// carry browser credentials and can use reqwest's normal redirect handling.
+pub fn build_service_client_with(proxy: &ProxyConfig) -> anyhow::Result<Client> {
+    build_client_for(proxy, true)
+}
+
+fn build_client_for(proxy: &ProxyConfig, service: bool) -> anyhow::Result<Client> {
     let mut b = Client::builder()
         // Real separate TCP connections. With HTTP/2 all our
         // "connections" would share one TCP connection and be as slow as one.
@@ -168,7 +178,7 @@ pub fn build_client_with(proxy: &ProxyConfig) -> anyhow::Result<Client> {
         .tcp_nodelay(true)
         .connect_timeout(Duration::from_secs(20))
         .pool_max_idle_per_host(64)
-        .redirect(reqwest::redirect::Policy::limited(15));
+        .redirect(if service { reqwest::redirect::Policy::limited(15) } else { reqwest::redirect::Policy::none() });
     match proxy.mode {
         // 1 = system settings: reqwest reads them by itself
         0 => b = b.no_proxy(),
@@ -190,6 +200,7 @@ pub fn build_client_with(proxy: &ProxyConfig) -> anyhow::Result<Client> {
 
 /// GET request carrying the browser's headers.
 pub fn request(client: &Client, url: &str, h: &RequestHeaders, default_ua: &str) -> RequestBuilder {
+    let h = h.scoped_for(url);
     let ua = h
         .user_agent
         .as_deref()
@@ -214,6 +225,42 @@ pub fn request(client: &Client, url: &str, h: &RequestHeaders, default_ua: &str)
         rb = rb.basic_auth(user, Some(pass));
     }
     rb
+}
+
+/// Follow download redirects ourselves so arbitrary extractor headers receive
+/// the same origin checks as Cookie and Authorization. Use a transfer client
+/// from build_client[_with], whose automatic redirect policy is disabled.
+pub async fn send(
+    client: &Client,
+    url: &str,
+    headers: &RequestHeaders,
+    default_ua: &str,
+    range: Option<&str>,
+) -> anyhow::Result<reqwest::Response> {
+    let mut headers = headers.clone();
+    headers.bind_to(url);
+    let mut current = url::Url::parse(url)?;
+    for redirects in 0..=15 {
+        if !matches!(current.scheme(), "http" | "https") {
+            bail!("a download redirected to an unsupported address");
+        }
+        let mut rb = request(client, current.as_str(), &headers, default_ua);
+        if let Some(range) = range {
+            rb = rb.header(RANGE, range);
+        }
+        let response = rb.send().await?;
+        if !matches!(response.status().as_u16(), 301 | 302 | 303 | 307 | 308) {
+            return Ok(response);
+        }
+        let Some(location) = response.headers().get(reqwest::header::LOCATION) else {
+            return Ok(response);
+        };
+        if redirects == 15 {
+            bail!("too many download redirects");
+        }
+        current = current.join(location.to_str().context("invalid redirect address")?)?;
+    }
+    unreachable!("redirect loop is bounded")
 }
 
 fn looks_like_hls(url: &str, content_type: Option<&str>) -> bool {
@@ -257,14 +304,13 @@ pub async fn probe(
     headers: &RequestHeaders,
     default_ua: &str,
 ) -> anyhow::Result<ProbeResult> {
+    let mut headers = headers.clone();
+    headers.bind_to(url);
     let mut first_refusal: Option<u16> = None;
     let mut found = None;
-    for (with_range, h) in fallbacks(headers) {
-        let mut rb = request(client, url, &h, default_ua);
-        if with_range {
-            rb = rb.header(RANGE, "bytes=0-0");
-        }
-        let resp = rb.send().await.context("could not connect to server")?;
+    for (with_range, h) in fallbacks(&headers) {
+        let resp = send(client, url, &h, default_ua, with_range.then_some("bytes=0-0"))
+            .await.context("could not connect to server")?;
         let status = resp.status();
         if status == StatusCode::UNAUTHORIZED {
             bail!("the server asks for a user name and password (HTTP 401) - use \"Use authorization\" or Options > Site Logins");
@@ -278,7 +324,7 @@ pub async fn probe(
         if !status.is_success() {
             bail!("server answered HTTP {}", status.as_u16());
         }
-        let changed = h != *headers;
+        let changed = h != headers;
         found = Some((resp, with_range, changed.then_some(h)));
         break;
     }

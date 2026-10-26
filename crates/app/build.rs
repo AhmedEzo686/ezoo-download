@@ -1,8 +1,8 @@
 fn main() {
-    // "fluent" follows the light/dark switch the app makes at runtime
+    // Cupertino supplies macOS-shaped controls without a Qt dependency.
     // Arabic texts: lang/ar/LC_MESSAGES/swiftget.po (made by lang/make_po.py)
     let config = slint_build::CompilerConfiguration::new()
-        .with_style("fluent".into())
+        .with_style(if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") { "cupertino" } else { "fluent" }.into())
         .with_bundled_translations("lang")
         .with_default_translation_context(slint_build::DefaultTranslationContext::None);
     for lang in ["ar", "fr", "es", "de", "pt", "tr", "ru"] {

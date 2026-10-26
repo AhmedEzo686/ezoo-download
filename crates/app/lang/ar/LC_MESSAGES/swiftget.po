@@ -1048,8 +1048,8 @@ msgstr "إظهار الخصائص"
 msgid "Browser integration"
 msgstr "التكامل مع المتصفح"
 
-msgid "Chrome and Edge: load the \"extension\" folder in chrome://extensions (Developer mode > Load unpacked). Downloads, videos and the right click menu then go to Ezoo Download."
-msgstr "كروم وإيدج: حمّل مجلد \"extension\" من chrome://extensions (وضع المطوّر > Load unpacked). بعدها تذهب التحميلات والفيديوهات وقائمة الكليك يمين إلى Ezoo Download."
+msgid "Use the setup assistant to connect your browser. It prepares the extension, opens the right page, and checks the connection."
+msgstr "استخدم مساعد الإعداد لربط متصفحك بالبرنامج. فهو يجهّز الإضافة، ويفتح الصفحة الصحيحة، ويتحقق من الاتصال."
 
 msgid "Hold this key to let the browser download by itself"
 msgstr "اضغط هذا المفتاح ليحمّل المتصفح بنفسه"
@@ -1413,3 +1413,27 @@ msgstr "برنامج Ezoo Download مجاني تمامًا وبدون إعلان
 
 msgid "Hide"
 msgstr "إخفاء"
+
+msgid "Browser Extension Setup"
+msgstr "إعداد إضافة المتصفح"
+
+msgid "Browser"
+msgstr "المتصفح"
+
+msgid "Open Browser Again…"
+msgstr "فتح المتصفح مجددًا…"
+
+msgid "Show Folder…"
+msgstr "إظهار المجلد…"
+
+msgid "Check Connection"
+msgstr "التحقق من الاتصال"
+
+msgid "Having Trouble?"
+msgstr "هل تواجه مشكلة؟"
+
+msgid "Extension Folder"
+msgstr "مجلد الإضافة"
+
+msgid "Copy Folder Path"
+msgstr "نسخ مسار المجلد"

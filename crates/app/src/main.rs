@@ -5,8 +5,10 @@
 slint::include_modules!();
 
 mod api;
+mod appearance;
 mod autostart;
 mod browser;
+mod browser_files;
 mod clipboard;
 mod extra;
 mod grab;
@@ -23,11 +25,11 @@ mod winfx;
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use swiftget_engine::config::MAIN_QUEUE;
 use i18n::{t, tf};
 use swiftget_engine::filename;
@@ -52,6 +54,7 @@ pub(crate) struct VideoExtra {
 #[derive(Default)]
 pub(crate) struct AddState {
     headers: RequestHeaders,
+    authorization: DialogAuthorization,
     extra: VideoExtra,
     /// the URL the window was opened with (video extras only apply to it)
     origin_url: String,
@@ -67,6 +70,63 @@ pub(crate) struct AddState {
     early_id: Option<u64>,
     /// links that came in while the window was busy with another one
     waiting: std::collections::VecDeque<PendingOpen>,
+}
+
+/// The authorization fields can outlive an edit to the URL. Keep their last
+/// observed origin so untouched autofill cannot authorize a different site.
+#[derive(Default)]
+struct DialogAuthorization {
+    url: String,
+    user: String,
+    password: String,
+}
+
+impl DialogAuthorization {
+    fn new(url: &str, value: Option<&(String, String)>) -> Self {
+        Self {
+            url: url.to_string(),
+            user: value.map(|v| v.0.clone()).unwrap_or_default(),
+            password: value.map(|v| v.1.clone()).unwrap_or_default(),
+        }
+    }
+
+    /// Returns the selected authorization and whether stale fields must clear.
+    /// Changing only a user name must not disclose the old password either.
+    fn for_destination(&mut self, url: &str, enabled: bool, user: &str, password: &str) -> (Option<(String, String)>, bool) {
+        let same_origin = match (url::Url::parse(&self.url), url::Url::parse(url)) {
+            (Ok(from), Ok(to)) if matches!(from.scheme(), "http" | "https") && matches!(to.scheme(), "http" | "https") => from.origin() == to.origin(),
+            _ => false,
+        };
+        let stale = !same_origin && (!self.user.is_empty() || !self.password.is_empty()) && self.password == password;
+        self.url = url.to_string();
+        if stale {
+            self.user.clear();
+            self.password.clear();
+            return (None, true);
+        }
+        self.user = user.trim().to_string();
+        self.password = password.to_string();
+        ((enabled && !self.user.is_empty()).then(|| (self.user.clone(), self.password.clone())), false)
+    }
+}
+
+impl AddState {
+    fn headers_for(&mut self, url: &str, enabled: bool, user: &str, password: &str) -> (RequestHeaders, bool) {
+        let mut headers = self.headers.scoped_for(url);
+        let (auth, clear) = self.authorization.for_destination(url, enabled, user, password);
+        headers.auth = auth;
+        (headers, clear)
+    }
+}
+
+fn add_dialog_headers(st: &mut AddState, d: &AddDialog, url: &str) -> RequestHeaders {
+    let (headers, clear) = st.headers_for(url, d.get_use_login(), d.get_user().as_str(), d.get_password().as_str());
+    if clear {
+        d.set_use_login(false);
+        d.set_user(SharedString::new());
+        d.set_password(SharedString::new());
+    }
+    headers
 }
 
 /// A "Download File Info" request waiting for the window.
@@ -90,6 +150,28 @@ pub(crate) struct Ctx {
 /// A progress window and its connections list (updated in place, so it
 /// doesn't flicker when refreshed 10 times a second).
 type ProgressWin = (DetailsDialog, Rc<VecModel<SegView>>);
+
+/// Timed refreshes supplement immediate user-action refreshes. Always show the
+/// final active state, and rebuild a hidden list as soon as it is shown again.
+#[derive(Default)]
+struct ListRefresh {
+    last: Option<Instant>,
+    active: bool,
+    visible: bool,
+}
+
+impl ListRefresh {
+    fn due(&mut self, now: Instant, active: bool, visible: bool) -> bool {
+        let due = visible && (active || self.active || !self.visible
+            || self.last.is_none_or(|last| now.duration_since(last) >= Duration::from_secs(2)));
+        self.active = active;
+        self.visible = visible;
+        if due {
+            self.last = Some(now);
+        }
+        due
+    }
+}
 
 /// A download waiting for the answer of the "Duplicate download link" window.
 pub(crate) struct PendingAdd {
@@ -207,6 +289,7 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
     let mgr = Manager::new(rt.handle().clone(), data_dir.clone())?;
+    browser::refresh_prepared_extensions(mgr.settings().browser_port);
     // yt-dlp and ffmpeg: put back if missing, update silently once a day
     swiftget_engine::tools::spawn_updater(rt.handle(), mgr.client(), data_dir.clone());
 
@@ -300,7 +383,7 @@ fn main() -> anyhow::Result<()> {
         let mut s = mgr.settings();
         if !s.autostart_set {
             // the installer already asked; a copy run without it starts with Windows
-            if !autostart::installed_by_setup() {
+            if cfg!(windows) && !autostart::installed_by_setup() {
                 autostart::set(true);
             }
             s.autostart_set = true;
@@ -311,9 +394,12 @@ fn main() -> anyhow::Result<()> {
     let has_tray = tray.is_some();
     {
         let s = mgr.settings();
-        apply_theme(&ui, s.theme as i32);
+        apply_theme(&ui, appearance::index(&s.appearance));
         apply_view_settings(&ui, &s);
     }
+    APPEARANCE_UI.with(|slot| *slot.borrow_mut() = Some(ui.clone()));
+    appearance::watch_window(main.window(), platform_appearance_changed);
+    let _appearance_observer = appearance::watch_colors(platform_appearance_changed);
 
     wire_main(&ui);
     // a new version of the program itself: from GitHub, installed silently
@@ -331,27 +417,32 @@ fn main() -> anyhow::Result<()> {
 
     // ------------------------------------------------------------ browser + clipboard
     if let Some(server) = server {
-        let ctx = ctx.clone();
         let cfg_mgr = mgr.clone();
-        // the API thread only sends; the UI thread owns the windows
-        let (tx, rx) = std::sync::mpsc::channel::<api::ApiEvent>();
-        let rx = Rc::new(rx);
-        api::serve(server, move || api::config_json(&cfg_mgr.settings()), move |event| {
-            let _ = tx.send(event);
-            let _ = slint::invoke_from_event_loop(|| {});
-        });
+        // Wake the UI only when a request arrives. A bounded queue also keeps
+        // requests arriving during a native message box from growing forever.
+        let (tx, rx) = std::sync::mpsc::sync_channel::<api::ApiEvent>(512);
+        let overflow = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let overflow_ui = overflow.clone();
+        let wake_pending = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let wake_ui = wake_pending.clone();
         let ui2 = ui.clone();
-        let api_timer = Timer::default();
-        api_timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {
-            if modal_open() {
-                return; // the requests wait until the message box is closed
+        API_DISPATCH.with(|dispatch| *dispatch.borrow_mut() = Some(Rc::new(move || {
+            if overflow_ui.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                message("Too many browser requests arrived while Ezoo Download was busy. Some were skipped; please try those downloads again.");
             }
-            while let Ok(ev) = rx.try_recv() {
+            // Yield between batches so a burst cannot monopolize the UI.
+            for _ in 0..32 {
+                let Ok(ev) = rx.try_recv() else { return };
                 handle_api(&ui2, ev);
             }
+            wake_api_dispatch(&wake_ui);
+        })));
+        api::serve(server, move || api::config_json(&cfg_mgr.settings()), move |event| {
+            if let Err(std::sync::mpsc::TrySendError::Full(_)) = tx.try_send(event) {
+                overflow.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            wake_api_dispatch(&wake_pending);
         });
-        std::mem::forget(api_timer);
-        let _ = ctx;
     }
     {
         let enabled_mgr = mgr.clone();
@@ -378,11 +469,24 @@ fn main() -> anyhow::Result<()> {
     }
 
     // ------------------------------------------------------------ refresh loops
-    // progress windows: 10 times a second, so bars and numbers move smoothly
-    let fast_timer = Timer::default();
+    // Visible progress stays smooth; idle macOS windows need no 100 ms poll.
+    let fast_timer = Rc::new(Timer::default());
     {
         let ui = ui.clone();
+        let weak_timer = Rc::downgrade(&fast_timer);
         fast_timer.start(TimerMode::Repeated, Duration::from_millis(100), move || {
+            if let Some(timer) = weak_timer.upgrade() {
+                let visible_progress = ui.progress.borrow().values().any(|(d, _)| d.window().is_visible() && !d.window().is_minimized());
+                let exploring = ui.grabber.upgrade().is_some_and(|d| d.window().is_visible() && !d.window().is_minimized() && d.get_exploring());
+                let interval = if tray.is_some() || visible_progress || exploring {
+                    Duration::from_millis(100)
+                } else {
+                    Duration::from_secs(1)
+                };
+                if timer.interval() != interval {
+                    timer.set_interval(interval);
+                }
+            }
             if modal_open() {
                 return;
             }
@@ -402,15 +506,28 @@ fn main() -> anyhow::Result<()> {
             }
         });
     }
-    // the list: a few times a second
-    let timer = Timer::default();
+    // Continue servicing completions and power requests when the list is
+    // hidden, but avoid rebuilding an idle download list four times a second.
+    let timer = Rc::new(Timer::default());
     {
         let ui = ui.clone();
+        let weak_timer = Rc::downgrade(&timer);
+        let mut cadence = ListRefresh::default();
         timer.start(TimerMode::Repeated, Duration::from_millis(250), move || {
+            let active = ui.ctx.mgr.has_active_downloads();
+            if let Some(timer) = weak_timer.upgrade() {
+                let interval = if active { Duration::from_millis(250) } else { Duration::from_secs(1) };
+                if timer.interval() != interval {
+                    timer.set_interval(interval);
+                }
+            }
             if modal_open() {
                 return;
             }
-            refresh(&ui);
+            let visible = ui.ctx.main.upgrade().is_some_and(|m| m.window().is_visible() && !m.window().is_minimized());
+            if cadence.due(Instant::now(), active, visible) {
+                refresh(&ui);
+            }
             scheduler::poll(&ui);
 
             // the download behind an open "Download File Info" says nothing
@@ -438,7 +555,7 @@ fn main() -> anyhow::Result<()> {
         power_timer.start(TimerMode::Repeated, Duration::from_secs(1), move || {
             extra::tick_countdown(&ui);
             // the window may have been shown again from the icon next to the clock
-            if let Some(m) = ui.ctx.main.upgrade() {
+            if let Some(m) = ui.ctx.main.upgrade().filter(|_| cfg!(windows)) {
                 if m.window().is_visible() {
                     winfx::set_opacity(m.window(), ui.ctx.mgr.settings().opacity);
                 }
@@ -499,6 +616,8 @@ fn main() -> anyhow::Result<()> {
     drop(timer);
     drop(fast_timer);
     drop(power_timer);
+    API_DISPATCH.with(|dispatch| dispatch.borrow_mut().take());
+    APPEARANCE_UI.with(|slot| slot.borrow_mut().take());
     // a download nobody pressed Start for is not kept
     cancel_early(&ctx_exit);
     mgr.shutdown();
@@ -645,7 +764,7 @@ fn wire_main(ui: &Ui) {
         let ui = ui.clone();
         main.on_set_theme(move |m| {
             let mut s = ui.ctx.mgr.settings();
-            s.theme = m.clamp(0, 8) as u32;
+            s.appearance = appearance::preference(m).into();
             let _ = ui.ctx.mgr.set_settings(s);
             apply_theme(&ui, m);
         });
@@ -943,6 +1062,19 @@ fn visible_ids(ui: &Ui) -> Vec<u64> {
     (0..ui.rows.row_count()).filter_map(|i| ui.rows.row_data(i)).map(|r| r.id as u64).collect()
 }
 
+/// Keep list actions attached to visible selections, including after a filter
+/// changes. A focus is an action target only while it remains selected.
+fn reconcile_selection(sel: &mut Selection, focus: i32, visible: &[u64]) -> i32 {
+    let visible_set: HashSet<u64> = visible.iter().copied().collect();
+    sel.ids.retain(|id| visible_set.contains(id));
+    sel.anchor = sel.anchor.filter(|id| visible_set.contains(id));
+    if focus >= 0 && sel.ids.contains(&(focus as u64)) {
+        focus
+    } else {
+        visible.iter().find(|id| sel.ids.contains(id)).map(|id| *id as i32).unwrap_or(-1)
+    }
+}
+
 pub(crate) fn select_single(ui: &Ui, id: u64) {
     let mut sel = ui.sel.borrow_mut();
     sel.ids = vec![id];
@@ -992,18 +1124,15 @@ fn row_clicked(ui: &Ui, id: u64, ctrl: bool, shift: bool) {
 /// The downloads an action works on: the whole selection when the clicked
 /// one is part of it, otherwise only that one.
 fn targets(ui: &Ui, id: u64) -> Vec<u64> {
+    let order = visible_ids(ui);
+    if !order.contains(&id) {
+        return Vec::new();
+    }
     let sel = ui.sel.borrow();
-    if id as i64 >= 0 && sel.ids.contains(&id) && sel.ids.len() > 1 {
-        let order = visible_ids(ui);
-        let mut v: Vec<u64> = order.into_iter().filter(|x| sel.ids.contains(x)).collect();
-        if v.is_empty() {
-            v = sel.ids.clone();
-        }
-        v
-    } else if (id as i64) >= 0 {
-        vec![id]
+    if sel.ids.contains(&id) && sel.ids.len() > 1 {
+        order.into_iter().filter(|x| sel.ids.contains(x)).collect()
     } else {
-        Vec::new()
+        vec![id]
     }
 }
 
@@ -1065,7 +1194,10 @@ thread_local! {
 fn tray_action(ui: &Ui, action: tray::TrayAction) {
     use tray::TrayAction as T;
     match action {
-        T::Show => bring_to_front(&ui.ctx),
+        T::Show => {
+            bring_to_front(&ui.ctx);
+            refresh(ui);
+        }
         T::AddUrl => {
             bring_to_front(&ui.ctx);
             open_add_dialog(&ui.ctx, String::new(), RequestHeaders::default(), None, VideoExtra::default());
@@ -1130,7 +1262,10 @@ thread_local! {
 /// A request from the browser extension.
 fn handle_api(ui: &Ui, event: api::ApiEvent) {
     match event {
-        api::ApiEvent::Show => bring_to_front(&ui.ctx),
+        api::ApiEvent::Show => {
+            bring_to_front(&ui.ctx);
+            refresh(ui);
+        }
         api::ApiEvent::Playlist(url) => playlist::open_url(ui, &url),
         api::ApiEvent::Links(l) => grab::open_links(ui, l),
         api::ApiEvent::Add(req) => {
@@ -1152,6 +1287,7 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
                 user_agent: req.user_agent,
                 extra: Vec::new(),
                 auth: None,
+                ..Default::default()
             };
             if let Some(list) = &req.headers {
                 swiftget_engine::ytdlp::apply_headers(&mut headers, list);
@@ -1201,6 +1337,33 @@ fn wire_add(ui: &Ui) {
     let Some(add) = ui.ctx.add.upgrade() else { return };
     {
         let ctx = ui.ctx.clone();
+        add.on_rename_file(move |name| {
+            let Some(d) = ctx.add.upgrade() else { return };
+            let current = PathBuf::from(d.get_save_as().as_str());
+            // A pending metadata response must not overwrite a name being edited.
+            ctx.add_state.lock().unwrap().auto_path.clear();
+            let Some(path) = add_path_with_name(&current, name.as_str()) else {
+                d.set_name_error(t("Use a file name without slashes, colons, or control characters.").into());
+                return;
+            };
+            d.set_save_as(path.display().to_string().into());
+            d.set_name_error(SharedString::new());
+            d.set_kind(kind_for(name.as_str()).into());
+            d.set_ext(filename::extension(name.as_str()).to_uppercase().into());
+        });
+    }
+    {
+        let w = add.as_weak();
+        let ctx = ui.ctx.clone();
+        add.on_refresh_destination(move || {
+            if let Some(d) = w.upgrade() {
+                ctx.add_state.lock().unwrap().auto_path.clear();
+                sync_add_destination(&d);
+            }
+        });
+    }
+    {
+        let ctx = ui.ctx.clone();
         add.on_check_url(move || {
             if let Some(d) = ctx.add.upgrade() {
                 let url = d.get_url().trim().to_string();
@@ -1233,18 +1396,21 @@ fn wire_add(ui: &Ui) {
                 .cloned()
                 .unwrap_or_else(|| "General".into());
             let current = PathBuf::from(d.get_save_as().as_str());
+            let was_auto = ctx.add_state.lock().unwrap().auto_path == current.display().to_string();
             let name = current
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "download".into());
             let path = ctx.mgr.settings().dir_for(&cat).join(&name).display().to_string();
             d.set_save_as(path.clone().into());
+            sync_add_destination(&d);
             d.set_category_name(t(&cat).into());
-            ctx.add_state.lock().unwrap().auto_path = path;
+            ctx.add_state.lock().unwrap().auto_path = if was_auto { path } else { String::new() };
         });
     }
     {
         let w = add.as_weak();
+        let ctx = ui.ctx.clone();
         add.on_browse(move || {
             let Some(d) = w.upgrade() else { return };
             let current = PathBuf::from(d.get_save_as().as_str());
@@ -1256,7 +1422,9 @@ fn wire_add(ui: &Ui) {
                 dlg = dlg.set_file_name(name.to_string_lossy());
             }
             if let Some(p) = dlg.save_file() {
+                ctx.add_state.lock().unwrap().auto_path.clear();
                 d.set_save_as(p.display().to_string().into());
+                sync_add_destination(&d);
             }
         });
     }
@@ -1516,6 +1684,38 @@ thread_local! {
     /// and a list refresh in the middle of the click that opened it could
     /// hang the program; the timers wait until it is closed
     static MODAL: Cell<bool> = const { Cell::new(false) };
+    // The receiver and UI objects remain on the UI thread. The API thread only
+    // queues requests and posts a Send callback to this dispatcher.
+    static API_DISPATCH: RefCell<Option<Rc<dyn Fn()>>> = const { RefCell::new(None) };
+    static API_DISPATCHING: Cell<bool> = const { Cell::new(false) };
+}
+
+fn dispatch_api_events() {
+    if modal_open() || API_DISPATCHING.with(|busy| busy.replace(true)) {
+        return;
+    }
+    // Do not retain a RefCell borrow while a callback may open a native dialog.
+    let dispatch = API_DISPATCH.with(|dispatch| dispatch.borrow().clone());
+    if let Some(dispatch) = dispatch {
+        dispatch();
+    }
+    API_DISPATCHING.with(|busy| busy.set(false));
+}
+
+/// Coalesce a burst into one pending event-loop wakeup, rather than moving an
+/// unbounded backlog from the request channel into the event loop itself.
+fn wake_api_dispatch(pending: &Arc<std::sync::atomic::AtomicBool>) {
+    use std::sync::atomic::Ordering;
+    if pending.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let wake = pending.clone();
+    if slint::invoke_from_event_loop(move || {
+        wake.store(false, Ordering::Release);
+        dispatch_api_events();
+    }).is_err() {
+        pending.store(false, Ordering::Release);
+    }
 }
 
 pub(crate) fn modal_open() -> bool {
@@ -1535,6 +1735,9 @@ impl Drop for ModalGuard {
     fn drop(&mut self) {
         let before = self.0;
         MODAL.with(|m| m.set(before));
+        if !before {
+            let _ = slint::invoke_from_event_loop(dispatch_api_events);
+        }
     }
 }
 
@@ -1661,7 +1864,7 @@ pub(crate) fn set_language(ui: &Ui, lang: &str) {
     refresh(ui);
 }
 
-/// Fonts of Options > Appearance > Font ("" = Windows' own).
+/// Fonts of Options > Appearance > Font ("" = the platform system font).
 pub(crate) const FONTS: [&str; 7] = ["", "Tahoma", "Arial", "Calibri", "Verdana", "Times New Roman", "Courier New"];
 
 /// Everything that decides how the windows look.
@@ -1680,7 +1883,7 @@ pub(crate) struct Look {
 impl Look {
     pub(crate) fn of(s: &Settings) -> Look {
         Look {
-            mode: s.theme.min(8) as i32,
+            mode: appearance::index(&s.appearance),
             scale: s.font_scale.clamp(80, 150) as f32 / 100.0,
             family: if FONTS.contains(&s.font_family.as_str()) { s.font_family.clone() } else { String::new() },
             background: s.background_image.clone(),
@@ -1692,6 +1895,17 @@ impl Look {
 thread_local! {
     // the picture behind the main window, loaded once per file
     static BACKGROUND: RefCell<(String, Option<slint::Image>)> = const { RefCell::new((String::new(), None)) };
+    static APPEARANCE_UI: RefCell<Option<Ui>> = const { RefCell::new(None) };
+    static CURRENT_LOOK: RefCell<Option<Look>> = const { RefCell::new(None) };
+}
+
+fn platform_appearance_changed() {
+    let ui = APPEARANCE_UI.with(|slot| slot.borrow().clone());
+    if let Some(ui) = ui {
+        // Preserve a temporary Options preview while the system changes.
+        let look = CURRENT_LOOK.with(|slot| slot.borrow().clone()).unwrap_or_else(|| Look::of(&ui.ctx.mgr.settings()));
+        apply_look(&ui, &look);
+    }
 }
 
 /// The picture of `path` (a png / jpg the user chose); None when it can't be read.
@@ -1713,18 +1927,38 @@ fn background_image(path: &str) -> Option<slint::Image> {
 /// Set the theme on every open window (each window has its own copy).
 pub(crate) fn apply_theme(ui: &Ui, mode: i32) {
     let mut look = Look::of(&ui.ctx.mgr.settings());
-    look.mode = mode;
+    look.mode = mode.clamp(0, 2);
     apply_look(ui, &look);
 }
 
 fn set_theme_of(t: Theme<'_>, look: &Look) {
-    t.set_mode(look.mode);
+    let palette = appearance::palette(look.mode);
+    t.set_appearance(look.mode);
+    t.set_mode(if palette.dark { 1 } else { 0 });
+    t.set_native_macos(cfg!(target_os = "macos"));
+    t.set_platform_window(palette.window);
+    t.set_platform_panel(palette.panel);
+    t.set_platform_secondary_surface(palette.secondary_surface);
+    t.set_platform_sidebar(palette.sidebar);
+    t.set_platform_text(palette.text);
+    t.set_platform_muted(palette.muted);
+    t.set_platform_accent(palette.accent);
+    t.set_platform_accent_text(palette.accent_text);
+    t.set_platform_line(palette.line);
+    t.set_platform_selection(palette.selection);
+    t.set_platform_hover(palette.hover);
+    t.set_platform_ok(palette.ok);
+    t.set_platform_warn(palette.warn);
+    t.set_platform_err(palette.err);
+    t.set_platform_input(palette.input);
+    t.set_platform_bar(palette.bar);
     t.set_font_scale(look.scale);
-    t.set_font_family(look.family.clone().into());
+    t.set_font_family(if look.family.is_empty() { palette.font_family } else { look.family.clone() }.into());
 }
 
 /// Show `look` on every window right away.
 pub(crate) fn apply_look(ui: &Ui, look: &Look) {
+    CURRENT_LOOK.with(|slot| *slot.borrow_mut() = Some(look.clone()));
     macro_rules! set {
         ($($w:expr),*) => { $( if let Some(w) = $w.upgrade() { set_theme_of(w.global::<Theme>(), look); } )* };
     }
@@ -1863,12 +2097,45 @@ fn close_complete(ui: &Ui) {
     }
 }
 
+/// A rename is one path component, never a second destination or traversal.
+fn add_path_with_name(current: &Path, name: &str) -> Option<PathBuf> {
+    if name.trim().is_empty() || name == "." || name == ".." || name.len() > 255
+        || name.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | ':'))
+    {
+        return None;
+    }
+    Some(current.parent().unwrap_or_else(|| Path::new("")).join(name))
+}
+
+fn sync_add_destination(d: &AddDialog) {
+    let path = PathBuf::from(d.get_save_as().as_str());
+    let name = path.file_name().map(|v| v.to_string_lossy().into_owned()).unwrap_or_default();
+    let destination = path.parent().and_then(|folder| {
+        let name = folder.file_name()?.to_string_lossy();
+        if matches!(name.as_ref(), "Downloads" | "Desktop" | "Documents" | "Movies" | "Music" | "Pictures") {
+            return Some(name.into_owned());
+        }
+        Some(match folder.parent().and_then(|p| p.file_name()) {
+            Some(parent) => format!("{} / {}", parent.to_string_lossy(), name),
+            None => name.into_owned(),
+        })
+    }).unwrap_or_else(|| t("Current folder"));
+    d.set_file_name(name.clone().into());
+    d.set_destination(destination.into());
+    d.set_name_error(if add_path_with_name(&path, &name).is_some() {
+        SharedString::new()
+    } else {
+        t("Choose a valid file name.").into()
+    });
+}
+
 /// Fill "Download File Info" with a name: category, Save As, icon.
 fn show_name_in_dialog(ctx: &Ctx, d: &AddDialog, name: &str, url: &str) -> String {
     let s = ctx.mgr.settings();
     let cat = s.category_of(name, url);
     let path = s.dir_for(&cat).join(name).display().to_string();
     d.set_save_as(path.clone().into());
+    sync_add_destination(d);
     let cats = ctx.add_state.lock().unwrap().categories.clone();
     d.set_category_index(cats.iter().position(|c| *c == cat).unwrap_or(0) as i32);
     d.set_category_name(t(&cat).into());
@@ -1877,7 +2144,11 @@ fn show_name_in_dialog(ctx: &Ctx, d: &AddDialog, name: &str, url: &str) -> Strin
     path
 }
 
-pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, name_hint: Option<String>, extra: VideoExtra) {
+pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, mut headers: RequestHeaders, name_hint: Option<String>, extra: VideoExtra) {
+    // Bind before either queueing or storing: a later URL edit must not become
+    // the first origin assigned to incoming browser/extractor credentials.
+    headers.bind_to(&url);
+    let headers = headers.scoped_for(&url);
     // a magnet link: the torrent window
     if swiftget_engine::torrent::is_magnet(&url) {
         torrent_ui::open_source(&url);
@@ -1915,6 +2186,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     {
         let mut st = ctx.add_state.lock().unwrap();
         st.headers = headers;
+        st.authorization = DialogAuthorization::new(&url, login.as_ref());
         st.extra = extra;
         st.origin_url = url.clone();
         st.probe = None;
@@ -1924,6 +2196,11 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
         st.probe_seq += 1;
     }
     d.set_url(url.clone().into());
+    d.set_manual_url(url.is_empty());
+    d.set_show_advanced(false);
+    d.set_source_host(url::Url::parse(&url).ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .unwrap_or_default().into());
     d.set_description(SharedString::new());
     d.set_remember_path(false);
     d.set_size_text(SharedString::new());
@@ -1945,6 +2222,11 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     d.set_can_use_browser(false);
     d.set_info_error(false);
     d.set_probing(false);
+    // Reusing the manual-link window must not stretch the shorter browser form.
+    let scale = d.window().scale_factor().max(0.1);
+    let existing_width = d.window().size().width as f32 / scale;
+    let width = if existing_width >= 500.0 { existing_width } else { 540.0 };
+    d.window().set_size(slint::LogicalSize::new(width, d.get_natural_height().max(280.0)));
     open_window!(d);
     // it already downloads while the window is open
     if !url.is_empty() && s.start_while_info && ctx.mgr.find_url(&url).is_none() {
@@ -1954,7 +2236,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
             url: url.clone(),
             file_name: path.file_name().map(|n| n.to_string_lossy().into_owned()),
             save_dir: path.parent().map(Path::to_path_buf),
-            headers: st.headers.clone(),
+            headers: st.headers.scoped_for(&url),
             audio_url: st.extra.audio_url.clone(),
             source_page: st.extra.source_page.clone(),
             source_key: st.extra.source_key.clone(),
@@ -1998,15 +2280,16 @@ pub(crate) fn early_download(ctx: &Ctx) -> Option<u64> {
 /// Ask the server about the file in the background, then show the result.
 fn start_probe(ctx: &Ctx, url: String) {
     let Some(d) = ctx.add.upgrade() else { return };
-    let (seq, mut headers) = {
+    d.set_source_host(url::Url::parse(&url).ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .unwrap_or_default().into());
+    let (seq, headers) = {
         let mut st = ctx.add_state.lock().unwrap();
         st.probe_seq += 1;
         st.probe = None;
-        (st.probe_seq, st.headers.clone())
+        let headers = add_dialog_headers(&mut st, &d, &url);
+        (st.probe_seq, headers)
     };
-    if d.get_use_login() && !d.get_user().trim().is_empty() {
-        headers.auth = Some((d.get_user().trim().to_string(), d.get_password().to_string()));
-    }
     d.set_probing(true);
     d.set_info_error(false);
     let ctx2 = ctx.clone();
@@ -2029,7 +2312,7 @@ fn start_probe(ctx: &Ctx, url: String) {
                     }
                     let has_audio = st.extra.audio_url.is_some() && st.origin_url == url;
                     let size = p.total_size.map(fmt_size).unwrap_or_else(|| t("Unknown size"));
-                    let size_text = if has_audio { format!("{size}\n{}", t("+ audio")) } else { size };
+                    let size_text = if has_audio { format!("{size} {}", t("+ audio")) } else { size };
                     d.set_size_text(size_text.into());
                     let kind = match (p.kind, p.resumable) {
                         _ if has_audio => "Video + audio, joined after download",
@@ -2066,6 +2349,12 @@ fn start_probe(ctx: &Ctx, url: String) {
 fn confirm_add(ui: &Ui, start: bool) {
     let ctx = &ui.ctx;
     let Some(d) = ctx.add.upgrade() else { return };
+    if add_path_with_name(Path::new(d.get_save_as().as_str()), d.get_file_name().as_str()).is_none()
+        || !d.get_name_error().is_empty()
+    {
+        d.set_name_error(t("Choose a valid file name.").into());
+        return;
+    }
     let url = d.get_url().trim().to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) || url::Url::parse(&url).is_err() {
         d.set_info(t("Please enter a valid http:// or https:// address").into());
@@ -2107,9 +2396,7 @@ fn confirm_add(ui: &Ui, start: bool) {
             settings.queues.get(d.get_queue_index().max(0) as usize).map(|q| q.id)
         };
         let description = d.get_description().trim().to_string();
-        let mut headers = st.headers.clone();
-        headers.auth = (d.get_use_login() && !d.get_user().trim().is_empty())
-            .then(|| (d.get_user().trim().to_string(), d.get_password().to_string()));
+        let headers = add_dialog_headers(&mut st, &d, &url);
         NewDownload {
             url: url.clone(),
             file_name: name,
@@ -2408,6 +2695,11 @@ pub(crate) fn reveal_in_folder(v: &DownloadView) {
             return;
         }
     }
+    #[cfg(target_os = "macos")]
+    if v.status == Status::Completed && v.save_path.exists() {
+        let _ = std::process::Command::new("/usr/bin/open").arg("-R").arg(&v.save_path).spawn();
+        return;
+    }
     let _ = std::fs::create_dir_all(&dir);
     let _ = open::that(&dir);
 }
@@ -2640,15 +2932,12 @@ pub(crate) fn refresh(ui: &Ui) {
         })
         .map(|v| row_of(v, false))
         .collect();
-    // the selection: drop rows that are gone, mark the rest
+    // Reconcile against the filtered list, so actions cannot reach hidden rows.
     let mut new_rows = new_rows;
     {
         let mut sel = ui.sel.borrow_mut();
-        sel.ids.retain(|id| views.iter().any(|v| v.id == *id));
-        let focus = w.get_selected_id();
-        if sel.ids.is_empty() && focus >= 0 && views.iter().any(|v| v.id as i32 == focus) {
-            sel.ids.push(focus as u64);
-        }
+        let visible: Vec<u64> = new_rows.iter().map(|r| r.id as u64).collect();
+        w.set_selected_id(reconcile_selection(&mut sel, w.get_selected_id(), &visible));
         for r in new_rows.iter_mut() {
             r.sel = sel.ids.contains(&(r.id as u64));
         }
@@ -2745,6 +3034,7 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
         return;
     }
     let Ok(d) = DetailsDialog::new() else { return };
+    d.set_native_frame(cfg!(target_os = "macos"));
     let settings = ui.ctx.mgr.settings();
     set_theme_of(d.global::<Theme>(), &Look::of(&settings));
     // the tabs' controls are set once, so typing in them isn't overwritten
@@ -2904,7 +3194,9 @@ fn update_progress_windows(ui: &Ui) {
                 let (tip, progress) = tray_tip(&v);
                 tray::update_download(id, &tip, progress);
                 if let Some((d, segs)) = ui.progress.borrow().get(&id) {
-                    fill_details(d, segs, &v);
+                    if d.window().is_visible() && !d.window().is_minimized() {
+                        fill_details(d, segs, &v);
+                    }
                     // also on the window's taskbar button (seen when it is minimized)
                     winfx::taskbar_progress(d.window(), taskbar_state(&v));
                 }
@@ -3001,6 +3293,146 @@ fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn add_dialog_rename_stays_in_the_selected_folder() {
+        let current = Path::new("/Downloads/old.mp4");
+        assert_eq!(add_path_with_name(current, "Holiday video.mp4"), Some(PathBuf::from("/Downloads/Holiday video.mp4")));
+        for invalid in ["", " ", ".", "..", "../escape.mp4", "/tmp/escape", "sub/file", "sub\\file", "C:escape", "bad\nname", "bad\0name"] {
+            assert_eq!(add_path_with_name(current, invalid), None, "{invalid:?}");
+        }
+        assert_eq!(add_path_with_name(current, &"x".repeat(256)), None);
+        assert_eq!(add_path_with_name(Path::new("old.zip"), "new.zip"), Some(PathBuf::from("new.zip")));
+    }
+
+    #[test]
+    fn filters_preserve_visible_selection_and_drop_hidden_focus_and_anchor() {
+        let mut sel = Selection { ids: vec![10, 20, 30], anchor: Some(10) };
+        let focus = reconcile_selection(&mut sel, 30, &[20, 30, 40]);
+        assert_eq!(sel.ids, [20, 30]);
+        assert_eq!(sel.anchor, None);
+        assert_eq!(focus, 30);
+
+        // A hidden focused item yields to a surviving selection, in list order.
+        let focus = reconcile_selection(&mut sel, focus, &[40, 20]);
+        assert_eq!(sel.ids, [20]);
+        assert_eq!(focus, 20);
+
+        // Filtering everything out cannot leave an invisible action target, and
+        // clearing the filter must not silently restore the former selection.
+        assert_eq!(reconcile_selection(&mut sel, focus, &[40]), -1);
+        assert!(sel.ids.is_empty());
+        assert_eq!(reconcile_selection(&mut sel, -1, &[10, 20, 30, 40]), -1);
+        assert!(sel.ids.is_empty());
+
+        // Select All initially has no focused row; explicit deselection may also
+        // leave a visible old focus. Only selected rows can become action targets.
+        sel.ids = vec![20, 40];
+        sel.anchor = Some(20);
+        assert_eq!(reconcile_selection(&mut sel, -1, &[40, 20]), 40);
+        assert_eq!(sel.ids, [20, 40]);
+        assert_eq!(sel.anchor, Some(20));
+        sel.ids.clear();
+        assert_eq!(reconcile_selection(&mut sel, 40, &[40, 20]), -1);
+        assert!(sel.ids.is_empty());
+    }
+
+    #[test]
+    fn edited_download_scopes_headers_and_requires_fresh_authorization() {
+        let original = "https://first.example/file.zip";
+        let destination = "https://second.example/file.zip";
+        let login = ("synthetic-user".to_string(), "synthetic-password".to_string());
+        let mut state = AddState {
+            headers: RequestHeaders {
+                cookies: Some("synthetic=1".into()),
+                extra: vec![("X-Test-Credential".into(), "synthetic-token".into())],
+                auth: Some(login.clone()),
+                ..Default::default()
+            },
+            authorization: DialogAuthorization::new(original, Some(&login)),
+            ..Default::default()
+        };
+        state.headers.bind_to(original);
+        let (same, clear) = state.headers_for("https://first.example:443/another.zip", true, &login.0, &login.1);
+        assert!(!clear);
+        assert_eq!(same.cookies.as_deref(), Some("synthetic=1"));
+        assert_eq!(same.auth, Some(login.clone()));
+        assert_eq!(same.extra.len(), 1);
+
+        // Changing the name alone is not consent to send an autofilled password.
+        let (foreign, clear) = state.headers_for(destination, true, "another-user", &login.1);
+        assert!(clear);
+        assert!(foreign.cookies.is_none());
+        assert!(foreign.extra.is_empty());
+        assert!(foreign.auth.is_none());
+
+        // After the UI clears stale fields, intentional re-entry is usable for
+        // the new site; original cookies and extractor headers stay isolated.
+        let (manual, clear) = state.headers_for(destination, true, &login.0, &login.1);
+        assert!(!clear);
+        assert_eq!(manual.auth, Some(login));
+        assert!(manual.cookies.is_none());
+        assert!(manual.extra.is_empty());
+        assert_eq!(manual.credential_origin.as_deref(), Some("https://second.example"));
+    }
+
+    #[test]
+    fn autofilled_authorization_does_not_follow_scheme_or_port_edits() {
+        let original = "https://first.example/file.zip";
+        let login = ("synthetic-user".to_string(), "synthetic-password".to_string());
+        for destination in ["http://first.example/file.zip", "https://first.example:8443/file.zip"] {
+            let mut auth = DialogAuthorization::new(original, Some(&login));
+            // Even unchecked fields must clear, so rechecking the box cannot
+            // re-enable an old password on the edited origin.
+            let (selected, clear) = auth.for_destination(destination, false, &login.0, &login.1);
+            assert!(clear);
+            assert!(selected.is_none());
+        }
+        let mut auth = DialogAuthorization::new(original, Some(&login));
+        let (selected, clear) = auth.for_destination("https://second.example/file.zip", true, &login.0, "new-synthetic-password");
+        assert!(!clear);
+        assert_eq!(selected, Some((login.0, "new-synthetic-password".into())));
+    }
+
+    #[test]
+    fn idle_list_waits_but_transfer_changes_and_restoring_are_immediate() {
+        let start = Instant::now();
+        let mut cadence = ListRefresh::default();
+        assert!(cadence.due(start, false, true));
+        assert!(!cadence.due(start + Duration::from_millis(250), false, true));
+        assert!(!cadence.due(start + Duration::from_millis(1999), false, true));
+        assert!(cadence.due(start + Duration::from_secs(2), false, true));
+        assert!(cadence.due(start + Duration::from_millis(2100), true, true));
+        assert!(cadence.due(start + Duration::from_millis(2200), true, true));
+        // The completion must not wait for the idle refresh interval.
+        assert!(cadence.due(start + Duration::from_millis(2300), false, true));
+        assert!(!cadence.due(start + Duration::from_millis(2400), false, true));
+        assert!(!cadence.due(start + Duration::from_millis(2500), true, false));
+        assert!(!cadence.due(start + Duration::from_millis(2600), false, false));
+        assert!(cadence.due(start + Duration::from_millis(2700), false, true));
+    }
+
+    #[test]
+    fn api_dispatch_waits_for_modal_and_cannot_reenter_itself() {
+        let calls = Rc::new(Cell::new(0));
+        let called = calls.clone();
+        API_DISPATCH.with(|dispatch| *dispatch.borrow_mut() = Some(Rc::new(move || {
+            called.set(called.get() + 1);
+            // A nested event loop must not dispatch another request in the
+            // middle of the current callback, even outside a modal dialog.
+            dispatch_api_events();
+        })));
+        MODAL.with(|modal| modal.set(true));
+        dispatch_api_events();
+        assert_eq!(calls.get(), 0);
+        MODAL.with(|modal| modal.set(false));
+        dispatch_api_events();
+        assert_eq!(calls.get(), 1);
+        dispatch_api_events();
+        assert_eq!(calls.get(), 2);
+        API_DISPATCH.with(|dispatch| dispatch.borrow_mut().take());
+    }
+
     #[test]
     fn header_points_to_columns() {
         let w = [280.0, 30.0, 82.0];

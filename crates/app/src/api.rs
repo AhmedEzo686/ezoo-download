@@ -1,9 +1,8 @@
 //! Tiny local HTTP API on 127.0.0.1 used by the browser extension.
 //!
-//! Only the extension can talk to it: requests must carry the `X-SwiftGet`
-//! header (a web page cannot add custom headers to a cross-origin request
-//! without a CORS preflight, which we never approve) and any Origin header
-//! must belong to a browser extension.
+//! Requests carry `X-SwiftGet`, and any Origin must belong to an extension.
+//! Rejecting CORS preflights blocks ordinary web pages; a local client can
+//! imitate these headers. Extension readiness is setup feedback, not auth.
 
 use serde::Deserialize;
 use std::io::{Read, Write};
@@ -15,6 +14,88 @@ use tiny_http::{Header, Method, Request, Response, Server};
 /// Addresses the user chose to download with the browser itself (the server
 /// refused Ezoo Download): the extension leaves them to the browser once.
 static FOR_BROWSER: std::sync::Mutex<Vec<(String, std::time::Instant)>> = std::sync::Mutex::new(Vec::new());
+
+/// An extension reported readiness recently. This is setup feedback, not
+/// authentication or proof that every browser profile has the add-on.
+#[derive(Clone)]
+pub struct ExtensionStatus {
+    pub version: String,
+    pub enabled: bool,
+}
+
+struct ExtensionRegistration {
+    browser: String,
+    status: ExtensionStatus,
+    at: std::time::Instant,
+}
+
+const EXTENSION_STATUS_TTL: Duration = Duration::from_secs(90);
+static EXTENSIONS: std::sync::Mutex<Vec<ExtensionRegistration>> = std::sync::Mutex::new(Vec::new());
+
+/// Cheap in-memory lookup for the explicit browser setup window only.
+/// The caller compares version with bundled_extension_version before showing
+/// setup as complete. Ordinary /ping and second-instance /show never register.
+pub fn extension_status(browser: &str) -> Option<ExtensionStatus> {
+    let mut registrations = EXTENSIONS.lock().unwrap_or_else(|p| p.into_inner());
+    registrations.retain(|item| item.at.elapsed() < EXTENSION_STATUS_TTL);
+    registrations.iter().find(|item| item.browser == browser).map(|item| item.status.clone())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ExtensionReadyRequest {
+    browser: String,
+    version: String,
+    extension_origin: String,
+    enabled: bool,
+}
+
+fn extension_origin(value: &str) -> Option<String> {
+    let origin = url::Url::parse(value).ok()?;
+    if !matches!(origin.scheme(), "chrome-extension" | "moz-extension" | "extension")
+        || !origin.username().is_empty() || origin.password().is_some()
+        || origin.port().is_some() || origin.query().is_some() || origin.fragment().is_some()
+        || !matches!(origin.path(), "" | "/")
+    {
+        return None;
+    }
+    let host = origin.host_str()?;
+    if host.is_empty() || host.len() > 128 || !host.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+        return None;
+    }
+    Some(format!("{}://{}", origin.scheme(), host.to_ascii_lowercase()))
+}
+
+impl ExtensionReadyRequest {
+    fn valid(&self, request_origin: Option<&str>) -> bool {
+        if !matches!(self.browser.as_str(), "Chrome" | "Edge" | "Firefox" | "Opera" | "Brave" | "Chromium")
+            || self.version.is_empty() || self.version.len() > 32
+            || !self.version.as_bytes()[0].is_ascii_digit()
+            || !self.version.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b'+'))
+        {
+            return false;
+        }
+        let Some(origin) = extension_origin(&self.extension_origin) else { return false };
+        if (self.browser == "Firefox") != origin.starts_with("moz-extension://") {
+            return false;
+        }
+        // Some extension fetch implementations omit Origin. The supplied
+        // runtime origin is only a bounded UX hint, never an access token.
+        request_origin.map(|value| extension_origin(value).as_ref() == Some(&origin)).unwrap_or(true)
+    }
+}
+
+fn register_extension(ready: ExtensionReadyRequest) {
+    let mut registrations = EXTENSIONS.lock().unwrap_or_else(|p| p.into_inner());
+    registrations.retain(|item| item.at.elapsed() < EXTENSION_STATUS_TTL && item.browser != ready.browser);
+    // The browser allowlist bounds this list to six entries, including
+    // multiple profiles reporting the same browser family.
+    registrations.push(ExtensionRegistration {
+        browser: ready.browser,
+        status: ExtensionStatus { version: ready.version, enabled: ready.enabled },
+        at: std::time::Instant::now(),
+    });
+}
 
 /// Version of the browser add-in that ships with this program.
 pub fn bundled_extension_version() -> String {
@@ -235,6 +316,20 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
             reply(req, 200, &body)
         }
         (Method::Get, "/config") => reply(req, 200, &config()),
+        (Method::Post, "/extension/ready") => {
+            let mut body = String::new();
+            if req.as_reader().take(4097).read_to_string(&mut body).is_err() || body.len() > 4096 {
+                return reply(req, 400, r#"{"error":"bad body"}"#);
+            }
+            let Ok(ready) = serde_json::from_str::<ExtensionReadyRequest>(&body) else {
+                return reply(req, 400, r#"{"error":"invalid extension status"}"#);
+            };
+            if !ready.valid(header(&req, "Origin").as_deref()) {
+                return reply(req, 403, r#"{"error":"invalid extension origin"}"#);
+            }
+            register_extension(ready);
+            reply(req, 200, r#"{"ok":true}"#)
+        }
         (Method::Post, "/links") => {
             let mut body = String::new();
             if req.as_reader().take(16 << 20).read_to_string(&mut body).is_err() {
@@ -316,8 +411,7 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
                     }
                 }
                 let _done = Done;
-                let cookies = (!r.cookie_list.is_empty()).then_some(r.cookie_list.as_slice());
-                let body = match swiftget_engine::ytdlp::resolve(&r.url, cookies) {
+                let body = match swiftget_engine::ytdlp::resolve_for_browser(&r.url, &r.cookie_list) {
                     Ok(info) => serde_json::json!({
                         "ok": true, "title": info.title, "site": info.site, "options": info.options
                     }),
@@ -333,6 +427,71 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ready(browser: &str, origin: &str) -> ExtensionReadyRequest {
+        ExtensionReadyRequest { browser: browser.into(), version: "1.0.6.1".into(), extension_origin: origin.into(), enabled: true }
+    }
+
+    #[test]
+    fn readiness_accepts_only_bounded_extension_metadata_and_matching_origins() {
+        let chrome = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let firefox = "moz-extension://12345678-1234-1234-1234-123456789abc";
+        assert!(ready("Chrome", chrome).valid(Some(chrome)));
+        assert!(ready("Firefox", firefox).valid(Some(firefox)));
+        assert!(ready("Firefox", firefox).valid(None));
+        assert!(!ready("Chrome", chrome).valid(Some("chrome-extension://bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")));
+        assert!(!ready("Chrome", chrome).valid(Some("https://untrusted.example")));
+        assert!(!ready("Chrome", chrome).valid(Some("null")));
+        assert!(!ready("Firefox", chrome).valid(None));
+        assert!(!ready("Chrome", firefox).valid(None));
+        assert!(!ready("Unknown", chrome).valid(None));
+        for bad in ["https://untrusted.example", "chrome-extension://id/page", "chrome-extension://user@id", "chrome-extension://id?query", "chrome-extension://id#fragment", "chrome-extension://id:42"] {
+            assert!(!ready("Chrome", bad).valid(None), "{bad}");
+        }
+        for bad in ["".to_string(), "1".repeat(33), "1.0.6\nforged".into()] {
+            let mut request = ready("Chrome", chrome);
+            request.version = bad;
+            assert!(!request.valid(None));
+        }
+        assert!(serde_json::from_str::<ExtensionReadyRequest>(r#"{"browser":"Chrome","version":"1.0.6.1","extensionOrigin":"chrome-extension://id","enabled":true,"cookies":"unwanted"}"#).is_err());
+    }
+
+    fn exchange(method: &str, path: &str, origin: Option<&str>, body: &str) -> String {
+        let server = Server::http(("127.0.0.1", 0)).unwrap();
+        let address = server.server_addr().to_ip().unwrap();
+        let worker = std::thread::spawn(move || handle(server.recv().unwrap(), &|| "{}".into(), &|_| {}));
+        let mut stream = TcpStream::connect(address).unwrap();
+        stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let origin = origin.map(|value| format!("Origin: {value}\r\n")).unwrap_or_default();
+        write!(stream, "{method} {path} HTTP/1.1\r\nHost: {address}\r\nX-SwiftGet: 1\r\n{origin}Content-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        worker.join().unwrap();
+        response
+    }
+
+    #[test]
+    fn only_explicit_readiness_posts_update_short_lived_setup_status() {
+        EXTENSIONS.lock().unwrap().clear();
+        assert!(exchange("GET", "/ping", None, "").starts_with("HTTP/1.1 200"));
+        assert!(exchange("POST", "/show", None, "").starts_with("HTTP/1.1 200"));
+        assert!(extension_status("Chrome").is_none());
+        let origin = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let body = format!(r#"{{"browser":"Chrome","version":"1.0.6.1","extensionOrigin":"{origin}","enabled":false}}"#);
+        assert!(exchange("POST", "/extension/ready", Some(origin), &body).starts_with("HTTP/1.1 200"));
+        let status = extension_status("Chrome").unwrap();
+        assert_eq!(status.version, "1.0.6.1");
+        assert!(!status.enabled);
+        assert!(exchange("POST", "/extension/ready", Some("https://untrusted.example"), &body).starts_with("HTTP/1.1 403"));
+        assert!(exchange("POST", "/extension/ready", Some("chrome-extension://different"), &body).starts_with("HTTP/1.1 403"));
+        assert!(exchange("POST", "/extension/ready", Some(origin), &"x".repeat(4097)).starts_with("HTTP/1.1 400"));
+        assert!(!extension_status("Chrome").unwrap().enabled, "rejected requests cannot overwrite readiness");
+        {
+            let mut registrations = EXTENSIONS.lock().unwrap();
+            registrations[0].at = std::time::Instant::now() - EXTENSION_STATUS_TTL;
+        }
+        assert!(extension_status("Chrome").is_none(), "idle registrations expire");
+    }
 
     #[test]
     fn only_this_computer_by_its_own_name() {

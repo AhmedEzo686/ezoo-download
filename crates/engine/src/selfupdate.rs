@@ -1,4 +1,5 @@
-//! New versions of Ezoo Download itself.
+//! Windows installer updates for Ezoo Download itself.
+//! Other platforms use release downloads and must never run this installer.
 //!
 //! Every release on GitHub carries two files:
 //!
@@ -127,6 +128,9 @@ pub fn parse_signed(text: &str) -> anyhow::Result<Release> {
 
 /// The latest release, if it is newer than this program.
 pub async fn check(client: &reqwest::Client) -> anyhow::Result<Option<Release>> {
+    if !cfg!(windows) {
+        return Ok(None);
+    }
     let text = client
         .get(version_url())
         .header(reqwest::header::USER_AGENT, crate::config::DEFAULT_USER_AGENT)
@@ -179,6 +183,9 @@ pub async fn download_with_progress(
     dir: &Path,
     progress: &(dyn Fn(u64, Option<u64>) + Send + Sync),
 ) -> anyhow::Result<PathBuf> {
+    if !cfg!(windows) {
+        anyhow::bail!("Automatic installer updates are only supported on Windows. Download a macOS release from GitHub instead.");
+    }
     std::fs::create_dir_all(dir)?;
     let dest = dir.join(format!("EzooDownload-Setup-{}.exe", r.version.trim_start_matches('v')));
     if dest.exists() {
@@ -233,6 +240,9 @@ pub async fn download_with_progress(
 /// `visible`: the setup shows its progress (Help > Check for updates);
 /// otherwise nothing is shown (the automatic update).
 pub fn run_installer(setup: &Path, sha256: &str, visible: bool) -> anyhow::Result<()> {
+    if !cfg!(windows) {
+        anyhow::bail!("The Windows installer cannot run on this platform. Download a macOS release from GitHub instead.");
+    }
     // checked again right before it runs: the file sat on the disk meanwhile
     if !file_sha256(setup)?.eq_ignore_ascii_case(sha256) {
         let _ = std::fs::remove_file(setup);
@@ -251,7 +261,7 @@ pub fn run_installer(setup: &Path, sha256: &str, visible: bool) -> anyhow::Resul
 /// Installed with the installer (not a portable copy): only then the
 /// installer may replace the program.
 pub fn installed() -> bool {
-    std::env::current_exe()
+    cfg!(windows) && std::env::current_exe()
         .ok()
         .and_then(|e| e.parent().map(|d| d.join("unins000.exe").exists()))
         .unwrap_or(false)
@@ -311,6 +321,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn installer_checked_again_before_it_runs() {
         let dir = std::env::temp_dir().join(format!("ezoo-su-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -320,5 +331,21 @@ mod tests {
         assert!(format!("{err}").contains("changed"));
         assert!(!f.exists());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn windows_installer_disabled_on_other_platforms() {
+        let dir = std::env::temp_dir().join(format!("ezoo-no-installer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let release = Release {
+            version: "9.0.0".into(), url: String::new(), sha256: sha256_hex(b"installer"), sig: String::new(),
+        };
+        let client = reqwest::Client::new();
+        assert!(download(&client, &release, &dir).await.is_err());
+        assert!(!dir.exists(), "unsupported updates must not create or remove files");
+        assert!(run_installer(&dir.join("setup.exe"), &release.sha256, false).is_err());
+        assert!(check(&client).await.unwrap().is_none());
+        assert!(!installed());
     }
 }

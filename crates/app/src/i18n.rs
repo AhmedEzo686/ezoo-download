@@ -355,6 +355,7 @@ const AR: &[(&str, &str)] = &[
         "فتح فايرفوكس إضافة Ezoo Download.\n1. اضغط \"إضافة\" في الرسالة التي يعرضها فايرفوكس.\n2. ثم اضغط \"حسنًا\".\n\nالإضافة موقّعة من Mozilla، لذلك تبقى في فايرفوكس بعد إغلاقه وتتحدّث وحدها.",
     ),
     ("Ezoo Download was updated to version {} by itself.", "تم تحديث Ezoo Download تلقائيًا إلى الإصدار {}."),
+    ("Ezoo Download version {}.", "Ezoo Download الإصدار {}."),
     ("What's new:", "الجديد في هذا الإصدار:"),
     (
         "A \"Download this video\" button on every video of a page, and you can drag it anywhere on the video.",

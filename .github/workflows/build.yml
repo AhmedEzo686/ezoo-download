@@ -1,4 +1,4 @@
-name: Build Ezoo Download for Windows
+name: Build Ezoo Download for Windows and macOS
 
 # Every push: build and keep the result as an artifact.
 # A push to main whose commit message contains [release] also publishes a
@@ -11,13 +11,92 @@ on:
     paths-ignore:
       - "README.md"
       - "docs/**"
+  pull_request:
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  macos:
+    name: macOS (${{ matrix.arch }})
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            arch: x86_64
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: macos-${{ matrix.arch }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Install optional media helpers for integration tests
+        run: brew install yt-dlp ffmpeg aria2
+      - name: Run extension tests
+        run: |
+          node extension/test/yt-core.test.js
+          node extension/test/background.sim.js
+          node extension/test/ui-contract.test.js
+          node extension/test/content-widget.test.js
+      - name: Check workspace
+        run: cargo check --locked --workspace --all-targets --target "${{ matrix.target }}"
+      - name: Run tests
+        run: cargo test --locked --workspace --target "${{ matrix.target }}" --no-fail-fast
+      - name: Build and package app
+        run: ./build-macos.sh --target "${{ matrix.target }}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: EzooDownload-macos-${{ matrix.arch }}
+          path: |
+            dist/EzooDownload-macos-${{ matrix.arch }}.dmg
+            dist/EzooDownload-macos-${{ matrix.arch }}.dmg.sha256
+            dist/EzooDownload-macos-${{ matrix.arch }}.zip
+            dist/EzooDownload-macos-${{ matrix.arch }}.zip.sha256
+          if-no-files-found: error
+
+  publish-macos:
+    # The Windows job creates the release and its signed Windows updater
+    # metadata first. Attach the macOS builds to that same release only.
+    needs: [windows, macos]
+    if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: EzooDownload-macos-*
+          path: macos-artifacts
+          merge-multiple: true
+      - name: Attach macOS packages to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' Cargo.toml | head -n 1)
+          gh release upload "v$version" macos-artifacts/*.dmg macos-artifacts/*.dmg.sha256 macos-artifacts/*.zip macos-artifacts/*.zip.sha256 --repo "${{ github.repository }}" --clobber
+
   windows:
+    # Platform-specific macOS release tags must never package a Windows update.
+    if: ${{ !startsWith(github.ref, 'refs/tags/macos-') }}
     runs-on: windows-latest
     steps:
       # actions pinned to exact commits (a moved tag can't change the build)
@@ -33,19 +112,21 @@ jobs:
         run: |
           node extension/test/yt-core.test.js
           node extension/test/background.sim.js
+          node extension/test/ui-contract.test.js
+          node extension/test/content-widget.test.js
       - name: Run engine tests
         shell: pwsh
         run: |
-          cargo test -p swiftget-engine --no-fail-fast 2>&1 | Tee-Object -FilePath tests.txt
+          cargo test --locked -p swiftget-engine --no-fail-fast 2>&1 | Tee-Object -FilePath tests.txt
           $code = $LASTEXITCODE
           # failures (only real ones) show up as annotations on the run page;
           # case-sensitive, or every "0 failed" summary line looked like one
           if ($code -ne 0) {
             Select-String -CaseSensitive -Path tests.txt -Pattern "^error(\[|:)|panicked at|^test .* FAILED$|^---- " |
               Select-Object -First 40 | ForEach-Object { Write-Host "::error::$($_.Line.Trim())" }
-            Write-Host "::warning::engine tests failed (exit $code)"
+            Write-Host "::error::engine tests failed (exit $code)"
           }
-          exit 0
+          exit $code
       - name: Check dependencies for known vulnerabilities
         shell: pwsh
         run: |
@@ -53,7 +134,7 @@ jobs:
           # fails on published vulnerabilities; "unmaintained" notices only warn
           cargo audit
       - name: Build release
-        run: cargo build --release
+        run: cargo build --locked --release
       - name: Package
         shell: pwsh
         env:
@@ -84,14 +165,28 @@ jobs:
           Remove-Item -Force "$p/extension-firefox/manifest.firefox.json", "$p/extension/manifest.firefox.json"
           # the add-on has its own version (manifest.firefox.json)
           $extVersion = (Get-Content extension/manifest.firefox.json -Raw | ConvertFrom-Json).version
+          # Never carry a previous staged signed add-on into a newer setup.
+          Remove-Item -Force -ErrorAction SilentlyContinue "$p/ezoo-download-firefox.xpi", "$p/ezoo-download-firefox.version", "dist/ezoo-download-firefox.xpi", "dist/firefox-updates.json"
+          function Copy-FirefoxXpi([string]$source) {
+            $archive = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $source).Path)
+            try {
+              $entry = $archive.GetEntry("manifest.json")
+              if (-not $entry) { throw "The signed Firefox add-on has no manifest" }
+              $reader = [IO.StreamReader]::new($entry.Open())
+              try { $manifest = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+              if ([string]$manifest.version -ne [string]$extVersion) { throw "Signed Firefox add-on version does not match $extVersion" }
+            } finally { $archive.Dispose() }
+            Copy-Item $source "$p/ezoo-download-firefox.xpi"
+            Copy-Item $source "dist/ezoo-download-firefox.xpi"
+            [IO.File]::WriteAllText("$PWD/$p/ezoo-download-firefox.version", [string]$extVersion, [Text.UTF8Encoding]::new($false))
+          }
           # Firefox keeps only add-ons signed by Mozilla; a version can be signed
           # once, so this runs for a release only
           if ($env:IS_RELEASE -eq "true" -and $env:AMO_JWT_ISSUER -and $env:AMO_JWT_SECRET -and -not (Test-Path "extension-signed/ezoo-download-firefox-$extVersion.xpi")) {
             npx --yes web-ext@8.10.0 sign --channel=unlisted --source-dir "$p/extension-firefox" --artifacts-dir xpi-out --api-key "$env:AMO_JWT_ISSUER" --api-secret "$env:AMO_JWT_SECRET" --approval-timeout 900000
             $xpi = Get-ChildItem xpi-out -Filter *.xpi | Select-Object -First 1
             if ($xpi) {
-              Copy-Item $xpi.FullName "$p/ezoo-download-firefox.xpi"
-              Copy-Item $xpi.FullName "dist/ezoo-download-firefox.xpi"
+              Copy-FirefoxXpi $xpi.FullName
               $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
               [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
             } else { Write-Host "::warning::the Firefox add-on was not signed" }
@@ -99,8 +194,7 @@ jobs:
           # an add-on of this version already signed (by hand on addons.mozilla.org)
           $signed = "extension-signed/ezoo-download-firefox-$extVersion.xpi"
           if (-not (Test-Path "$p/ezoo-download-firefox.xpi") -and (Test-Path $signed)) {
-            Copy-Item $signed "$p/ezoo-download-firefox.xpi"
-            Copy-Item $signed "dist/ezoo-download-firefox.xpi"
+            Copy-FirefoxXpi $signed
             $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
             [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
           }
@@ -149,7 +243,7 @@ jobs:
           # the signature the program checks before it installs an update
           $sig = ""
           if ($env:UPDATE_SIGNING_KEY) {
-            $sig = (cargo run --quiet --release -p swiftget-engine --example sign_update -- $version $hash).Trim()
+            $sig = (cargo run --locked --quiet --release -p swiftget-engine --example sign_update -- $version $hash).Trim()
             if ($LASTEXITCODE -ne 0 -or $sig.Length -ne 128) { throw "could not sign the release" }
           } elseif ($env:IS_RELEASE -eq "true") {
             throw "UPDATE_SIGNING_KEY is not set: installed copies would refuse this update"
@@ -176,10 +270,11 @@ jobs:
           if (Test-Path dist/ezoo-download-firefox.xpi) { $files += "dist/ezoo-download-firefox.xpi", "dist/firefox-updates.json" }
           gh release create "v$env:VERSION" @files --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Ezoo Download $env:VERSION" --notes "Ezoo Download $env:VERSION" --latest
           if ($LASTEXITCODE -ne 0) { throw "could not create the release" }
-          # only the newest release stays: older ones (and their tags) go
+          # Rotate numeric Windows version tags only. macOS-specific and
+          # unrelated releases must keep their assets and tags.
           $tags = gh release list --repo "${{ github.repository }}" --limit 100 --json tagName -q '.[].tagName'
           foreach ($t in $tags) {
-            if ($t -and $t -ne "v$env:VERSION") {
+            if ($t -and $t -match '^v[0-9]+\.[0-9]+\.[0-9]+$' -and $t -ne "v$env:VERSION") {
               Write-Host "Removing old release $t"
               gh release delete $t --repo "${{ github.repository }}" --yes --cleanup-tag
             }

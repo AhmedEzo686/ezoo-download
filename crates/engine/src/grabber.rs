@@ -3,7 +3,7 @@
 
 use crate::config::wildcard_match;
 use crate::filename;
-use crate::http::request;
+use crate::http::send;
 use crate::model::RequestHeaders;
 use regex::Regex;
 use reqwest::Client;
@@ -150,7 +150,7 @@ fn allowed(opts: &GrabOptions, url: &str) -> bool {
 }
 
 async fn fetch_page(client: &Client, url: &str, opts: &GrabOptions) -> Option<(String, String)> {
-    let resp = request(client, url, &opts.headers, &opts.user_agent).send().await.ok()?;
+    let resp = send(client, url, &opts.headers, &opts.user_agent, None).await.ok()?;
     if !resp.status().is_success() {
         return None;
     }
@@ -179,12 +179,13 @@ async fn fetch_page(client: &Client, url: &str, opts: &GrabOptions) -> Option<(S
 /// Explore the site and return the files found (in the order found).
 pub async fn crawl(
     client: Client,
-    opts: GrabOptions,
+    mut opts: GrabOptions,
     progress: Arc<GrabProgress>,
     cancel: CancellationToken,
     on_file: impl Fn(FoundFile) + Send + Sync + 'static,
 ) -> Vec<FoundFile> {
     let Ok(start) = url::Url::parse(&opts.start_url) else { return Vec::new() };
+    opts.headers.bind_to(&opts.start_url);
     let start_host = start.host_str().unwrap_or("").to_ascii_lowercase();
     let start_dir = {
         let p = start.path();

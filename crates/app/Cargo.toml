@@ -12,8 +12,6 @@ anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-# ~1.18: the winit accessor (unstable-winit-030) belongs to this Slint line
-slint = { version = "~1.18", features = ["raw-window-handle-06", "unstable-winit-030"] }
 tiny_http = "0.12"
 arboard = { version = "3", default-features = false }
 rfd = "0.15"
@@ -23,6 +21,21 @@ chrono = "0.4"
 sha2 = "0.10"
 tokio-util = "0.7"
 sys-locale = "0.3"
+
+# ~1.18: the winit accessor (unstable-winit-030) belongs to this Slint line.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+slint = { version = "~1.18", features = ["raw-window-handle-06", "unstable-winit-030"] }
+
+# Winit supports macOS directly; avoid backend-default pulling in Qt / Skia.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.5"
+block2 = "0.6.2"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSAppearance", "NSResponder", "NSColor", "NSColorSpace", "NSFont", "block2"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSString", "NSNotification", "NSOperation", "NSObject", "block2"] }
+slint = { version = "~1.18", default-features = false, features = [
+    "std", "backend-winit", "renderer-femtovg", "renderer-software",
+    "accessibility", "compat-1-2", "raw-window-handle-06", "unstable-winit-030",
+] }
 
 [build-dependencies]
 slint-build = "~1.18"

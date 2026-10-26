@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// A helper program (ffmpeg, yt-dlp): the copy in the app's "tools"
-/// folder wins, then one next to EzooDownload.exe, then PATH.
+/// folder wins, then one next to the executable, then PATH. On macOS,
+/// also search Homebrew's prefixes because Finder supplies a minimal PATH.
 pub fn find_tool(name: &str) -> Option<PathBuf> {
     let exe_name = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
     if let Some(p) = crate::tools::bundled(name) {
@@ -15,19 +16,19 @@ pub fn find_tool(name: &str) -> Option<PathBuf> {
     }
     if let Ok(me) = std::env::current_exe() {
         let local = me.with_file_name(&exe_name);
-        if local.exists() {
+        if crate::tools::is_executable(&local) {
             return Some(local);
         }
         let in_folder = me.with_file_name(name).join("bin").join(&exe_name);
-        if in_folder.exists() {
+        if crate::tools::is_executable(&in_folder) {
             return Some(in_folder);
         }
     }
     let mut probe = Command::new(&exe_name);
     probe.arg("--version");
     hide_window(&mut probe);
-    match probe.output() {
-        Ok(o) if o.status.success() => Some(PathBuf::from(exe_name)),
+    let on_path = match probe.output() {
+        Ok(o) if o.status.success() => Some(PathBuf::from(&exe_name)),
         // ffmpeg prints its version with -version and fails on --version
         Ok(_) if name == "ffmpeg" => {
             let mut p = Command::new(&exe_name);
@@ -36,7 +37,18 @@ pub fn find_tool(name: &str) -> Option<PathBuf> {
             p.output().ok().filter(|o| o.status.success()).map(|_| PathBuf::from(&exe_name))
         }
         _ => None,
+    };
+    if on_path.is_some() {
+        return on_path;
     }
+    #[cfg(target_os = "macos")]
+    for prefix in ["/opt/homebrew/bin", "/usr/local/bin"] {
+        let path = Path::new(prefix).join(&exe_name);
+        if crate::tools::is_executable(&path) {
+            return Some(path);
+        }
+    }
+    None
 }
 
 pub fn find_ffmpeg() -> Option<PathBuf> {
@@ -56,6 +68,9 @@ pub fn format_for(file_name: &str) -> &'static str {
 
 pub fn merge(video: &Path, audio: &Path, output: &Path, final_name: &str) -> anyhow::Result<()> {
     let Some(ffmpeg) = find_ffmpeg() else {
+        #[cfg(target_os = "macos")]
+        bail!("{}", crate::tools::missing_tool_message("ffmpeg"));
+        #[cfg(not(target_os = "macos"))]
         bail!(
             "ffmpeg.exe is missing. Ezoo Download gets it by itself in a few minutes \
              (internet needed) - then press Resume to join video and audio"
@@ -89,6 +104,9 @@ pub fn merge(video: &Path, audio: &Path, output: &Path, final_name: &str) -> any
 /// Matroska (.mkv) file: it takes every kind of picture and sound.
 pub fn preview_snapshot(video: &Path, video_ready: u64, audio: Option<(&Path, u64)>, output: &Path) -> anyhow::Result<()> {
     let Some(ffmpeg) = find_ffmpeg() else {
+        #[cfg(target_os = "macos")]
+        bail!("{}", crate::tools::missing_tool_message("ffmpeg"));
+        #[cfg(not(target_os = "macos"))]
         bail!("ffmpeg.exe is missing. Ezoo Download gets it by itself in a few minutes (internet needed)");
     };
     // only the part with no gap ("subfile": ffmpeg reads just those bytes)
@@ -121,6 +139,9 @@ pub fn preview_snapshot(video: &Path, video_ready: u64, audio: Option<(&Path, u6
 /// Turn a downloaded sound (or video) file into an MP3 file.
 pub fn to_mp3(input: &Path, output: &Path, kbps: u64) -> anyhow::Result<()> {
     let Some(ffmpeg) = find_ffmpeg() else {
+        #[cfg(target_os = "macos")]
+        bail!("{}", crate::tools::missing_tool_message("ffmpeg"));
+        #[cfg(not(target_os = "macos"))]
         bail!(
             "ffmpeg.exe is missing. Ezoo Download gets it by itself in a few minutes \
              (internet needed) - then press Resume to make the MP3 file"

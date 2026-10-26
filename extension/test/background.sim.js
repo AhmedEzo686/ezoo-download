@@ -4,6 +4,12 @@ const fs = require("fs"), path = require("path"), vm = require("vm"), assert = r
 const dir = path.join(__dirname, "..");
 const listeners = {}; const on = (n) => ({ addListener: (f) => (listeners[n] = f) });
 const session = {}; const localStore = {}; let reloads = 0; let pingExt = null; const sent = []; const tabMsgs = []; let tabUrl = "https://www.youtube.com/watch?v=AAAAAAAAAAA";
+const canceled = []; const erased = []; const dataRequests = [];
+let runtimeOrigin = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+let runtimeVersion = "1.0.4";
+const readiness = [];
+let preparedConfig;
+let preparedConfigReads = 0;
 const chrome = {
   storage: {
     onChanged: on("store"),
@@ -14,17 +20,33 @@ const chrome = {
       remove: async (k) => { for (const x of [].concat(k)) delete session[x]; },
     },
   },
-  downloads: { onCreated: on("dl"), cancel: async () => {}, erase: async () => {}, download: (o) => browserDl.push(o.url) },
+  downloads: { onCreated: on("dl"), cancel: async (id) => canceled.push(id), erase: async (query) => erased.push(query.id), download: (o) => browserDl.push(o.url) },
   webRequest: { onHeadersReceived: on("headers"), onBeforeRequest: on("before") },
   tabs: { onUpdated: on("upd"), onRemoved: on("rm"), get: async (id) => ({ id, url: tabUrl }), query: async () => [{ id: 7 }],
           sendMessage: async (id, m) => tabMsgs.push(m) },
   action: { setBadgeBackgroundColor: () => {}, setBadgeText: async () => {} },
-  runtime: { onInstalled: on("inst"), onStartup: on("start"), onMessage: on("msg"), getManifest: () => ({ version: "1.0.4" }), reload: () => { reloads++; } },
+  runtime: { onInstalled: on("inst"), onStartup: on("start"), onMessage: on("msg"), getManifest: () => ({ version: runtimeVersion }), getURL: (part) => `${runtimeOrigin}/${part}`, reload: () => { reloads++; } },
   contextMenus: { removeAll: () => {}, create: () => {}, onClicked: on("ctx") },
   cookies: { getAll: async () => [] },
 };
 const ytCalls = []; const browserDl = []; let appDown = false;
+const batches = []; const cookieQueries = []; let collectedLinks = null;
+chrome.cookies.getAll = async ({ url }) => { cookieQueries.push(url); return [{ name: "session", value: "synthetic" }]; };
+const originalTabMessage = chrome.tabs.sendMessage;
+chrome.tabs.sendMessage = async (id, message) => message.type === "swiftget-collect-links" ? collectedLinks : originalTabMessage(id, message);
 const fetch = async (url, opts = {}) => {
+  if (/\/(add|resolve|playlist|links)$/.test(url)) dataRequests.push(url);
+  if (url.endsWith("/app-connection.json")) {
+    preparedConfigReads++;
+    return preparedConfig === undefined ? { ok: false, status: 404 } : {
+      ok: true, status: 200, text: async () => typeof preparedConfig === "string" ? preparedConfig : JSON.stringify(preparedConfig),
+    };
+  }
+  if (url.endsWith("/extension/ready")) {
+    if (appDown) throw new TypeError("Failed to fetch");
+    readiness.push({ url, method: opts.method, headers: opts.headers, body: JSON.parse(opts.body) });
+  }
+  if (url.endsWith("/links")) batches.push(JSON.parse(opts.body));
   if (url.endsWith("/ping") && pingExt) return { ok: true, status: 200, json: async () => ({ ext: pingExt }) };
   if (url.endsWith("/add")) { if (appDown) throw new TypeError("Failed to fetch"); sent.push(JSON.parse(opts.body)); }
   if (url.endsWith("/resolve")) {
@@ -45,6 +67,110 @@ const gv = (itag, mime, clen, dur, r) => `https://rr1---sn-x.googlevideo.com/vid
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
 (async () => {
+  // Only a dedicated extension POST registers readiness, without site data or
+  // cookie/profile inspection. A popup check bypasses cached startup checks.
+  {
+    await tick();
+    assert(readiness.length >= 1, "worker startup announces readiness");
+    const initial = readiness[0];
+    assert.strictEqual(initial.method, "POST");
+    assert.strictEqual(initial.headers["X-SwiftGet"], "1");
+    assert.deepStrictEqual(Object.keys(initial.body).sort(), ["browser", "enabled", "extensionOrigin", "version"]);
+    assert.strictEqual(initial.body.extensionOrigin, runtimeOrigin);
+    const beforePing = readiness.length;
+    await fetch("http://127.0.0.1:9614/ping", { headers: { "X-SwiftGet": "1" } });
+    assert.strictEqual(readiness.length, beforePing, "a bare app ping is not an extension announcement");
+    await ctx.announceExtensionReady();
+    assert.strictEqual(readiness.length, beforePing, "normal readiness traffic is throttled");
+    session.versionCheckAt = Date.now();
+    const beforeCookies = cookieQueries.length;
+    const status = await new Promise((resolve) => listeners.msg({ type: "swiftget-status" }, {}, resolve));
+    assert.strictEqual(status.ok, true);
+    assert.strictEqual(readiness.length, beforePing + 1, "opening the popup refreshes readiness despite a cached version check");
+    assert.strictEqual(cookieQueries.length, beforeCookies, "setup readiness never reads website cookies");
+    const oldAgent = ctx.navigator.userAgent;
+    for (const [agent, expected] of [["Chrome/130.0 Edg/130.0", "Edge"], ["Chrome/130.0 OPR/110.0", "Opera"], ["Chrome/130.0", "Chrome"]]) {
+      ctx.navigator.userAgent = agent;
+      await ctx.announceExtensionReady(true);
+      assert.strictEqual(readiness.at(-1).body.browser, expected);
+    }
+    ctx.navigator.brave = { isBrave: async () => true };
+    await ctx.announceExtensionReady(true);
+    assert.strictEqual(readiness.at(-1).body.browser, "Brave");
+    delete ctx.navigator.brave;
+    ctx.navigator.userAgent = "Firefox/140.0";
+    runtimeOrigin = "moz-extension://12345678-1234-1234-1234-123456789abc";
+    await ctx.announceExtensionReady(true);
+    assert.strictEqual(readiness.at(-1).body.browser, "Firefox");
+    assert.strictEqual(readiness.at(-1).body.extensionOrigin, runtimeOrigin);
+    const validCount = readiness.length;
+    runtimeOrigin = "https://untrusted.example";
+    assert.strictEqual(await ctx.announceExtensionReady(true), false);
+    runtimeOrigin = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    runtimeVersion = "1".repeat(33);
+    assert.strictEqual(await ctx.announceExtensionReady(true), false);
+    runtimeVersion = "1.0.4\nforged";
+    assert.strictEqual(await ctx.announceExtensionReady(true), false);
+    assert.strictEqual(readiness.length, validCount, "invalid origins and unbounded versions are not announced");
+    runtimeVersion = "1.0.4";
+    ctx.navigator.userAgent = oldAgent;
+    localStore.enabled = false;
+    await ctx.announceExtensionReady(true);
+    assert.strictEqual(readiness.at(-1).body.enabled, false, "paused capture remains distinguishable from ready capture");
+    delete localStore.enabled;
+    console.log("extension readiness: explicit, bounded, browser-specific, and cookie-free");
+  }
+  // Stable setup copies can supply the app port without changing preferences.
+  {
+    const resetPrepared = () => vm.runInContext("preparedPortPromise = null", ctx);
+    preparedConfig = { port: 19718 };
+    resetPrepared();
+    const reads = preparedConfigReads;
+    assert.strictEqual((await ctx.getOpts()).port, 19718);
+    assert.strictEqual((await ctx.getOpts()).port, 19718);
+    assert.strictEqual(preparedConfigReads, reads + 1, "prepared metadata is cached for the worker lifetime");
+    preparedConfig = { port: 19720 };
+    assert.strictEqual((await ctx.getOpts()).port, 19718, "a running worker retains the cached prepared port");
+    assert.strictEqual(await ctx.appAlive(true), true);
+    assert.strictEqual((await ctx.getOpts()).port, 19720, "opening the popup refreshes a changed prepared port");
+    assert.strictEqual(readiness.at(-1).url, "http://127.0.0.1:19720/extension/ready", "readiness reaches the restarted app's new port");
+    localStore.port = 19719;
+    assert.strictEqual((await ctx.getOpts()).port, 19719, "explicit saved options override the prepared default");
+    preparedConfig = { port: 19721 };
+    await ctx.appAlive(true);
+    assert.strictEqual(readiness.at(-1).url, "http://127.0.0.1:19719/extension/ready", "forced refresh preserves an explicit saved port");
+    delete localStore.port;
+    for (const port of [1, 65535]) {
+      preparedConfig = { port };
+      resetPrepared();
+      assert.strictEqual((await ctx.getOpts()).port, port, "valid boundary ports are accepted");
+    }
+    for (const invalid of [{ port: 0 }, { port: 65536 }, { port: 1.5 }, { port: "19718" }, null, "invalid JSON", " ".repeat(1025)]) {
+      preparedConfig = invalid;
+      resetPrepared();
+      assert.strictEqual((await ctx.getOpts()).port, 9614, "invalid prepared ports use the normal default");
+    }
+    preparedConfig = undefined;
+    resetPrepared();
+    assert.strictEqual((await ctx.getOpts()).port, 9614, "missing bundled metadata keeps the normal default");
+    console.log("prepared connection: cached, validated, optional, and overridden by explicit options");
+  }
+  // Bulk downloads retain the page scope; foreign-only lists need no page cookies.
+  {
+    const page = "https://members.example/private?token=synthetic";
+    collectedLinks = { page, links: [{ url: "https://files.example/file.pdf", text: "foreign" }] };
+    const beforeCookies = cookieQueries.length;
+    await ctx.sendAllLinks({ id: 7, url: page }, false);
+    assert.strictEqual(cookieQueries.length, beforeCookies, "foreign-only list never reads page cookies");
+    assert.strictEqual(batches[batches.length - 1].cookies, null);
+    collectedLinks.links.push({ url: "https://members.example/file.pdf", text: "own" });
+    await ctx.sendAllLinks({ id: 7, url: page }, false);
+    const batch = batches[batches.length - 1];
+    assert.strictEqual(batch.page, page, "desktop receives cookie protection scope");
+    assert.strictEqual(batch.cookies, "session=synthetic");
+    assert.strictEqual(batch.links.length, 2, "mixed-origin links remain selectable");
+    collectedLinks = null;
+  }
   // player loads an ad, then the real video in many pieces
   listeners.before({ tabId: 7, url: gv(136, "video/mp4", 5e6, "15.0", "0-1000") });
   await tick();
@@ -173,6 +299,76 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
     await dl({ url: "https://example.com/while-on.zip" });
     assert.strictEqual(sent.length, before + 1, "on again: back to the app");
     console.log("on / off switch: off leaves everything to the browser");
+  }
+  // Protected playback is explanatory UI, never a fragment download or a
+  // request to extract Netflix credentials. Public and lookalike sites stay usable.
+  {
+    const protectedMessage = "Netflix playback is not supported by this downloader. Use Netflix’s official app on a supported device for offline viewing.";
+    const watch = "https://www.netflix.com/watch/80000000?trackId=synthetic";
+    const fragment = "https://ipv4-c001.example.nflxvideo.net/range/0-999?token=synthetic";
+    const normal = "https://files.example/public.mp4";
+    const sender = { tab: { id: 31, url: watch }, frameId: 4 };
+    const expected = [{ disabled: true, protected: true, label: "Protected video", sub: protectedMessage, type: "protected", url: null }];
+    for (const url of [watch, "https://netflix.com/watch/1", "https://WWW.NETFLIX.COM.:443/watch/2", "https://player.netflix.com/watch/3", fragment]) {
+      assert.strictEqual(ctx.isProtectedPlayback(url), true, url);
+    }
+    const ordinary = [
+      "https://netflix.com.example/watch/1", "https://notnetflix.com/watch/1",
+      "https://netflix.com@ordinary.example/watch/1", "https://nflxvideo.net.example/file.mp4",
+      "https://notnflxvideo.net/file.mp4", "https://ordinary.example/?next=https://netflix.com/watch/1",
+      "https://www.netflix.com/title/1", "https://www.netflix.com/browse", "https://www.netflix.com/watchlist",
+    ];
+    for (const url of ordinary) assert.strictEqual(ctx.isProtectedPlayback(url), false, url);
+    const previousTab = tabUrl;
+    tabUrl = watch;
+    session.media_31 = [{ url: fragment, type: "video/mp4", size: 800000, ext: "mp4" }, { url: normal, type: "video/mp4", ext: "mp4" }];
+    session.res_31 = { page: watch, resolved: { options: [{ label: "Stale format", videoUrl: fragment }] } };
+    const baseline = { cookies: cookieQueries.length, requests: dataRequests.length, canceled: canceled.length, erased: erased.length, browser: browserDl.length };
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(await ctx.itemsForTab(31))), expected, "watch pages replace even cached fragment/quality choices with one explanation");
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(await ctx.resolveOneVideo({ page: normal, src: normal, frame: true }, sender.tab))), { items: expected });
+    await ctx.resolvePage(31, normal, true);
+    await ctx.resolveYoutube(31, "https://www.youtube.com/watch?v=AAAAAAAAAAA");
+    for (const operation of [
+      () => ctx.sendToApp({ url: watch }),
+      () => ctx.sendToApp({ url: fragment }),
+      () => ctx.sendToApp({ url: normal, referrer: watch }),
+      () => ctx.sendToApp({ url: normal, audioUrl: fragment }),
+      () => ctx.sendToApp({ url: normal, sourcePage: watch }),
+      () => ctx.sendToApp({ url: normal, headers: [["Referer", watch]] }),
+      () => ctx.downloadVideo({ videoUrl: normal, quality: "HD", ext: "mp4" }, "Synthetic", watch),
+      () => ctx.downloadVideo({ videoUrl: fragment, quality: "HD", ext: "mp4" }, "Synthetic", "https://ordinary.example/"),
+      () => ctx.askApp(watch), () => ctx.askApp(fragment),
+      () => ctx.cookieHeader(watch), () => ctx.cookieList(watch),
+      () => ctx.sendPlaylist(watch), () => ctx.sendAllLinks(sender.tab, false),
+    ]) await assert.rejects(operation, (error) => error.message === protectedMessage);
+    const refused = await new Promise((resolve) => listeners.msg({ type: "swiftget-download", referrer: normal, item: { url: normal } }, sender, resolve));
+    assert.strictEqual(refused.ok, false, "a frame referrer cannot override the protected top-page context");
+    assert.strictEqual(refused.error, protectedMessage);
+    const playlist = await new Promise((resolve) => listeners.msg({ type: "swiftget-playlist", url: "https://www.youtube.com/playlist?list=synthetic" }, sender, resolve));
+    assert.strictEqual(playlist.ok, false);
+    listeners.msg({ type: "swiftget-video-seen", page: normal, frame: true }, sender, () => {});
+    listeners.ctx({ menuItemId: "swiftget-link", linkUrl: normal, pageUrl: watch }, sender.tab);
+    await dl({ url: fragment, referrer: watch, mime: "video/mp4", totalBytes: 800000 });
+    listeners.headers({ tabId: 31, url: fragment, statusCode: 200, responseHeaders: [{ name: "content-type", value: "video/mp4" }, { name: "content-length", value: "800000" }] });
+    await ctx.addMedia(31, { url: normal, type: "video/mp4" });
+    await tick();
+    assert.deepStrictEqual({ cookies: cookieQueries.length, requests: dataRequests.length, canceled: canceled.length, erased: erased.length, browser: browserDl.length }, baseline, "blocked playback never reads cookies, contacts download/extraction APIs, cancels downloads, or recreates browser downloads");
+    assert.strictEqual(session.media_31.length, 2, "new encrypted/cross-frame fragments are not added to the cache");
+
+    // Outside watch pages, cached fragments are filtered without suppressing
+    // normal files, and a public Netflix page is not blanket-blocked.
+    tabUrl = "https://ordinary.example/videos";
+    session.media_32 = [{ url: fragment, type: "video/mp4" }, { url: normal, type: "video/mp4" }];
+    const publicItems = await ctx.itemsForTab(32);
+    assert.strictEqual(publicItems.length, 1);
+    assert.strictEqual(publicItems[0].url, normal);
+    const beforeNormal = sent.length;
+    await ctx.sendToApp({ url: normal, referrer: "https://www.netflix.com/title/1" });
+    await ctx.sendToApp({ url: "https://notnetflix.com/watch/public.mp4", referrer: "https://ordinary.example/" });
+    assert.strictEqual(sent.length, beforeNormal + 2, "ordinary media and domain lookalikes still reach the app");
+    delete session.media_31; delete session.res_31; delete session.media_32;
+    tabUrl = previousTab;
+    console.log("protected playback: Netflix fragments/watch pages stay cookie-free; public and lookalike sites remain usable");
   }
   console.log("background simulation: all checks passed");
 })().catch((e) => { console.error(e); process.exit(1); });
