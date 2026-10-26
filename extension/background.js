@@ -351,7 +351,7 @@ async function itemsForTab(tabId) {
         } else if (yt.sabr) {
           items.push({
             label: "This video needs Ezoo Download",
-            sub: "Open Ezoo Download (with yt-dlp.exe next to it) and reload the page",
+            sub: "Open Ezoo Download with yt-dlp installed and reload the page",
             disabled: true,
           });
         }

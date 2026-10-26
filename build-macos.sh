@@ -110,6 +110,11 @@ cat > "$app/Contents/Info.plist" <<EOF
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$version</string>
     <key>CFBundleVersion</key><string>$version</string>
+    <key>CFBundleURLTypes</key><array><dict>
+        <key>CFBundleURLName</key><string>com.ezoo.EzooDownload</string>
+        <key>CFBundleTypeRole</key><string>Viewer</string>
+        <key>CFBundleURLSchemes</key><array><string>ezoo-download</string></array>
+    </dict></array>
     <key>LSMinimumSystemVersion</key><string>$MACOSX_DEPLOYMENT_TARGET</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
