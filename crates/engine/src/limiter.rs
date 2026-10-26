@@ -36,6 +36,9 @@ impl SpeedLimiter {
             let cap = rate as f64;
             b.0 = (b.0 + elapsed * cap).min(cap);
             b.0 -= n as f64;
+            // Prevent token debt from growing arbitrarily large when many connections
+            // acquire tokens concurrently. Clamping to -cap bounds debt to at most 1 second of rate.
+            b.0 = b.0.max(-cap);
             if b.0 < 0.0 {
                 -b.0 / cap
             } else {
@@ -45,5 +48,37 @@ impl SpeedLimiter {
         if wait > 0.0 {
             tokio::time::sleep(Duration::from_secs_f64(wait.min(5.0))).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn limiter_unlimited() {
+        let limiter = SpeedLimiter::new(0);
+        limiter.acquire(1_000_000).await;
+    }
+
+    #[tokio::test]
+    async fn limiter_clamps_debt() {
+        let rate = 100_000; // 100 KB/s
+        let limiter = SpeedLimiter::new(rate);
+
+        // Huge chunk exceeding 10x the rate
+        limiter.acquire(1_000_000).await;
+
+        let b = limiter.bucket.lock().unwrap();
+        let cap = rate as f64;
+        // The bucket debt should be clamped to -cap, not -900_000
+        assert!(b.0 >= -cap, "bucket value {} should be >= -cap (-{})", b.0, cap);
+    }
+
+    #[tokio::test]
+    async fn limiter_set_rate() {
+        let limiter = SpeedLimiter::new(10_000);
+        limiter.set_rate(50_000);
+        assert_eq!(limiter.rate.load(Ordering::Relaxed), 50_000);
     }
 }

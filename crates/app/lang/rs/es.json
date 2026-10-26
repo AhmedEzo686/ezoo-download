@@ -219,5 +219,14 @@
  "Show download progress": "Mostrar el progreso",
  "Stop download": "Detener descarga",
  "This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.": "Este torrent ya está en marcha (puede que aún comparta sus archivos). Espera un poco, o sal de Ezoo Download y ábrelo de nuevo.",
- "The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.": "La extensión del navegador se puede pausar desde su propia ventana, sin desactivarla en la página de extensiones."
+ "The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.": "La extensión del navegador se puede pausar desde su propia ventana, sin desactivarla en la página de extensiones.",
+ "Restore Ezoo Download": "Restaurer Ezoo Download",
+ "Add new download…": "Añadir nueva descarga…",
+ "Resume all downloads": "Reanudar todas las descargas",
+ "Stop all downloads": "Detener todas las descargas",
+ "Speed Limiter": "Limitador de velocidad",
+ "Scheduler…": "Programador…",
+ "Options…": "Opciones…",
+ "About": "Acerca de",
+ "Exit": "Salir"
 }

@@ -219,5 +219,14 @@
  "Show download progress": "Показать ход загрузки",
  "Stop download": "Остановить загрузку",
  "This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.": "Этот торрент уже запущен (возможно, ещё раздаёт файлы). Подождите немного или закройте Ezoo Download и откройте снова.",
- "The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.": "Расширение браузера можно приостановить в его собственном окне, не отключая его на странице расширений."
+ "The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.": "Расширение браузера можно приостановить в его собственном окне, не отключая его на странице расширений.",
+ "Restore Ezoo Download": "Восстановить Ezoo Download",
+ "Add new download…": "Добавить новую загрузку…",
+ "Resume all downloads": "Возобновить все загрузки",
+ "Stop all downloads": "Остановить все загрузки",
+ "Speed Limiter": "Ограничитель скорости",
+ "Scheduler…": "Планировщик…",
+ "Options…": "Настройки…",
+ "About": "О программе",
+ "Exit": "Выход"
 }

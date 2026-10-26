@@ -134,6 +134,16 @@ const AR: &[(&str, &str)] = &[
     ("Ready  ·  {} files in the list", "جاهز  ·  {} ملف في القائمة"),
     ("Speed limiter: on ({} KB/s)", "محدد السرعة: يعمل ({} كيلو/ث)"),
     ("Speed limiter: off", "محدد السرعة: متوقف"),
+    // tray menu
+    ("Restore Ezoo Download", "استعادة Ezoo Download"),
+    ("Add new download…", "إضافة تحميل جديد…"),
+    ("Resume all downloads", "استئناف كل التحميلات"),
+    ("Stop all downloads", "إيقاف كل التحميلات"),
+    ("Speed Limiter", "محدد السرعة"),
+    ("Scheduler…", "المجدول…"),
+    ("Options…", "الخيارات…"),
+    ("About", "حول البرنامج"),
+    ("Exit", "خروج"),
     // categories (shown names)
     ("Compressed", "مضغوطة"),
     ("Documents", "مستندات"),
