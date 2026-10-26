@@ -73,12 +73,24 @@ component SideTab inherits Rectangle {
     in property <string> text;
     in property <bool> active;
     callback clicked();
-    height: 28px;
+    height: 32px;
+    border-radius: 7px;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: keyboard;
+    keyboard := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Return || event.text == " ") { root.clicked(); return accept; }
+            reject
+        }
+    }
     background: root.active ? Theme.select : ta.has-hover ? Theme.hover : transparent;
-    border-width: root.active ? 1px : 0px;
-    border-color: Theme.select-line;
+    border-width: keyboard.has-focus ? 2px : 0px;
+    border-color: Theme.accent;
     ta := TouchArea {
         clicked => {
+            keyboard.focus();
             root.clicked();
         }
     }
@@ -1905,18 +1917,19 @@ export component SettingsDialog inherits ThemedWindow {
     callback cancel();
 
     VerticalLayout {
-        padding: 10px;
-        spacing: 8px;
+        padding: 16px;
+        spacing: 12px;
         HorizontalLayout {
             vertical-stretch: 1;
             spacing: 8px;
             Rectangle {
-                width: 150px;
+                width: 170px;
                 background: Theme.panel;
                 border-width: 1px;
                 border-color: Theme.line;
                 VerticalLayout {
-                    padding: 3px;
+                    padding: 6px;
+                    spacing: 3px;
                     alignment: start;
                     for t[i] in [@tr("General"), @tr("File Types"), @tr("Save To"), @tr("Downloads"), @tr("Connection"), @tr("Proxy / Server"), @tr("Site Logins"), @tr("Sounds"), @tr("Speed Limiter"), @tr("Appearance"), @tr("Torrents")]: SideTab {
                         text: t;
@@ -1953,7 +1966,7 @@ export component SettingsDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    if root.windows-features: HorizontalLayout {
                         spacing: 8px;
                         Label {
                             text: @tr("Window opacity");
@@ -2003,7 +2016,7 @@ export component SettingsDialog inherits ThemedWindow {
                         }
                         ComboBox {
                             width: 200px;
-                            model: [@tr("Default (Segoe UI)"), "Tahoma", "Arial", "Calibri", "Verdana", "Times New Roman", "Courier New"];
+                            model: [@tr("System Font"), "Tahoma", "Arial", "Calibri", "Verdana", "Times New Roman", "Courier New"];
                             current-index <=> root.font-index;
                             selected => {
                                 root.preview-look();
@@ -2841,17 +2854,13 @@ export component SettingsDialog inherits ThemedWindow {
                 horizontal-stretch: 1;
             }
             Button {
-                text: @tr("OK");
-                primary: true;
-                clicked => {
-                    root.save();
-                }
+                text: @tr("Cancel");
+                clicked => { root.cancel(); }
             }
             Button {
-                text: @tr("Cancel");
-                clicked => {
-                    root.cancel();
-                }
+                text: @tr("Save");
+                primary: true;
+                clicked => { root.save(); }
             }
         }
     }

@@ -433,7 +433,7 @@ component DownloadItem inherits Rectangle {
                 height: 3px;
                 border-radius: 1.5px;
                 background: Theme.bar-bg;
-                Rectangle { width: parent.width * min(1, max(0, root.data.progress)); height: parent.height; border-radius: 1.5px; background: root.data.state == 2 ? Theme.warn : Theme.accent; }
+                Rectangle { x: 0px; y: 0px; width: parent.width * min(1, max(0, root.data.progress)); height: parent.height; border-radius: 1.5px; background: root.data.state == 2 ? Theme.warn : Theme.accent; }
             }
         }
         VerticalLayout {
@@ -1330,13 +1330,13 @@ export component MainWindow inherits ThemedWindow {
                             Text { text: root.view == "unfinished" ? @tr("Unfinished") : root.view == "finished" ? @tr("Completed") : @tr("Downloads"); color: Theme.text; font-size: 22px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
                             search-box := LineEdit {
                                 width: 180px;
-                                min-height: 30px;
+                                height: 32px;
                                 placeholder-text: @tr("Search Downloads");
                                 accessible-label: @tr("Search Downloads");
                                 text <=> root.search;
                                 edited(t) => { root.search-changed(); }
                             }
-                            Button { text: @tr("New Download…"); primary: true; min-height: 32px; clicked => { root.add-url(); } }
+                            Button { text: @tr("New Download…"); primary: true; height: 32px; clicked => { root.add-url(); } }
                             ToolbarAction { glyph: "more"; label: @tr("More Actions"); clicked => { more-menu.show(); } }
                         }
                     }
