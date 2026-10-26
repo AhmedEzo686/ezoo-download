@@ -2,7 +2,7 @@
 
 use crate::open_window;
 use crate::*;
-use crate::i18n::{t, tf};
+use crate::i18n::t;
 
 /// Store pages of the published extension. Empty = not published yet:
 /// then the extension is added from its folder (developer mode).
@@ -181,7 +181,7 @@ fn configure(ui: &Ui) {
     SETUP_ERROR.with(|error| error.set(false));
     let Some(d) = ui.browsers.upgrade() else { return };
     d.set_setup_title(text("Connect Your Browser", "اربط متصفحك بالبرنامج").into());
-    d.set_setup_detail(text("Send downloads and videos straight to Ezoo Download. Choose your browser, then start setup.", "أرسل التنزيلات والفيديوهات مباشرة إلى Ezoo Download. اختر متصفحك ثم ابدأ الإعداد.").into());
+    d.set_setup_detail(text("Send downloads and videos straight to Ezoo Download. Choose your browser, then start setup. If the browser asks, choose your usual profile.", "أرسل التنزيلات والفيديوهات مباشرة إلى Ezoo Download. اختر متصفحك ثم ابدأ الإعداد. إذا طلب المتصفح ذلك، اختر ملفك الشخصي المعتاد.").into());
     d.set_connected(false);
     d.set_notice(SharedString::new());
     d.set_folder(SharedString::new());
@@ -260,7 +260,22 @@ fn refresh_connection(ui: &Ui) {
 }
 
 fn launch(exe: &Path, url: &str) -> anyhow::Result<()> {
-    std::process::Command::new(exe).arg(url).spawn()?;
+    launch_argument(exe, std::ffi::OsStr::new(url))
+}
+
+fn launch_argument(exe: &Path, argument: &std::ffi::OsStr) -> anyhow::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        // Use the normal macOS URL/document handoff to the running browser.
+        // Starting Chrome's executable directly can reopen its profile picker
+        // and lose the requested page, even with an existing profile window.
+        let application = exe.ancestors().find(|path| path.extension().is_some_and(|ext| ext == "app"))
+            .ok_or_else(|| anyhow::anyhow!("The browser app bundle was not found."))?;
+        let status = std::process::Command::new("/usr/bin/open").arg("-a").arg(application).arg(argument).status()?;
+        anyhow::ensure!(status.success(), "The browser could not open the setup page.");
+    }
+    #[cfg(not(target_os = "macos"))]
+    { std::process::Command::new(exe).arg(argument).spawn()?; }
     Ok(())
 }
 
@@ -292,7 +307,7 @@ fn start_setup(ui: &Ui) -> anyhow::Result<()> {
         launch(exe, b.store)?;
         d.set_prepared(true);
     } else if let Some(xpi) = b.firefox.then(firefox_xpi).flatten() {
-        std::process::Command::new(exe).arg(&xpi).spawn()?;
+        launch_argument(exe, xpi.as_os_str())?;
         d.set_prepared(true);
     } else {
         let source = extension_dir(b.firefox).ok_or_else(|| anyhow::anyhow!("The bundled extension files are missing."))?;
