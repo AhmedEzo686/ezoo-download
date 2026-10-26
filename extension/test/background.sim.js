@@ -42,7 +42,7 @@ const fetch = async (url, opts = {}) => {
   }
   if (url.endsWith("/extension/ready")) {
     if (appDown) throw new TypeError("Failed to fetch");
-    readiness.push({ method: opts.method, headers: opts.headers, body: JSON.parse(opts.body) });
+    readiness.push({ url, method: opts.method, headers: opts.headers, body: JSON.parse(opts.body) });
   }
   if (url.endsWith("/links")) batches.push(JSON.parse(opts.body));
   if (url.endsWith("/ping") && pingExt) return { ok: true, status: 200, json: async () => ({ ext: pingExt }) };
@@ -127,8 +127,16 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
     assert.strictEqual((await ctx.getOpts()).port, 19718);
     assert.strictEqual((await ctx.getOpts()).port, 19718);
     assert.strictEqual(preparedConfigReads, reads + 1, "prepared metadata is cached for the worker lifetime");
+    preparedConfig = { port: 19720 };
+    assert.strictEqual((await ctx.getOpts()).port, 19718, "a running worker retains the cached prepared port");
+    assert.strictEqual(await ctx.appAlive(true), true);
+    assert.strictEqual((await ctx.getOpts()).port, 19720, "opening the popup refreshes a changed prepared port");
+    assert.strictEqual(readiness.at(-1).url, "http://127.0.0.1:19720/extension/ready", "readiness reaches the restarted app's new port");
     localStore.port = 19719;
     assert.strictEqual((await ctx.getOpts()).port, 19719, "explicit saved options override the prepared default");
+    preparedConfig = { port: 19721 };
+    await ctx.appAlive(true);
+    assert.strictEqual(readiness.at(-1).url, "http://127.0.0.1:19719/extension/ready", "forced refresh preserves an explicit saved port");
     delete localStore.port;
     for (const port of [1, 65535]) {
       preparedConfig = { port };

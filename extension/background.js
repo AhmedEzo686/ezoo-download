@@ -142,6 +142,9 @@ followAppVersion();
 announceExtensionReady();
 
 async function appAlive(forceReady = false) {
+  // Opening the popup also picks up a newly prepared port after an app
+  // restart, without requiring the browser to restart its existing worker.
+  if (forceReady) preparedPortPromise = null;
   const { port } = await getOpts();
   try {
     const r = await fetchWithTimeout(apiUrl(port, "/ping"), { headers: { "X-SwiftGet": "1" } }, 800);
