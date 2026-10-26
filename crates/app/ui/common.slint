@@ -596,6 +596,9 @@ export component TreeItem inherits Rectangle {
     in property <string> text;
     // "folder", "queue", "unfinished", "finished" or a file kind
     in property <string> icon;
+    // File-type rows use a compact colored tile, while library and queue
+    // navigation keep their existing quieter symbols.
+    in property <bool> category-icon: false;
     in property <string> count;
     in property <int> indent;
     in property <bool> selected;
@@ -633,7 +636,7 @@ export component TreeItem inherits Rectangle {
         padding-right: 6px;
         spacing: 5px;
         Rectangle {
-            width: 16px;
+            width: root.category-icon ? 12px : 16px;
             if root.expandable: Glyph {
                 y: (parent.height - 12px) / 2;
                 width: 12px;
@@ -649,29 +652,55 @@ export component TreeItem inherits Rectangle {
             }
         }
         Rectangle {
-            width: 16px;
-            if root.icon == "folder": Icon {
+            width: root.category-icon ? 20px : 16px;
+            if root.category-icon: Rectangle {
+                width: 20px;
+                height: 20px;
+                y: (parent.height - 20px) / 2;
+                border-radius: 5px;
+                // Muted, distinct colors keep white symbols legible in both
+                // appearances; the text remains the primary identifier.
+                background: root.icon == "archive" ? #ad5c15
+                    : root.icon == "doc" ? #2966b3
+                    : root.icon == "audio" ? #a43e72
+                    : root.icon == "exe" ? #7751aa
+                    : root.icon == "video" ? #b24042
+                    : root.icon == "image" ? #13796d
+                    : root.icon == "folder" ? #406a98 : #617080;
+                Glyph {
+                    x: 3px;
+                    y: 3px;
+                    width: 14px;
+                    height: 14px;
+                    tint: white;
+                    kind: root.icon == "audio" ? "music"
+                        : root.icon == "exe" ? "program"
+                        : root.icon == "doc" || root.icon == "general" ? "document"
+                        : root.icon;
+                }
+            }
+            if !root.category-icon && root.icon == "folder": Icon {
                 kind: "folder";
                 width: 16px;
                 height: 16px;
                 y: (parent.height - 16px) / 2;
             }
-            if root.icon == "queue": Icon {
+            if !root.category-icon && root.icon == "queue": Icon {
                 kind: "startqueue";
                 width: 16px;
                 height: 16px;
                 y: (parent.height - 16px) / 2;
             }
-            if root.icon == "unfinished": Glyph {
+            if !root.category-icon && root.icon == "unfinished": Glyph {
                 kind: "down";
                 y: (parent.height - 16px) / 2;
             }
-            if root.icon == "finished": Glyph {
+            if !root.category-icon && root.icon == "finished": Glyph {
                 kind: "check";
                 tint: Theme.ok;
                 y: (parent.height - 16px) / 2;
             }
-            if root.icon != "folder" && root.icon != "queue" && root.icon != "unfinished" && root.icon != "finished": TypeIcon {
+            if !root.category-icon && root.icon != "folder" && root.icon != "queue" && root.icon != "unfinished" && root.icon != "finished": TypeIcon {
                 kind: root.icon;
                 width: 16px;
                 height: 16px;
