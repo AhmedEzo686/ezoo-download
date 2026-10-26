@@ -6,6 +6,7 @@ const listeners = {}; const on = (n) => ({ addListener: (f) => (listeners[n] = f
 const session = {}; const localStore = {}; let reloads = 0; let pingExt = null; const sent = []; const tabMsgs = []; let tabUrl = "https://www.youtube.com/watch?v=AAAAAAAAAAA";
 const chrome = {
   storage: {
+    onChanged: on("store"),
     local: { get: async (d) => (typeof d === "string" ? (d in localStore ? { [d]: localStore[d] } : {}) : { ...d, ...localStore }), set: async (o) => Object.assign(localStore, o) },
     session: {
       get: async (k) => { const ks = Array.isArray(k) ? k : [k]; const o = {}; for (const x of ks) if (x in session) o[x] = JSON.parse(JSON.stringify(session[x])); return o; },
@@ -15,7 +16,7 @@ const chrome = {
   },
   downloads: { onCreated: on("dl"), cancel: async () => {}, erase: async () => {}, download: (o) => browserDl.push(o.url) },
   webRequest: { onHeadersReceived: on("headers"), onBeforeRequest: on("before") },
-  tabs: { onUpdated: on("upd"), onRemoved: on("rm"), get: async (id) => ({ id, url: tabUrl }),
+  tabs: { onUpdated: on("upd"), onRemoved: on("rm"), get: async (id) => ({ id, url: tabUrl }), query: async () => [{ id: 7 }],
           sendMessage: async (id, m) => tabMsgs.push(m) },
   action: { setBadgeBackgroundColor: () => {}, setBadgeText: async () => {} },
   runtime: { onInstalled: on("inst"), onStartup: on("start"), onMessage: on("msg"), getManifest: () => ({ version: "1.0.4" }), reload: () => { reloads++; } },
@@ -155,6 +156,23 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
     assert.strictEqual(ytCalls[n].url, page, "the page, not the player frame");
     assert(!ytCalls.slice(n).some((c) => /geo\.dailymotion\.com/.test(c.url)));
     console.log("player in a frame: uses the page's qualities");
+  }
+  // the on / off switch of the add-in's window
+  {
+    localStore.enabled = false;
+    listeners.store({ enabled: { newValue: false } }, "local");
+    const before = sent.length;
+    await dl({ url: "https://example.com/while-off.zip" });
+    assert.strictEqual(sent.length, before, "off: the browser keeps its downloads");
+    const cfg = await new Promise((r) => listeners.msg({ type: "swiftget-config" }, { tab: { id: 7, url: tabUrl } }, r));
+    assert.strictEqual(cfg.enabled, false, "off: no buttons on videos");
+    const n = tabMsgs.length;
+    await ctx.pushToTab(7);
+    assert.strictEqual(tabMsgs.slice(n).pop().items.length, 0, "off: nothing offered on the page");
+    localStore.enabled = true;
+    await dl({ url: "https://example.com/while-on.zip" });
+    assert.strictEqual(sent.length, before + 1, "on again: back to the app");
+    console.log("on / off switch: off leaves everything to the browser");
   }
   console.log("background simulation: all checks passed");
 })().catch((e) => { console.error(e); process.exit(1); });

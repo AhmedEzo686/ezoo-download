@@ -218,5 +218,6 @@
  "Choose where to save it": "Nereye kaydedileceğini seçin",
  "Show download progress": "İndirme ilerlemesini göster",
  "Stop download": "İndirmeyi durdur",
- "This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.": "Bu torrent zaten çalışıyor (dosyalarını hâlâ paylaşıyor olabilir). Biraz bekleyin ya da Ezoo Download’dan çıkıp yeniden açın."
+ "This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.": "Bu torrent zaten çalışıyor (dosyalarını hâlâ paylaşıyor olabilir). Biraz bekleyin ya da Ezoo Download’dan çıkıp yeniden açın.",
+ "The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.": "Tarayıcı eklentisi, uzantılar sayfasından kapatmadan kendi penceresinden duraklatılabilir."
 }

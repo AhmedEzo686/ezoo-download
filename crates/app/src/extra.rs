@@ -349,7 +349,7 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 14] = [
+const WHATS_NEW: [&str; 15] = [
     "Torrents: open a .torrent file or a magnet link and choose which of its files to download.",
     "A dropped internet connection no longer stops a download: it waits and goes on by itself from where it was.",
     "An expired link or a removed file is explained in plain words, with what to do about it.",
@@ -360,6 +360,7 @@ const WHATS_NEW: [&str; 14] = [
     "Videos that need a login or an age check use your browser's sign-in, also in playlists.",
     "Toolbar buttons explain what they do when the mouse rests on them.",
     "A download's window can be hidden next to the clock.",
+    "The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.",
     "File icons are easier to tell apart.",
     "Menus show one clear mark on the chosen option.",
     "The window of a finished download no longer offers \"Open with…\", so a file can't be changed by mistake.",

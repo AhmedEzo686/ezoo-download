@@ -504,7 +504,7 @@ const AR: &[(&str, &str)] = &[
     ("Torrents: open a .torrent file or a magnet link and choose which of its files to download.", "التورنت: افتح ملف تورنت أو رابط magnet واختر أي ملفاته تريد تحميلها."),
     ("A dropped internet connection no longer stops a download: it waits and goes on by itself from where it was.", "انقطاع الإنترنت لم يعد يوقف التحميل: ينتظر ثم يكمل وحده من حيث توقف."),
     ("An expired link or a removed file is explained in plain words, with what to do about it.", "الرابط المنتهي أو الملف المحذوف يُشرح بكلمات بسيطة مع ما يجب فعله."),
-    ("Watch a video or listen to a song while it is still downloading (right-click > Play while downloading).", "شاهد فيديو أو استمع لأغنية وهي ما زالت تُحمَّل (زر الفأرة الأيمن > تشغيل أثناء التحميل)."),
+    ("Watch a video or listen to a song while it is still downloading (right-click > Play while downloading).", "شاهد فيديو أو استمع لملف صوتي وهو ما زال يُحمَّل، دون انتظار انتهاء التحميل (زر الفأرة الأيمن > تشغيل أثناء التحميل)."),
     ("YouTube videos can be saved as MP3 files.", "يمكن حفظ فيديوهات يوتيوب كملفات MP3."),
     ("Qualities are shown in plain words too: SD, HD, Full HD, 2K, 4K.", "الجودات تظهر أيضًا بكلمات واضحة: SD وHD وFull HD و2K و4K."),
     ("The video button in the browser lists every quality with its format, length and size, has a size slider, and works on videos in frames, in full screen and in more players.", "زر الفيديو في المتصفح يعرض كل جودة بنوعها ومدتها وحجمها، وله شريط لتغيير حجمه، ويعمل على الفيديوهات داخل الإطارات وفي ملء الشاشة وفي مشغلات أكثر."),
@@ -537,6 +537,7 @@ const AR: &[(&str, &str)] = &[
     ("Show download progress", "عرض تقدّم التحميل"),
     ("Stop download", "إيقاف التحميل"),
     ("This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.", "هذا التورنت يعمل بالفعل (قد يكون ما زال يشارك ملفاته). انتظر قليلًا، أو اخرج من Ezoo Download وافتحه مرة أخرى."),
+    ("The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.", "يمكن إيقاف إضافة المتصفح مؤقتًا من نافذتها نفسها، دون تعطيلها من صفحة الإضافات في المتصفح."),
 ];
 
 #[cfg(test)]

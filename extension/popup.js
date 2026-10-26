@@ -15,6 +15,23 @@ async function init() {
     window.close();
   });
 
+  // the on / off switch: off = the browser keeps its downloads, no buttons
+  // on videos, nothing is looked up (the add-in stays installed)
+  const on = document.getElementById("enabled");
+  const showOn = (v) => {
+    on.checked = v;
+    document.body.classList.toggle("off", !v);
+    document.getElementById("onText").textContent = v ? "Ezoo Download is on" : "Ezoo Download is paused";
+    document.getElementById("onHint").textContent = v
+      ? "Downloads and videos of this browser go to Ezoo Download"
+      : "The browser keeps its downloads, no buttons on videos";
+  };
+  chrome.storage.local.get({ enabled: true }, (o) => showOn(o.enabled !== false));
+  on.addEventListener("change", () => {
+    chrome.storage.local.set({ enabled: on.checked });
+    showOn(on.checked);
+  });
+
   // size of the "Download this video" button on pages (also in the settings page)
   const scale = document.getElementById("scale");
   const scaleText = document.getElementById("scaleText");

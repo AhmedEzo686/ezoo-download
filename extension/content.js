@@ -16,8 +16,10 @@
     if (p.includes("*")) return new RegExp("^" + p.replace(/[.]/g, "\\.").replace(/\*/g, ".*") + "$").test(host);
     return host === p || host.endsWith("." + p);
   };
+  // the on / off switch of the add-in's window
+  let switchedOn = true;
   const panelAllowed = () =>
-    panel.enabled !== false && !(panel.skipSites || []).some((s) => hostMatches(location.hostname.toLowerCase(), s));
+    switchedOn && panel.enabled !== false && !(panel.skipSites || []).some((s) => hostMatches(location.hostname.toLowerCase(), s));
 
   const fmtSize = (n) => {
     if (!n) return "";
@@ -161,6 +163,10 @@
   // other video is looked up when its bubble is clicked. A bubble can be
   // dragged anywhere on its video and stays there.
   const bubbles = new Map(); // video -> bubble
+  function removeAll() {
+    for (const b of bubbles.values()) b.host.remove();
+    bubbles.clear();
+  }
   // size of the button: the slider in the add-in's menu (50% - 200%)
   const OLD_SIZES = { small: 0.85, normal: 1, large: 1.25 };
   const clampZoom = (z) => Math.min(2, Math.max(0.5, Number(z) || 1));
@@ -171,6 +177,20 @@
       placeOne(b);
     }
   };
+  try {
+    chrome.storage.local.get({ enabled: true }, (o) => {
+      switchedOn = !o || o.enabled !== false;
+      if (!switchedOn) removeAll();
+    });
+    chrome.storage.onChanged.addListener((ch) => {
+      if (!ch.enabled) return;
+      switchedOn = ch.enabled.newValue !== false;
+      if (!switchedOn) removeAll();
+      else chrome.runtime.sendMessage({ type: "swiftget-media-request" }, (res) => !chrome.runtime.lastError && update(res));
+    });
+  } catch (_) {
+    // storage not reachable (add-in reloading): stays on
+  }
   try {
     chrome.storage.local.get({ bubbleScale: null, bubbleSize: "normal" }, (o) => {
       zoom = clampZoom(o && o.bubbleScale != null ? o.bubbleScale : OLD_SIZES[o && o.bubbleSize]);
@@ -599,7 +619,7 @@
   addEventListener(
     "click",
     (e) => {
-      if (e.button !== 0 || e.altKey || e.defaultPrevented) return;
+      if (e.button !== 0 || e.altKey || e.defaultPrevented || !switchedOn) return;
       const a = e.composedPath ? e.composedPath().find((n) => n && n.tagName === "A" && n.href) : null;
       const href = a ? String(a.href) : "";
       if (!/^magnet:\?/i.test(href) || !/xt=urn:bt[im]h:/i.test(href)) return;

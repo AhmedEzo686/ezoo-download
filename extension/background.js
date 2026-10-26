@@ -13,7 +13,9 @@
 // Chrome / Edge / Opera load yt-core.js here; Firefox lists it in its manifest
 if (typeof importScripts === "function") importScripts("yt-core.js");
 
-const DEFAULTS = { port: 9614, intercept: true, minSizeKB: 0 };
+// enabled: the on / off switch of the add-in's window (off = the browser
+// keeps its downloads and no buttons are shown on videos)
+const DEFAULTS = { port: 9614, intercept: true, minSizeKB: 0, enabled: true };
 
 async function getOpts() {
   return Object.assign({}, DEFAULTS, await chrome.storage.local.get(DEFAULTS));
@@ -272,7 +274,7 @@ function isNewDownload(item) {
 
 chrome.downloads.onCreated.addListener(async (item) => {
   const opts = await getOpts();
-  if (!opts.intercept) return;
+  if (!opts.enabled || !opts.intercept) return;
   const url = item.finalUrl || item.url;
   if (!url || !/^https?:/i.test(url)) return; // blob:, data:, file: stay in the browser
   if (!isNewDownload(item)) return;
@@ -371,6 +373,14 @@ async function itemsForTab(tabId) {
 }
 
 async function pushToTab(tabId) {
+  const { enabled } = await getOpts();
+  if (!enabled) {
+    // switched off: no buttons on the page, "off" on the add-in's icon
+    chrome.action.setBadgeBackgroundColor({ color: "#8a94a3" });
+    chrome.action.setBadgeText({ tabId, text: "off" }).catch(() => {});
+    chrome.tabs.sendMessage(tabId, { type: "swiftget-media", items: [] }).catch(() => {});
+    return;
+  }
   const items = await itemsForTab(tabId);
   const count = items.filter((i) => !i.disabled).length;
   chrome.action.setBadgeBackgroundColor({ color: "#1f6feb" });
@@ -508,6 +518,13 @@ async function sendPlaylist(url) {
   );
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
 }
+
+// The on / off switch: every tab shows it at once.
+chrome.storage.onChanged.addListener((ch, area) => {
+  if (area !== "local" || !ch.enabled) return;
+  chrome.action.setBadgeText({ text: ch.enabled.newValue === false ? "off" : "" }).catch(() => {});
+  chrome.tabs.query({}).then((tabs) => tabs.forEach((t) => t.id != null && pushToTab(t.id))).catch(() => {});
+});
 
 // Ask the app (yt-dlp) for the qualities of a video page.
 const resolving = new Map(); // tabId -> page being resolved
@@ -743,8 +760,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case "swiftget-video-seen":
       // the page shows a video: find its qualities
       if (!sender.tab) return false;
-      if (isYoutube(sender.tab.url)) resolveYoutube(sender.tab.id, sender.tab.url);
-      else resolvePage(sender.tab.id, msg.page || sender.tab.url, !!msg.frame);
+      getOpts().then((o) => {
+        if (!o.enabled) return;
+        if (isYoutube(sender.tab.url)) resolveYoutube(sender.tab.id, sender.tab.url);
+        else resolvePage(sender.tab.id, msg.page || sender.tab.url, !!msg.frame);
+      });
       return false;
     case "swiftget-resolve-video":
       // one of several videos on the page: its own file, or its own link
@@ -754,7 +774,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // a torrent's magnet link clicked on a page
       return reply(
         getOpts().then((o) => {
-          if (!o.intercept) throw new Error("sending is off");
+          if (!o.enabled || !o.intercept) throw new Error("sending is off");
           return sendToApp({ url: msg.url, referrer: sender.tab ? sender.tab.url : "" });
         }),
         sendResponse
@@ -769,7 +789,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       lastKeys = { alt: !!msg.alt, ctrl: !!msg.ctrl, shift: !!msg.shift, at: Date.now() };
       return false;
     case "swiftget-config":
-      getConfig().then((cfg) => sendResponse((cfg && cfg.panel) || { enabled: true, skipSites: [] }));
+      Promise.all([getConfig(), getOpts()]).then(([cfg, o]) => {
+        const panel = (cfg && cfg.panel) || { enabled: true, skipSites: [] };
+        sendResponse(o.enabled ? panel : { ...panel, enabled: false });
+      });
       return true;
     default:
       return false;

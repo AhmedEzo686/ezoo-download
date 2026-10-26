@@ -218,5 +218,6 @@
  "Choose where to save it": "Choisissez où l'enregistrer",
  "Show download progress": "Afficher la progression",
  "Stop download": "Arrêter le téléchargement",
- "This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.": "Ce torrent est déjà en cours (il partage peut-être encore ses fichiers). Patientez un peu, ou quittez Ezoo Download et rouvrez-le."
+ "This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.": "Ce torrent est déjà en cours (il partage peut-être encore ses fichiers). Patientez un peu, ou quittez Ezoo Download et rouvrez-le.",
+ "The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.": "Le module du navigateur peut être mis en pause depuis sa propre fenêtre, sans le désactiver dans la page des extensions."
 }
