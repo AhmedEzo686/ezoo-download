@@ -4,6 +4,11 @@ const fs = require("fs"), path = require("path"), vm = require("vm"), assert = r
 const dir = path.join(__dirname, "..");
 const listeners = {}; const on = (n) => ({ addListener: (f) => (listeners[n] = f) });
 const session = {}; const localStore = {}; let reloads = 0; let pingExt = null; const sent = []; const tabMsgs = []; let tabUrl = "https://www.youtube.com/watch?v=AAAAAAAAAAA";
+let runtimeOrigin = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+let runtimeVersion = "1.0.4";
+const readiness = [];
+let preparedConfig;
+let preparedConfigReads = 0;
 const chrome = {
   storage: {
     onChanged: on("store"),
@@ -19,7 +24,7 @@ const chrome = {
   tabs: { onUpdated: on("upd"), onRemoved: on("rm"), get: async (id) => ({ id, url: tabUrl }), query: async () => [{ id: 7 }],
           sendMessage: async (id, m) => tabMsgs.push(m) },
   action: { setBadgeBackgroundColor: () => {}, setBadgeText: async () => {} },
-  runtime: { onInstalled: on("inst"), onStartup: on("start"), onMessage: on("msg"), getManifest: () => ({ version: "1.0.4" }), reload: () => { reloads++; } },
+  runtime: { onInstalled: on("inst"), onStartup: on("start"), onMessage: on("msg"), getManifest: () => ({ version: runtimeVersion }), getURL: (part) => `${runtimeOrigin}/${part}`, reload: () => { reloads++; } },
   contextMenus: { removeAll: () => {}, create: () => {}, onClicked: on("ctx") },
   cookies: { getAll: async () => [] },
 };
@@ -29,6 +34,16 @@ chrome.cookies.getAll = async ({ url }) => { cookieQueries.push(url); return [{ 
 const originalTabMessage = chrome.tabs.sendMessage;
 chrome.tabs.sendMessage = async (id, message) => message.type === "swiftget-collect-links" ? collectedLinks : originalTabMessage(id, message);
 const fetch = async (url, opts = {}) => {
+  if (url.endsWith("/app-connection.json")) {
+    preparedConfigReads++;
+    return preparedConfig === undefined ? { ok: false, status: 404 } : {
+      ok: true, status: 200, text: async () => typeof preparedConfig === "string" ? preparedConfig : JSON.stringify(preparedConfig),
+    };
+  }
+  if (url.endsWith("/extension/ready")) {
+    if (appDown) throw new TypeError("Failed to fetch");
+    readiness.push({ method: opts.method, headers: opts.headers, body: JSON.parse(opts.body) });
+  }
   if (url.endsWith("/links")) batches.push(JSON.parse(opts.body));
   if (url.endsWith("/ping") && pingExt) return { ok: true, status: 200, json: async () => ({ ext: pingExt }) };
   if (url.endsWith("/add")) { if (appDown) throw new TypeError("Failed to fetch"); sent.push(JSON.parse(opts.body)); }
@@ -50,6 +65,86 @@ const gv = (itag, mime, clen, dur, r) => `https://rr1---sn-x.googlevideo.com/vid
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
 (async () => {
+  // Only a dedicated extension POST registers readiness, without site data or
+  // cookie/profile inspection. A popup check bypasses cached startup checks.
+  {
+    await tick();
+    assert(readiness.length >= 1, "worker startup announces readiness");
+    const initial = readiness[0];
+    assert.strictEqual(initial.method, "POST");
+    assert.strictEqual(initial.headers["X-SwiftGet"], "1");
+    assert.deepStrictEqual(Object.keys(initial.body).sort(), ["browser", "enabled", "extensionOrigin", "version"]);
+    assert.strictEqual(initial.body.extensionOrigin, runtimeOrigin);
+    const beforePing = readiness.length;
+    await fetch("http://127.0.0.1:9614/ping", { headers: { "X-SwiftGet": "1" } });
+    assert.strictEqual(readiness.length, beforePing, "a bare app ping is not an extension announcement");
+    await ctx.announceExtensionReady();
+    assert.strictEqual(readiness.length, beforePing, "normal readiness traffic is throttled");
+    session.versionCheckAt = Date.now();
+    const beforeCookies = cookieQueries.length;
+    const status = await new Promise((resolve) => listeners.msg({ type: "swiftget-status" }, {}, resolve));
+    assert.strictEqual(status.ok, true);
+    assert.strictEqual(readiness.length, beforePing + 1, "opening the popup refreshes readiness despite a cached version check");
+    assert.strictEqual(cookieQueries.length, beforeCookies, "setup readiness never reads website cookies");
+    const oldAgent = ctx.navigator.userAgent;
+    for (const [agent, expected] of [["Chrome/130.0 Edg/130.0", "Edge"], ["Chrome/130.0 OPR/110.0", "Opera"], ["Chrome/130.0", "Chrome"]]) {
+      ctx.navigator.userAgent = agent;
+      await ctx.announceExtensionReady(true);
+      assert.strictEqual(readiness.at(-1).body.browser, expected);
+    }
+    ctx.navigator.brave = { isBrave: async () => true };
+    await ctx.announceExtensionReady(true);
+    assert.strictEqual(readiness.at(-1).body.browser, "Brave");
+    delete ctx.navigator.brave;
+    ctx.navigator.userAgent = "Firefox/140.0";
+    runtimeOrigin = "moz-extension://12345678-1234-1234-1234-123456789abc";
+    await ctx.announceExtensionReady(true);
+    assert.strictEqual(readiness.at(-1).body.browser, "Firefox");
+    assert.strictEqual(readiness.at(-1).body.extensionOrigin, runtimeOrigin);
+    const validCount = readiness.length;
+    runtimeOrigin = "https://untrusted.example";
+    assert.strictEqual(await ctx.announceExtensionReady(true), false);
+    runtimeOrigin = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    runtimeVersion = "1".repeat(33);
+    assert.strictEqual(await ctx.announceExtensionReady(true), false);
+    runtimeVersion = "1.0.4\nforged";
+    assert.strictEqual(await ctx.announceExtensionReady(true), false);
+    assert.strictEqual(readiness.length, validCount, "invalid origins and unbounded versions are not announced");
+    runtimeVersion = "1.0.4";
+    ctx.navigator.userAgent = oldAgent;
+    localStore.enabled = false;
+    await ctx.announceExtensionReady(true);
+    assert.strictEqual(readiness.at(-1).body.enabled, false, "paused capture remains distinguishable from ready capture");
+    delete localStore.enabled;
+    console.log("extension readiness: explicit, bounded, browser-specific, and cookie-free");
+  }
+  // Stable setup copies can supply the app port without changing preferences.
+  {
+    const resetPrepared = () => vm.runInContext("preparedPortPromise = null", ctx);
+    preparedConfig = { port: 19718 };
+    resetPrepared();
+    const reads = preparedConfigReads;
+    assert.strictEqual((await ctx.getOpts()).port, 19718);
+    assert.strictEqual((await ctx.getOpts()).port, 19718);
+    assert.strictEqual(preparedConfigReads, reads + 1, "prepared metadata is cached for the worker lifetime");
+    localStore.port = 19719;
+    assert.strictEqual((await ctx.getOpts()).port, 19719, "explicit saved options override the prepared default");
+    delete localStore.port;
+    for (const port of [1, 65535]) {
+      preparedConfig = { port };
+      resetPrepared();
+      assert.strictEqual((await ctx.getOpts()).port, port, "valid boundary ports are accepted");
+    }
+    for (const invalid of [{ port: 0 }, { port: 65536 }, { port: 1.5 }, { port: "19718" }, null, "invalid JSON", " ".repeat(1025)]) {
+      preparedConfig = invalid;
+      resetPrepared();
+      assert.strictEqual((await ctx.getOpts()).port, 9614, "invalid prepared ports use the normal default");
+    }
+    preparedConfig = undefined;
+    resetPrepared();
+    assert.strictEqual((await ctx.getOpts()).port, 9614, "missing bundled metadata keeps the normal default");
+    console.log("prepared connection: cached, validated, optional, and overridden by explicit options");
+  }
   // Bulk downloads retain the page scope; foreign-only lists need no page cookies.
   {
     const page = "https://members.example/private?token=synthetic";

@@ -7,6 +7,7 @@ slint::include_modules!();
 mod api;
 mod autostart;
 mod browser;
+mod browser_files;
 mod clipboard;
 mod extra;
 mod grab;
@@ -287,6 +288,7 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
     let mgr = Manager::new(rt.handle().clone(), data_dir.clone())?;
+    browser::refresh_prepared_extensions(mgr.settings().browser_port);
     // yt-dlp and ffmpeg: put back if missing, update silently once a day
     swiftget_engine::tools::spawn_updater(rt.handle(), mgr.client(), data_dir.clone());
 

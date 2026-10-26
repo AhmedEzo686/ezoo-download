@@ -16,9 +16,33 @@ if (typeof importScripts === "function") importScripts("yt-core.js");
 // enabled: the on / off switch of the add-in's window (off = the browser
 // keeps its downloads and no buttons are shown on videos)
 const DEFAULTS = { port: 9614, intercept: true, minSizeKB: 0, enabled: true };
+let preparedPortPromise = null;
+
+// The desktop setup flow can prepare a stable extension copy with its port.
+// Missing metadata is normal for bundled/source/store copies. Read it only
+// once per worker; explicit options saved by the user always take precedence.
+async function preparedAppPort() {
+  if (!preparedPortPromise) {
+    preparedPortPromise = (async () => {
+      try {
+        if (typeof chrome.runtime.getURL !== "function") return DEFAULTS.port;
+        const response = await fetchWithTimeout(chrome.runtime.getURL("app-connection.json"), {}, 800);
+        if (!response.ok || typeof response.text !== "function") return DEFAULTS.port;
+        const text = await response.text();
+        if (text.length > 1024) return DEFAULTS.port;
+        const config = JSON.parse(text);
+        return config && Number.isInteger(config.port) && config.port >= 1 && config.port <= 65535 ? config.port : DEFAULTS.port;
+      } catch {
+        return DEFAULTS.port;
+      }
+    })();
+  }
+  return preparedPortPromise;
+}
 
 async function getOpts() {
-  return Object.assign({}, DEFAULTS, await chrome.storage.local.get(DEFAULTS));
+  const defaults = { ...DEFAULTS, port: await preparedAppPort() };
+  return Object.assign({}, defaults, await chrome.storage.local.get(defaults));
 }
 
 function apiUrl(port, path) {
@@ -35,6 +59,59 @@ async function fetchWithTimeout(url, opts = {}, ms = 1500) {
   }
 }
 
+// ---------------------------------------------------------------- setup readiness
+// A dedicated extension announcement lets the setup window distinguish an
+// installed add-on from an ordinary app ping. This is UX feedback, not auth.
+let readinessAt = 0;
+let readinessIdentity = "";
+let readinessPending = null;
+let readinessSucceeded = false;
+
+async function browserFamily() {
+  const ua = navigator.userAgent || "";
+  if (/Firefox\//i.test(ua)) return "Firefox";
+  if (/Edg(?:e|A|iOS)?\//i.test(ua)) return "Edge";
+  if (/(?:OPR|Opera)\//i.test(ua)) return "Opera";
+  try {
+    if (navigator.brave && typeof navigator.brave.isBrave === "function" && await navigator.brave.isBrave()) return "Brave";
+  } catch { /* identifying the browser is optional */ }
+  return /(?:Chrome|CriOS)\//i.test(ua) ? "Chrome" : "Chromium";
+}
+
+async function announceExtensionReady(force = false) {
+  const opts = await getOpts();
+  const version = String(chrome.runtime.getManifest().version || "");
+  if (!/^[0-9][A-Za-z0-9._+-]{0,31}$/.test(version) || typeof chrome.runtime.getURL !== "function") return false;
+  let extensionOrigin;
+  try {
+    const root = new URL(chrome.runtime.getURL(""));
+    if (!["chrome-extension:", "moz-extension:", "extension:"].includes(root.protocol) || !/^[A-Za-z0-9-]{1,128}$/.test(root.hostname)) return false;
+    extensionOrigin = `${root.protocol}//${root.hostname}`;
+  } catch { return false; }
+  const identity = `${opts.port}|${opts.enabled !== false}|${version}|${extensionOrigin}`;
+  if (!force && identity === readinessIdentity && Date.now() - readinessAt < 15000) return readinessSucceeded;
+  if (readinessPending) return readinessPending;
+  readinessAt = Date.now();
+  readinessIdentity = identity;
+  readinessPending = (async () => {
+    try {
+      const r = await fetchWithTimeout(apiUrl(opts.port, "/extension/ready"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-SwiftGet": "1" },
+        body: JSON.stringify({ browser: await browserFamily(), version, extensionOrigin, enabled: opts.enabled !== false }),
+      }, 800);
+      readinessSucceeded = r.ok;
+      return readinessSucceeded;
+    } catch {
+      readinessSucceeded = false;
+      return false; // the app may not be running yet
+    } finally {
+      readinessPending = null;
+    }
+  })();
+  return readinessPending;
+}
+
 // ---------------------------------------------------------------- self update
 // The add-in is loaded from the program's own folder. When the program
 // updates itself it brings newer add-in files along; the browser only reads
@@ -47,6 +124,7 @@ async function followAppVersion() {
   try {
     const r = await fetchWithTimeout(apiUrl(port, "/ping"), { headers: { "X-SwiftGet": "1" } }, 800);
     if (!r.ok || typeof r.json !== "function") return;
+    announceExtensionReady();
     const want = (await r.json()).ext;
     const have = chrome.runtime.getManifest().version;
     if (!want || want === have) return;
@@ -61,12 +139,18 @@ async function followAppVersion() {
   }
 }
 followAppVersion();
+announceExtensionReady();
 
-async function appAlive() {
+async function appAlive(forceReady = false) {
   const { port } = await getOpts();
   try {
     const r = await fetchWithTimeout(apiUrl(port, "/ping"), { headers: { "X-SwiftGet": "1" } }, 800);
-    if (r.ok) followAppVersion();
+    if (r.ok) {
+      // The popup's explicit status check must announce even when the worker's
+      // cached version check would otherwise skip its startup request.
+      await announceExtensionReady(forceReady);
+      followAppVersion();
+    }
     return r.ok;
   } catch {
     return false;
@@ -521,6 +605,7 @@ async function sendPlaylist(url) {
 
 // The on / off switch: every tab shows it at once.
 chrome.storage.onChanged.addListener((ch, area) => {
+  if (area === "local" && (ch.enabled || ch.port)) announceExtensionReady(true);
   if (area !== "local" || !ch.enabled) return;
   chrome.action.setBadgeText({ text: ch.enabled.newValue === false ? "off" : "" }).catch(() => {});
   chrome.tabs.query({}).then((tabs) => tabs.forEach((t) => t.id != null && pushToTab(t.id))).catch(() => {});
@@ -646,6 +731,7 @@ async function resolveOneVideo(msg, tab) {
 
 chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (!info.url) return;
+  announceExtensionReady();
   const ytKey = `yt_${tabId}`;
   const { [ytKey]: yt } = await chrome.storage.session.get(ytKey);
   const newId = videoIdOf(info.url);
@@ -688,8 +774,8 @@ function makeMenus() {
     });
   });
 }
-chrome.runtime.onInstalled.addListener(makeMenus);
-chrome.runtime.onStartup.addListener(makeMenus);
+chrome.runtime.onInstalled.addListener(() => { makeMenus(); announceExtensionReady(true); });
+chrome.runtime.onStartup.addListener(() => { makeMenus(); announceExtensionReady(true); });
 
 /** Every link of the page (or of the selection) to the app's "Download all links". */
 async function sendAllLinks(tab, selection) {
@@ -793,7 +879,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // "Download all" on a playlist page: the app's playlist window
       return reply(sendPlaylist(msg.url), sendResponse);
     case "swiftget-status":
-      appAlive().then((ok) => sendResponse({ ok }));
+      appAlive(true).then((ok) => sendResponse({ ok }));
       return true;
     case "swiftget-keys":
       lastKeys = { alt: !!msg.alt, ctrl: !!msg.ctrl, shift: !!msg.shift, at: Date.now() };

@@ -85,6 +85,7 @@ ext_version="$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([^"]+
 signed_xpi="extension-signed/ezoo-download-firefox-$ext_version.xpi"
 if [[ -f "$signed_xpi" ]]; then
     cp "$signed_xpi" "$app/Contents/Resources/ezoo-download-firefox.xpi"
+    printf '%s\n' "$ext_version" > "$app/Contents/Resources/ezoo-download-firefox.version"
 fi
 
 # Convert the existing artwork using tools included with macOS.

@@ -97,6 +97,11 @@ pub struct Manager {
 /// (%APPDATA%\Ezoo\EzooDownload\data on Windows). The list and settings of
 /// the earlier "SwiftGet" name are carried over the first time.
 pub fn default_data_dir() -> PathBuf {
+    // Explicit isolated/portable profile. Do not migrate the normal profile
+    // into a directory the caller selected for a separate run.
+    if let Some(dir) = std::env::var_os("EZOO_DATA_DIR").filter(|value| !value.is_empty()) {
+        return PathBuf::from(dir);
+    }
     let dir = directories::ProjectDirs::from("com", "Ezoo", "EzooDownload")
         .map(|p| p.data_dir().to_path_buf())
         .unwrap_or_else(|| PathBuf::from("ezoo-data"));

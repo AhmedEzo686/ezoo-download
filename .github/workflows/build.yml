@@ -161,14 +161,28 @@ jobs:
           Remove-Item -Force "$p/extension-firefox/manifest.firefox.json", "$p/extension/manifest.firefox.json"
           # the add-on has its own version (manifest.firefox.json)
           $extVersion = (Get-Content extension/manifest.firefox.json -Raw | ConvertFrom-Json).version
+          # Never carry a previous staged signed add-on into a newer setup.
+          Remove-Item -Force -ErrorAction SilentlyContinue "$p/ezoo-download-firefox.xpi", "$p/ezoo-download-firefox.version", "dist/ezoo-download-firefox.xpi", "dist/firefox-updates.json"
+          function Copy-FirefoxXpi([string]$source) {
+            $archive = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $source).Path)
+            try {
+              $entry = $archive.GetEntry("manifest.json")
+              if (-not $entry) { throw "The signed Firefox add-on has no manifest" }
+              $reader = [IO.StreamReader]::new($entry.Open())
+              try { $manifest = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+              if ([string]$manifest.version -ne [string]$extVersion) { throw "Signed Firefox add-on version does not match $extVersion" }
+            } finally { $archive.Dispose() }
+            Copy-Item $source "$p/ezoo-download-firefox.xpi"
+            Copy-Item $source "dist/ezoo-download-firefox.xpi"
+            [IO.File]::WriteAllText("$PWD/$p/ezoo-download-firefox.version", [string]$extVersion, [Text.UTF8Encoding]::new($false))
+          }
           # Firefox keeps only add-ons signed by Mozilla; a version can be signed
           # once, so this runs for a release only
           if ($env:IS_RELEASE -eq "true" -and $env:AMO_JWT_ISSUER -and $env:AMO_JWT_SECRET -and -not (Test-Path "extension-signed/ezoo-download-firefox-$extVersion.xpi")) {
             npx --yes web-ext@8.10.0 sign --channel=unlisted --source-dir "$p/extension-firefox" --artifacts-dir xpi-out --api-key "$env:AMO_JWT_ISSUER" --api-secret "$env:AMO_JWT_SECRET" --approval-timeout 900000
             $xpi = Get-ChildItem xpi-out -Filter *.xpi | Select-Object -First 1
             if ($xpi) {
-              Copy-Item $xpi.FullName "$p/ezoo-download-firefox.xpi"
-              Copy-Item $xpi.FullName "dist/ezoo-download-firefox.xpi"
+              Copy-FirefoxXpi $xpi.FullName
               $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
               [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
             } else { Write-Host "::warning::the Firefox add-on was not signed" }
@@ -176,8 +190,7 @@ jobs:
           # an add-on of this version already signed (by hand on addons.mozilla.org)
           $signed = "extension-signed/ezoo-download-firefox-$extVersion.xpi"
           if (-not (Test-Path "$p/ezoo-download-firefox.xpi") -and (Test-Path $signed)) {
-            Copy-Item $signed "$p/ezoo-download-firefox.xpi"
-            Copy-Item $signed "dist/ezoo-download-firefox.xpi"
+            Copy-FirefoxXpi $signed
             $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
             [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
           }

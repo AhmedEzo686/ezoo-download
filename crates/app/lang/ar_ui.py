@@ -321,8 +321,7 @@ AR = {
     "Open the file / progress window": "فتح الملف / نافذة التقدم",
     "Show properties": "إظهار الخصائص",
     "Browser integration": "التكامل مع المتصفح",
-    "Chrome and Edge: load the \\\"extension\\\" folder in chrome://extensions (Developer mode > Load unpacked). Downloads, videos and the right click menu then go to Ezoo Download.":
-        "كروم وإيدج: حمّل مجلد \\\"extension\\\" من chrome://extensions (وضع المطوّر > Load unpacked). بعدها تذهب التحميلات والفيديوهات وقائمة الكليك يمين إلى Ezoo Download.",
+    "Use the setup assistant to connect your browser. It prepares the extension, opens the right page, and checks the connection.": "استخدم مساعد الإعداد لربط متصفحك بالبرنامج. فهو يجهّز الإضافة، ويفتح الصفحة الصحيحة، ويتحقق من الاتصال.",
     "Hold this key to let the browser download by itself": "اضغط هذا المفتاح ليحمّل المتصفح بنفسه",
     "Alt": "Alt",
     "Ctrl": "Ctrl",
@@ -493,4 +492,12 @@ AR = {
     "Hide next to the clock": "إخفاء بجوار الساعة",
     "What's new in Ezoo Download": "الجديد في Ezoo Download",
     "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal. Thank you!": "برنامج Ezoo Download مجاني تمامًا وبدون إعلانات. لو البرنامج بيفيدك وحابب تدعم تطويره، تقدر تبعت دعمك عن طريق PayPal. شكرًا لك!",
+    "Browser Extension Setup": "إعداد إضافة المتصفح",
+    "Browser": "المتصفح",
+    "Open Browser Again…": "فتح المتصفح مجددًا…",
+    "Show Folder…": "إظهار المجلد…",
+    "Check Connection": "التحقق من الاتصال",
+    "Having Trouble?": "هل تواجه مشكلة؟",
+    "Extension Folder": "مجلد الإضافة",
+    "Copy Folder Path": "نسخ مسار المجلد",
 }

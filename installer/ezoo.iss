@@ -64,6 +64,7 @@ Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifs
 Source: "{#Stage}\extension\*"; DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Stage}\extension-firefox\*"; DestDir: "{app}\extension-firefox"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Stage}\ezoo-download-firefox.xpi"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#Stage}\ezoo-download-firefox.version"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; system runtime files, installed only when they are missing (see [Code])
 #ifexist "..\build-cache\redist\vc_redist.x64.exe"
   #define HaveRedist
@@ -74,6 +75,9 @@ Source: "..\build-cache\redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: dont
 ; older versions kept the helpers next to the program
 Type: files; Name: "{app}\yt-dlp.exe"
 Type: files; Name: "{app}\ffmpeg.exe"
+; replace this app-owned pair together; unsigned builds must not retain an old XPI
+Type: files; Name: "{app}\ezoo-download-firefox.xpi"
+Type: files; Name: "{app}\ezoo-download-firefox.version"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"
