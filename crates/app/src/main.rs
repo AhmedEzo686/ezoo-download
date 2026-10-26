@@ -1337,6 +1337,33 @@ fn wire_add(ui: &Ui) {
     let Some(add) = ui.ctx.add.upgrade() else { return };
     {
         let ctx = ui.ctx.clone();
+        add.on_rename_file(move |name| {
+            let Some(d) = ctx.add.upgrade() else { return };
+            let current = PathBuf::from(d.get_save_as().as_str());
+            // A pending metadata response must not overwrite a name being edited.
+            ctx.add_state.lock().unwrap().auto_path.clear();
+            let Some(path) = add_path_with_name(&current, name.as_str()) else {
+                d.set_name_error(t("Use a file name without slashes, colons, or control characters.").into());
+                return;
+            };
+            d.set_save_as(path.display().to_string().into());
+            d.set_name_error(SharedString::new());
+            d.set_kind(kind_for(name.as_str()).into());
+            d.set_ext(filename::extension(name.as_str()).to_uppercase().into());
+        });
+    }
+    {
+        let w = add.as_weak();
+        let ctx = ui.ctx.clone();
+        add.on_refresh_destination(move || {
+            if let Some(d) = w.upgrade() {
+                ctx.add_state.lock().unwrap().auto_path.clear();
+                sync_add_destination(&d);
+            }
+        });
+    }
+    {
+        let ctx = ui.ctx.clone();
         add.on_check_url(move || {
             if let Some(d) = ctx.add.upgrade() {
                 let url = d.get_url().trim().to_string();
@@ -1369,18 +1396,21 @@ fn wire_add(ui: &Ui) {
                 .cloned()
                 .unwrap_or_else(|| "General".into());
             let current = PathBuf::from(d.get_save_as().as_str());
+            let was_auto = ctx.add_state.lock().unwrap().auto_path == current.display().to_string();
             let name = current
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "download".into());
             let path = ctx.mgr.settings().dir_for(&cat).join(&name).display().to_string();
             d.set_save_as(path.clone().into());
+            sync_add_destination(&d);
             d.set_category_name(t(&cat).into());
-            ctx.add_state.lock().unwrap().auto_path = path;
+            ctx.add_state.lock().unwrap().auto_path = if was_auto { path } else { String::new() };
         });
     }
     {
         let w = add.as_weak();
+        let ctx = ui.ctx.clone();
         add.on_browse(move || {
             let Some(d) = w.upgrade() else { return };
             let current = PathBuf::from(d.get_save_as().as_str());
@@ -1392,7 +1422,9 @@ fn wire_add(ui: &Ui) {
                 dlg = dlg.set_file_name(name.to_string_lossy());
             }
             if let Some(p) = dlg.save_file() {
+                ctx.add_state.lock().unwrap().auto_path.clear();
                 d.set_save_as(p.display().to_string().into());
+                sync_add_destination(&d);
             }
         });
     }
@@ -2065,12 +2097,42 @@ fn close_complete(ui: &Ui) {
     }
 }
 
+/// A rename is one path component, never a second destination or traversal.
+fn add_path_with_name(current: &Path, name: &str) -> Option<PathBuf> {
+    if name.trim().is_empty() || name == "." || name == ".." || name.len() > 255
+        || name.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | ':'))
+    {
+        return None;
+    }
+    Some(current.parent().unwrap_or_else(|| Path::new("")).join(name))
+}
+
+fn sync_add_destination(d: &AddDialog) {
+    let path = PathBuf::from(d.get_save_as().as_str());
+    let name = path.file_name().map(|v| v.to_string_lossy().into_owned()).unwrap_or_default();
+    let destination = path.parent().and_then(|folder| {
+        let name = folder.file_name()?.to_string_lossy();
+        Some(match folder.parent().and_then(|p| p.file_name()) {
+            Some(parent) => format!("{} / {}", parent.to_string_lossy(), name),
+            None => name.into_owned(),
+        })
+    }).unwrap_or_else(|| t("Current folder"));
+    d.set_file_name(name.clone().into());
+    d.set_destination(destination.into());
+    d.set_name_error(if add_path_with_name(&path, &name).is_some() {
+        SharedString::new()
+    } else {
+        t("Choose a valid file name.").into()
+    });
+}
+
 /// Fill "Download File Info" with a name: category, Save As, icon.
 fn show_name_in_dialog(ctx: &Ctx, d: &AddDialog, name: &str, url: &str) -> String {
     let s = ctx.mgr.settings();
     let cat = s.category_of(name, url);
     let path = s.dir_for(&cat).join(name).display().to_string();
     d.set_save_as(path.clone().into());
+    sync_add_destination(d);
     let cats = ctx.add_state.lock().unwrap().categories.clone();
     d.set_category_index(cats.iter().position(|c| *c == cat).unwrap_or(0) as i32);
     d.set_category_name(t(&cat).into());
@@ -2131,6 +2193,11 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, mut headers: RequestHeader
         st.probe_seq += 1;
     }
     d.set_url(url.clone().into());
+    d.set_manual_url(url.is_empty());
+    d.set_show_advanced(false);
+    d.set_source_host(url::Url::parse(&url).ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .unwrap_or_default().into());
     d.set_description(SharedString::new());
     d.set_remember_path(false);
     d.set_size_text(SharedString::new());
@@ -2205,6 +2272,9 @@ pub(crate) fn early_download(ctx: &Ctx) -> Option<u64> {
 /// Ask the server about the file in the background, then show the result.
 fn start_probe(ctx: &Ctx, url: String) {
     let Some(d) = ctx.add.upgrade() else { return };
+    d.set_source_host(url::Url::parse(&url).ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .unwrap_or_default().into());
     let (seq, headers) = {
         let mut st = ctx.add_state.lock().unwrap();
         st.probe_seq += 1;
@@ -2234,7 +2304,7 @@ fn start_probe(ctx: &Ctx, url: String) {
                     }
                     let has_audio = st.extra.audio_url.is_some() && st.origin_url == url;
                     let size = p.total_size.map(fmt_size).unwrap_or_else(|| t("Unknown size"));
-                    let size_text = if has_audio { format!("{size}\n{}", t("+ audio")) } else { size };
+                    let size_text = if has_audio { format!("{size} {}", t("+ audio")) } else { size };
                     d.set_size_text(size_text.into());
                     let kind = match (p.kind, p.resumable) {
                         _ if has_audio => "Video + audio, joined after download",
@@ -2271,6 +2341,12 @@ fn start_probe(ctx: &Ctx, url: String) {
 fn confirm_add(ui: &Ui, start: bool) {
     let ctx = &ui.ctx;
     let Some(d) = ctx.add.upgrade() else { return };
+    if add_path_with_name(Path::new(d.get_save_as().as_str()), d.get_file_name().as_str()).is_none()
+        || !d.get_name_error().is_empty()
+    {
+        d.set_name_error(t("Choose a valid file name.").into());
+        return;
+    }
     let url = d.get_url().trim().to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) || url::Url::parse(&url).is_err() {
         d.set_info(t("Please enter a valid http:// or https:// address").into());
@@ -3209,6 +3285,17 @@ fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn add_dialog_rename_stays_in_the_selected_folder() {
+        let current = Path::new("/Downloads/old.mp4");
+        assert_eq!(add_path_with_name(current, "Holiday video.mp4"), Some(PathBuf::from("/Downloads/Holiday video.mp4")));
+        for invalid in ["", " ", ".", "..", "../escape.mp4", "/tmp/escape", "sub/file", "sub\\file", "C:escape", "bad\nname", "bad\0name"] {
+            assert_eq!(add_path_with_name(current, invalid), None, "{invalid:?}");
+        }
+        assert_eq!(add_path_with_name(current, &"x".repeat(256)), None);
+        assert_eq!(add_path_with_name(Path::new("old.zip"), "new.zip"), Some(PathBuf::from("new.zip")));
+    }
 
     #[test]
     fn filters_preserve_visible_selection_and_drop_hidden_focus_and_anchor() {

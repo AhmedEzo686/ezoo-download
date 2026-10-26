@@ -5,16 +5,21 @@ let integrationEnabled = true;
 
 function icon(kind) {
   const paths = {
-    download: "M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4",
-    video: "M7 3h7l4 4v14H6V3h1m7 0v5h5M10 11l5 3-5 3z",
-    audio: "M10 17V6l8-2v11M10 17c0 1.7-1.8 3-4 3s-3-1.3-2-3 3.5-2.6 6-2M18 15c0 1.7-1.8 3-4 3s-3-1.3-2-3 3.5-2.6 6-2",
+    download: "M12 3v11m-4-4 4 4 4-4M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4",
+    video: "M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm12 3 5-3v12l-5-3",
+    audio: "M9 17V5l11-2v12M9 8l11-2M9 17c0 1.4-1.6 2.5-3.5 2.5S2 18.4 2 17s1.6-2.5 3.5-2.5S9 15.6 9 17Zm11-2c0 1.4-1.6 2.5-3.5 2.5S13 16.4 13 15s1.6-2.5 3.5-2.5S20 13.6 20 15Z",
     playlist: "M4 6h11M4 12h8M4 18h6m9-7v10m-4-4 4 4 4-4",
     check: "m5 12 4 4L19 6",
-    lock: "M6 10h12v11H6Zm3 0V7a3 3 0 0 1 6 0v3m-3 5v2",
+    lock: "M7 10h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Zm1 0V7a4 4 0 0 1 8 0v3m-4 4v3",
   };
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("class", "glyph");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.7");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
   svg.setAttribute("aria-hidden", "true");
   const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
   path.setAttribute("d", paths[kind] || paths.video);

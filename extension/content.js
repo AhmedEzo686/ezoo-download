@@ -222,26 +222,26 @@
       font: max(13px, calc(11px / var(--z, 1)))/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; color: var(--ez-text); }
     button { appearance: none; -webkit-appearance: none; font: inherit; color: inherit; margin: 0; cursor: pointer; }
     button:focus-visible { outline: 2px solid var(--ez-accent); outline-offset: -3px; }
-    .btn { display: inline-flex; align-items: center; min-height: max(34px, calc(28px / var(--z, 1))); background: var(--ez-surface);
-      border: 1px solid var(--ez-line); border-radius: 11px; box-shadow: 0 2px 8px var(--ez-shadow);
+    .btn { display: inline-flex; align-items: center; min-height: max(38px, calc(28px / var(--z, 1))); background: var(--ez-surface);
+      border: 1px solid var(--ez-line); border-radius: 999px; box-shadow: 0 3px 12px -3px var(--ez-shadow);
       user-select: none; white-space: nowrap; overflow: hidden; }
     .btn.open { border-color: var(--ez-accent); }
-    .part { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; min-height: max(34px, calc(28px / var(--z, 1)));
+    .part { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; min-height: max(38px, calc(28px / var(--z, 1)));
       background: transparent; border: 0; font-weight: 600; cursor: grab; }
     .part:hover, .side:hover { background: var(--ez-group); }
     .btn.drag .part { cursor: grabbing; }
-    .ico { width: max(16px, calc(12px / var(--z, 1))); height: max(16px, calc(12px / var(--z, 1))); flex: none; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .ico { width: max(18px, calc(14px / var(--z, 1))); height: max(18px, calc(14px / var(--z, 1))); flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
     .download-symbol { color: var(--ez-link); }
-    .caret { width: 12px; height: 12px; color: var(--ez-secondary); }
-    .count { min-width: 18px; padding: 0 4px; border-radius: 5px; background: var(--ez-group); color: var(--ez-secondary);
+    .caret { width: max(14px, calc(10px / var(--z, 1))); height: max(14px, calc(10px / var(--z, 1))); color: var(--ez-secondary); }
+    .count { min-width: 19px; padding: 1px 5px; border-radius: 999px; background: var(--ez-group); color: var(--ez-secondary);
       font-size: max(11px, calc(10px / var(--z, 1))); font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
-    .side { display: inline-flex; align-items: center; justify-content: center; min-width: max(28px, calc(24px / var(--z, 1))); height: max(28px, calc(24px / var(--z, 1)));
-      background: transparent; border: 0; border-radius: 7px; color: var(--ez-secondary); }
-    .sides { display: inline-flex; gap: 1px; align-items: center; padding: 0 3px; border-left: 1px solid var(--ez-line); }
+    .side { display: inline-flex; align-items: center; justify-content: center; min-width: max(30px, calc(24px / var(--z, 1))); height: max(30px, calc(24px / var(--z, 1)));
+      background: transparent; border: 0; border-radius: 50%; color: var(--ez-secondary); }
+    .sides { display: inline-flex; gap: 1px; align-items: center; padding: 0 4px 0 0; }
     .spin { width: 16px; text-align: center; color: var(--ez-link); font-size: 17px; line-height: 16px; }
     .list { position: absolute; right: 0; top: calc(100% + 8px); width: max(340px, calc(250px / var(--z, 1))); max-width: calc(100vw - 16px);
-      padding: 6px; max-height: 440px; overflow: auto; overscroll-behavior: contain;
-      background: var(--ez-surface); color: var(--ez-text); border: 1px solid var(--ez-line); border-radius: 14px;
+      padding: 7px; max-height: 440px; overflow: auto; overscroll-behavior: contain;
+      background: var(--ez-surface); color: var(--ez-text); border: 1px solid var(--ez-line); border-radius: 18px;
       box-shadow: 0 12px 30px -7px var(--ez-shadow); scrollbar-width: thin; scrollbar-color: var(--ez-line) transparent; }
     .list.above { top: auto; bottom: calc(100% + 8px); }
     .list.align-start { left: 0; right: auto; }
@@ -251,19 +251,18 @@
     .video-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
       margin-top: 3px; font-size: max(12px, calc(11px / var(--z, 1))); line-height: 1.4; color: var(--ez-secondary); overflow-wrap: anywhere; }
     .group { margin: 0; }
-    .group-title { margin: 0; padding: 10px 9px 5px; color: var(--ez-secondary); font-size: max(11px, calc(10px / var(--z, 1))); font-weight: 600;
-      text-transform: uppercase; letter-spacing: .04em; }
+    .group-title { margin: 0; padding: 10px 9px 5px; color: var(--ez-secondary); font-size: max(12px, calc(11px / var(--z, 1))); font-weight: 600; }
     .item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: max(56px, calc(40px / var(--z, 1))); padding: 9px 8px; text-align: left;
-      border: 0; border-radius: 8px; background: transparent; }
+      border: 0; border-radius: 10px; background: transparent; }
     .item:hover:not(:disabled), .item:focus-visible { background: var(--ez-hover); }
-    .format-symbol { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
-      border-radius: 8px; background: var(--ez-group); color: var(--ez-secondary); flex: none; }
+    .format-symbol { display: inline-flex; align-items: center; justify-content: center; width: max(34px, calc(28px / var(--z, 1))); height: max(34px, calc(28px / var(--z, 1)));
+      border-radius: 10px; background: var(--ez-group); color: var(--ez-link); flex: none; }
     .body { display: block; flex: 1; min-width: 0; }
     .t { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: max(13px, calc(11px / var(--z, 1))); font-weight: 600; line-height: 1.4; }
     .s { display: block; color: var(--ez-secondary); font-size: max(12px, calc(11px / var(--z, 1))); margin-top: 3px; line-height: 1.4; overflow-wrap: anywhere; }
     .tag, .codec { display: inline-block; border: 1px solid var(--ez-line); border-radius: 4px; padding: 0 4px;
       font-size: max(10px, calc(10px / var(--z, 1))); font-weight: 600; line-height: 15px; color: var(--ez-secondary); white-space: nowrap; }
-    .item > .accessory { color: var(--ez-link); width: 15px; height: 15px; }
+    .item > .accessory { color: var(--ez-link); }
     .all { color: var(--ez-link); font-weight: 600; }
     .item:disabled { cursor: default; }
     .item:disabled .format-symbol { opacity: .65; }
@@ -316,22 +315,27 @@
   };
 
   const ICON_PATHS = {
-    download: "M8 2v8M4.5 6.5 8 10l3.5-3.5M3 11v2.5h10V11",
-    info: "M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13M8 7v4M8 4.5v.1",
-    close: "m4 4 8 8M12 4l-8 8",
-    chevron: "m4 6 4 4 4-4",
-    video: "M2 4h8v8H2zM10 6l4-2v8l-4-2",
-    audio: "M6 11V3l7-1v8M6 4l7-1M6 11c0 1.1-1.1 2-2.5 2S1 12.3 1 11.5 2.1 10 3.5 10 6 10.2 6 11m7-1c0 1.1-1.1 2-2.5 2S8 11.3 8 10.5 9.1 9 10.5 9s2.5.2 2.5 1",
-    check: "m3 8 3 3 7-7",
-    warning: "M8 1.5 15 14H1zM8 6v3.5M8 12v.1",
-    collection: "M5 2h9v9M2 5h9v9H2z",
-    lock: "M3 7h10v7H3zM5 7V4a3 3 0 0 1 6 0v3M8 10v1.5",
+    download: "M12 3v11m-4-4 4 4 4-4M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4",
+    info: "M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0M12 11v6M12 7h.01",
+    close: "m6.5 6.5 11 11m0-11-11 11",
+    chevron: "m6 9 6 6 6-6",
+    video: "M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm12 3 5-3v12l-5-3",
+    audio: "M9 17V5l11-2v12M9 8l11-2M9 17c0 1.4-1.6 2.5-3.5 2.5S2 18.4 2 17s1.6-2.5 3.5-2.5S9 15.6 9 17Zm11-2c0 1.4-1.6 2.5-3.5 2.5S13 16.4 13 15s1.6-2.5 3.5-2.5S20 13.6 20 15Z",
+    check: "m5 12 4 4L19 6",
+    warning: "m12 3 10 18H2L12 3Zm0 6v5m0 3h.01",
+    collection: "M8 3h11a2 2 0 0 1 2 2v11M5 8h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z",
+    lock: "M7 10h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Zm1 0V7a4 4 0 0 1 8 0v3m-4 4v3",
   };
   function symbol(kind, className = "ico") {
     const ns = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(ns, "svg");
     svg.setAttribute("class", className);
-    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.7");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
     svg.setAttribute("aria-hidden", "true");
     svg.setAttribute("focusable", "false");
     const path = document.createElementNS(ns, "path");

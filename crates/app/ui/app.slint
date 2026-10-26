@@ -3,7 +3,7 @@
 // compact toolbar, and optional detailed table.
 
 import { Button, LineEdit, SpinBox, CheckBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
-import { ToolTip, DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, CaptionButton, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph } from "common.slint";
+import { ToolTip, DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, CaptionButton, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph, BrandMark, QuietField, QuietButton } from "common.slint";
 export { DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme }
 export { BrowserRow } from "dialogs.slint";
 export { ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, TorrentDialog, BrowserDialog, AboutDialog, UpdateDialog, WhatsNewDialog } from "dialogs.slint";
@@ -1268,7 +1268,7 @@ export component MainWindow inherits ThemedWindow {
                     HorizontalLayout {
                         padding-left: 8px;
                         spacing: 9px;
-                        Image { source: @image-url("icon-window.png"); width: 26px; height: 26px; }
+                        BrandMark { width: 28px; height: 28px; }
                         Text { text: "Ezoo Download"; color: Theme.text; font-size: 14px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; }
                     }
                     Flickable {
@@ -1331,7 +1331,7 @@ export component MainWindow inherits ThemedWindow {
                             spacing: 10px;
                             if root.hide-categories: ToolbarAction { glyph: "sidebar"; label: @tr("Show categories"); clicked => { root.toggle-categories(); } }
                             Text { text: root.view == "unfinished" ? @tr("Unfinished") : root.view == "finished" ? @tr("Completed") : @tr("Downloads"); color: Theme.text; font-size: 22px * Theme.font-scale; font-weight: 700; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
-                            search-box := LineEdit {
+                            search-box := QuietField {
                                 width: 180px;
                                 height: 32px;
                                 placeholder-text: @tr("Search Downloads");
@@ -1339,7 +1339,7 @@ export component MainWindow inherits ThemedWindow {
                                 text <=> root.search;
                                 edited(t) => { root.search-changed(); }
                             }
-                            Button { text: @tr("New Download…"); primary: true; height: 32px; clicked => { root.add-url(); } }
+                            QuietButton { text: @tr("New Download…"); primary: true; height: 32px; clicked => { root.add-url(); } }
                             ToolbarAction { glyph: "more"; label: @tr("More Actions"); clicked => { more-menu.show(); } }
                         }
                     }
@@ -1357,7 +1357,7 @@ export component MainWindow inherits ThemedWindow {
                             ToolbarAction { glyph: "play"; label: @tr("Resume"); enabled: root.can-resume; clicked => { root.resume(root.selected-id); } }
                             ToolbarAction { glyph: "pause"; label: @tr("Pause"); enabled: root.can-stop; clicked => { root.pause(root.selected-id); } }
                             ToolbarAction { glyph: "folder"; label: (Theme.native-macos ? @tr("Show in Finder") : @tr("Show in folder")); enabled: root.selected-id >= 0; clicked => { root.row-action(root.selected-id, "folder"); } }
-                            ToolbarAction { glyph: "close"; label: @tr("Remove"); enabled: root.selected-id >= 0; clicked => { root.delete(root.selected-id); } }
+                            ToolbarAction { glyph: "trash"; label: @tr("Remove"); enabled: root.selected-id >= 0; clicked => { root.delete(root.selected-id); } }
                         }
                     }
                     Rectangle {
@@ -1489,8 +1489,8 @@ export component AddDialog inherits ThemedWindow {
     in property <bool> front;
     always-on-top: root.front;
     title: @tr("New Download");
-    preferred-width: 640px;
-    min-width: 540px;
+    preferred-width: 540px;
+    min-width: 500px;
 
     in-out property <string> url;
     // full path: folder + file name
@@ -1525,104 +1525,139 @@ export component AddDialog inherits ThemedWindow {
     callback later();
     callback cancel();
 
-    property <bool> show-advanced;
-    changed use-login => {
-        if (root.use-login) { root.show-advanced = true; }
-    }
+    // Friendly editing fields never show a signed URL or a full local path.
+    in-out property <string> file-name;
+    in property <string> destination;
+    in property <string> source-host;
+    in property <string> name-error;
+    in property <bool> manual-url;
+    in-out property <bool> show-advanced;
+    callback rename-file(string);
+    callback refresh-destination();
 
     VerticalLayout {
-        padding: 20px;
-        spacing: 14px;
-        HorizontalLayout {
-            spacing: 14px;
-            TypeIcon {
-                kind: root.kind;
-                width: 40px;
-                height: 40px;
+        padding: 24px;
+        spacing: 18px;
+        VerticalLayout {
+            spacing: 5px;
+            Text {
+                text: @tr("New Download");
+                font-size: 22px * Theme.font-scale;
+                font-weight: 600;
+                color: Theme.text;
             }
-            VerticalLayout {
-                spacing: 4px;
-                horizontal-stretch: 1;
-                Text {
-                    text: @tr("New Download");
-                    font-size: 20px * Theme.font-scale;
-                    font-weight: 600;
-                    color: Theme.text;
-                }
-                Text {
-                    text: root.size-text != "" ? root.size-text : @tr("Choose where to save your file.");
-                    font-size: 13px * Theme.font-scale;
-                    color: Theme.muted;
-                }
+            if root.source-host != "": Text {
+                text: root.source-host + (root.size-text != "" ? "  ·  " + root.size-text : "");
+                color: Theme.muted;
+                font-size: 13px * Theme.font-scale;
+                overflow: elide;
             }
         }
-        HorizontalLayout {
-            spacing: 14px;
-            GridLayout {
+        if root.manual-url: VerticalLayout {
+            spacing: 7px;
+            Text { text: @tr("Download link"); color: Theme.text; font-weight: 600; }
+            HorizontalLayout {
                 spacing: 8px;
-                horizontal-stretch: 1;
-                Row {
-                    Text {
-                        text: @tr("URL");
-                        vertical-alignment: center;
-                        color: Theme.text;
+                QuietField {
+                    text <=> root.url;
+                    label: @tr("Download link");
+                    placeholder-text: "https://";
+                    horizontal-stretch: 1;
+                    accepted(t) => { root.check-url(); }
+                }
+                QuietButton { text: @tr("Check"); clicked => { root.check-url(); } }
+            }
+        }
+        VerticalLayout {
+            spacing: 7px;
+            Text { text: @tr("Name"); color: Theme.text; font-weight: 600; }
+            QuietField {
+                text <=> root.file-name;
+                label: @tr("Name");
+                placeholder-text: @tr("File name");
+                edited(t) => { root.rename-file(t); }
+            }
+            if root.name-error != "": Text {
+                text: root.name-error;
+                color: Theme.err;
+                font-size: 12px * Theme.font-scale;
+                wrap: word-wrap;
+            }
+        }
+        VerticalLayout {
+            spacing: 7px;
+            Text { text: @tr("Save location"); color: Theme.text; font-weight: 600; }
+            HorizontalLayout {
+                spacing: 10px;
+                Glyph { kind: "folder"; tint: Theme.accent-text; width: 19px; height: 19px; }
+                Text {
+                    text: root.destination;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                QuietButton { text: @tr("Change…"); clicked => { root.browse(); } }
+            }
+        }
+        if root.probing: Text {
+            text: @tr("Checking the file…");
+            color: Theme.muted;
+            font-size: 12px * Theme.font-scale;
+        }
+        if root.info-error: Text {
+            text: @tr("Couldn’t check this file. Check the link or try downloading again.");
+            color: Theme.err;
+            wrap: word-wrap;
+            font-size: 12px * Theme.font-scale;
+        }
+        if root.warning != "": Text {
+            text: root.warning;
+            color: Theme.warn;
+            wrap: word-wrap;
+            font-size: 12px * Theme.font-scale;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            QuietButton {
+                text: root.show-advanced ? @tr("Hide Advanced") : @tr("Advanced…");
+                clicked => { root.show-advanced = !root.show-advanced; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+        if root.show-advanced: VerticalLayout {
+            spacing: 12px;
+            Rectangle { height: 1px; background: Theme.line; }
+            if !root.manual-url: VerticalLayout {
+                spacing: 7px;
+                Text { text: @tr("Download link"); color: Theme.muted; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    QuietField {
+                        text <=> root.url;
+                        label: @tr("Download link");
+                        horizontal-stretch: 1;
+                        accepted(t) => { root.check-url(); }
                     }
-                    HorizontalLayout {
-                        spacing: 6px;
-                        LineEdit {
-                            text <=> root.url;
-                            placeholder-text: @tr("https://example.com/file");
-                            horizontal-stretch: 1;
-                            accepted(t) => {
-                                root.check-url();
-                            }
-                        }
-                        Button {
-                            text: @tr("Check");
-                            clicked => {
-                                root.check-url();
-                            }
-                        }
+                    QuietButton { text: @tr("Check"); clicked => { root.check-url(); } }
+                }
+            }
+            GridLayout {
+                spacing: 10px;
+                Row {
+                    Text { text: @tr("Category"); color: Theme.muted; vertical-alignment: center; }
+                    ComboBox {
+                        model: root.category-names;
+                        current-index <=> root.category-index;
+                        selected(v) => { root.category-changed(root.category-index); }
                     }
                 }
                 Row {
-                    Text {
-                        text: @tr("Category");
-                        vertical-alignment: center;
-                        color: Theme.text;
-                    }
-                    HorizontalLayout {
-                        ComboBox {
-                            width: 200px;
-                            model: root.category-names;
-                            current-index <=> root.category-index;
-                            selected(v) => {
-                                root.category-changed(root.category-index);
-                            }
-                        }
-                        Rectangle {
-                            horizontal-stretch: 1;
-                        }
-                    }
-                }
-                Row {
-                    Text {
-                        text: @tr("Save As");
-                        vertical-alignment: center;
-                        color: Theme.text;
-                    }
-                    HorizontalLayout {
-                        spacing: 6px;
-                        LineEdit {
-                            text <=> root.save-as;
-                            horizontal-stretch: 1;
-                        }
-                        Button {
-                            text: "…";
-                            clicked => {
-                                root.browse();
-                            }
-                        }
+                    Text { text: @tr("Save As"); color: Theme.muted; vertical-alignment: center; }
+                    QuietField {
+                        text <=> root.save-as;
+                        label: @tr("Save As");
+                        edited(t) => { root.refresh-destination(); }
                     }
                 }
                 Row {
@@ -1633,147 +1668,53 @@ export component AddDialog inherits ThemedWindow {
                     }
                 }
                 Row {
-                    Text {
-                        text: @tr("Description");
-                        vertical-alignment: center;
-                        color: Theme.text;
-                    }
-                    LineEdit {
-                        text <=> root.description;
-                        placeholder-text: @tr("optional note");
-                    }
+                    Text { text: @tr("Description"); color: Theme.muted; vertical-alignment: center; }
+                    QuietField { text <=> root.description; label: @tr("Description"); placeholder-text: @tr("optional note"); }
+                }
+                Row {
+                    Text { text: @tr("Connections"); color: Theme.muted; vertical-alignment: center; }
+                    SpinBox { minimum: 1; maximum: 32; value <=> root.connections; }
+                }
+                Row {
+                    Text { text: @tr("Queue"); color: Theme.muted; vertical-alignment: center; }
+                    ComboBox { model: root.queue-names; current-index <=> root.queue-index; }
                 }
             }
-        }
-        HorizontalLayout {
-            spacing: 8px;
-            Button {
-                text: root.show-advanced ? @tr("Hide Advanced Options") : @tr("Show Advanced Options");
-                clicked => {
-                    root.show-advanced = !root.show-advanced;
-                }
+            CheckBox { text: @tr("Use authorization"); checked <=> root.use-login; }
+            if root.use-login: HorizontalLayout {
+                spacing: 8px;
+                QuietField { text <=> root.user; label: @tr("Login"); placeholder-text: @tr("Login"); horizontal-stretch: 1; }
+                QuietField { text <=> root.password; label: @tr("Password"); placeholder-text: @tr("Password"); input-type: InputType.password; horizontal-stretch: 1; }
             }
-            Rectangle { horizontal-stretch: 1; }
-        }
-        if root.show-advanced: VerticalLayout {
-          spacing: 12px;
-          HorizontalLayout {
-            spacing: 8px;
-            CheckBox {
-                text: @tr("Use authorization");
-                checked <=> root.use-login;
-            }
-            if root.use-login: Text {
-                text: @tr("Login");
-                vertical-alignment: center;
-                color: Theme.text;
-            }
-            if root.use-login: LineEdit {
-                text <=> root.user;
-                horizontal-stretch: 1;
-            }
-            if root.use-login: Text {
-                text: @tr("Password");
-                vertical-alignment: center;
-                color: Theme.text;
-            }
-            if root.use-login: LineEdit {
-                text <=> root.password;
-                input-type: InputType.password;
-                horizontal-stretch: 1;
-            }
-            if !root.use-login: Rectangle {
-                horizontal-stretch: 1;
-            }
-          }
-          HorizontalLayout {
-            spacing: 8px;
-            Text {
-                text: @tr("Connections");
-                vertical-alignment: center;
-                color: Theme.text;
-            }
-            SpinBox {
-                width: 100px;
-                minimum: 1;
-                maximum: 32;
-                value <=> root.connections;
-            }
-            Rectangle { width: 8px; }
-            Text {
-                text: @tr("Queue");
-                vertical-alignment: center;
-                color: Theme.text;
-            }
-            ComboBox {
-                model: root.queue-names;
-                current-index <=> root.queue-index;
-                horizontal-stretch: 1;
-            }
-          }
-        }
-        if root.warning != "": HorizontalLayout {
-            spacing: 6px;
-            Glyph {
-                kind: "warn";
-            }
-            Text {
-                text: root.warning;
-                color: Theme.warn;
+            if !root.info-error && root.info != "": Text {
+                text: root.info;
+                color: Theme.muted;
+                font-size: 12px * Theme.font-scale;
                 wrap: word-wrap;
-                font-size: 13px * Theme.font-scale;
-                horizontal-stretch: 1;
             }
-        }
-        Rectangle {
-            height: 36px;
-            border-width: 1px;
-            border-color: root.info-error ? Theme.err : Theme.line;
-            border-radius: 8px;
-            background: Theme.panel;
-            Text {
-                x: 10px;
-                width: parent.width - 20px;
-                height: parent.height;
-                vertical-alignment: center;
-                text: root.probing ? @tr("Checking the address…") : root.info;
-                color: root.info-error ? Theme.err : Theme.muted;
-                overflow: elide;
-                font-size: 13px * Theme.font-scale;
+            HorizontalLayout {
+                spacing: 8px;
+                QuietButton {
+                    text: @tr("Download Later");
+                    enabled: root.url != "" && root.name-error == "";
+                    clicked => { root.later(); }
+                }
+                if root.can-use-browser: QuietButton {
+                    text: @tr("Download with the browser");
+                    clicked => { root.use-browser(); }
+                }
+                Rectangle { horizontal-stretch: 1; }
             }
         }
         HorizontalLayout {
             spacing: 8px;
-            alignment: end;
-            if root.can-use-browser: Button {
-                text: @tr("Download with the browser");
-                clicked => {
-                    root.use-browser();
-                }
-            }
-            Rectangle {
-                horizontal-stretch: 1;
-            }
-            Button {
-                text: @tr("Cancel");
-                clicked => {
-                    root.cancel();
-                }
-            }
-            Button {
-                text: @tr("Download Later");
-                enabled: root.url != "";
-                clicked => {
-                    root.later();
-                }
-            }
-            Button {
-                text: @tr("Start Download");
+            Rectangle { horizontal-stretch: 1; }
+            QuietButton { text: @tr("Cancel"); clicked => { root.cancel(); } }
+            QuietButton {
+                text: @tr("Download");
                 primary: true;
-                enabled: root.url != "";
-                clicked => {
-                    root.start-now();
-                }
+                enabled: root.url != "" && root.name-error == "";
+                clicked => { root.start-now(); }
             }
         }
     }

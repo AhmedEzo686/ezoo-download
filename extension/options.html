@@ -8,7 +8,7 @@
 </head>
 <body class="options-page">
   <main class="settings-shell">
-    <header class="settings-header"><div class="brand-mark" aria-hidden="true"><svg class="glyph" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></svg></div><div><h1>Extension Settings</h1><p>Ezoo Download</p></div></header>
+    <header class="settings-header"><div class="brand-mark" aria-hidden="true"><img src="icons/icon128.png" alt="" width="36" height="36"></div><div><h1>Extension Settings</h1><p>Ezoo Download</p></div></header>
     <section class="settings-section" aria-labelledby="downloads-heading"><h2 id="downloads-heading">Downloads</h2><div class="group">
       <div class="setting-row"><div class="setting-copy"><label for="intercept">Send Browser Downloads to the App</label><small>Use Ezoo Download when you download a file in this browser.</small></div><label class="switch-control"><input type="checkbox" id="intercept" aria-label="Send Browser Downloads to the App"><span class="switch-track"></span></label></div>
       <div class="setting-row"><div class="setting-copy"><label for="minSize">Minimum File Size</label><small>Smaller files stay in the browser. Use 0 to include all sizes.</small></div><div class="number-control"><input type="number" id="minSize" min="0" step="any" aria-describedby="minimum-error"><span class="unit">KB</span></div></div>
@@ -16,7 +16,7 @@
     <section class="settings-section" aria-labelledby="video-heading"><h2 id="video-heading">Video Button</h2><div class="group"><div class="setting-row range-setting">
       <div class="range-heading"><div class="setting-copy"><label for="bubbleScale">Button Size</label><small>Adjust the floating button shown beside web videos.</small></div><output id="bubbleScaleText" for="bubbleScale">100%</output></div>
       <div class="range-controls"><input type="range" id="bubbleScale" min="50" max="200" step="5" value="100" aria-label="Video button size"><button class="text-button" id="bubbleScaleReset" type="button">Reset</button></div>
-      <div class="scale-example" aria-hidden="true"><span class="preview-download" id="buttonPreview"><svg class="glyph" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></svg>Download Video</span></div>
+      <div class="scale-example" aria-hidden="true"><span class="preview-download" id="buttonPreview"><svg class="glyph" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4"/></svg>Download Video</span></div>
     </div></div><p class="section-note">Light and dark appearances follow your system automatically.</p></section>
     <details class="settings-section"><summary>Connection</summary><div class="group"><div class="setting-row"><div class="setting-copy"><label for="port">App Port</label><small>Use the same browser integration port as the desktop app.</small></div><input type="number" id="port" min="1024" max="65535" step="1" aria-describedby="port-error"></div></div><p class="field-error" id="port-error" hidden>Enter a whole number from 1024 to 65535.</p><p class="section-note">The setup assistant normally prepares this connection for you.</p></details>
     <div class="saved" id="saved" role="status" aria-live="polite">Changes save automatically.</div>

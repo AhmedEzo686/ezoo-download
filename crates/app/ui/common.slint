@@ -166,6 +166,113 @@ export component ThemedWindow inherits Window {
     icon: @image-url("icon-window.png");
 }
 
+// Restrained fields and actions for the download flow. Their surfaces use the
+// app's resolved semantic palette rather than a second widget-set palette.
+export component QuietField inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder-text;
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> read-only: false;
+    in property <InputType> input-type: InputType.text;
+    callback edited(string);
+    callback accepted(string);
+    height: 38px * Theme.font-scale;
+    min-width: 60px;
+    horizontal-stretch: 1;
+    border-radius: 9px;
+    background: Theme.secondary-surface;
+    border-width: editor.has-focus ? 2px : 1px;
+    border-color: editor.has-focus ? Theme.accent : Theme.line.transparentize(0.65);
+    opacity: root.enabled ? 1 : 0.45;
+    forward-focus: editor;
+    accessible-role: text-input;
+    accessible-label: root.label;
+    accessible-enabled: root.enabled;
+    accessible-value <=> root.text;
+    accessible-placeholder-text: root.placeholder-text;
+    accessible-read-only: root.read-only;
+    accessible-action-set-value(v) => { root.text = v; root.edited(v); }
+    accessible-action-set-selection-offsets(anchor, focus) => { editor.set-selection-offsets(anchor, focus); }
+    Text {
+        x: 12px;
+        width: parent.width - 24px;
+        height: parent.height;
+        vertical-alignment: center;
+        font-size: 14px * Theme.font-scale;
+        color: Theme.muted;
+        text: root.text == "" && editor.preedit-text == "" ? root.placeholder-text : "";
+        accessible-role: none;
+    }
+    ContextMenuArea {
+        enabled: root.enabled;
+        Menu {
+            MenuItem { title: @tr("Undo"); enabled: !root.read-only; activated => { editor.undo(); } }
+            MenuItem { title: @tr("Redo"); enabled: !root.read-only; activated => { editor.redo(); } }
+            MenuSeparator { }
+            MenuItem { title: @tr("Cut"); enabled: !root.read-only; activated => { editor.cut(); } }
+            MenuItem { title: @tr("Copy"); activated => { editor.copy(); } }
+            MenuItem { title: @tr("Paste"); enabled: !root.read-only; activated => { editor.paste(); } }
+            MenuItem { title: @tr("Select All"); activated => { editor.select-all(); } }
+        }
+        editor := TextInput {
+            x: 12px;
+            width: parent.width - 24px;
+            height: parent.height;
+            vertical-alignment: center;
+            single-line: true;
+            enabled: root.enabled;
+            read-only: root.read-only;
+            text <=> root.text;
+            input-type: root.input-type;
+            font-size: 14px * Theme.font-scale;
+            color: Theme.text;
+            selection-background-color: Theme.accent;
+            selection-foreground-color: white;
+            accepted => { root.accepted(self.text); }
+            edited => { root.edited(self.text); }
+        }
+    }
+}
+
+export component QuietButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 36px * Theme.font-scale;
+    min-width: caption.preferred-width + 28px;
+    border-radius: 9px;
+    // A darker system blue keeps small white action text readable in both modes.
+    background: root.primary ? (hit.pressed ? #0055b3 : #0066cc) : hit.pressed ? Theme.select : hit.has-hover ? Theme.hover : Theme.secondary-surface;
+    opacity: root.enabled ? 1 : 0.38;
+    border-width: keyboard.has-focus ? 2px : 0px;
+    border-color: Theme.accent;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if (root.enabled) { root.clicked(); } }
+    forward-focus: keyboard;
+    caption := Text {
+        text: root.text;
+        width: parent.width;
+        height: parent.height;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        font-size: 13px * Theme.font-scale;
+        font-weight: root.primary ? 600 : 500;
+        color: root.primary ? white : Theme.text;
+    }
+    keyboard := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (root.enabled && (event.text == Key.Return || event.text == " ")) { root.clicked(); return accept; }
+            reject
+        }
+    }
+    hit := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { keyboard.focus(); root.clicked(); } }
+}
+
 // A button of a window's own title bar (windows drawn without the Windows
 // frame): "tray" (hide next to the clock), "min" or "close".
 export component CaptionButton inherits Rectangle {
@@ -204,53 +311,58 @@ export component Glyph inherits Rectangle {
     in property <color> tint: Theme.text;
     width: 16px;
     height: 16px;
-    property <string> path: root.kind == "play" ? "M 5 3 L 12.5 8 L 5 13 Z"
+    property <bool> solid: root.kind == "play" || root.kind == "pause" || root.kind == "stop" || root.kind == "more";
+    property <string> path: root.kind == "play" ? "M 5.1 2.9 Q 4.4 2.5 4.4 3.4 L 4.4 12.6 Q 4.4 13.5 5.1 13.1 L 12.5 8.7 Q 13.3 8 12.5 7.3 Z"
         : root.kind == "progress" ? "M 8 1.8 A 6.2 6.2 0 1 1 7.99 1.8 Z M 8 4.5 L 8 8 L 11 9.5"
         : root.kind == "openwith" ? "M 2 5 L 2 14 L 12 14 L 12 10 M 7 9 L 14 2 M 9 2 L 14 2 L 14 7"
-        : root.kind == "folder" ? "M 1.5 4 L 6.5 4 L 8 5.5 L 14.5 5.5 L 14.5 13.5 L 1.5 13.5 Z"
-        : root.kind == "pause" ? "M 5 3 L 5 13 M 11 3 L 11 13"
-        : root.kind == "stop" ? "M 3.5 3.5 L 12.5 3.5 L 12.5 12.5 L 3.5 12.5 Z"
+        : root.kind == "folder" ? "M 2 5.5 L 2 4 Q 2 3 3 3 L 6 3 L 7.7 4.8 L 13 4.8 Q 14 4.8 14 5.8 L 14 12 Q 14 13 13 13 L 3 13 Q 2 13 2 12 Z M 2.3 6.2 L 13.7 6.2"
+        : root.kind == "pause" ? "M 4.2 3 Q 3.5 3 3.5 3.7 L 3.5 12.3 Q 3.5 13 4.2 13 L 5.8 13 Q 6.5 13 6.5 12.3 L 6.5 3.7 Q 6.5 3 5.8 3 Z M 10.2 3 Q 9.5 3 9.5 3.7 L 9.5 12.3 Q 9.5 13 10.2 13 L 11.8 13 Q 12.5 13 12.5 12.3 L 12.5 3.7 Q 12.5 3 11.8 3 Z"
+        : root.kind == "stop" ? "M 4 3 Q 3 3 3 4 L 3 12 Q 3 13 4 13 L 12 13 Q 13 13 13 12 L 13 4 Q 13 3 12 3 Z"
         : root.kind == "redo" ? "M 13.5 8 A 5.5 5.5 0 1 1 11 3.5 M 9.5 1.5 L 12 4 L 8.5 5"
         : root.kind == "refresh" ? "M 2.5 7 A 5.5 5.5 0 0 1 12.8 5 M 13.5 9 A 5.5 5.5 0 0 1 3.2 11 M 13 2 L 13 5.2 L 9.8 5.2 M 3 14 L 3 10.8 L 6.2 10.8"
         : root.kind == "edit" ? "M 2.5 13.5 L 3.2 10.5 L 11 2.7 L 13.3 5 L 5.5 12.8 Z M 9.4 4.2 L 11.8 6.6"
         : root.kind == "check" ? "M 2.5 8.5 L 6.3 12 L 13.5 4"
-        : root.kind == "copy" ? "M 5.5 5.5 L 13.5 5.5 L 13.5 14 L 5.5 14 Z M 3 11 L 2.5 11 L 2.5 2 L 10.5 2 L 10.5 3"
+        : root.kind == "copy" ? "M 6.5 5.5 L 12.5 5.5 Q 13.5 5.5 13.5 6.5 L 13.5 12.5 Q 13.5 13.5 12.5 13.5 L 6.5 13.5 Q 5.5 13.5 5.5 12.5 L 5.5 6.5 Q 5.5 5.5 6.5 5.5 Z M 2.5 10 L 2.5 3.5 Q 2.5 2.5 3.5 2.5 L 10 2.5"
         : root.kind == "hash" ? "M 6 2 L 4.5 14 M 11.5 2 L 10 14 M 2.5 5.5 L 14 5.5 M 2 10.5 L 13.5 10.5"
         : root.kind == "info" ? "M 8 1.8 A 6.2 6.2 0 1 1 7.99 1.8 Z M 8 7 L 8 12 M 8 4 L 8 4.8"
         : root.kind == "close" ? "M 4 4 L 12 12 M 12 4 L 4 12"
+        : root.kind == "trash" || root.kind == "delete" ? "M 2.8 4 L 13.2 4 M 6 4 L 6 2.5 L 10 2.5 L 10 4 M 4 4 L 4.5 12.5 Q 4.6 13.5 5.5 13.5 L 10.5 13.5 Q 11.4 13.5 11.5 12.5 L 12 4 M 6.5 6.8 L 6.5 10.8 M 9.5 6.8 L 9.5 10.8"
         : root.kind == "clock" ? "M 8 1.8 A 6.2 6.2 0 1 1 7.99 1.8 Z M 8 4 L 8 8 L 11 9.5"
         : root.kind == "plus" ? "M 8 2.5 L 8 13.5 M 2.5 8 L 13.5 8"
         : root.kind == "minus" ? "M 2.5 8 L 13.5 8"
         : root.kind == "warn" ? "M 8 2 L 14.5 13.5 L 1.5 13.5 Z M 8 6 L 8 9.5 M 8 11 L 8 11.7"
-        : root.kind == "down" ? "M 8 2 L 8 11.5 M 4.5 8 L 8 11.5 L 11.5 8 M 2.5 12 L 2.5 14 L 13.5 14 L 13.5 12"
+        : root.kind == "down" ? "M 8 2.2 L 8 10.1 M 4.8 7 L 8 10.2 L 11.2 7 M 2.5 10.5 L 2.5 12.5 Q 2.5 13.5 3.5 13.5 L 12.5 13.5 Q 13.5 13.5 13.5 12.5 L 13.5 10.5"
         : root.kind == "up" ? "M 8 14 L 8 4 M 4.5 7.5 L 8 4 L 11.5 7.5"
         : root.kind == "caret-down" ? "M 4 6 L 8 10 L 12 6"
         : root.kind == "caret-up" ? "M 4 10 L 8 6 L 12 10"
         : root.kind == "caret-right" ? "M 6 4 L 10 8 L 6 12"
         : root.kind == "bulb" ? "M 5.5 12 L 5 10 A 4.7 4.7 0 1 1 11 10 L 10.5 12 Z M 6 14 L 10 14"
-        : root.kind == "queue" ? "M 2 3 L 13 3 M 2 7 L 13 7 M 2 11 L 7 11 M 10 10 L 14 12.5 L 10 15 Z"
+        : root.kind == "queue" ? "M 2.5 3.5 L 13.5 3.5 M 2.5 7.5 L 13.5 7.5 M 2.5 11.5 L 7 11.5 M 10.5 10 L 13.5 12 L 10.5 14 Z"
         : root.kind == "search" ? "M 7 2 A 5 5 0 1 1 6.99 2 Z M 10.6 10.6 L 14.5 14.5"
-        : root.kind == "more" ? "M 3.5 8 A 0.8 0.8 0 1 1 3.49 8 Z M 8 8 A 0.8 0.8 0 1 1 7.99 8 Z M 12.5 8 A 0.8 0.8 0 1 1 12.49 8 Z"
-        : root.kind == "settings" ? "M 2 4 L 14 4 M 2 8 L 14 8 M 2 12 L 14 12 M 5 2 L 5 6 M 11 6 L 11 10 M 6 10 L 6 14"
-        : root.kind == "sidebar" ? "M 2 2.5 L 14 2.5 L 14 13.5 L 2 13.5 Z M 6 2.5 L 6 13.5"
+        : root.kind == "more" ? "M 3.5 6.8 A 1.2 1.2 0 1 1 3.49 6.8 Z M 8 6.8 A 1.2 1.2 0 1 1 7.99 6.8 Z M 12.5 6.8 A 1.2 1.2 0 1 1 12.49 6.8 Z"
+        : root.kind == "settings" ? "M 2.5 4 L 4 4 M 7 4 L 13.5 4 M 5.5 2.5 L 5.5 5.5 M 2.5 8 L 9 8 M 12 8 L 13.5 8 M 10.5 6.5 L 10.5 9.5 M 2.5 12 L 4 12 M 7 12 L 13.5 12 M 5.5 10.5 L 5.5 13.5"
+        : root.kind == "sidebar" ? "M 3 2.5 L 13 2.5 Q 14 2.5 14 3.5 L 14 12.5 Q 14 13.5 13 13.5 L 3 13.5 Q 2 13.5 2 12.5 L 2 3.5 Q 2 2.5 3 2.5 Z M 6 2.5 L 6 13.5"
         : root.kind == "archive" ? "M 2 3 L 14 3 L 14 6 L 2 6 Z M 3 6 L 3 14 L 13 14 L 13 6 M 6 9 L 10 9"
-        : root.kind == "video" ? "M 2 3 L 14 3 L 14 13 L 2 13 Z M 6.5 5.5 L 10 8 L 6.5 10.5 Z"
+        : root.kind == "video" ? "M 3 3 L 13 3 Q 14 3 14 4 L 14 12 Q 14 13 13 13 L 3 13 Q 2 13 2 12 L 2 4 Q 2 3 3 3 Z M 6.5 5.5 L 10 8 L 6.5 10.5 Z"
         : root.kind == "music" ? "M 6 11 L 6 3.5 L 13 2 L 13 9.5 M 6 3.5 L 13 2 M 6 11 A 2 1.5 0 1 1 5.99 11 Z M 13 9.5 A 2 1.5 0 1 1 12.99 9.5 Z"
-        : root.kind == "image" ? "M 2 2.5 L 14 2.5 L 14 13.5 L 2 13.5 Z M 2.5 12 L 6 7.5 L 9 11 L 11 8.5 L 14 12 M 10.5 5 A 0.8 0.8 0 1 1 10.49 5 Z"
+        : root.kind == "image" ? "M 3 2.5 L 13 2.5 Q 14 2.5 14 3.5 L 14 12.5 Q 14 13.5 13 13.5 L 3 13.5 Q 2 13.5 2 12.5 L 2 3.5 Q 2 2.5 3 2.5 Z M 2.5 11.5 L 6 7.5 L 9 10.7 L 11.2 8.5 L 13.5 11 M 10.5 5.3 L 10.5 5.3"
         : root.kind == "torrent" ? "M 3 2 L 3 8 A 5 5 0 0 0 13 8 L 13 2 M 6 2 L 6 8 A 2 2 0 0 0 10 8 L 10 2 M 3 5 L 6 5 M 10 5 L 13 5"
         : root.kind == "globe" ? "M 8 1.5 A 6.5 6.5 0 1 1 7.99 1.5 Z M 1.5 8 L 14.5 8 M 8 1.5 C 4 5 4 11 8 14.5 M 8 1.5 C 12 5 12 11 8 14.5"
         : root.kind == "program" ? "M 2 3 L 14 3 L 14 13 L 2 13 Z M 2 6 L 14 6 M 5 8 L 7 10 L 5 12 M 9 11 L 12 11"
         : root.kind == "disc" ? "M 8 1.5 A 6.5 6.5 0 1 1 7.99 1.5 Z M 8 6 A 2 2 0 1 1 7.99 6 Z"
-        : root.kind == "document" ? "M 3.5 1.5 L 10 1.5 L 13 4.5 L 13 14.5 L 3.5 14.5 Z M 10 1.5 L 10 5 L 13 5 M 6 8 L 10.5 8 M 6 11 L 10.5 11"
-        : "M 3.5 1.5 L 10 1.5 L 13 4.5 L 13 14.5 L 3.5 14.5 Z M 10 1.5 L 10 5 L 13 5 M 6 8 L 10.5 8 M 6 11 L 10.5 11";
+        : root.kind == "table" ? "M 3 2.5 L 13 2.5 Q 14 2.5 14 3.5 L 14 12.5 Q 14 13.5 13 13.5 L 3 13.5 Q 2 13.5 2 12.5 L 2 3.5 Q 2 2.5 3 2.5 Z M 2 6 L 14 6 M 7 6 L 7 13.5 M 2 9.8 L 14 9.8"
+        : root.kind == "presentation" ? "M 2 2.5 L 14 2.5 M 3 2.5 L 3 10.5 L 13 10.5 L 13 2.5 M 8 10.5 L 8 13.5 M 5 14 L 8 12.5 L 11 14"
+        : "M 4.5 2 L 9.5 2 L 12.5 5 L 12.5 13 Q 12.5 14 11.5 14 L 4.5 14 Q 3.5 14 3.5 13 L 3.5 3 Q 3.5 2 4.5 2 Z M 9.5 2 L 9.5 5 L 12.5 5 M 6 8 L 10 8 M 6 11 L 10 11";
     Path {
         width: parent.width;
         height: parent.height;
         viewbox-width: 16;
         viewbox-height: 16;
-        stroke-width: 1.35px;
+        stroke-width: root.solid ? 0px : 1.6px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
         stroke: root.tint;
-        fill: transparent;
+        fill: root.solid ? root.tint : transparent;
         commands: root.path;
     }
 }
@@ -284,10 +396,34 @@ export component TypeIcon inherits Rectangle {
     Glyph {
         width: parent.width;
         height: parent.height;
-        tint: Theme.muted;
+        tint: Theme.accent-text;
         kind: root.kind == "audio" ? "music" : root.kind == "exe" || root.kind == "apk" ? "program"
-            : root.kind == "pdf" || root.kind == "doc" || root.kind == "sheet" || root.kind == "slides" || root.kind == "text" || root.kind == "general" ? "document"
+            : root.kind == "sheet" ? "table" : root.kind == "slides" ? "presentation"
+            : root.kind == "pdf" || root.kind == "doc" || root.kind == "text" || root.kind == "general" ? "document"
             : root.kind;
+    }
+}
+
+// The original download ribbon from packaging/ezoo-icon.svg, drawn as vectors
+// so the sidebar shares the application icon's identity at every scale.
+export component BrandMark inherits Rectangle {
+    width: 28px;
+    height: 28px;
+    Rectangle {
+        x: parent.width * 0.0625;
+        y: parent.height * 0.0625;
+        width: parent.width * 0.875;
+        height: parent.height * 0.875;
+        border-radius: root.width * 0.1953125;
+        background: #007aff;
+    }
+    Path {
+        width: parent.width;
+        height: parent.height;
+        viewbox-width: 1024;
+        viewbox-height: 1024;
+        fill: white;
+        commands: "M376 260H584C606 260 624 278 624 300V482H694C717 482 728 509 712 525L540 697C524 713 500 713 484 697L312 525C296 509 307 482 330 482H424V372H376C345 372 320 347 320 316S345 260 376 260Z M338 752H686C707 752 724 769 724 790S707 828 686 828H338C317 828 300 811 300 790S317 752 338 752Z";
     }
 }
 
