@@ -24,7 +24,12 @@ const chrome = {
   cookies: { getAll: async () => [] },
 };
 const ytCalls = []; const browserDl = []; let appDown = false;
+const batches = []; const cookieQueries = []; let collectedLinks = null;
+chrome.cookies.getAll = async ({ url }) => { cookieQueries.push(url); return [{ name: "session", value: "synthetic" }]; };
+const originalTabMessage = chrome.tabs.sendMessage;
+chrome.tabs.sendMessage = async (id, message) => message.type === "swiftget-collect-links" ? collectedLinks : originalTabMessage(id, message);
 const fetch = async (url, opts = {}) => {
+  if (url.endsWith("/links")) batches.push(JSON.parse(opts.body));
   if (url.endsWith("/ping") && pingExt) return { ok: true, status: 200, json: async () => ({ ext: pingExt }) };
   if (url.endsWith("/add")) { if (appDown) throw new TypeError("Failed to fetch"); sent.push(JSON.parse(opts.body)); }
   if (url.endsWith("/resolve")) {
@@ -45,6 +50,22 @@ const gv = (itag, mime, clen, dur, r) => `https://rr1---sn-x.googlevideo.com/vid
 const tick = () => new Promise((r) => setTimeout(r, 20));
 
 (async () => {
+  // Bulk downloads retain the page scope; foreign-only lists need no page cookies.
+  {
+    const page = "https://members.example/private?token=synthetic";
+    collectedLinks = { page, links: [{ url: "https://files.example/file.pdf", text: "foreign" }] };
+    const beforeCookies = cookieQueries.length;
+    await ctx.sendAllLinks({ id: 7, url: page }, false);
+    assert.strictEqual(cookieQueries.length, beforeCookies, "foreign-only list never reads page cookies");
+    assert.strictEqual(batches[batches.length - 1].cookies, null);
+    collectedLinks.links.push({ url: "https://members.example/file.pdf", text: "own" });
+    await ctx.sendAllLinks({ id: 7, url: page }, false);
+    const batch = batches[batches.length - 1];
+    assert.strictEqual(batch.page, page, "desktop receives cookie protection scope");
+    assert.strictEqual(batch.cookies, "session=synthetic");
+    assert.strictEqual(batch.links.length, 2, "mixed-origin links remain selectable");
+    collectedLinks = null;
+  }
   // player loads an ad, then the real video in many pieces
   listeners.before({ tabId: 7, url: gv(136, "video/mp4", 5e6, "15.0", "0-1000") });
   await tick();

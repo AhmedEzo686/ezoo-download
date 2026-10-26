@@ -27,6 +27,7 @@ ring = "0.17"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
+security-framework = "3.7"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

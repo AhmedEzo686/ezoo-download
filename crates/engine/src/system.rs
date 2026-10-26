@@ -120,7 +120,26 @@ pub fn mark_from_internet(file: &Path, host_url: &str, referrer: Option<&str>) {
         stream.push(":Zone.Identifier");
         let _ = std::fs::write(std::path::PathBuf::from(stream), zone_identifier(host_url, referrer));
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        let Ok(path) = CString::new(file.as_os_str().as_bytes()) else { return };
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs()).unwrap_or(0);
+        // Mark a new internet download, never a user-approved application.
+        // No URL, cookie, query token or local path is stored in the value.
+        let value = format!("0001;{now:x};Ezoo Download;");
+        let name = c"com.apple.quarantine";
+        // SAFETY: all pointers remain valid for the call and value.len()
+        // describes the complete byte buffer. Filesystems without xattrs
+        // may refuse this best-effort provenance mark.
+        unsafe {
+            libc::setxattr(path.as_ptr(), name.as_ptr(), value.as_ptr().cast(), value.len(), 0, 0);
+        }
+        let _ = (host_url, referrer);
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let _ = (file, host_url, referrer);
     }
@@ -311,6 +330,24 @@ mod imp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn mac_downloads_keep_internet_quarantine_without_exposing_url_secrets() {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        let file = std::env::temp_dir().join(format!("ezoo-quarantine-test-{}", std::process::id()));
+        std::fs::write(&file, b"synthetic download").unwrap();
+        mark_from_internet(&file, "https://user:password@example.test/file?token=private", None);
+        let path = CString::new(file.as_os_str().as_bytes()).unwrap();
+        let mut value = [0u8; 256];
+        let size = unsafe { libc::getxattr(path.as_ptr(), c"com.apple.quarantine".as_ptr(), value.as_mut_ptr().cast(), value.len(), 0, 0) };
+        assert!(size > 0);
+        let value = std::str::from_utf8(&value[..size as usize]).unwrap();
+        assert!(value.starts_with("0001;"));
+        assert!(value.ends_with(";Ezoo Download;"));
+        assert!(!value.contains("password") && !value.contains("private") && !value.contains("example.test"));
+        std::fs::remove_file(file).unwrap();
+    }
     #[cfg(target_os = "macos")]
     #[test]
     fn mac_disk_information_and_room_check() {

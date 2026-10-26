@@ -4,7 +4,7 @@
 use crate::config::{parse_hhmm, AfterDone, QueueDef, Settings, MAIN_QUEUE};
 use crate::filename;
 use crate::hls::{self, HlsJob};
-use crate::http::{self, build_client_with, Progress, ProxyConfig, Shared};
+use crate::http::{self, build_client_with, build_service_client_with, Progress, ProxyConfig, Shared};
 use crate::http_download::{self, Cancelled, HttpJob, SegTable};
 use crate::limiter::SpeedLimiter;
 use crate::model::*;
@@ -85,6 +85,7 @@ pub struct Manager {
     inner: Mutex<Inner>,
     settings: RwLock<Settings>,
     shared: Arc<Shared>,
+    service_client: RwLock<reqwest::Client>,
     proxy: Mutex<ProxyConfig>,
     rt: Handle,
     data_dir: PathBuf,
@@ -115,16 +116,25 @@ pub fn default_data_dir() -> PathBuf {
 impl Manager {
     pub fn new(rt: Handle, data_dir: PathBuf) -> anyhow::Result<Arc<Manager>> {
         std::fs::create_dir_all(&data_dir)?;
-        let settings = Settings::load(&data_dir.join("settings.json"));
+        let settings = Settings::try_load(&data_dir.join("settings.json"))?;
         settings.create_folders();
         let proxy = ProxyConfig::from_settings(&settings);
         // a broken manual proxy must not keep the app from starting
         let client = build_client_with(&proxy).or_else(|_| build_client_with(&ProxyConfig { mode: 1, ..Default::default() }))?;
+        let service_client = build_service_client_with(&proxy)
+            .or_else(|_| build_service_client_with(&ProxyConfig { mode: 1, ..Default::default() }))?;
         let shared = Arc::new(Shared::new(client, SpeedLimiter::new(settings.effective_limit())));
 
         let mut entries = BTreeMap::new();
         let mut next_id = 1;
-        for mut rec in store::load_downloads(&data_dir.join("downloads.json")) {
+        for mut rec in store::try_load_downloads(&data_dir.join("downloads.json"))? {
+            if rec.headers.credential_origin.is_none() {
+                // Older bulk downloads could contain another page's cookies.
+                // A recorded URL is not proof that unscoped secrets belong to
+                // it. Clear those secrets; matching saved site logins remain
+                // available, and other passwords can be entered again.
+                rec.headers = rec.headers.scoped_for(&rec.url);
+            }
             if !matches!(rec.status, Status::Completed | Status::Failed | Status::Paused) {
                 rec.status = Status::Paused;
             }
@@ -175,6 +185,7 @@ impl Manager {
             }),
             settings: RwLock::new(settings),
             shared,
+            service_client: RwLock::new(service_client),
             proxy: Mutex::new(proxy),
             rt: rt.clone(),
             torrents: Arc::new(torrent::Aria2::new(&data_dir.join("torrents"))),
@@ -205,7 +216,10 @@ impl Manager {
         self.shared.limiter.set_rate(s.effective_limit());
         let proxy = ProxyConfig::from_settings(&s);
         if *self.proxy.lock().unwrap() != proxy {
-            self.shared.set_client(build_client_with(&proxy)?);
+            let transfer = build_client_with(&proxy)?;
+            let service = build_service_client_with(&proxy)?;
+            self.shared.set_client(transfer);
+            *self.service_client.write().unwrap() = service;
             *self.proxy.lock().unwrap() = proxy;
         }
         s.save(&self.data_dir.join("settings.json"))?;
@@ -230,12 +244,19 @@ impl Manager {
         http::probe(&self.shared.client(), url, &headers, &ua).await
     }
 
-    /// The HTTP client (with the proxy settings), for the site grabber.
+    /// Public update/helper downloads, with the current proxy settings.
     pub fn client(&self) -> reqwest::Client {
+        self.service_client.read().unwrap().clone()
+    }
+
+    /// Browser-authenticated transfers follow redirects through http::send.
+    pub fn transfer_client(&self) -> reqwest::Client {
         self.shared.client()
     }
 
     pub fn add(self: &Arc<Self>, req: NewDownload) -> DownloadId {
+        let mut req = req;
+        req.headers.bind_to(&req.url);
         let settings = self.settings();
         let probe = req.probe.clone();
         let auto_name = req.file_name.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) && req.probe.is_none();
@@ -599,12 +620,15 @@ impl Manager {
             }
             e.rec.url = url.to_string();
             e.rec.final_url = None;
-            if let Some(h) = headers {
-                let auth = e.rec.headers.auth.clone();
-                e.rec.headers = h;
+            let previous = e.rec.headers.scoped_for(url);
+            if let Some(mut h) = headers {
+                h.bind_to(url);
+                e.rec.headers = h.scoped_for(url);
                 if e.rec.headers.auth.is_none() {
-                    e.rec.headers.auth = auth;
+                    e.rec.headers.auth = previous.auth;
                 }
+            } else {
+                e.rec.headers = previous;
             }
             if e.rec.status == Status::Failed {
                 e.rec.status = Status::Paused;
@@ -618,16 +642,24 @@ impl Manager {
     pub fn update_details(&self, id: DownloadId, d: DetailsEdit) -> anyhow::Result<()> {
         let mut inner = self.inner.lock().unwrap();
         let e = inner.entries.get_mut(&id).ok_or_else(|| anyhow!("download not found"))?;
+        let mut auth = d.auth;
         if let Some(u) = d.url.filter(|u| !u.trim().is_empty() && *u != e.rec.url) {
             if e.rec.status == Status::Completed {
                 anyhow::bail!("the address of a finished download can't be changed");
             }
             e.rec.url = u.trim().to_string();
             e.rec.final_url = None;
+            let safe = e.rec.headers.scoped_for(&e.rec.url);
+            // A prefilled password is not consent to send it to a new site.
+            if safe.auth != e.rec.headers.auth && auth == e.rec.headers.auth {
+                auth = None;
+            }
+            e.rec.headers = safe;
         }
         e.rec.headers.referer = d.referer.filter(|r| !r.trim().is_empty());
         e.rec.description = d.description.filter(|r| !r.trim().is_empty());
-        e.rec.headers.auth = d.auth.filter(|(u, _)| !u.trim().is_empty());
+        e.rec.headers.auth = auth.filter(|(u, _)| !u.trim().is_empty());
+        e.rec.headers.bind_to(&e.rec.url);
         inner.dirty = true;
         Ok(())
     }
@@ -829,6 +861,12 @@ impl Manager {
     pub fn snapshot(&self) -> Vec<DownloadView> {
         let inner = self.inner.lock().unwrap();
         inner.entries.values().map(make_view).collect()
+    }
+
+    /// Cheap UI cadence check without cloning every download and header.
+    pub fn has_active_downloads(&self) -> bool {
+        self.inner.lock().unwrap().entries.values()
+            .any(|e| e.rec.status == Status::Queued || e.rec.status.is_running())
     }
 
     /// One download (cheap: used many times a second by progress windows).
@@ -1274,7 +1312,7 @@ impl Manager {
             DownloadKind::Http => {
                 let job = HttpJob {
                     url: rec.request_url().to_string(),
-                    headers: rec.headers.clone(),
+                    headers: rec.headers.scoped_for(rec.request_url()),
                     user_agent: settings.user_agent.clone(),
                     total_size: rec.total_size,
                     resumable: rec.resumable,
@@ -1291,7 +1329,7 @@ impl Manager {
             DownloadKind::Hls => {
                 let job = HlsJob {
                     url: rec.request_url().to_string(),
-                    headers: rec.headers.clone(),
+                    headers: rec.headers.scoped_for(rec.request_url()),
                     user_agent: settings.user_agent.clone(),
                     output: part.clone(),
                     temp_dir: rec.hls_temp_dir(),
@@ -1460,6 +1498,7 @@ impl Manager {
         rec.kind = if opt.audio_url.is_some() { DownloadKind::Dash } else { DownloadKind::Http };
         rec.source_page = Some(page.clone());
         rec.source_key = Some(opt.key.clone());
+        rec.headers = rec.headers.scoped_for(&rec.url);
         ytdlp::apply_headers(&mut rec.headers, &opt.headers);
         // The video's own title (yt-dlp gives the title in the video's own
         // language here; the playlist page often shows translated ones),
@@ -1515,6 +1554,7 @@ impl Manager {
             rec.url = opt.video_url.clone();
             rec.final_url = None;
             rec.audio_url = opt.audio_url.clone();
+            rec.headers = rec.headers.scoped_for(&rec.url);
             ytdlp::apply_headers(&mut rec.headers, &opt.headers);
             let r = rec.clone();
             self.update(id, move |x| {
@@ -1637,7 +1677,7 @@ impl Manager {
 
             let video_job = HttpJob {
                 url: vp.final_url.clone(),
-                headers: rec.headers.clone(),
+                headers: rec.headers.scoped_for(&vp.final_url),
                 user_agent: ua.clone(),
                 total_size: vp.total_size,
                 resumable: vp.resumable,
@@ -1654,6 +1694,7 @@ impl Manager {
             let video_bytes = vp.total_size.unwrap_or_else(|| progress.bytes.load(Ordering::Relaxed));
             let audio_job = HttpJob {
                 url: ap.final_url.clone(),
+                headers: rec.headers.scoped_for(&ap.final_url),
                 total_size: ap.total_size,
                 resumable: ap.resumable,
                 part_path: rec.audio_part_path(),
@@ -2028,6 +2069,8 @@ pub struct DetailsEdit {
 /// The download's headers plus a saved site login, if it has none of its own.
 fn with_login(s: &Settings, url: &str, h: &RequestHeaders) -> RequestHeaders {
     let mut h = h.clone();
+    h.bind_to(url);
+    let mut h = h.scoped_for(url);
     if h.auth.is_none() {
         h.auth = s.login_for(url);
     }
@@ -2115,5 +2158,76 @@ mod inside_tests {
         assert!(!inside(Path::new("/d/Video/../x.bin"), d));
         assert!(!inside(Path::new("/d/Video"), d));
         assert!(!inside(Path::new("/d/Other/a.bin"), d));
+    }
+}
+
+#[cfg(test)]
+mod credential_scope_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn legacy_history_credentials_are_not_authorized_for_recorded_url() {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("ezoo-legacy-scope-{}-{nanos:x}", std::process::id()));
+        let mut settings = Settings::default();
+        settings.download_dir = dir.join("downloads");
+        settings.category_folders = false;
+        settings.logins.push(crate::config::SiteLogin {
+            site: "https://download.example".into(), user: "matched-user".into(), password: "matched-password".into(),
+        });
+        settings.save(&dir.join("settings.json")).unwrap();
+        let manager = Manager::new(Handle::current(), dir.clone()).unwrap();
+        let request = || NewDownload {
+            url: "https://download.example/file.bin".into(),
+            headers: RequestHeaders {
+                cookies: Some("session=synthetic-page-cookie".into()),
+                auth: Some(("old-user".into(), "old-password".into())),
+                extra: vec![("X-Api-Key".into(), "old-key".into())],
+                referer: Some("https://source.example/private?token=synthetic".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let legacy_id = manager.add(request());
+        let scoped_id = manager.add(request());
+        manager.inner.lock().unwrap().entries.get_mut(&legacy_id).unwrap().rec.headers.credential_origin = None;
+        manager.shutdown();
+
+        let loaded = Manager::new(Handle::current(), dir.clone()).unwrap();
+        let legacy = loaded.get(legacy_id).unwrap().headers;
+        assert!(legacy.cookies.is_none() && legacy.auth.is_none() && legacy.extra.is_empty());
+        assert_eq!(legacy.credential_origin.as_deref(), Some("https://download.example"));
+        assert_eq!(legacy.referer.as_deref(), Some("https://source.example/"));
+        assert_eq!(with_login(&loaded.settings(), "https://download.example/file.bin", &legacy).auth,
+            Some(("matched-user".into(), "matched-password".into())));
+        let scoped = loaded.get(scoped_id).unwrap().headers;
+        assert!(scoped.cookies.is_some() && scoped.auth.is_some() && !scoped.extra.is_empty());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod credential_load_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn unavailable_history_key_fails_startup_without_rewriting_data() {
+        let dir = std::env::temp_dir().join(format!("ezoo-locked-history-{}", std::process::id()));
+        let mut settings = Settings::default();
+        settings.download_dir = dir.join("downloads");
+        settings.category_folders = false;
+        settings.save(&dir.join("settings.json")).unwrap();
+        let manager = Manager::new(Handle::current(), dir.clone()).unwrap();
+        manager.add(NewDownload {
+            url: "https://example.com/file.bin".into(),
+            headers: RequestHeaders { cookies: Some("session=synthetic".into()), ..Default::default() },
+            ..Default::default()
+        });
+        manager.shutdown();
+        let history = dir.join("downloads.json");
+        let before = std::fs::read(&history).unwrap();
+        crate::secret::with_unavailable_key(|| assert!(Manager::new(Handle::current(), dir.clone()).is_err()));
+        assert_eq!(std::fs::read(&history).unwrap(), before);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

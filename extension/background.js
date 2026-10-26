@@ -695,6 +695,16 @@ chrome.runtime.onStartup.addListener(makeMenus);
 async function sendAllLinks(tab, selection) {
   const res = await chrome.tabs.sendMessage(tab.id, { type: "swiftget-collect-links", selection }).catch(() => null);
   if (!res || !res.links || !res.links.length) return;
+  const page = res.page || tab.url;
+  // Page cookies can only help links from that origin. The desktop app also
+  // preserves this scope and filters each link in a mixed-origin batch.
+  let needsCookies = false;
+  try {
+    const origin = new URL(page).origin;
+    needsCookies = res.links.some((link) => {
+      try { return new URL(link.url).origin === origin; } catch { return false; }
+    });
+  } catch { /* invalid page: no credentials */ }
   const { port } = await getOpts();
   await fetchWithTimeout(
     apiUrl(port, "/links"),
@@ -702,9 +712,9 @@ async function sendAllLinks(tab, selection) {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-SwiftGet": "1" },
       body: JSON.stringify({
-        page: res.page || tab.url,
+        page,
         links: res.links,
-        cookies: await cookieHeader(res.page || tab.url),
+        cookies: needsCookies ? await cookieHeader(page) : null,
         userAgent: navigator.userAgent,
       }),
     },

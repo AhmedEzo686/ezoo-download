@@ -316,8 +316,7 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
                     }
                 }
                 let _done = Done;
-                let cookies = (!r.cookie_list.is_empty()).then_some(r.cookie_list.as_slice());
-                let body = match swiftget_engine::ytdlp::resolve(&r.url, cookies) {
+                let body = match swiftget_engine::ytdlp::resolve_for_browser(&r.url, &r.cookie_list) {
                     Ok(info) => serde_json::json!({
                         "ok": true, "title": info.title, "site": info.site, "options": info.options
                     }),

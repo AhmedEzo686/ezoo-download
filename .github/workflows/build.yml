@@ -57,9 +57,9 @@ jobs:
           node extension/test/yt-core.test.js
           node extension/test/background.sim.js
       - name: Check workspace
-        run: cargo check --workspace --all-targets --target "${{ matrix.target }}"
+        run: cargo check --locked --workspace --all-targets --target "${{ matrix.target }}"
       - name: Run tests
-        run: cargo test --workspace --target "${{ matrix.target }}" --no-fail-fast
+        run: cargo test --locked --workspace --target "${{ matrix.target }}" --no-fail-fast
       - name: Build and package app
         run: ./build-macos.sh --target "${{ matrix.target }}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -91,6 +91,8 @@ jobs:
           gh release upload "v$version" macos-artifacts/*.zip macos-artifacts/*.sha256 --repo "${{ github.repository }}" --clobber
 
   windows:
+    # Platform-specific macOS release tags must never package a Windows update.
+    if: ${{ !startsWith(github.ref, 'refs/tags/macos-') }}
     runs-on: windows-latest
     steps:
       # actions pinned to exact commits (a moved tag can't change the build)
@@ -109,16 +111,16 @@ jobs:
       - name: Run engine tests
         shell: pwsh
         run: |
-          cargo test -p swiftget-engine --no-fail-fast 2>&1 | Tee-Object -FilePath tests.txt
+          cargo test --locked -p swiftget-engine --no-fail-fast 2>&1 | Tee-Object -FilePath tests.txt
           $code = $LASTEXITCODE
           # failures (only real ones) show up as annotations on the run page;
           # case-sensitive, or every "0 failed" summary line looked like one
           if ($code -ne 0) {
             Select-String -CaseSensitive -Path tests.txt -Pattern "^error(\[|:)|panicked at|^test .* FAILED$|^---- " |
               Select-Object -First 40 | ForEach-Object { Write-Host "::error::$($_.Line.Trim())" }
-            Write-Host "::warning::engine tests failed (exit $code)"
+            Write-Host "::error::engine tests failed (exit $code)"
           }
-          exit 0
+          exit $code
       - name: Check dependencies for known vulnerabilities
         shell: pwsh
         run: |
@@ -126,7 +128,7 @@ jobs:
           # fails on published vulnerabilities; "unmaintained" notices only warn
           cargo audit
       - name: Build release
-        run: cargo build --release
+        run: cargo build --locked --release
       - name: Package
         shell: pwsh
         env:
@@ -222,7 +224,7 @@ jobs:
           # the signature the program checks before it installs an update
           $sig = ""
           if ($env:UPDATE_SIGNING_KEY) {
-            $sig = (cargo run --quiet --release -p swiftget-engine --example sign_update -- $version $hash).Trim()
+            $sig = (cargo run --locked --quiet --release -p swiftget-engine --example sign_update -- $version $hash).Trim()
             if ($LASTEXITCODE -ne 0 -or $sig.Length -ne 128) { throw "could not sign the release" }
           } elseif ($env:IS_RELEASE -eq "true") {
             throw "UPDATE_SIGNING_KEY is not set: installed copies would refuse this update"
@@ -249,10 +251,11 @@ jobs:
           if (Test-Path dist/ezoo-download-firefox.xpi) { $files += "dist/ezoo-download-firefox.xpi", "dist/firefox-updates.json" }
           gh release create "v$env:VERSION" @files --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Ezoo Download $env:VERSION" --notes "Ezoo Download $env:VERSION" --latest
           if ($LASTEXITCODE -ne 0) { throw "could not create the release" }
-          # only the newest release stays: older ones (and their tags) go
+          # Rotate numeric Windows version tags only. macOS-specific and
+          # unrelated releases must keep their assets and tags.
           $tags = gh release list --repo "${{ github.repository }}" --limit 100 --json tagName -q '.[].tagName'
           foreach ($t in $tags) {
-            if ($t -and $t -ne "v$env:VERSION") {
+            if ($t -and $t -match '^v[0-9]+\.[0-9]+\.[0-9]+$' -and $t -ne "v$env:VERSION") {
               Write-Host "Removing old release $t"
               gh release delete $t --repo "${{ github.repository }}" --yes --cleanup-tag
             }

@@ -34,7 +34,7 @@ xcrun --find clang >/dev/null 2>&1 || {
 
 export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-11.0}"
 cargo_target_dir="${CARGO_TARGET_DIR:-target}"
-build_args=(-p swiftget)
+build_args=(-p swiftget --locked)
 profile=release
 if [[ "$debug" == true ]]; then
     profile=debug
@@ -119,6 +119,7 @@ cat > "$app/Contents/Info.plist" <<EOF
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
+    <key>LSFileQuarantineEnabled</key><true/>
     <key>NSAppleEventsUsageDescription</key><string>Ezoo Download uses System Events when you choose to shut down your Mac after downloads finish.</string>
     <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Ahmed Ezzat</string>
 </dict></plist>

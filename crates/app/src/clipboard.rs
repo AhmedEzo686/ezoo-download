@@ -33,28 +33,91 @@ pub fn downloadable_url(text: &str) -> Option<String> {
     }
 }
 
-/// Polls the clipboard once a second on its own thread.
+/// Owns clipboard access only while monitoring is enabled. The first successful
+/// read after enabling is a baseline, never a download request.
+#[derive(Default)]
+struct Monitor<C> {
+    clipboard: Option<C>,
+    last: Option<String>,
+}
+
+impl<C> Monitor<C> {
+    fn poll(
+        &mut self,
+        enabled: bool,
+        create: impl FnOnce() -> Option<C>,
+        read: impl FnOnce(&mut C) -> Option<String>,
+    ) -> Option<String> {
+        if !enabled {
+            self.clipboard = None;
+            self.last = None;
+            return None;
+        }
+        if self.clipboard.is_none() {
+            self.clipboard = create();
+        }
+        let text = read(self.clipboard.as_mut()?)?;
+        let previous = self.last.replace(text.clone())?;
+        if text == previous {
+            return None;
+        }
+        downloadable_url(&text)
+    }
+}
+
+/// Polls once a second; disabling monitoring releases the clipboard and does
+/// not initialize or read it until monitoring is enabled again.
 pub fn spawn(enabled: impl Fn() -> bool + Send + 'static, on_url: impl Fn(String) + Send + 'static) {
     std::thread::Builder::new()
         .name("swiftget-clipboard".into())
         .spawn(move || {
-            let Ok(mut clip) = arboard::Clipboard::new() else { return };
-            // ignore whatever was already copied before we started
-            let mut last = clip.get_text().unwrap_or_default();
+            let mut monitor = Monitor { clipboard: None, last: None };
             loop {
-                std::thread::sleep(Duration::from_millis(1000));
-                let Ok(text) = clip.get_text() else { continue };
-                if text == last {
-                    continue;
-                }
-                last = text.clone();
-                if !enabled() {
-                    continue;
-                }
-                if let Some(u) = downloadable_url(&text) {
+                if let Some(u) = monitor.poll(enabled(), || arboard::Clipboard::new().ok(), |clip| clip.get_text().ok()) {
                     on_url(u);
                 }
+                std::thread::sleep(Duration::from_secs(1));
             }
         })
         .ok();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    #[test]
+    fn disabled_monitor_never_initializes_or_reads() {
+        let mut monitor = Monitor::<()>::default();
+        assert_eq!(monitor.poll(false, || panic!("clipboard initialized while disabled"), |_| panic!("clipboard read while disabled")), None);
+        assert!(monitor.clipboard.is_none());
+        assert!(monitor.last.is_none());
+    }
+
+    #[test]
+    fn each_activation_rebases_before_reporting_new_links() {
+        let created = Cell::new(0);
+        let mut monitor = Monitor::<()>::default();
+        let mut poll = |enabled, text: &str| monitor.poll(enabled, || {
+            created.set(created.get() + 1);
+            Some(())
+        }, |_| Some(text.to_owned()));
+        assert_eq!(poll(true, "https://example.com/old.zip"), None);
+        assert_eq!(poll(true, "https://example.com/old.zip"), None);
+        assert_eq!(poll(true, "https://example.com/new.zip"), Some("https://example.com/new.zip".into()));
+        assert_eq!(poll(false, "https://example.com/private.zip"), None);
+        assert_eq!(poll(true, "https://example.com/private.zip"), None);
+        assert_eq!(poll(true, "https://example.com/later.zip"), Some("https://example.com/later.zip".into()));
+        assert_eq!(created.get(), 2);
+    }
+
+    #[test]
+    fn failed_reads_do_not_consume_the_initial_baseline() {
+        let mut monitor = Monitor::<()>::default();
+        assert_eq!(monitor.poll(true, || None, |_| panic!("read without clipboard")), None);
+        assert_eq!(monitor.poll(true, || Some(()), |_| None), None);
+        assert_eq!(monitor.poll(true, || panic!("already initialized"), |_| Some("https://example.com/baseline.zip".into())), None);
+        assert_eq!(monitor.poll(true, || panic!("already initialized"), |_| Some("https://example.com/changed.zip".into())), Some("https://example.com/changed.zip".into()));
+    }
 }

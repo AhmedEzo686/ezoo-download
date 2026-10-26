@@ -491,19 +491,47 @@ fn playlist_args(url: &str, cookie_file: Option<&Path>) -> Vec<std::ffi::OsStrin
     a
 }
 
+/// Owns a cookie file until the helper finishes, including unwinding on panic.
+struct CookieFile {
+    path: std::path::PathBuf,
+    file: Option<std::fs::File>,
+}
+
+impl CookieFile {
+    fn write(mut self, contents: &[u8]) -> std::io::Result<Self> {
+        use std::io::Write;
+        self.file.as_mut().expect("new cookie file").write_all(contents)?;
+        drop(self.file.take());
+        Ok(self)
+    }
+}
+
+impl Drop for CookieFile {
+    fn drop(&mut self) {
+        // Windows cannot remove an open file. Close it before cleanup, also
+        // when writing failed or the helper panicked.
+        drop(self.file.take());
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 /// A new, private file for the browser's cookies (never one that exists).
-fn cookie_file(cookies: &[BrowserCookie]) -> anyhow::Result<std::path::PathBuf> {
-    use std::io::Write;
+fn cookie_file(cookies: &[BrowserCookie]) -> anyhow::Result<CookieFile> {
     static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let contents = netscape_cookies(cookies);
     let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     for _ in 0..5 {
         let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!("ezoo-cookies-{}-{nanos:x}-{n}.txt", std::process::id()));
-        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
-            Ok(mut f) => {
-                f.write_all(netscape_cookies(cookies).as_bytes())?;
-                return Ok(path);
-            }
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(&path) {
+            Ok(file) => return Ok(CookieFile { path, file: Some(file) }.write(contents.as_bytes())?),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(e.into()),
         }
@@ -553,8 +581,8 @@ fn site_of(url: &str) -> String {
     parts[parts.len().saturating_sub(keep)..].join(".")
 }
 
-/// The browser's cookies of each site, kept in memory only (never written
-/// to the disk) while the program runs: a quality picked later, the next
+/// The browser's cookies of each site, kept in memory while the program
+/// runs (a private temporary file is needed for cookie-assisted lookups): a quality picked later, the next
 /// video of a playlist or an address typed in "Add URL" can then also open
 /// videos that need a login or an age check.
 static JAR: std::sync::Mutex<Vec<(String, Vec<BrowserCookie>)>> = std::sync::Mutex::new(Vec::new());
@@ -595,24 +623,34 @@ fn login_wall(msg: &str) -> bool {
 /// cookies of the browser help.
 pub const LOGIN_NEEDED: &str = "this video needs a login or an age check: open it once in the browser where you are signed in (with the Ezoo Download extension), then try again";
 
+#[derive(Clone, Copy)]
+enum CookieAccess {
+    Remembered,
+    SuppliedOnly,
+}
+
 fn with_cookies<T>(
     page_url: &str,
     cookies: Option<&[BrowserCookie]>,
+    access: CookieAccess,
     run: impl Fn(Option<&Path>) -> anyhow::Result<T>,
 ) -> anyhow::Result<T> {
-    if let Some(list) = cookies {
-        remember_cookies(page_url, list);
+    if matches!(access, CookieAccess::Remembered) {
+        if let Some(list) = cookies {
+            remember_cookies(page_url, list);
+        }
     }
     match run(None) {
         Ok(v) => Ok(v),
         Err(e) if needs_login(&e.to_string()) => {
-            let list = cookies.map(<[BrowserCookie]>::to_vec).or_else(|| remembered_cookies(page_url));
+            let list = cookies.map(<[BrowserCookie]>::to_vec).or_else(|| {
+                matches!(access, CookieAccess::Remembered).then(|| remembered_cookies(page_url)).flatten()
+            });
             let Some(list) = list.filter(|c| !c.is_empty()) else {
                 return Err(if login_wall(&e.to_string()) { e.context(LOGIN_NEEDED) } else { e });
             };
             let file = cookie_file(&list)?;
-            let r = run(Some(&file));
-            let _ = std::fs::remove_file(&file);
+            let r = run(Some(&file.path));
             r.map_err(|e2| if login_wall(&e2.to_string()) { e2.context(LOGIN_NEEDED) } else { e2 })
         }
         Err(e) => Err(e),
@@ -625,10 +663,23 @@ fn with_cookies<T>(
 /// age-limited YouTube videos, ...). Cookies the browser gave earlier for
 /// the same site are used when none come with this call.
 pub fn resolve(page_url: &str, cookies: Option<&[BrowserCookie]>) -> anyhow::Result<YtInfo> {
+    resolve_using(page_url, cookies, CookieAccess::Remembered)
+}
+
+/// A loopback API caller may use only cookies supplied in that request.
+/// Successful explicit cookies are remembered for later desktop-initiated
+/// playlist/renewal operations, but never borrowed by another API request.
+pub fn resolve_for_browser(page_url: &str, cookies: &[BrowserCookie]) -> anyhow::Result<YtInfo> {
+    let info = resolve_using(page_url, (!cookies.is_empty()).then_some(cookies), CookieAccess::SuppliedOnly)?;
+    remember_cookies(page_url, cookies);
+    Ok(info)
+}
+
+fn resolve_using(page_url: &str, cookies: Option<&[BrowserCookie]>, access: CookieAccess) -> anyhow::Result<YtInfo> {
     let tool = find_tool("yt-dlp")
         .ok_or_else(|| anyhow!(crate::tools::missing_tool_message("yt-dlp")))?;
     let cookies = cookies.filter(|c| !c.is_empty());
-    let json = with_cookies(page_url, cookies, |file| run_ytdlp(&tool, page_url, file))?;
+    let json = with_cookies(page_url, cookies, access, |file| run_ytdlp(&tool, page_url, file))?;
     let info = build_options(&json);
     if info.options.is_empty() {
         bail!("no downloadable video was found on this page");
@@ -664,7 +715,7 @@ pub struct PlaylistInfo {
 /// video yet (`--flat-playlist`, fast). Blocking.
 pub fn playlist(url: &str) -> anyhow::Result<PlaylistInfo> {
     let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!(crate::tools::missing_tool_message("yt-dlp")))?;
-    let json = with_cookies(url, None, |file| {
+    let json = with_cookies(url, None, CookieAccess::Remembered, |file| {
         let mut cmd = Command::new(&tool);
         cmd.args(playlist_args(url, file));
         hide_window(&mut cmd);
@@ -977,10 +1028,89 @@ mod tests {
             expiration_date: None,
         }];
         let (a, b) = (cookie_file(&list).unwrap(), cookie_file(&list).unwrap());
-        assert_ne!(a, b);
-        assert!(std::fs::read_to_string(&a).unwrap().contains("example.com"));
-        let _ = std::fs::remove_file(a);
-        let _ = std::fs::remove_file(b);
+        assert_ne!(a.path, b.path);
+        assert!(std::fs::read_to_string(&a.path).unwrap().contains("example.com"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&a.path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        let path = a.path.clone();
+        drop(a);
+        assert!(!path.exists());
+    }
+
+    fn synthetic_cookie(value: &str) -> BrowserCookie {
+        BrowserCookie {
+            domain: ".session-isolation.invalid".into(), name: "session".into(), value: value.into(),
+            path: "/".into(), secure: true, expiration_date: None,
+        }
+    }
+
+    #[test]
+    fn browser_resolution_cannot_borrow_remembered_cookies() {
+        let page = "https://session-isolation.invalid/private-video";
+        remember_cookies(page, &[synthetic_cookie("desktop-session")]);
+        let attempts = std::cell::Cell::new(0);
+        let result: anyhow::Result<()> = with_cookies(page, None, CookieAccess::SuppliedOnly, |file| {
+            attempts.set(attempts.get() + 1);
+            assert!(file.is_none());
+            bail!("login required")
+        });
+        assert!(result.is_err());
+        assert_eq!(attempts.get(), 1, "an API request without cookies must not retry using the desktop session");
+
+        let supplied = [synthetic_cookie("caller-session")];
+        let result = with_cookies(page, Some(&supplied), CookieAccess::SuppliedOnly, |file| {
+            let Some(file) = file else { bail!("login required") };
+            let content = std::fs::read_to_string(file)?;
+            assert!(content.contains("caller-session"));
+            assert!(!content.contains("desktop-session"));
+            Ok(())
+        });
+        result.unwrap();
+        assert_eq!(remembered_cookies(page).unwrap()[0].value, "desktop-session");
+        with_cookies(page, None, CookieAccess::Remembered, |file| {
+            let Some(file) = file else { bail!("login required") };
+            assert!(std::fs::read_to_string(file)?.contains("desktop-session"));
+            Ok(())
+        }).unwrap();
+    }
+
+    #[test]
+    fn temporary_cookie_file_is_removed_on_helper_error_or_panic() {
+        let supplied = [synthetic_cookie("temporary-session")];
+        let path = std::cell::RefCell::new(None);
+        let result: anyhow::Result<()> = with_cookies("https://cleanup.invalid", Some(&supplied), CookieAccess::SuppliedOnly, |file| {
+            if let Some(file) = file {
+                *path.borrow_mut() = Some(file.to_path_buf());
+                bail!("helper failed");
+            }
+            bail!("login required")
+        });
+        assert!(result.is_err());
+        assert!(!path.borrow().as_ref().unwrap().exists());
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _: anyhow::Result<()> = with_cookies("https://cleanup.invalid", Some(&supplied), CookieAccess::SuppliedOnly, |file| {
+                if let Some(file) = file {
+                    *path.borrow_mut() = Some(file.to_path_buf());
+                    panic!("synthetic helper panic");
+                }
+                bail!("login required")
+            });
+        }));
+        assert!(panic.is_err());
+        assert!(!path.borrow().as_ref().unwrap().exists());
+    }
+
+    #[test]
+    fn temporary_cookie_file_is_removed_on_write_error() {
+        let mut cookie = cookie_file(&[synthetic_cookie("temporary-session")]).unwrap();
+        let path = cookie.path.clone();
+        // A read-only handle makes write_all fail on every supported platform.
+        cookie.file = Some(std::fs::File::open(&path).unwrap());
+        assert!(cookie.write(b"cannot write").is_err());
+        assert!(!path.exists());
     }
 
     #[test]

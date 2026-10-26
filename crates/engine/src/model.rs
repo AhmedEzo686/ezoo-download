@@ -63,6 +63,57 @@ pub struct RequestHeaders {
     /// encrypted on the disk (secret.rs)
     #[serde(default, with = "crate::secret::pair")]
     pub auth: Option<(String, String)>,
+    /// Origin for which cookies, authorization and extra headers were supplied.
+    /// Absent in older download lists; trusted entry points bind it once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_origin: Option<String>,
+}
+
+fn web_origin(value: &str) -> Option<String> {
+    let url = url::Url::parse(value).ok()?;
+    matches!(url.scheme(), "http" | "https").then(|| url.origin().ascii_serialization())
+}
+
+impl RequestHeaders {
+    /// Establish the protection scope of newly supplied or legacy headers.
+    /// Never move existing credentials into a different origin.
+    pub fn bind_to(&mut self, url: &str) {
+        if self.credential_origin.is_none() {
+            self.credential_origin = web_origin(url);
+        }
+    }
+
+    /// Headers safe to send to this destination. Unknown scopes fail closed.
+    pub fn scoped_for(&self, destination: &str) -> Self {
+        let mut out = self.clone();
+        let origin = web_origin(destination);
+        if origin.is_none() || self.credential_origin.as_deref().and_then(web_origin) != origin {
+            out.cookies = None;
+            out.auth = None;
+            // Extractors can use arbitrary names for bearer credentials.
+            out.extra.clear();
+        }
+        out.credential_origin = origin;
+        out.referer = self.referer.as_deref().and_then(|value| {
+            let mut source = url::Url::parse(value).ok()?;
+            let target = url::Url::parse(destination).ok()?;
+            if !matches!(source.scheme(), "http" | "https") || !matches!(target.scheme(), "http" | "https") {
+                return None;
+            }
+            if source.scheme() == "https" && target.scheme() == "http" {
+                return None;
+            }
+            let _ = source.set_username("");
+            let _ = source.set_password(None);
+            source.set_fragment(None);
+            if source.origin() == target.origin() {
+                Some(source.to_string())
+            } else {
+                Some(format!("{}/", source.origin().ascii_serialization()))
+            }
+        });
+        out
+    }
 }
 
 /// What we learn about a URL before downloading it.
