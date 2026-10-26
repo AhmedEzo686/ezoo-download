@@ -51,7 +51,7 @@ fn show_lists(ui: &Ui, d: &SettingsDialog) {
 fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     // General
     d.set_language(crate::i18n::index_of(crate::i18n::effective(&s.language)) as i32);
-    d.set_theme(s.theme as i32);
+    d.set_theme(crate::appearance::index(&s.appearance));
     d.set_window_opacity(s.opacity.clamp(50, 100) as f32);
     d.set_text_size(s.font_scale.clamp(80, 150) as f32);
     d.set_font_index(crate::FONTS.iter().position(|f| *f == s.font_family).unwrap_or(0) as i32);
@@ -148,7 +148,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     }
     // General
     s.language = crate::i18n::LANGS[(d.get_language().max(0) as usize).min(crate::i18n::LANGS.len() - 1)].0.into();
-    s.theme = d.get_theme().clamp(0, 8) as u32;
+    s.appearance = crate::appearance::preference(d.get_theme()).into();
     s.opacity = (d.get_window_opacity().round() as u32).clamp(50, 100);
     s.font_scale = (d.get_text_size().round() as u32).clamp(80, 150);
     s.font_family = crate::FONTS.get(d.get_font_index().max(0) as usize).copied().unwrap_or("").to_string();
@@ -237,7 +237,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
 /// The look the Options window shows now (not saved yet).
 fn look_of(d: &SettingsDialog) -> crate::Look {
     crate::Look {
-        mode: d.get_theme().clamp(0, 8),
+        mode: d.get_theme().clamp(0, 2),
         scale: (d.get_text_size().round() as u32).clamp(80, 150) as f32 / 100.0,
         family: crate::FONTS.get(d.get_font_index().max(0) as usize).copied().unwrap_or("").to_string(),
         background: d.get_bg_image().to_string(),
@@ -453,7 +453,7 @@ pub(crate) fn wire(ui: &Ui) {
             match read(&ui2, &d, old.clone()) {
                 Ok(s) => {
                     let port_changed = s.browser_port != old.browser_port;
-                    let theme = s.theme as i32;
+                    let theme = crate::appearance::index(&s.appearance);
                     let view = s.clone();
                     if let Err(e) = ui2.ctx.mgr.set_settings(s) {
                         d.set_message(tf("Could not save: {}", &[&format!("{e:#}")]).into());

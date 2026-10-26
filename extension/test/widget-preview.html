@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pacific Coast — Ezoo Widget Preview</title>
+<style>
+  :root { color-scheme: light; --page: #f5f5f7; --surface: #fff; --text: #1d1d1f; --muted: #626267; --line: #d2d2d7; --link: #0063cc; }
+  :root.dark { color-scheme: dark; --page: #1c1c1e; --surface: #2c2c2e; --text: #f5f5f7; --muted: #a1a1a6; --line: #48484a; --link: #64b0ff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px; background: var(--page); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+  main { max-width: 940px; margin: 0 auto; }
+  h1 { font-size: 24px; line-height: 1.2; letter-spacing: -.02em; margin: 0 0 6px; }
+  p { color: var(--muted); margin: 0 0 16px; }
+  nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+  a { padding: 5px 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--link); text-decoration: none; background: var(--surface); }
+  .player { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: #173c4b; }
+  video { display: block; width: 100%; height: min(54vw, 430px); min-height: 260px; background: linear-gradient(164deg, #607e92 0%, #6f98a5 40%, #254c54 41%, #133f4d 65%, #1c5c65 66%, #57817b 100%); }
+  .caption { position: absolute; left: 24px; bottom: 24px; color: #fff; pointer-events: none; text-shadow: 0 1px 5px #173c4b; }
+  .caption strong { display: block; font-size: 24px; font-weight: 600; letter-spacing: -.02em; }
+  .caption span { font-size: 13px; }
+  .footnote { margin-top: 16px; font-size: 12px; }
+  @media (max-width: 600px) { body { padding: 20px 12px; } h1 { font-size: 21px; } .caption { left: 18px; bottom: 18px; } }
+</style>
+<main>
+  <h1>Video download widget</h1>
+  <p>Production content script with local sample formats. Download actions are mocked.</p>
+  <nav aria-label="Preview states">
+    <a href="?theme=light">Light</a><a href="?theme=dark">Dark</a>
+    <a href="?theme=light&state=protected">Protected video</a>
+    <a href="?theme=dark&state=protected">Protected · Dark</a>
+    <a href="?theme=light&scale=0.5">50% size</a>
+    <a href="?theme=dark&scale=2">200% size</a>
+  </nav>
+  <div class="player">
+    <video muted playsinline tabindex="0" aria-label="Sample video area"></video>
+    <div class="caption"><strong>Pacific Coast</strong><span>Sample video · 2:35</span></div>
+  </div>
+  <p class="footnote">Use Tab, arrow keys, Home, End, and Escape in the widget. Drag the Download button to reposition it.</p>
+</main>
+<script>
+  // Development-only fixture: no extension installation, media, app API or network.
+  const params = new URLSearchParams(location.search);
+  const dark = params.get('theme') === 'dark';
+  document.documentElement.classList.toggle('dark', dark);
+  const palette = dark
+    ? { surface: '#2c2c2e', group: '#1c1c1e', text: '#f5f5f7', secondary: '#a1a1a6', line: '#48484a', accent: '#0a84ff', link: '#64b0ff', hover: '#353d4a', success: '#30d158', error: '#ff6961', shadow: 'rgba(0,0,0,.42)' }
+    : { surface: '#fff', group: '#f5f5f7', text: '#1d1d1f', secondary: '#5a5a60', line: '#d2d2d7', accent: '#007aff', link: '#0063cc', hover: '#edf4ff', success: '#248a3d', error: '#d70015', shadow: 'rgba(0,0,0,.18)' };
+  // Expose the fixture's shadow root for UI inspection; production stays closed.
+  const nativeShadow = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function(options) {
+    const root = nativeShadow.call(this, { ...options, mode: 'open' });
+    for (const [key, value] of Object.entries(palette)) this.style.setProperty('--ez-' + key, value);
+    window.widgetPreviewRoot = root;
+    return root;
+  };
+  const formats = params.get('state') === 'protected'
+    ? [{ disabled: true, protected: true, label: 'Protected video', type: 'protected', url: null }]
+    : [
+      { label: '1080p Full HD · MP4', ext: 'mp4', yt: { quality: '1080p', key: '1080p|MP4', ext: 'mp4', tag: 'Full HD', codec: 'H.264', size: 46800000, duration: 155, title: 'Pacific Coast — A Moment by the Ocean' } },
+      { label: '720p HD · MP4', ext: 'mp4', yt: { quality: '720p', key: '720p|MP4', ext: 'mp4', tag: 'HD', size: 24500000, duration: 155 } },
+      { label: 'Audio · M4A', ext: 'm4a', yt: { quality: 'audio', key: 'audio|M4A', ext: 'm4a', size: 2480000, duration: 155 } },
+    ];
+  const listeners = [];
+  window.chrome = {
+    storage: { local: { get(defaults, callback) { callback({ ...defaults, bubbleScale: Number(params.get('scale')) || 1 }); } }, onChanged: { addListener() {} } },
+    runtime: { lastError: null, onMessage: { addListener(fn) { listeners.push(fn); } }, sendMessage(message, callback) {
+      const response = message.type === 'swiftget-config' ? { enabled: true, skipSites: [] }
+        : message.type === 'swiftget-media-request' ? formats
+        : message.type === 'swiftget-resolve-video' ? { items: formats } : { ok: true };
+      callback?.(response); return Promise.resolve(response);
+    } },
+  };
+  addEventListener('load', () => listeners.forEach(fn => fn({ type: 'swiftget-open-panel' }, {}, () => {})));
+</script>
+<script src="../content.js"></script>
+</html>

@@ -96,46 +96,59 @@ export struct SegView {
 }
 
 // ------------------------------------------------------------------ themes
-// 0 Light, 1 Dark, 2 Ocean, 3 Midnight
+// Coherent platform surfaces with an optional app-only appearance override.
 
 export global Theme {
+    // Appearance choice: 0 System, 1 Light, 2 Dark. Mode is resolved 0/1.
+    in-out property <int> appearance: 0;
     in-out property <int> mode: 0;
-    // themes: Light, Dark, Ocean blue, Midnight purple, Forest green, Black,
-    // Sunset, Teal night, Rose
-    out property <bool> dark: mode == 1 || mode == 3 || mode == 5 || mode == 7;
-    // Options > General > Text size / Font
+    in-out property <bool> native-macos: false;
+    out property <bool> dark: mode == 1;
     in-out property <float> font-scale: 1.0;
     in-out property <string> font-family: "";
-    // a picture behind the main window: how much of it shows through (0..0.8)
     in-out property <float> glass: 0;
-    out property <color> window: window-base;
-    out property <color> panel: panel-base.transparentize(glass);
-    out property <color> toolbar-top: toolbar-top-base.transparentize(glass);
-    out property <color> toolbar-bottom: toolbar-bottom-base.transparentize(glass);
-    out property <color> header-top: header-top-base.transparentize(glass);
-    out property <color> header-bottom: header-bottom-base.transparentize(glass);
-    out property <color> grid: grid-base.transparentize(glass);
-    property <color> window-base: [#f0f0f0, #1e1f22, #e8f1fb, #15131d, #eef5ef, #000000, #fbf1ea, #0f1c1e, #fbf0f4][mode];
-    property <color> panel-base: [#ffffff, #26282c, #ffffff, #1d1a29, #ffffff, #0b0b0b, #ffffff, #142527, #ffffff][mode];
-    property <color> toolbar-top-base: [#fdfdfd, #2e3136, #2f80ed, #2b2545, #2f9e5b, #121212, #f07b3f, #1b3a3d, #e05a8a][mode];
-    property <color> toolbar-bottom-base: [#e7ebf0, #24262a, #1b5fc4, #1e1a33, #1f7a43, #050505, #d4513a, #132b2e, #c23d6e][mode];
-    out property <color> toolbar-text: [#1b1f24, #e8eaed, #ffffff, #ece9f6, #ffffff, #f2f2f2, #ffffff, #e3f4f3, #ffffff][mode];
-    out property <color> toolbar-hover: [#e5f1fb, #3a3e45, #4a92f0, #3a3260, #45b06f, #262626, #f5955f, #26504f, #e97aa1][mode];
-    out property <color> line: [#d9dde3, #3a3d42, #c6d8ef, #352f4d, #c9dfcf, #262626, #efd2c2, #24403f, #efcdda][mode];
-    property <color> grid-base: [#eef0f3, #2f3237, #eaf2fc, #26223a, #eaf4ec, #141414, #fbeee6, #1a2e30, #fbedf2][mode];
-    property <color> header-top-base: [#ffffff, #2e3136, #f7fbff, #26223a, #f8fcf9, #161616, #fffaf6, #1b3133, #fffafc][mode];
-    property <color> header-bottom-base: [#eef1f5, #282a2e, #e3eefb, #201c31, #e2f0e6, #0e0e0e, #f8e5d9, #16292b, #f8e3eb][mode];
-    out property <color> text: [#1b1f24, #e8eaed, #13243a, #ece9f6, #15281b, #f2f2f2, #2e1a12, #e3f4f3, #2e1420][mode];
-    out property <color> muted: [#5f6b78, #9aa0a6, #557090, #a59fc0, #557a61, #9a9a9a, #8a6352, #8fb3b0, #8a5a6c][mode];
-    out property <color> accent: [#1f6feb, #5b9dff, #1565c0, #a78bfa, #1f8a4c, #4ea1ff, #d4513a, #2ec4b6, #c23d6e][mode];
-    out property <color> select: [#cce8ff, #264f78, #cfe4ff, #3d3366, #cdebd7, #1f3550, #fbd9c8, #1d4b4b, #f8d3e1][mode];
-    out property <color> select-line: [#99d1ff, #3a6ea5, #8dbcf5, #5b4a99, #8ccaa2, #2f5a8a, #eea98a, #2b7470, #eaa0bb][mode];
-    out property <color> hover: [#e5f3ff, #2c3440, #e3efff, #2a2541, #e2f3e7, #1a1a1a, #fdeadf, #1b3436, #fde6ee][mode];
-    out property <color> ok: dark ? #3fcf7a : #1f9d55;
-    out property <color> warn: #e08a00;
-    out property <color> err: dark ? #ff6b62 : #d23b32;
-    out property <color> bar-bg: dark ? #34373c : #e6e6e6;
-    out property <color> input-bg: dark ? #2b2d31 : #ffffff;
+    // Rust supplies resolved AppKit semantic colors on macOS. These opaque
+    // fallbacks also keep every legacy theme index in one coherent family.
+    in-out property <color> platform-window: dark ? #1c1c1e : #f5f5f7;
+    in-out property <color> platform-panel: dark ? #2c2c2e : #ffffff;
+    in-out property <color> platform-secondary-surface: dark ? #343436 : #f5f5f7;
+    in-out property <color> platform-sidebar: dark ? #1c1c1e : #f5f5f7;
+    in-out property <color> platform-text: dark ? #f5f5f7 : #1d1d1f;
+    in-out property <color> platform-muted: dark ? #a1a1a6 : #5a5a60;
+    in-out property <color> platform-accent: dark ? #0a84ff : #007aff;
+    in-out property <color> platform-accent-text: dark ? #459fff : #0064d2;
+    in-out property <color> platform-line: dark ? #48484a : #d2d2d7;
+    in-out property <color> platform-selection: dark ? #233d59 : #e3eeff;
+    in-out property <color> platform-hover: dark ? #39393b : #f2f2f4;
+    in-out property <color> platform-ok: dark ? #30d158 : #248a3d;
+    in-out property <color> platform-warn: dark ? #ff9f0a : #b25000;
+    in-out property <color> platform-err: dark ? #ff453a : #d70015;
+    in-out property <color> platform-input: dark ? #2c2c2e : #ffffff;
+    in-out property <color> platform-bar: dark ? #48484a : #e5e5ea;
+    out property <color> window: platform-window;
+    out property <color> panel: platform-panel.transparentize(glass);
+    out property <color> secondary-surface: platform-secondary-surface.transparentize(glass);
+    out property <color> sidebar: platform-sidebar.transparentize(glass);
+    out property <color> toolbar-top: platform-window.transparentize(glass);
+    out property <color> toolbar-bottom: toolbar-top;
+    out property <color> toolbar-text: platform-text;
+    out property <color> toolbar-hover: platform-hover;
+    out property <color> header-top: platform-secondary-surface.transparentize(glass);
+    out property <color> header-bottom: header-top;
+    out property <color> grid: platform-line.transparentize(0.65);
+    out property <color> text: platform-text;
+    out property <color> muted: platform-muted;
+    out property <color> accent: platform-accent;
+    out property <color> accent-text: platform-accent-text;
+    out property <color> line: platform-line;
+    out property <color> select: platform-selection;
+    out property <color> select-line: platform-accent.transparentize(0.7);
+    out property <color> hover: platform-hover;
+    out property <color> ok: platform-ok;
+    out property <color> warn: platform-warn;
+    out property <color> err: platform-err;
+    out property <color> bar-bg: platform-bar;
+    out property <color> input-bg: platform-input;
 }
 
 // Applies the light/dark look to the standard widgets of every window.
@@ -148,8 +161,7 @@ export component ThemedWindow inherits Window {
         Palette.color-scheme = self.dark ? ColorScheme.dark : ColorScheme.light;
     }
     background: Theme.window;
-    // 12px is the size Windows gives Slint by default (the message font)
-    default-font-size: 12px * Theme.font-scale;
+    default-font-size: 13px * Theme.font-scale;
     default-font-family: Theme.font-family;
     icon: @image-url("icon-window.png");
 }
@@ -161,7 +173,7 @@ export component CaptionButton inherits Rectangle {
     callback clicked();
     out property <bool> hovered: ca.has-hover;
     width: 44px;
-    background: ca.pressed ? (root.kind == "close" ? #c50f1f : Theme.line) : ca.has-hover ? (root.kind == "close" ? #e81123 : Theme.hover) : transparent;
+    background: ca.pressed ? (root.kind == "close" ? Theme.err : Theme.line) : ca.has-hover ? (root.kind == "close" ? Theme.err : Theme.hover) : transparent;
     ca := TouchArea {
         clicked => {
             root.clicked();
@@ -186,569 +198,96 @@ export component CaptionButton inherits Rectangle {
 
 // Small vector icons for menus, lists and buttons (fonts on Windows don't
 // have every symbol, so nothing here depends on a font).
+// One quiet, scalable symbol language for navigation and file types.
 export component Glyph inherits Rectangle {
-    // play, progress, openwith, folder, pause, stop, redo, refresh, edit, check,
-    // copy, hash, info, close, clock, plus, warn, down, up, caret-down, caret-up,
-    // bulb, queue
     in property <string> kind;
-    in property <color> tint: Theme.accent;
+    in property <color> tint: Theme.text;
     width: 16px;
     height: 16px;
-    if root.kind == "play": Path {
+    property <string> path: root.kind == "play" ? "M 5 3 L 12.5 8 L 5 13 Z"
+        : root.kind == "progress" ? "M 8 1.8 A 6.2 6.2 0 1 1 7.99 1.8 Z M 8 4.5 L 8 8 L 11 9.5"
+        : root.kind == "openwith" ? "M 2 5 L 2 14 L 12 14 L 12 10 M 7 9 L 14 2 M 9 2 L 14 2 L 14 7"
+        : root.kind == "folder" ? "M 1.5 4 L 6.5 4 L 8 5.5 L 14.5 5.5 L 14.5 13.5 L 1.5 13.5 Z"
+        : root.kind == "pause" ? "M 5 3 L 5 13 M 11 3 L 11 13"
+        : root.kind == "stop" ? "M 3.5 3.5 L 12.5 3.5 L 12.5 12.5 L 3.5 12.5 Z"
+        : root.kind == "redo" ? "M 13.5 8 A 5.5 5.5 0 1 1 11 3.5 M 9.5 1.5 L 12 4 L 8.5 5"
+        : root.kind == "refresh" ? "M 2.5 7 A 5.5 5.5 0 0 1 12.8 5 M 13.5 9 A 5.5 5.5 0 0 1 3.2 11 M 13 2 L 13 5.2 L 9.8 5.2 M 3 14 L 3 10.8 L 6.2 10.8"
+        : root.kind == "edit" ? "M 2.5 13.5 L 3.2 10.5 L 11 2.7 L 13.3 5 L 5.5 12.8 Z M 9.4 4.2 L 11.8 6.6"
+        : root.kind == "check" ? "M 2.5 8.5 L 6.3 12 L 13.5 4"
+        : root.kind == "copy" ? "M 5.5 5.5 L 13.5 5.5 L 13.5 14 L 5.5 14 Z M 3 11 L 2.5 11 L 2.5 2 L 10.5 2 L 10.5 3"
+        : root.kind == "hash" ? "M 6 2 L 4.5 14 M 11.5 2 L 10 14 M 2.5 5.5 L 14 5.5 M 2 10.5 L 13.5 10.5"
+        : root.kind == "info" ? "M 8 1.8 A 6.2 6.2 0 1 1 7.99 1.8 Z M 8 7 L 8 12 M 8 4 L 8 4.8"
+        : root.kind == "close" ? "M 4 4 L 12 12 M 12 4 L 4 12"
+        : root.kind == "clock" ? "M 8 1.8 A 6.2 6.2 0 1 1 7.99 1.8 Z M 8 4 L 8 8 L 11 9.5"
+        : root.kind == "plus" ? "M 8 2.5 L 8 13.5 M 2.5 8 L 13.5 8"
+        : root.kind == "minus" ? "M 2.5 8 L 13.5 8"
+        : root.kind == "warn" ? "M 8 2 L 14.5 13.5 L 1.5 13.5 Z M 8 6 L 8 9.5 M 8 11 L 8 11.7"
+        : root.kind == "down" ? "M 8 2 L 8 11.5 M 4.5 8 L 8 11.5 L 11.5 8 M 2.5 12 L 2.5 14 L 13.5 14 L 13.5 12"
+        : root.kind == "up" ? "M 8 14 L 8 4 M 4.5 7.5 L 8 4 L 11.5 7.5"
+        : root.kind == "caret-down" ? "M 4 6 L 8 10 L 12 6"
+        : root.kind == "caret-up" ? "M 4 10 L 8 6 L 12 10"
+        : root.kind == "caret-right" ? "M 6 4 L 10 8 L 6 12"
+        : root.kind == "bulb" ? "M 5.5 12 L 5 10 A 4.7 4.7 0 1 1 11 10 L 10.5 12 Z M 6 14 L 10 14"
+        : root.kind == "queue" ? "M 2 3 L 13 3 M 2 7 L 13 7 M 2 11 L 7 11 M 10 10 L 14 12.5 L 10 15 Z"
+        : root.kind == "search" ? "M 7 2 A 5 5 0 1 1 6.99 2 Z M 10.6 10.6 L 14.5 14.5"
+        : root.kind == "more" ? "M 3.5 8 A 0.8 0.8 0 1 1 3.49 8 Z M 8 8 A 0.8 0.8 0 1 1 7.99 8 Z M 12.5 8 A 0.8 0.8 0 1 1 12.49 8 Z"
+        : root.kind == "settings" ? "M 2 4 L 14 4 M 2 8 L 14 8 M 2 12 L 14 12 M 5 2 L 5 6 M 11 6 L 11 10 M 6 10 L 6 14"
+        : root.kind == "sidebar" ? "M 2 2.5 L 14 2.5 L 14 13.5 L 2 13.5 Z M 6 2.5 L 6 13.5"
+        : root.kind == "archive" ? "M 2 3 L 14 3 L 14 6 L 2 6 Z M 3 6 L 3 14 L 13 14 L 13 6 M 6 9 L 10 9"
+        : root.kind == "video" ? "M 2 3 L 14 3 L 14 13 L 2 13 Z M 6.5 5.5 L 10 8 L 6.5 10.5 Z"
+        : root.kind == "music" ? "M 6 11 L 6 3.5 L 13 2 L 13 9.5 M 6 3.5 L 13 2 M 6 11 A 2 1.5 0 1 1 5.99 11 Z M 13 9.5 A 2 1.5 0 1 1 12.99 9.5 Z"
+        : root.kind == "image" ? "M 2 2.5 L 14 2.5 L 14 13.5 L 2 13.5 Z M 2.5 12 L 6 7.5 L 9 11 L 11 8.5 L 14 12 M 10.5 5 A 0.8 0.8 0 1 1 10.49 5 Z"
+        : root.kind == "torrent" ? "M 3 2 L 3 8 A 5 5 0 0 0 13 8 L 13 2 M 6 2 L 6 8 A 2 2 0 0 0 10 8 L 10 2 M 3 5 L 6 5 M 10 5 L 13 5"
+        : root.kind == "globe" ? "M 8 1.5 A 6.5 6.5 0 1 1 7.99 1.5 Z M 1.5 8 L 14.5 8 M 8 1.5 C 4 5 4 11 8 14.5 M 8 1.5 C 12 5 12 11 8 14.5"
+        : root.kind == "program" ? "M 2 3 L 14 3 L 14 13 L 2 13 Z M 2 6 L 14 6 M 5 8 L 7 10 L 5 12 M 9 11 L 12 11"
+        : root.kind == "disc" ? "M 8 1.5 A 6.5 6.5 0 1 1 7.99 1.5 Z M 8 6 A 2 2 0 1 1 7.99 6 Z"
+        : root.kind == "document" ? "M 3.5 1.5 L 10 1.5 L 13 4.5 L 13 14.5 L 3.5 14.5 Z M 10 1.5 L 10 5 L 13 5 M 6 8 L 10.5 8 M 6 11 L 10.5 11"
+        : "M 3.5 1.5 L 10 1.5 L 13 4.5 L 13 14.5 L 3.5 14.5 Z M 10 1.5 L 10 5 L 13 5 M 6 8 L 10.5 8 M 6 11 L 10.5 11";
+    Path {
+        width: parent.width;
+        height: parent.height;
         viewbox-width: 16;
         viewbox-height: 16;
-        fill: root.tint;
-        commands: "M 4 2.5 L 13 8 L 4 13.5 Z";
-    }
-    if root.kind == "progress": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
+        stroke-width: 1.35px;
         stroke: root.tint;
-        stroke-width: 1.6px;
         fill: transparent;
-        commands: "M 8 1.8 A 6.2 6.2 0 1 1 7.99 1.8 Z M 8 4.5 L 8 8 L 10.8 9.6";
-    }
-    if root.kind == "openwith": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        stroke: root.tint;
-        stroke-width: 1.5px;
-        fill: transparent;
-        commands: "M 2 4 L 2 14 L 12 14 L 12 9 M 7 9 L 14 2 M 9 2 L 14 2 L 14 7";
-    }
-    if root.kind == "folder": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        fill: #f2b531;
-        stroke: #c98a10;
-        stroke-width: 1px;
-        commands: "M 1.5 3.5 L 6 3.5 L 7.5 5 L 14.5 5 L 14.5 13 L 1.5 13 Z";
-    }
-    if root.kind == "pause": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        fill: root.tint;
-        commands: "M 4 3 L 7 3 L 7 13 L 4 13 Z M 9 3 L 12 3 L 12 13 L 9 13 Z";
-    }
-    if root.kind == "stop": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        fill: root.tint;
-        commands: "M 3.5 3.5 L 12.5 3.5 L 12.5 12.5 L 3.5 12.5 Z";
-    }
-    if root.kind == "redo": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        stroke: root.tint;
-        stroke-width: 1.7px;
-        fill: transparent;
-        commands: "M 13 8 A 5 5 0 1 1 10.5 3.7 M 9.5 1.5 L 11.5 4 L 8.8 5.6";
-    }
-    if root.kind == "refresh": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        stroke: root.tint;
-        stroke-width: 1.5px;
-        fill: transparent;
-        commands: "M 2.5 7 A 5.5 5.5 0 0 1 12.8 5 M 13.5 9 A 5.5 5.5 0 0 1 3.2 11 M 13 2 L 13 5.2 L 9.8 5.2 M 3 14 L 3 10.8 L 6.2 10.8";
-    }
-    if root.kind == "edit": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        stroke: root.tint;
-        stroke-width: 1.4px;
-        fill: transparent;
-        commands: "M 2.5 13.5 L 3.2 10.4 L 10.8 2.8 L 13.2 5.2 L 5.6 12.8 Z M 9.4 4.2 L 11.8 6.6";
-    }
-    if root.kind == "check": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        stroke: root.tint;
-        stroke-width: 2px;
-        fill: transparent;
-        commands: "M 2.5 8.5 L 6.3 12 L 13.5 4";
-    }
-    if root.kind == "copy": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        stroke: root.tint;
-        stroke-width: 1.4px;
-        fill: transparent;
-        commands: "M 5.5 5.5 L 13.5 5.5 L 13.5 14 L 5.5 14 Z M 3 11 L 2.5 11 L 2.5 2 L 10.5 2 L 10.5 3";
-    }
-    if root.kind == "hash": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        stroke: root.tint;
-        stroke-width: 1.4px;
-        fill: transparent;
-        commands: "M 6 2 L 4.5 14 M 11.5 2 L 10 14 M 2.5 5.5 L 14 5.5 M 2 10.5 L 13.5 10.5";
-    }
-    if root.kind == "info": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        stroke: root.tint;
-        stroke-width: 1.4px;
-        fill: transparent;
-        commands: "M 8 1.8 A 6.2 6.2 0 1 1 7.99 1.8 Z M 8 7 L 8 12 M 8 4.2 L 8 5.4";
-    }
-    if root.kind == "close": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        stroke: root.tint;
-        stroke-width: 2px;
-        fill: transparent;
-        commands: "M 3.5 3.5 L 12.5 12.5 M 12.5 3.5 L 3.5 12.5";
-    }
-    if root.kind == "clock": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        stroke: root.tint;
-        stroke-width: 1.5px;
-        fill: transparent;
-        commands: "M 8 1.8 A 6.2 6.2 0 1 1 7.99 1.8 Z M 8 4 L 8 8 L 11 9.5";
-    }
-    if root.kind == "plus": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        stroke: root.tint;
-        stroke-width: 2px;
-        fill: transparent;
-        commands: "M 8 2.5 L 8 13.5 M 2.5 8 L 13.5 8";
-    }
-    if root.kind == "minus": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        stroke: root.tint;
-        stroke-width: 2px;
-        fill: transparent;
-        commands: "M 2.5 8 L 13.5 8";
-    }
-    if root.kind == "warn": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        fill: #e08a00;
-        commands: "M 8 1.5 L 15 14 L 1 14 Z M 7.2 5.5 L 8.8 5.5 L 8.5 10 L 7.5 10 Z M 7.3 11.2 L 8.7 11.2 L 8.7 12.6 L 7.3 12.6 Z";
-    }
-    if root.kind == "down": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        fill: root.tint;
-        commands: "M 6.5 2 L 9.5 2 L 9.5 8 L 13 8 L 8 14 L 3 8 L 6.5 8 Z";
-    }
-    if root.kind == "up": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        fill: root.tint;
-        commands: "M 6.5 14 L 9.5 14 L 9.5 8 L 13 8 L 8 2 L 3 8 L 6.5 8 Z";
-    }
-    if root.kind == "caret-down": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        fill: root.tint;
-        commands: "M 4 6 L 12 6 L 8 11 Z";
-    }
-    if root.kind == "caret-up": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        fill: root.tint;
-        commands: "M 4 10 L 12 10 L 8 5 Z";
-    }
-    if root.kind == "bulb": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        fill: #ffd54a;
-        stroke: #b8860b;
-        stroke-width: 1px;
-        commands: "M 8 1.5 A 4.8 4.8 0 0 1 11 10 L 10.5 12 L 5.5 12 L 5 10 A 4.8 4.8 0 0 1 8 1.5 Z M 6 13.5 L 10 13.5";
-    }
-    if root.kind == "queue": Path {
-        viewbox-width: 16;
-        viewbox-height: 16;
-        fill: root.tint;
-        commands: "M 2 3 L 10 3 L 10 4.6 L 2 4.6 Z M 2 6.5 L 10 6.5 L 10 8.1 L 2 8.1 Z M 2 10 L 7 10 L 7 11.6 L 2 11.6 Z M 9.5 9 L 14.5 12 L 9.5 15 Z";
+        commands: root.path;
     }
 }
 
-// ------------------------------------------------------------------ icons
+export component P inherits Path { viewbox-width: 32; viewbox-height: 32; }
+export component G inherits Path { viewbox-width: 16; viewbox-height: 16; }
 
-export component P inherits Path {
-    viewbox-width: 32;
-    viewbox-height: 32;
-}
-
-// Toolbar icons, drawn on a 32x32 grid.
 export component Icon inherits Rectangle {
     in property <string> kind;
-    width: 32px;
-    height: 32px;
-    if root.kind == "add": Rectangle {
-        P {
-            fill: @linear-gradient(180deg, #45c06a 0%, #23934a 100%);
-            commands: "M 16 2 A 14 14 0 1 1 15.99 2 Z";
-        }
-        P {
-            fill: white;
-            commands: "M 14 8 L 18 8 L 18 14 L 24 14 L 24 18 L 18 18 L 18 24 L 14 24 L 14 18 L 8 18 L 8 14 L 14 14 Z";
-        }
-    }
-    if root.kind == "batch": Rectangle {
-        P {
-            fill: #dde6f1;
-            stroke: #6b7c90;
-            stroke-width: 1.5px;
-            commands: "M 11 3 L 26 3 L 26 22 L 11 22 Z";
-        }
-        P {
-            fill: white;
-            stroke: #6b7c90;
-            stroke-width: 1.5px;
-            commands: "M 5 8 L 20 8 L 20 28 L 5 28 Z M 8 13 L 17 13 M 8 17 L 17 17 M 8 21 L 14 21";
-        }
-        P {
-            fill: #2e9e4f;
-            commands: "M 24 17 A 7 7 0 1 1 23.99 17 Z";
-        }
-        P {
-            fill: white;
-            commands: "M 23 20 L 25 20 L 25 23 L 28 23 L 28 25 L 25 25 L 25 28 L 23 28 L 23 25 L 20 25 L 20 23 L 23 23 Z";
-        }
-    }
-    if root.kind == "playlist": Rectangle {
-        // a green player with a list in front of it
-        P {
-            fill: @linear-gradient(180deg, #4cd47a 0%, #1e9e4c 100%);
-            commands: "M 6 4 L 28 4 Q 31 4 31 7 L 31 19 Q 31 22 28 22 L 6 22 Q 3 22 3 19 L 3 7 Q 3 4 6 4 Z";
-        }
-        P {
-            fill: white;
-            commands: "M 14 8 L 21 13 L 14 18 Z";
-        }
-        P {
-            fill: #33475b;
-            commands: "M 3 24 L 20 24 L 20 26 L 3 26 Z M 3 28 L 20 28 L 20 30 L 3 30 Z";
-        }
-        P {
-            fill: #1f6feb;
-            commands: "M 25 21 A 6 6 0 1 1 24.99 21 Z";
-        }
-        P {
-            fill: white;
-            commands: "M 24 23 L 26 23 L 26 27 L 28 27 L 25 30 L 22 27 L 24 27 Z";
-        }
-    }
-    if root.kind == "torrent": Rectangle {
-        // a red magnet with a download arrow
-        P {
-            fill: @linear-gradient(180deg, #ff5a7a 0%, #c81e45 100%);
-            commands: "M 3 3 L 10 3 L 10 14 A 4 4 0 0 0 18 14 L 18 3 L 25 3 L 25 14 A 11 11 0 0 1 3 14 Z";
-        }
-        P {
-            fill: #dfe6ee;
-            commands: "M 3 3 L 10 3 L 10 8 L 3 8 Z M 18 3 L 25 3 L 25 8 L 18 8 Z";
-        }
-        P {
-            fill: #1f6feb;
-            commands: "M 25 18 A 6.5 6.5 0 1 1 24.99 18 Z";
-        }
-        P {
-            fill: white;
-            commands: "M 24 20.5 L 26 20.5 L 26 24.5 L 28.3 24.5 L 25 28.3 L 21.7 24.5 L 24 24.5 Z";
-        }
-    }
-    if root.kind == "grabber": Rectangle {
-        // a globe with a download arrow
-        P {
-            fill: @linear-gradient(180deg, #5aa8ff 0%, #1f6feb 100%);
-            commands: "M 14 3 A 11 11 0 1 1 13.99 3 Z";
-        }
-        P {
-            stroke: white;
-            stroke-width: 1.2px;
-            fill: transparent;
-            commands: "M 3 14 L 25 14 M 14 3 C 8 8 8 20 14 25 M 14 3 C 20 8 20 20 14 25 M 5 8 L 23 8 M 5 20 L 23 20";
-        }
-        P {
-            fill: #2e9e4f;
-            commands: "M 24 17 A 7 7 0 1 1 23.99 17 Z";
-        }
-        P {
-            fill: white;
-            commands: "M 23 19 L 25 19 L 25 24 L 27.5 24 L 24 28 L 20.5 24 L 23 24 Z";
-        }
-    }
-    if root.kind == "find": Rectangle {
-        P {
-            stroke: #4b5b70;
-            stroke-width: 3px;
-            fill: #e8f2ff;
-            commands: "M 13 4 A 9 9 0 1 1 12.99 4 Z";
-        }
-        P {
-            stroke: #4b5b70;
-            stroke-width: 4px;
-            commands: "M 19.5 19.5 L 28 28";
-        }
-    }
-    if root.kind == "resume": P {
-        fill: @linear-gradient(180deg, #45c06a 0%, #23934a 100%);
-        commands: "M 9 5 L 27 16 L 9 27 Z";
-    }
-    if root.kind == "stop": P {
-        fill: @linear-gradient(180deg, #f5a623 0%, #d97d00 100%);
-        commands: "M 8 6 L 14 6 L 14 26 L 8 26 Z M 18 6 L 24 6 L 24 26 L 18 26 Z";
-    }
-    if root.kind == "stopall": Rectangle {
-        P {
-            fill: #f2a7a2;
-            commands: "M 11 3 L 29 3 L 29 21 L 11 21 Z";
-        }
-        P {
-            fill: @linear-gradient(180deg, #ef5a50 0%, #c62f27 100%);
-            commands: "M 4 9 L 22 9 L 22 27 L 4 27 Z";
-        }
-    }
-    if root.kind == "delete": P {
-        stroke: #e0443b;
-        stroke-width: 4.5px;
-        commands: "M 8 8 L 24 24 M 24 8 L 8 24";
-    }
-    if root.kind == "deletedone": Rectangle {
-        P {
-            fill: #8a96a3;
-            commands: "M 7 7 L 25 7 L 25 10 L 7 10 Z M 13 4 L 19 4 L 19 7 L 13 7 Z M 9 11 L 23 11 L 21.5 29 L 10.5 29 Z";
-        }
-        P {
-            stroke: #3fcf7a;
-            stroke-width: 3.5px;
-            commands: "M 12 19 L 15.5 23 L 22 15";
-        }
-    }
-    if root.kind == "options": Rectangle {
-        P {
-            stroke: #7d8b9a;
-            stroke-width: 2.5px;
-            commands: "M 4 9 L 28 9 M 4 16 L 28 16 M 4 23 L 28 23";
-        }
-        P {
-            fill: #3b82f6;
-            stroke: white;
-            stroke-width: 1px;
-            commands: "M 11 5 A 4 4 0 1 1 10.99 5 Z M 21 12 A 4 4 0 1 1 20.99 12 Z M 14 19 A 4 4 0 1 1 13.99 19 Z";
-        }
-    }
-    if root.kind == "scheduler": Rectangle {
-        P {
-            fill: white;
-            stroke: #3b82f6;
-            stroke-width: 3px;
-            commands: "M 16 3.5 A 12.5 12.5 0 1 1 15.99 3.5 Z";
-        }
-        P {
-            stroke: #2d3a48;
-            stroke-width: 2.5px;
-            commands: "M 16 9 L 16 16 L 21.5 19.5";
-        }
-    }
-    if root.kind == "limiter": Rectangle {
-        P {
-            stroke: #7d8b9a;
-            stroke-width: 3px;
-            commands: "M 5 22 A 11 11 0 1 1 27 22";
-        }
-        P {
-            stroke: #e0443b;
-            stroke-width: 3px;
-            commands: "M 16 22 L 22 12";
-        }
-        P {
-            fill: #2d3a48;
-            commands: "M 16 19.5 A 2.5 2.5 0 1 1 15.99 19.5 Z";
-        }
-    }
-    if root.kind == "startqueue" || root.kind == "stopqueue": Rectangle {
-        P {
-            stroke: #7d8b9a;
-            stroke-width: 3px;
-            commands: "M 3 7 L 19 7 M 3 13 L 19 13 M 3 19 L 12 19";
-        }
-        if root.kind == "startqueue": P {
-            fill: #2e9e4f;
-            commands: "M 16 15 L 29 22.5 L 16 30 Z";
-        }
-        if root.kind == "stopqueue": P {
-            fill: #e0443b;
-            commands: "M 16 17 L 28 17 L 28 29 L 16 29 Z";
-        }
-    }
-    if root.kind == "folder": P {
-        fill: @linear-gradient(180deg, #ffd86b 0%, #f2b632 100%);
-        stroke: #c99a1e;
-        stroke-width: 1.2px;
-        commands: "M 3 8 L 12 8 L 15 11 L 29 11 L 29 27 L 3 27 Z";
+    width: 24px;
+    height: 24px;
+    Glyph {
+        width: parent.width;
+        height: parent.height;
+        tint: Theme.text;
+        kind: root.kind == "add" ? "plus" : root.kind == "batch" ? "copy"
+            : root.kind == "playlist" || root.kind == "startqueue" ? "queue"
+            : root.kind == "grabber" ? "globe" : root.kind == "find" ? "search"
+            : root.kind == "resume" ? "play" : root.kind == "stop" ? "pause"
+            : root.kind == "stopall" || root.kind == "stopqueue" ? "stop"
+            : root.kind == "delete" || root.kind == "deletedone" ? "close"
+            : root.kind == "options" ? "settings" : root.kind == "scheduler" ? "clock"
+            : root.kind == "limiter" ? "settings" : root.kind;
     }
 }
 
-export component G inherits Path {
-    viewbox-width: 16;
-    viewbox-height: 16;
-}
-
-// File-type icon. Every kind has its own shape and color, so they are told
-// apart at a glance: a film strip (video), a round note (music), a zipped
-// box (archives), a page with a folded corner (documents)…
 export component TypeIcon inherits Rectangle {
     in property <string> kind: "general";
     width: 18px;
     height: 18px;
-    // documents: a page with a folded corner in their color
-    property <bool> page: root.kind == "pdf" || root.kind == "doc" || root.kind == "sheet" || root.kind == "slides" || root.kind == "text" || root.kind == "general";
-    property <color> page-color: root.kind == "pdf" ? #e03131
-        : root.kind == "doc" ? #2b6cde
-        : root.kind == "sheet" ? #1e8e3e
-        : root.kind == "slides" ? #e8710a
-        : root.kind == "text" ? #6b7785
-        : #8a94a0;
-    // ---- video: a blue film strip with a play sign
-    if root.kind == "video": Rectangle {
-        G {
-            fill: @linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%);
-            commands: "M 1.5 3 L 14.5 3 L 14.5 13 L 1.5 13 Z";
-        }
-        G {
-            fill: #dbeafe;
-            commands: "M 2.3 4 L 3.5 4 L 3.5 5.2 L 2.3 5.2 Z M 2.3 7.4 L 3.5 7.4 L 3.5 8.6 L 2.3 8.6 Z M 2.3 10.8 L 3.5 10.8 L 3.5 12 L 2.3 12 Z M 12.5 4 L 13.7 4 L 13.7 5.2 L 12.5 5.2 Z M 12.5 7.4 L 13.7 7.4 L 13.7 8.6 L 12.5 8.6 Z M 12.5 10.8 L 13.7 10.8 L 13.7 12 L 12.5 12 Z";
-        }
-        G {
-            fill: white;
-            commands: "M 6.4 5.4 L 10.6 8 L 6.4 10.6 Z";
-        }
-    }
-    // ---- music: a purple circle with a note
-    if root.kind == "audio": Rectangle {
-        G {
-            fill: @linear-gradient(180deg, #a855f7 0%, #7e22ce 100%);
-            commands: "M 8 1 A 7 7 0 1 1 7.99 1 Z";
-        }
-        G {
-            fill: white;
-            commands: "M 7.2 4 L 11.2 3.2 L 11.2 4.7 L 8.4 5.3 L 8.4 10.4 A 1.8 1.5 0 1 1 7.2 9.1 Z";
-        }
-    }
-    // ---- archives: a yellow box with a zipper
-    if root.kind == "archive": Rectangle {
-        G {
-            fill: @linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
-            commands: "M 2 4 L 14 4 L 14 14 L 2 14 Z";
-        }
-        G {
-            fill: #b45309;
-            commands: "M 1.5 2.2 L 14.5 2.2 L 14.5 4.6 L 1.5 4.6 Z";
-        }
-        G {
-            fill: #3f2a07;
-            commands: "M 7 4.6 L 9 4.6 L 9 5.6 L 7 5.6 Z M 7 6.6 L 9 6.6 L 9 7.6 L 7 7.6 Z M 7 8.6 L 9 8.6 L 9 9.6 L 7 9.6 Z";
-        }
-        G {
-            fill: white;
-            stroke: #3f2a07;
-            stroke-width: 0.6px;
-            commands: "M 6.6 10.2 L 9.4 10.2 L 9.4 12.8 L 6.6 12.8 Z";
-        }
-    }
-    // ---- documents: a page with a folded corner and its sign
-    if root.page: Rectangle {
-        G {
-            fill: @linear-gradient(180deg, root.page-color.brighter(20%) 0%, root.page-color 100%);
-            commands: "M 3 1 L 10 1 L 14 5 L 14 15 L 3 15 Z";
-        }
-        G {
-            fill: root.page-color.darker(35%);
-            commands: "M 10 1 L 14 5 L 10 5 Z";
-        }
-        if root.kind == "pdf" || root.kind == "doc" || root.kind == "text" || root.kind == "general": G {
-            stroke: white;
-            stroke-width: 1.1px;
-            commands: "M 5 7.5 L 12 7.5 M 5 9.8 L 12 9.8 M 5 12.1 L 10 12.1";
-        }
-        if root.kind == "sheet": G {
-            stroke: white;
-            stroke-width: 0.9px;
-            commands: "M 5 7 L 12 7 L 12 13 L 5 13 Z M 5 9 L 12 9 M 5 11 L 12 11 M 8 7 L 8 13";
-        }
-        if root.kind == "slides": G {
-            fill: white;
-            commands: "M 5 12.5 L 6.6 12.5 L 6.6 10 L 5 10 Z M 7.7 12.5 L 9.3 12.5 L 9.3 8 L 7.7 8 Z M 10.4 12.5 L 12 12.5 L 12 9 L 10.4 9 Z";
-        }
-    }
-    // ---- programs: a dark window with a title bar
-    if root.kind == "exe": Rectangle {
-        G {
-            fill: #334155;
-            commands: "M 1.5 2.5 L 14.5 2.5 L 14.5 13.5 L 1.5 13.5 Z";
-        }
-        G {
-            fill: #38bdf8;
-            commands: "M 1.5 2.5 L 14.5 2.5 L 14.5 5 L 1.5 5 Z";
-        }
-        G {
-            fill: white;
-            commands: "M 4 7 L 7 9.2 L 4 11.4 Z M 8 10.4 L 12 10.4 L 12 11.4 L 8 11.4 Z";
-        }
-    }
-    // ---- apps for phones: a green phone
-    if root.kind == "apk": Rectangle {
-        G {
-            fill: @linear-gradient(180deg, #4ade80 0%, #16a34a 100%);
-            commands: "M 4.5 1 L 11.5 1 L 11.5 15 L 4.5 15 Z";
-        }
-        G {
-            fill: white;
-            commands: "M 5.5 2.5 L 10.5 2.5 L 10.5 12 L 5.5 12 Z";
-        }
-        G {
-            fill: white;
-            commands: "M 7.2 13.2 L 8.8 13.2 L 8.8 14.2 L 7.2 14.2 Z";
-        }
-    }
-    // ---- disc images: a silver disc
-    if root.kind == "disc": Rectangle {
-        G {
-            fill: @linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
-            stroke: #64748b;
-            stroke-width: 0.6px;
-            commands: "M 8 1 A 7 7 0 1 1 7.99 1 Z";
-        }
-        G {
-            fill: #475569;
-            commands: "M 8 6 A 2 2 0 1 1 7.99 6 Z";
-        }
-    }
-    // ---- pictures: a teal frame with hills and a sun
-    if root.kind == "image": Rectangle {
-        G {
-            fill: @linear-gradient(180deg, #2dd4bf 0%, #0f766e 100%);
-            commands: "M 1.5 2.5 L 14.5 2.5 L 14.5 13.5 L 1.5 13.5 Z";
-        }
-        G {
-            fill: white;
-            commands: "M 2.5 12.5 L 6.3 7.6 L 8.7 10.4 L 10.3 8.6 L 13.5 12.5 Z";
-        }
-        G {
-            fill: #fde68a;
-            commands: "M 11 4 A 1.4 1.4 0 1 1 10.99 4 Z";
-        }
-    }
-    // ---- torrents: a red and gray magnet
-    if root.kind == "torrent": Rectangle {
-        G {
-            fill: #e11d48;
-            commands: "M 2 2 L 6 2 L 6 8 A 2 2 0 0 0 10 8 L 10 2 L 14 2 L 14 8 A 6 6 0 0 1 2 8 Z";
-        }
-        G {
-            fill: #cbd5e1;
-            commands: "M 2 2 L 6 2 L 6 4.5 L 2 4.5 Z M 10 2 L 14 2 L 14 4.5 L 10 4.5 Z";
-        }
+    Glyph {
+        width: parent.width;
+        height: parent.height;
+        tint: Theme.muted;
+        kind: root.kind == "audio" ? "music" : root.kind == "exe" || root.kind == "apk" ? "program"
+            : root.kind == "pdf" || root.kind == "doc" || root.kind == "sheet" || root.kind == "slides" || root.kind == "text" || root.kind == "general" ? "document"
+            : root.kind;
     }
 }
 
@@ -795,14 +334,19 @@ export component ToolBtn inherits Rectangle {
     // View > Toolbar > Small buttons: icon only
     in property <bool> small;
     callback clicked();
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if (root.enabled) { root.clicked(); } }
+    forward-focus: keyboard;
     // small buttons: every one fits a 960 px wide window
-    width: root.small ? 34px : 56px;
-    height: root.small ? 34px : 56px;
+    width: root.small ? 36px : 68px;
+    height: root.small ? 32px : 48px;
     // a name that is still too long never covers the next button
     clip: true;
-    border-radius: 3px;
-    border-width: ta.has-hover && root.enabled ? 1px : 0px;
-    border-color: Theme.select-line;
+    border-radius: 6px;
+    border-width: (ta.has-hover || keyboard.has-focus) && root.enabled ? 1px : 0px;
+    border-color: keyboard.has-focus ? Theme.accent : Theme.select-line;
     background: !root.enabled ? transparent : ta.pressed ? Theme.select : ta.has-hover ? Theme.toolbar-hover : transparent;
     // what the button does, shown when the mouse rests on it
     pure function describe(k: string) -> string {
@@ -829,6 +373,7 @@ export component ToolBtn inherits Rectangle {
         enabled: true;
         clicked => {
             if (root.enabled) {
+                keyboard.focus();
                 root.clicked();
             }
         }
@@ -853,6 +398,15 @@ export component ToolBtn inherits Rectangle {
             }
         }
     }
+    keyboard := FocusScope {
+        key-pressed(event) => {
+            if (root.enabled && (event.text == Key.Return || event.text == " ")) {
+                root.clicked();
+                return accept;
+            }
+            reject
+        }
+    }
     if !root.small: VerticalLayout {
         alignment: center;
         spacing: 3px;
@@ -862,8 +416,8 @@ export component ToolBtn inherits Rectangle {
         HorizontalLayout {
             alignment: center;
             Icon {
-                width: 26px;
-                height: 26px;
+                width: 18px;
+                height: 18px;
                 kind: root.icon;
             }
         }
@@ -871,9 +425,8 @@ export component ToolBtn inherits Rectangle {
         // for right-to-left (Arabic) text, which would spill over the next button
         Text {
             text: root.text;
-            font-size: 10px * Theme.font-scale;
-            // bold, so the names read well on every theme
-            font-weight: 700;
+            font-size: 11px * Theme.font-scale;
+            font-weight: 500;
             horizontal-alignment: center;
             vertical-alignment: top;
             wrap: word-wrap;
@@ -882,10 +435,10 @@ export component ToolBtn inherits Rectangle {
         }
     }
     if root.small: Icon {
-        x: (parent.width - 24px) / 2;
-        y: (parent.height - 24px) / 2;
-        width: 24px;
-        height: 24px;
+        x: (parent.width - 18px) / 2;
+        y: (parent.height - 18px) / 2;
+        width: 18px;
+        height: 18px;
         kind: root.icon;
         opacity: root.enabled ? 1.0 : 0.35;
     }
@@ -917,9 +470,10 @@ export component TreeItem inherits Rectangle {
     callback toggle();
     // right click, at this position inside the item
     callback context(length, length);
-    height: 23px;
+    height: 32px;
     background: root.selected ? Theme.select : ta.has-hover ? Theme.hover : transparent;
-    border-width: root.selected ? 1px : 0px;
+    border-radius: 6px;
+    border-width: 0px;
     border-color: Theme.select-line;
     ta := TouchArea {
         width: parent.width;
@@ -942,33 +496,19 @@ export component TreeItem inherits Rectangle {
         padding-right: 6px;
         spacing: 5px;
         Rectangle {
-            width: 11px;
-            if root.expandable: Rectangle {
-                y: (parent.height - 11px) / 2;
-                width: 11px;
-                height: 11px;
-                border-width: 1px;
-                border-color: Theme.muted;
-                background: Theme.panel;
-                Rectangle {
-                    x: 2px;
-                    y: 5px;
-                    width: 7px;
-                    height: 1px;
-                    background: Theme.text;
-                }
-                if !root.expanded: Rectangle {
-                    x: 5px;
-                    y: 2px;
-                    width: 1px;
-                    height: 7px;
-                    background: Theme.text;
-                }
-                TouchArea {
-                    clicked => {
-                        root.toggle();
-                    }
-                }
+            width: 16px;
+            if root.expandable: Glyph {
+                y: (parent.height - 12px) / 2;
+                width: 12px;
+                height: 12px;
+                kind: root.expanded ? "caret-down" : "caret-right";
+                tint: Theme.muted;
+            }
+            if root.expandable: TouchArea {
+                x: -4px;
+                width: 24px;
+                height: parent.height;
+                clicked => { root.toggle(); }
             }
         }
         Rectangle {
@@ -1007,14 +547,14 @@ export component TreeItem inherits Rectangle {
             horizontal-stretch: 1;
             overflow: elide;
             color: Theme.text;
-            font-size: 12px * Theme.font-scale;
+            font-size: 13px * Theme.font-scale;
             font-weight: root.bold ? 600 : 400;
         }
         Text {
             text: root.count;
             vertical-alignment: center;
             color: Theme.muted;
-            font-size: 11px * Theme.font-scale;
+            font-size: 12px * Theme.font-scale;
         }
     }
 }
@@ -1039,7 +579,7 @@ export component HeaderCell inherits Rectangle {
     property <bool> moving;
     property <length> start-width;
     property <length> start-x;
-    height: 24px;
+    height: 32px;
     background: root.moving ? Theme.select : ta.has-hover && (root.key != "" || root.adjustable) ? Theme.hover : transparent;
     ta := TouchArea {
         width: parent.width;
@@ -1073,7 +613,7 @@ export component HeaderCell inherits Rectangle {
         text: root.text;
         horizontal-alignment: root.align;
         vertical-alignment: center;
-        font-size: 12px * Theme.font-scale;
+        font-size: 13px * Theme.font-scale;
         color: Theme.text;
         overflow: elide;
     }
@@ -1116,7 +656,7 @@ export component HeaderCell inherits Rectangle {
 
 export component Cell inherits Text {
     vertical-alignment: center;
-    font-size: 12px * Theme.font-scale;
+    font-size: 13px * Theme.font-scale;
     color: Theme.text;
     overflow: elide;
 }
@@ -1125,19 +665,35 @@ export component Cell inherits Text {
 export component MenuEntry inherits Rectangle {
     in property <string> text;
     in property <string> glyph;
-    in property <color> glyph-color: Theme.accent;
+    in property <color> glyph-color: Theme.muted;
     in property <bool> enabled: true;
     in property <bool> bold;
     in property <bool> indent;
     callback clicked();
-    height: 26px;
-    border-radius: 3px;
+    height: 32px;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if (root.enabled) { root.clicked(); } }
+    forward-focus: keyboard;
+    border-width: keyboard.has-focus ? 2px : 0px;
+    border-color: Theme.accent;
+    keyboard := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if (root.enabled && (event.text == Key.Return || event.text == " ")) { root.clicked(); return accept; }
+            reject
+        }
+    }
+
+    border-radius: 6px;
     background: ta.has-hover && root.enabled ? Theme.select : transparent;
     ta := TouchArea {
         width: parent.width;
         height: parent.height;
         enabled: root.enabled;
         clicked => {
+            keyboard.focus();
             root.clicked();
         }
     }
@@ -1158,7 +714,7 @@ export component MenuEntry inherits Rectangle {
             text: root.text;
             color: Theme.text;
             vertical-alignment: center;
-            font-size: 12px * Theme.font-scale;
+            font-size: 13px * Theme.font-scale;
             font-weight: root.bold ? 700 : 400;
             overflow: elide;
             horizontal-stretch: 1;

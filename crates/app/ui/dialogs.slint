@@ -11,18 +11,18 @@ import { Cols, PairRow, LinkRow, QueueRow, DownloadRow, Theme, ThemedWindow, Typ
 component Label inherits Text {
     vertical-alignment: center;
     color: Theme.text;
-    font-size: 12px * Theme.font-scale;
+    font-size: 13px * Theme.font-scale;
 }
 
 component Hint inherits Text {
     color: Theme.muted;
-    font-size: 11px * Theme.font-scale;
+    font-size: 13px * Theme.font-scale;
     wrap: word-wrap;
 }
 
 component Section inherits Text {
     color: Theme.accent;
-    font-size: 12px * Theme.font-scale;
+    font-size: 13px * Theme.font-scale;
     font-weight: 700;
 }
 
@@ -63,7 +63,7 @@ component Radio inherits Rectangle {
         height: parent.height;
         text: root.text;
         vertical-alignment: center;
-        font-size: 12px * Theme.font-scale;
+        font-size: 13px * Theme.font-scale;
         color: root.enabled ? Theme.text : Theme.muted;
     }
 }
@@ -87,7 +87,7 @@ component SideTab inherits Rectangle {
         height: parent.height;
         text: root.text;
         vertical-alignment: center;
-        font-size: 12px * Theme.font-scale;
+        font-size: 13px * Theme.font-scale;
         font-weight: root.active ? 600 : 400;
         color: Theme.text;
     }
@@ -114,7 +114,7 @@ component TabBtn inherits Rectangle {
         text: root.text;
         horizontal-alignment: center;
         vertical-alignment: center;
-        font-size: 12px * Theme.font-scale;
+        font-size: 13px * Theme.font-scale;
         font-weight: root.active ? 600 : 400;
         color: Theme.text;
     }
@@ -197,7 +197,7 @@ export component ColumnsDialog inherits ThemedWindow {
     callback reset();
     callback cancel();
     VerticalLayout {
-        padding: 14px;
+        padding: 18px;
         spacing: 6px;
         Label {
             text: @tr("Show these columns in the download list:");
@@ -205,7 +205,7 @@ export component ColumnsDialog inherits ThemedWindow {
         Text {
             text: @tr("File Name (always shown)");
             color: Theme.muted;
-            font-size: 12px * Theme.font-scale;
+            font-size: 13px * Theme.font-scale;
         }
         CheckBox {
             text: @tr("Q (queue number)");
@@ -332,7 +332,7 @@ export component CategoryDialog inherits ThemedWindow {
     callback save();
     callback cancel();
     VerticalLayout {
-        padding: 14px;
+        padding: 18px;
         spacing: 8px;
         GridLayout {
             spacing: 8px;
@@ -430,7 +430,7 @@ export component FindDialog inherits ThemedWindow {
     callback find-next();
     callback close-window();
     VerticalLayout {
-        padding: 14px;
+        padding: 18px;
         spacing: 8px;
         HorizontalLayout {
             spacing: 8px;
@@ -527,7 +527,7 @@ export component PropertiesDialog inherits ThemedWindow {
     callback save();
     callback cancel();
     VerticalLayout {
-        padding: 14px;
+        padding: 18px;
         spacing: 10px;
         HorizontalLayout {
             spacing: 14px;
@@ -667,7 +667,7 @@ export component PropertiesDialog inherits ThemedWindow {
                 text: @tr("Result: {}", root.result);
                 vertical-alignment: center;
                 overflow: elide;
-                font-size: 11px * Theme.font-scale;
+                font-size: 13px * Theme.font-scale;
                 color: root.done ? Theme.ok : Theme.err;
             }
         }
@@ -719,7 +719,7 @@ export component DuplicateDialog inherits ThemedWindow {
     callback ok();
     callback cancel();
     VerticalLayout {
-        padding: 16px;
+        padding: 20px;
         spacing: 8px;
         Label {
             text: @tr("This address is already in the download list:");
@@ -1392,7 +1392,7 @@ export component GrabberDialog inherits ThemedWindow {
                 }
                 Text {
                     text: root.progress-text;
-                    font-size: 11px * Theme.font-scale;
+                    font-size: 13px * Theme.font-scale;
                     color: root.exploring ? Theme.accent : Theme.muted;
                     overflow: elide;
                 }
@@ -1525,7 +1525,7 @@ export component GrabberDialog inherits ThemedWindow {
                                 text: l.url;
                                 horizontal-stretch: 1;
                                 color: Theme.accent;
-                                font-size: 11px * Theme.font-scale;
+                                font-size: 13px * Theme.font-scale;
                             }
                         }
                     }
@@ -1616,7 +1616,7 @@ export component TipDialog inherits ThemedWindow {
     callback next();
     callback close-window();
     VerticalLayout {
-        padding: 16px;
+        padding: 20px;
         spacing: 12px;
         HorizontalLayout {
             spacing: 14px;
@@ -1646,13 +1646,13 @@ export component TipDialog inherits ThemedWindow {
                     text: root.tip;
                     wrap: word-wrap;
                     color: Theme.text;
-                    font-size: 12px * Theme.font-scale;
+                    font-size: 13px * Theme.font-scale;
                     vertical-stretch: 1;
                 }
                 Text {
                     text: root.counter;
                     color: Theme.muted;
-                    font-size: 11px * Theme.font-scale;
+                    font-size: 13px * Theme.font-scale;
                 }
             }
         }
@@ -1698,7 +1698,7 @@ export component RefreshDialog inherits ThemedWindow {
     callback use-url();
     callback stop-waiting();
     VerticalLayout {
-        padding: 16px;
+        padding: 20px;
         spacing: 10px;
         Text {
             text: root.file-name;
@@ -1715,7 +1715,7 @@ export component RefreshDialog inherits ThemedWindow {
             Text {
                 text: root.page;
                 color: Theme.muted;
-                font-size: 11px * Theme.font-scale;
+                font-size: 13px * Theme.font-scale;
                 overflow: elide;
                 horizontal-stretch: 1;
                 vertical-alignment: center;
@@ -1794,7 +1794,7 @@ export component SettingsDialog inherits ThemedWindow {
     // set for a moment so the window comes in front of the browser
     in property <bool> front;
     always-on-top: root.front;
-    title: @tr("Ezoo Download – Options");
+    title: @tr("Settings");
     preferred-width: 820px;
     preferred-height: 600px;
 
@@ -1935,18 +1935,19 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Appearance
                 if root.tab == 9: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 10px;
                     alignment: start;
                     HorizontalLayout {
                         spacing: 8px;
                         Label {
-                            text: @tr("Theme");
+                            text: @tr("Appearance");
                         }
                         ComboBox {
                             width: 200px;
-                            model: [@tr("Light"), @tr("Dark"), @tr("Ocean blue"), @tr("Midnight purple"), @tr("Forest green"), @tr("Black"), @tr("Sunset"), @tr("Teal night"), @tr("Rose")];
+                            model: [@tr("System"), @tr("Light"), @tr("Dark")];
                             current-index <=> root.theme;
+                            selected(value) => { root.preview-look(); }
                         }
                         Rectangle {
                             horizontal-stretch: 1;
@@ -2063,7 +2064,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- General
                 if root.tab == 0: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     alignment: start;
                     HorizontalLayout {
@@ -2184,7 +2185,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- File Types
                 if root.tab == 1: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     Label {
                         text: @tr("Automatically start downloading these file types (from the browser):");
@@ -2192,7 +2193,7 @@ export component SettingsDialog inherits ThemedWindow {
                     TextEdit {
                         text <=> root.capture-exts;
                         min-height: 80px;
-                        font-size: 12px * Theme.font-scale;
+                        font-size: 13px * Theme.font-scale;
                         wrap: word-wrap;
                     }
                     HorizontalLayout {
@@ -2217,7 +2218,7 @@ export component SettingsDialog inherits ThemedWindow {
                     TextEdit {
                         text <=> root.skip-addresses;
                         min-height: 60px;
-                        font-size: 12px * Theme.font-scale;
+                        font-size: 13px * Theme.font-scale;
                     }
                     Rectangle {
                         height: 1px;
@@ -2268,7 +2269,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Save To
                 if root.tab == 2: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     alignment: start;
                     Label {
@@ -2328,7 +2329,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Downloads
                 if root.tab == 3: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     alignment: start;
                     CheckBox {
@@ -2428,7 +2429,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Connection
                 if root.tab == 4: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     GridLayout {
                         spacing: 8px;
@@ -2550,7 +2551,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Proxy
                 if root.tab == 5: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     alignment: start;
                     Radio {
@@ -2637,7 +2638,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Site logins
                 if root.tab == 6: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 8px;
                     Label {
                         text: @tr("User names and passwords for sites that ask for them:");
@@ -2706,7 +2707,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Sounds
                 if root.tab == 7: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 10px;
                     alignment: start;
                     CheckBox {
@@ -2760,7 +2761,7 @@ export component SettingsDialog inherits ThemedWindow {
 
                 // ---------------- Speed limiter
                 if root.tab == 8: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 10px;
                     alignment: start;
                     CheckBox {
@@ -2790,7 +2791,7 @@ export component SettingsDialog inherits ThemedWindow {
                     }
                 }
                 if root.tab == 10: VerticalLayout {
-                    padding: 14px;
+                    padding: 18px;
                     spacing: 10px;
                     alignment: start;
                     HorizontalLayout {
@@ -2929,7 +2930,7 @@ export component TorrentDialog inherits ThemedWindow {
                 }
                 Text {
                     text: root.info;
-                    font-size: 11px * Theme.font-scale;
+                    font-size: 13px * Theme.font-scale;
                     color: Theme.muted;
                     overflow: elide;
                 }
@@ -3152,7 +3153,7 @@ export component PlaylistDialog inherits ThemedWindow {
         }
         Text {
             text: root.status;
-            font-size: 11px * Theme.font-scale;
+            font-size: 13px * Theme.font-scale;
             color: Theme.muted;
             overflow: elide;
         }
@@ -3474,7 +3475,7 @@ export component BrowserDialog inherits ThemedWindow {
                         border-color: Theme.line;
                         border-radius: 8px;
                         HorizontalLayout {
-                            padding: 14px;
+                            padding: 18px;
                             spacing: 12px;
                             Rectangle {
                                 width: 28px * Theme.font-scale;
@@ -3536,7 +3537,7 @@ export component BrowserDialog inherits ThemedWindow {
                     border-color: Theme.line;
                     border-radius: 8px;
                     HorizontalLayout {
-                        padding: 14px;
+                        padding: 18px;
                         spacing: 12px;
                         Glyph {
                             kind: root.connected ? "check" : "clock";
@@ -3722,7 +3723,7 @@ export component AboutDialog inherits ThemedWindow {
         Text {
             text: @tr("Like Ezoo Download? You can support its development:");
             horizontal-alignment: center;
-            font-size: 12px * Theme.font-scale;
+            font-size: 13px * Theme.font-scale;
             color: Theme.muted;
             wrap: word-wrap;
         }
@@ -3803,7 +3804,7 @@ export component WhatsNewDialog inherits ThemedWindow {
             background: Theme.panel;
             border-width: 1px;
             border-color: Theme.line;
-            border-radius: 4px;
+            border-radius: 8px;
             ScrollView {
                 VerticalLayout {
                     padding: 12px;
@@ -3837,7 +3838,7 @@ export component WhatsNewDialog inherits ThemedWindow {
             background: Theme.input-bg;
             border-width: 1px;
             border-color: Theme.line;
-            border-radius: 4px;
+            border-radius: 8px;
             VerticalLayout {
                 padding: 12px;
                 spacing: 8px;

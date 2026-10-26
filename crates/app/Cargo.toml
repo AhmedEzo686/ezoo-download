@@ -28,6 +28,10 @@ slint = { version = "~1.18", features = ["raw-window-handle-06", "unstable-winit
 
 # Winit supports macOS directly; avoid backend-default pulling in Qt / Skia.
 [target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.5"
+block2 = "0.6.2"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSAppearance", "NSResponder", "NSColor", "NSColorSpace", "NSFont", "block2"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray", "NSString", "NSNotification", "NSOperation", "NSObject", "block2"] }
 slint = { version = "~1.18", default-features = false, features = [
     "std", "backend-winit", "renderer-femtovg", "renderer-software",
     "accessibility", "compat-1-2", "raw-window-handle-06", "unstable-winit-030",

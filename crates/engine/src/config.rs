@@ -247,6 +247,9 @@ pub struct Settings {
     /// 0 Light, 1 Dark, 2 Ocean, 3 Midnight, 4 Forest, 5 Black, 6 Sunset,
     /// 7 Teal night, 8 Rose
     pub theme: u32,
+    /// System appearance by default; the legacy theme index remains readable
+    /// by older versions but no longer selects a different color family.
+    pub appearance: String,
     /// how solid the main window is, 50..=100 (%)
     pub opacity: u32,
     /// size of all texts, 80..=150 (%)
@@ -382,6 +385,7 @@ impl Default for Settings {
             schedule: Schedule::default(),
             show_progress_window: true,
             theme: 0,
+            appearance: "system".into(),
             opacity: 100,
             font_scale: 100,
             font_family: String::new(),
@@ -502,6 +506,9 @@ impl Settings {
             s.schedule.enabled = false;
         }
         s.version = SETTINGS_VERSION;
+        if !matches!(s.appearance.as_str(), "system" | "light" | "dark") {
+            s.appearance = "system".into();
+        }
         if !s.queues.iter().any(|q| q.id == MAIN_QUEUE) {
             s.queues.insert(0, QueueDef::new(MAIN_QUEUE, "Main download queue", 1, None));
         }
@@ -824,6 +831,17 @@ mod tests {
 #[cfg(test)]
 mod column_tests {
     use super::*;
+
+    #[test]
+    fn old_themes_gain_system_appearance_without_losing_legacy_data() {
+        let old: Settings = serde_json::from_str(r#"{"theme":7}"#).unwrap();
+        assert_eq!(old.appearance, "system");
+        assert_eq!(old.theme, 7);
+        let explicit: Settings = serde_json::from_str(r#"{"theme":7,"appearance":"dark"}"#).unwrap();
+        let restored: Settings = serde_json::from_str(&serde_json::to_string(&explicit).unwrap()).unwrap();
+        assert_eq!(restored.appearance, "dark");
+        assert_eq!(restored.theme, 7);
+    }
 
     #[test]
     fn columns_keep_their_order_and_width() {

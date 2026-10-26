@@ -5441,6 +5441,10 @@ dependencies = [
 name = "swiftget"
 version = "1.0.6"
 dependencies = [
+ "objc2-foundation 0.3.2",
+ "objc2-app-kit 0.3.2",
+ "objc2 0.6.5",
+ "block2 0.6.2",
  "anyhow",
  "arboard",
  "chrono",

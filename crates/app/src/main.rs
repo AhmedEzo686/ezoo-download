@@ -5,6 +5,7 @@
 slint::include_modules!();
 
 mod api;
+mod appearance;
 mod autostart;
 mod browser;
 mod browser_files;
@@ -24,7 +25,7 @@ mod winfx;
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -393,9 +394,12 @@ fn main() -> anyhow::Result<()> {
     let has_tray = tray.is_some();
     {
         let s = mgr.settings();
-        apply_theme(&ui, s.theme as i32);
+        apply_theme(&ui, appearance::index(&s.appearance));
         apply_view_settings(&ui, &s);
     }
+    APPEARANCE_UI.with(|slot| *slot.borrow_mut() = Some(ui.clone()));
+    appearance::watch_window(main.window(), platform_appearance_changed);
+    let _appearance_observer = appearance::watch_colors(platform_appearance_changed);
 
     wire_main(&ui);
     // a new version of the program itself: from GitHub, installed silently
@@ -613,6 +617,7 @@ fn main() -> anyhow::Result<()> {
     drop(fast_timer);
     drop(power_timer);
     API_DISPATCH.with(|dispatch| dispatch.borrow_mut().take());
+    APPEARANCE_UI.with(|slot| slot.borrow_mut().take());
     // a download nobody pressed Start for is not kept
     cancel_early(&ctx_exit);
     mgr.shutdown();
@@ -759,7 +764,7 @@ fn wire_main(ui: &Ui) {
         let ui = ui.clone();
         main.on_set_theme(move |m| {
             let mut s = ui.ctx.mgr.settings();
-            s.theme = m.clamp(0, 8) as u32;
+            s.appearance = appearance::preference(m).into();
             let _ = ui.ctx.mgr.set_settings(s);
             apply_theme(&ui, m);
         });
@@ -1057,6 +1062,19 @@ fn visible_ids(ui: &Ui) -> Vec<u64> {
     (0..ui.rows.row_count()).filter_map(|i| ui.rows.row_data(i)).map(|r| r.id as u64).collect()
 }
 
+/// Keep list actions attached to visible selections, including after a filter
+/// changes. A focus is an action target only while it remains selected.
+fn reconcile_selection(sel: &mut Selection, focus: i32, visible: &[u64]) -> i32 {
+    let visible_set: HashSet<u64> = visible.iter().copied().collect();
+    sel.ids.retain(|id| visible_set.contains(id));
+    sel.anchor = sel.anchor.filter(|id| visible_set.contains(id));
+    if focus >= 0 && sel.ids.contains(&(focus as u64)) {
+        focus
+    } else {
+        visible.iter().find(|id| sel.ids.contains(id)).map(|id| *id as i32).unwrap_or(-1)
+    }
+}
+
 pub(crate) fn select_single(ui: &Ui, id: u64) {
     let mut sel = ui.sel.borrow_mut();
     sel.ids = vec![id];
@@ -1106,18 +1124,15 @@ fn row_clicked(ui: &Ui, id: u64, ctrl: bool, shift: bool) {
 /// The downloads an action works on: the whole selection when the clicked
 /// one is part of it, otherwise only that one.
 fn targets(ui: &Ui, id: u64) -> Vec<u64> {
+    let order = visible_ids(ui);
+    if !order.contains(&id) {
+        return Vec::new();
+    }
     let sel = ui.sel.borrow();
-    if id as i64 >= 0 && sel.ids.contains(&id) && sel.ids.len() > 1 {
-        let order = visible_ids(ui);
-        let mut v: Vec<u64> = order.into_iter().filter(|x| sel.ids.contains(x)).collect();
-        if v.is_empty() {
-            v = sel.ids.clone();
-        }
-        v
-    } else if (id as i64) >= 0 {
-        vec![id]
+    if sel.ids.contains(&id) && sel.ids.len() > 1 {
+        order.into_iter().filter(|x| sel.ids.contains(x)).collect()
     } else {
-        Vec::new()
+        vec![id]
     }
 }
 
@@ -1817,7 +1832,7 @@ pub(crate) fn set_language(ui: &Ui, lang: &str) {
     refresh(ui);
 }
 
-/// Fonts of Options > Appearance > Font ("" = Windows' own).
+/// Fonts of Options > Appearance > Font ("" = the platform system font).
 pub(crate) const FONTS: [&str; 7] = ["", "Tahoma", "Arial", "Calibri", "Verdana", "Times New Roman", "Courier New"];
 
 /// Everything that decides how the windows look.
@@ -1836,7 +1851,7 @@ pub(crate) struct Look {
 impl Look {
     pub(crate) fn of(s: &Settings) -> Look {
         Look {
-            mode: s.theme.min(8) as i32,
+            mode: appearance::index(&s.appearance),
             scale: s.font_scale.clamp(80, 150) as f32 / 100.0,
             family: if FONTS.contains(&s.font_family.as_str()) { s.font_family.clone() } else { String::new() },
             background: s.background_image.clone(),
@@ -1848,6 +1863,17 @@ impl Look {
 thread_local! {
     // the picture behind the main window, loaded once per file
     static BACKGROUND: RefCell<(String, Option<slint::Image>)> = const { RefCell::new((String::new(), None)) };
+    static APPEARANCE_UI: RefCell<Option<Ui>> = const { RefCell::new(None) };
+    static CURRENT_LOOK: RefCell<Option<Look>> = const { RefCell::new(None) };
+}
+
+fn platform_appearance_changed() {
+    let ui = APPEARANCE_UI.with(|slot| slot.borrow().clone());
+    if let Some(ui) = ui {
+        // Preserve a temporary Options preview while the system changes.
+        let look = CURRENT_LOOK.with(|slot| slot.borrow().clone()).unwrap_or_else(|| Look::of(&ui.ctx.mgr.settings()));
+        apply_look(&ui, &look);
+    }
 }
 
 /// The picture of `path` (a png / jpg the user chose); None when it can't be read.
@@ -1869,18 +1895,38 @@ fn background_image(path: &str) -> Option<slint::Image> {
 /// Set the theme on every open window (each window has its own copy).
 pub(crate) fn apply_theme(ui: &Ui, mode: i32) {
     let mut look = Look::of(&ui.ctx.mgr.settings());
-    look.mode = mode;
+    look.mode = mode.clamp(0, 2);
     apply_look(ui, &look);
 }
 
 fn set_theme_of(t: Theme<'_>, look: &Look) {
-    t.set_mode(look.mode);
+    let palette = appearance::palette(look.mode);
+    t.set_appearance(look.mode);
+    t.set_mode(if palette.dark { 1 } else { 0 });
+    t.set_native_macos(cfg!(target_os = "macos"));
+    t.set_platform_window(palette.window);
+    t.set_platform_panel(palette.panel);
+    t.set_platform_secondary_surface(palette.secondary_surface);
+    t.set_platform_sidebar(palette.sidebar);
+    t.set_platform_text(palette.text);
+    t.set_platform_muted(palette.muted);
+    t.set_platform_accent(palette.accent);
+    t.set_platform_accent_text(palette.accent_text);
+    t.set_platform_line(palette.line);
+    t.set_platform_selection(palette.selection);
+    t.set_platform_hover(palette.hover);
+    t.set_platform_ok(palette.ok);
+    t.set_platform_warn(palette.warn);
+    t.set_platform_err(palette.err);
+    t.set_platform_input(palette.input);
+    t.set_platform_bar(palette.bar);
     t.set_font_scale(look.scale);
-    t.set_font_family(look.family.clone().into());
+    t.set_font_family(if look.family.is_empty() { palette.font_family } else { look.family.clone() }.into());
 }
 
 /// Show `look` on every window right away.
 pub(crate) fn apply_look(ui: &Ui, look: &Look) {
+    CURRENT_LOOK.with(|slot| *slot.borrow_mut() = Some(look.clone()));
     macro_rules! set {
         ($($w:expr),*) => { $( if let Some(w) = $w.upgrade() { set_theme_of(w.global::<Theme>(), look); } )* };
     }
@@ -2802,15 +2848,12 @@ pub(crate) fn refresh(ui: &Ui) {
         })
         .map(|v| row_of(v, false))
         .collect();
-    // the selection: drop rows that are gone, mark the rest
+    // Reconcile against the filtered list, so actions cannot reach hidden rows.
     let mut new_rows = new_rows;
     {
         let mut sel = ui.sel.borrow_mut();
-        sel.ids.retain(|id| views.iter().any(|v| v.id == *id));
-        let focus = w.get_selected_id();
-        if sel.ids.is_empty() && focus >= 0 && views.iter().any(|v| v.id as i32 == focus) {
-            sel.ids.push(focus as u64);
-        }
+        let visible: Vec<u64> = new_rows.iter().map(|r| r.id as u64).collect();
+        w.set_selected_id(reconcile_selection(&mut sel, w.get_selected_id(), &visible));
         for r in new_rows.iter_mut() {
             r.sel = sel.ids.contains(&(r.id as u64));
         }
@@ -3166,6 +3209,38 @@ fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn filters_preserve_visible_selection_and_drop_hidden_focus_and_anchor() {
+        let mut sel = Selection { ids: vec![10, 20, 30], anchor: Some(10) };
+        let focus = reconcile_selection(&mut sel, 30, &[20, 30, 40]);
+        assert_eq!(sel.ids, [20, 30]);
+        assert_eq!(sel.anchor, None);
+        assert_eq!(focus, 30);
+
+        // A hidden focused item yields to a surviving selection, in list order.
+        let focus = reconcile_selection(&mut sel, focus, &[40, 20]);
+        assert_eq!(sel.ids, [20]);
+        assert_eq!(focus, 20);
+
+        // Filtering everything out cannot leave an invisible action target, and
+        // clearing the filter must not silently restore the former selection.
+        assert_eq!(reconcile_selection(&mut sel, focus, &[40]), -1);
+        assert!(sel.ids.is_empty());
+        assert_eq!(reconcile_selection(&mut sel, -1, &[10, 20, 30, 40]), -1);
+        assert!(sel.ids.is_empty());
+
+        // Select All initially has no focused row; explicit deselection may also
+        // leave a visible old focus. Only selected rows can become action targets.
+        sel.ids = vec![20, 40];
+        sel.anchor = Some(20);
+        assert_eq!(reconcile_selection(&mut sel, -1, &[40, 20]), 40);
+        assert_eq!(sel.ids, [20, 40]);
+        assert_eq!(sel.anchor, Some(20));
+        sel.ids.clear();
+        assert_eq!(reconcile_selection(&mut sel, 40, &[40, 20]), -1);
+        assert!(sel.ids.is_empty());
+    }
 
     #[test]
     fn edited_download_scopes_headers_and_requires_fresh_authorization() {

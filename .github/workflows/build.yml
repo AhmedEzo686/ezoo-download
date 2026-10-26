@@ -56,6 +56,8 @@ jobs:
         run: |
           node extension/test/yt-core.test.js
           node extension/test/background.sim.js
+          node extension/test/ui-contract.test.js
+          node extension/test/content-widget.test.js
       - name: Check workspace
         run: cargo check --locked --workspace --all-targets --target "${{ matrix.target }}"
       - name: Run tests
@@ -110,6 +112,8 @@ jobs:
         run: |
           node extension/test/yt-core.test.js
           node extension/test/background.sim.js
+          node extension/test/ui-contract.test.js
+          node extension/test/content-widget.test.js
       - name: Run engine tests
         shell: pwsh
         run: |

@@ -161,6 +161,7 @@ async function appAlive(forceReady = false) {
 }
 
 async function cookieHeader(url) {
+  assertSupportedPlayback(url);
   try {
     const cookies = await chrome.cookies.getAll({ url });
     return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
@@ -171,6 +172,7 @@ async function cookieHeader(url) {
 
 /** The site's cookies for the app, only used if the site asks for a login. */
 async function cookieList(url) {
+  assertSupportedPlayback(url);
   try {
     const list = await chrome.cookies.getAll({ url });
     return list.map((c) => ({
@@ -194,7 +196,42 @@ function isYoutube(url) {
   }
 }
 
+// Netflix's encrypted playback fragments are not standalone video files.
+// Recognize real host boundaries so unrelated/public pages remain supported.
+const PROTECTED_VIDEO_MESSAGE = "Netflix playback is not supported by this downloader. Use Netflix’s official app on a supported device for offline viewing.";
+
+function protectedHost(url, domain) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+    return host === domain || host.endsWith(`.${domain}`) ? parsed : null;
+  } catch { return null; }
+}
+
+function isNetflixWatch(url) {
+  const parsed = protectedHost(url, "netflix.com");
+  return !!parsed && /^\/watch(?:\/|$)/i.test(parsed.pathname);
+}
+
+function isProtectedPlayback(...urls) {
+  return urls.some((url) => isNetflixWatch(url) || !!protectedHost(url, "nflxvideo.net"));
+}
+
+function protectedVideoItem() {
+  return { disabled: true, protected: true, label: "Protected video", sub: PROTECTED_VIDEO_MESSAGE, type: "protected", url: null };
+}
+
+function assertSupportedPlayback(...urls) {
+  if (isProtectedPlayback(...urls)) throw new Error(PROTECTED_VIDEO_MESSAGE);
+}
+
+function suppliedReferrers(headers) {
+  return (headers || []).filter((header) => Array.isArray(header) && /^(referer|referrer)$/i.test(header[0])).map((header) => header[1]);
+}
+
 async function sendToApp({ url, audioUrl, referrer, fileName, headers, sourcePage, sourceKey }) {
+  assertSupportedPlayback(url, audioUrl, referrer, sourcePage, ...suppliedReferrers(headers));
   const { port } = await getOpts();
   const body = {
     url,
@@ -364,6 +401,7 @@ chrome.downloads.onCreated.addListener(async (item) => {
   if (!opts.enabled || !opts.intercept) return;
   const url = item.finalUrl || item.url;
   if (!url || !/^https?:/i.test(url)) return; // blob:, data:, file: stay in the browser
+  if (isProtectedPlayback(url, item.url, item.referrer)) return;
   if (!isNewDownload(item)) return;
   if (await takeBypass(url)) return;
   if (opts.minSizeKB > 0 && item.totalBytes > 0 && item.totalBytes < opts.minSizeKB * 1024) return;
@@ -403,7 +441,7 @@ async function readTab(tabId) {
 }
 
 function optionItems(resolved, source) {
-  return resolved.options.map((o) => ({
+  return resolved.options.filter((o) => !isProtectedPlayback(source, o.source, o.videoUrl, o.audioUrl)).map((o) => ({
     label: o.label,
     sub: o.sub,
     yt: { ...o, title: resolved.title, source },
@@ -412,6 +450,8 @@ function optionItems(resolved, source) {
 
 /** Everything the page button and the popup show, in one list. */
 async function itemsForTab(tabId) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (isNetflixWatch(tab && tab.url)) return [protectedVideoItem()];
   const { media, yt, res } = await readTab(tabId);
   const items = [];
   if (res && !yt) {
@@ -447,6 +487,7 @@ async function itemsForTab(tabId) {
   }
   const resolvedFound = items.some((i) => i.yt);
   for (const m of media) {
+    if (isProtectedPlayback(m.url)) continue;
     // when the app already found the real qualities, raw streams are noise
     if (resolvedFound && /HLS|video/i.test(m.type)) continue;
     items.push({
@@ -493,6 +534,9 @@ function headerMap(list) {
 }
 
 async function addMedia(tabId, item) {
+  if (isProtectedPlayback(item.url)) return;
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (isNetflixWatch(tab && tab.url)) return;
   const key = `media_${tabId}`;
   const current = (await chrome.storage.session.get(key))[key] || [];
   if (current.some((m) => m.url === item.url)) return;
@@ -507,6 +551,7 @@ chrome.webRequest.onHeadersReceived.addListener(
     if (d.tabId < 0 || d.statusCode < 200 || d.statusCode >= 300) return;
     const url = d.url;
     if (!/^https?:/i.test(url)) return;
+    if (isProtectedPlayback(url, d.documentUrl, d.initiator, d.originUrl)) return;
     if (/googlevideo\.com/i.test(url)) return; // YouTube has its own handler below
     const h = headerMap(d.responseHeaders);
     const type = (h["content-type"] || "").toLowerCase();
@@ -582,6 +627,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 );
 
 async function downloadVideo(option, pageTitle, pageUrl) {
+  assertSupportedPlayback(option.videoUrl, option.audioUrl, option.source, pageUrl);
   const title = cleanYoutubeTitle(option.title || pageTitle);
   const name = option.quality === "mp3" ? `${title}.mp3` : `${title} [${option.quality}].${option.ext}`;
   await sendToApp({
@@ -596,6 +642,7 @@ async function downloadVideo(option, pageTitle, pageUrl) {
 }
 
 async function sendPlaylist(url) {
+  assertSupportedPlayback(url);
   if (!/^https?:/i.test(url || "")) throw new Error("bad address");
   const { port } = await getOpts();
   const r = await fetchWithTimeout(
@@ -618,6 +665,7 @@ chrome.storage.onChanged.addListener((ch, area) => {
 const resolving = new Map(); // tabId -> page being resolved
 
 async function askApp(page) {
+  assertSupportedPlayback(page);
   const { port } = await getOpts();
   const r = await fetchWithTimeout(
     apiUrl(port, "/resolve"),
@@ -644,6 +692,8 @@ async function patchYt(tabId, videoId, change) {
 }
 
 async function resolveYoutube(tabId, pageUrl) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (isProtectedPlayback(pageUrl, tab && tab.url)) return;
   const videoId = videoIdOf(pageUrl);
   if (!videoId || !/(^|\.)youtube\.com$/i.test(new URL(pageUrl).hostname)) return;
   const key = `yt_${tabId}`;
@@ -671,6 +721,11 @@ async function resolveYoutube(tabId, pageUrl) {
  * Instagram, TikTok, X, Vimeo, Dailymotion and ~1800 more sites.
  */
 async function resolvePage(tabId, page, embedded = false) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (isProtectedPlayback(page, tab && tab.url)) {
+    pushToTab(tabId);
+    return;
+  }
   // YouTube's own pages have their own way (resolveYoutube); a YouTube
   // player embedded in another site goes this way
   if (!page || !/^https?:/i.test(page) || (isYoutube(page) && !embedded)) return;
@@ -698,6 +753,7 @@ async function resolvePage(tabId, page, embedded = false) {
 
 /** The bubble of a video that is not the page's main one was clicked. */
 async function resolveOneVideo(msg, tab) {
+  if (isProtectedPlayback(msg.src, msg.page, tab && tab.url)) return { items: [protectedVideoItem()] };
   // a player in a frame (Dailymotion, news sites...): what was found for the
   // whole page (its qualities, its streams) is what this player plays
   if (msg.frame && tab) {
@@ -782,15 +838,20 @@ chrome.runtime.onStartup.addListener(() => { makeMenus(); announceExtensionReady
 
 /** Every link of the page (or of the selection) to the app's "Download all links". */
 async function sendAllLinks(tab, selection) {
+  assertSupportedPlayback(tab && tab.url);
   const res = await chrome.tabs.sendMessage(tab.id, { type: "swiftget-collect-links", selection }).catch(() => null);
   if (!res || !res.links || !res.links.length) return;
   const page = res.page || tab.url;
+  assertSupportedPlayback(page);
+  // Ignore protected fragments mixed into a public page's ordinary links.
+  const links = res.links.filter((link) => !isProtectedPlayback(link.url));
+  if (!links.length) return;
   // Page cookies can only help links from that origin. The desktop app also
   // preserves this scope and filters each link in a mixed-origin batch.
   let needsCookies = false;
   try {
     const origin = new URL(page).origin;
-    needsCookies = res.links.some((link) => {
+    needsCookies = links.some((link) => {
       try { return new URL(link.url).origin === origin; } catch { return false; }
     });
   } catch { /* invalid page: no credentials */ }
@@ -802,7 +863,7 @@ async function sendAllLinks(tab, selection) {
       headers: { "Content-Type": "application/json", "X-SwiftGet": "1" },
       body: JSON.stringify({
         page,
-        links: res.links,
+        links,
         cookies: needsCookies ? await cookieHeader(page) : null,
         userAgent: navigator.userAgent,
       }),
@@ -812,6 +873,13 @@ async function sendAllLinks(tab, selection) {
 }
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (isProtectedPlayback(tab && tab.url, info.pageUrl, info.frameUrl, info.linkUrl, info.srcUrl)) {
+    if (tab && info.menuItemId === "swiftget-video") {
+      chrome.tabs.sendMessage(tab.id, { type: "swiftget-open-panel" }).catch(() => {});
+      pushToTab(tab.id);
+    }
+    return;
+  }
   if (info.menuItemId === "swiftget-all" || info.menuItemId === "swiftget-selected") {
     if (tab) sendAllLinks(tab, info.menuItemId === "swiftget-selected").catch((e) => console.warn("Ezoo Download:", e));
     return;
@@ -843,6 +911,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.type) {
     case "swiftget-download": {
       const item = msg.item || {};
+      if (item.protected || item.type === "protected" || isProtectedPlayback(sender.tab && sender.tab.url, msg.referrer)) {
+        sendResponse({ ok: false, error: PROTECTED_VIDEO_MESSAGE });
+        return false;
+      }
       // a video inside a frame (embedded player): that frame's page
       const referrer = sender.frameId && msg.referrer ? msg.referrer : sender.tab ? sender.tab.url : msg.referrer;
       if (item.yt) return reply(downloadVideo(item.yt, msg.title, referrer), sendResponse);
@@ -859,6 +931,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case "swiftget-video-seen":
       // the page shows a video: find its qualities
       if (!sender.tab) return false;
+      if (isProtectedPlayback(sender.tab.url, msg.page, msg.src)) {
+        pushToTab(sender.tab.id);
+        return false;
+      }
       getOpts().then((o) => {
         if (!o.enabled) return;
         if (isYoutube(sender.tab.url)) resolveYoutube(sender.tab.id, sender.tab.url);
@@ -880,6 +956,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       );
     case "swiftget-playlist":
       // "Download all" on a playlist page: the app's playlist window
+      if (isProtectedPlayback(sender.tab && sender.tab.url, msg.url)) {
+        sendResponse({ ok: false, error: PROTECTED_VIDEO_MESSAGE });
+        return false;
+      }
       return reply(sendPlaylist(msg.url), sendResponse);
     case "swiftget-status":
       appAlive(true).then((ok) => sendResponse({ ok }));
