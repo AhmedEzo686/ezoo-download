@@ -1,5 +1,6 @@
-//! Windows bits: free disk space, file system type, shut down / sleep /
-//! hibernate, file dates and the virus checker.
+//! Platform bits: free disk space, file system type, shut down / sleep /
+//! hibernate, file dates and the virus checker (Windows APIs, Linux
+//! statvfs + systemd).
 
 use crate::config::AfterDone;
 use std::path::Path;
@@ -243,10 +244,11 @@ mod imp {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 mod imp {
     use super::AfterDone;
     use std::path::Path;
+
     pub fn free_space(_dir: &Path) -> Option<u64> {
         None
     }
@@ -254,6 +256,62 @@ mod imp {
         None
     }
     pub fn power(_action: AfterDone, _force: bool) {}
+}
+
+#[cfg(target_os = "linux")]
+mod imp {
+    use super::AfterDone;
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+
+    fn cstring(dir: &Path) -> Option<CString> {
+        CString::new(dir.as_os_str().as_bytes()).ok()
+    }
+
+    pub fn free_space(dir: &Path) -> Option<u64> {
+        let c = cstring(dir)?;
+        let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+        // SAFETY: st is a writable statvfs buffer, c a valid NUL-terminated path
+        (unsafe { libc::statvfs(c.as_ptr(), &mut st) } == 0)
+            .then(|| st.f_bavail as u64 * st.f_frsize as u64)
+    }
+
+    pub fn file_system(dir: &Path) -> Option<String> {
+        let c = cstring(dir)?;
+        let mut st: libc::statfs = unsafe { std::mem::zeroed() };
+        // SAFETY: st is a writable statfs buffer, c a valid NUL-terminated path
+        if unsafe { libc::statfs(c.as_ptr(), &mut st) } != 0 {
+            return None;
+        }
+        // the kernel's file-system magics (linux/magic.h)
+        Some(match st.f_type as u32 {
+            0xEF53 => "ext4".into(),
+            0x9123683E => "btrfs".into(),
+            0x58465342 => "xfs".into(),
+            0x4d44 => "vfat".into(),
+            0x2011BAB0 => "exfat".into(),
+            0x5346544E => "ntfs".into(),
+            0x65735546 => "fuseblk".into(),
+            0x01021994 => "tmpfs".into(),
+            0x52654973 => "reiserfs".into(),
+            other => format!("0x{other:X}"),
+        })
+    }
+
+    pub fn power(action: AfterDone, _force: bool) {
+        // systemd-logind allows these for the active desktop session, like
+        // the Windows power APIs; failures are silent (best effort)
+        let run = |arg: &str| {
+            let _ = std::process::Command::new("systemctl").arg(arg).spawn();
+        };
+        match action {
+            AfterDone::Shutdown => run("poweroff"),
+            AfterDone::Sleep => run("suspend"),
+            AfterDone::Hibernate => run("hibernate"),
+            _ => {}
+        }
+    }
 }
 
 #[cfg(test)]

@@ -28,14 +28,22 @@ pub(crate) struct Browser {
     tint: slint::Color,
 }
 
+#[cfg(windows)]
 fn env_path(var: &str, rest: &str) -> Option<PathBuf> {
     std::env::var_os(var).map(|v| PathBuf::from(v).join(rest))
+}
+
+/// A program on PATH (Linux: chrome, firefox... are plain names).
+fn on_path(name: &str) -> Option<PathBuf> {
+    let paths = std::env::var_os("PATH")?;
+    std::env::split_paths(&paths).map(|d| d.join(name)).find(|p| p.is_file())
 }
 
 fn first_existing(list: Vec<Option<PathBuf>>) -> Option<PathBuf> {
     list.into_iter().flatten().find(|p| p.exists())
 }
 
+#[cfg(windows)]
 fn detect() -> Vec<Browser> {
     let rgb = slint::Color::from_rgb_u8;
     vec![
@@ -101,17 +109,92 @@ fn detect() -> Vec<Browser> {
     ]
 }
 
+#[cfg(not(windows))]
+fn detect() -> Vec<Browser> {
+    let rgb = slint::Color::from_rgb_u8;
+    vec![
+        Browser {
+            name: "Chrome",
+            exe: first_existing(vec![
+                on_path("google-chrome"),
+                on_path("google-chrome-stable"),
+                on_path("chromium"),
+                on_path("chromium-browser"),
+            ]),
+            extensions_page: "chrome://extensions/",
+            store: STORE_CHROME,
+            firefox: false,
+            tint: rgb(0x1f, 0xa4, 0x63),
+        },
+        Browser {
+            name: "Edge",
+            exe: first_existing(vec![on_path("microsoft-edge"), on_path("microsoft-edge-stable")]),
+            extensions_page: "edge://extensions/",
+            store: STORE_EDGE,
+            firefox: false,
+            tint: rgb(0x0c, 0x8c, 0xd8),
+        },
+        Browser {
+            name: "Firefox",
+            exe: first_existing(vec![
+                on_path("firefox"),
+                on_path("firefox-esr"),
+                Some(PathBuf::from("/usr/lib/firefox/firefox")),
+            ]),
+            extensions_page: "about:debugging#/runtime/this-firefox",
+            store: STORE_FIREFOX,
+            firefox: true,
+            tint: rgb(0xe8, 0x6a, 0x10),
+        },
+        Browser {
+            name: "Opera",
+            exe: first_existing(vec![on_path("opera"), Some(PathBuf::from("/usr/bin/opera"))]),
+            extensions_page: "opera://extensions",
+            store: STORE_OPERA,
+            firefox: false,
+            tint: rgb(0xd6, 0x1f, 0x2b),
+        },
+        Browser {
+            name: "Brave",
+            exe: first_existing(vec![
+                on_path("brave-browser"),
+                on_path("brave"),
+                Some(PathBuf::from("/usr/bin/brave-browser")),
+            ]),
+            extensions_page: "brave://extensions/",
+            store: STORE_BRAVE,
+            firefox: false,
+            tint: rgb(0xfb, 0x54, 0x2b),
+        },
+    ]
+}
+
 /// The extension's folder next to the program (Firefox has its own copy).
+/// On Linux the .deb also puts a copy under /usr/share/ezoo-download.
 fn extension_dir(firefox: bool) -> Option<PathBuf> {
     let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
     let name = if firefox { "extension-firefox" } else { "extension" };
-    [dir.join(name), dir.join("..").join(name)].into_iter().find(|p| p.exists())
+    [
+        dir.join(name),
+        dir.join("..").join(name),
+        dir.join("..").join("share").join("ezoo-download").join(name),
+        PathBuf::from("/usr/share/ezoo-download").join(name),
+    ]
+    .into_iter()
+    .find(|p| p.exists())
 }
 
 /// The signed Firefox add-on next to the program, when the release has one.
 fn firefox_xpi() -> Option<PathBuf> {
     let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    Some(dir.join(FIREFOX_XPI)).filter(|p| p.exists())
+    [
+        dir.join(FIREFOX_XPI),
+        dir.join("..").join(FIREFOX_XPI),
+        dir.join("..").join("share").join("ezoo-download").join(FIREFOX_XPI),
+        PathBuf::from("/usr/share/ezoo-download").join(FIREFOX_XPI),
+    ]
+    .into_iter()
+    .find(|p| p.exists())
 }
 
 pub(crate) fn open(ui: &Ui) {

@@ -3,3 +3,8 @@
 build-cache/
 signing/
 __pycache__/
+# Build outputs (both platforms)
+/dist/
+*.AppImage
+*.deb
+packaging/linux/icons-out/

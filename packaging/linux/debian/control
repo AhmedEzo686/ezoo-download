@@ -1,0 +1,19 @@
+Package: ezoo-download
+Version: 1.0.6
+Section: net
+Priority: optional
+Architecture: amd64
+Depends: libc6 (>= 2.34), libssl3 (>= 3.0.0), libfontconfig1, libfreetype6, libxkbcommon0, libx11-6, libxcb1, libgcc-s1, zlib1g
+Recommends: xdg-desktop-portal, ffmpeg, libayatana-appindicator3-1
+Installed-Size: 1
+Maintainer: Ahmed Ezzat <ezoo@ezoo-tech.com>
+Homepage: https://github.com/AhmedEzo686/ezoo-download
+Description: Download manager with multi-connection segmented downloads
+ Ezoo Download is a desktop download manager written in Rust (Slint UI).
+ It splits files over up to 32 simultaneous connections, resumes
+ interrupted downloads, saves video and audio through yt-dlp + ffmpeg,
+ and ships a browser extension that sends links from Chrome and Firefox.
+ .
+ This Linux edition adds a native StatusNotifierItem system tray
+ (KDE / GNOME / XFCE), XDG autostart, freedesktop hicolor icons and a
+ systemd power integration. Data is stored under the XDG directories.

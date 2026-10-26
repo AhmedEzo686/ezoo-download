@@ -1,0 +1,29 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ezoo Download">
+  <!-- Ezoo Download — scalable application icon (freedesktop hicolor style)
+       Brand mark: white "E" whose middle stroke becomes an arrow.
+       Palette: violet -> blue diagonal gradient, flat modern Linux style. -->
+  <defs>
+    <linearGradient id="ezoo-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8A57F5"/>
+      <stop offset=".52" stop-color="#6A5CF6"/>
+      <stop offset="1" stop-color="#2E7BF6"/>
+    </linearGradient>
+    <linearGradient id="ezoo-sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".14"/>
+      <stop offset=".38" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- tile -->
+  <rect width="512" height="512" rx="112" fill="url(#ezoo-bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#ezoo-sheen)"/>
+
+  <!-- glyph: E + arrow, rounded terminals, optical center 256 -->
+  <g fill="#ffffff">
+    <rect x="132" y="112" width="66" height="288" rx="15"/>
+    <rect x="132" y="112" width="240" height="66" rx="15"/>
+    <rect x="132" y="334" width="240" height="66" rx="15"/>
+    <rect x="184" y="223" width="140" height="66" rx="10"/>
+    <path d="M324 188 v136 l104 -68 z"/>
+  </g>
+</svg>

@@ -1,7 +1,8 @@
-//! Icon next to the clock (Windows): the app keeps running there when its
+//! Icon next to the clock: Windows tray (tray-icon) and the Linux
+//! StatusNotifierItem tray (ksni). The app keeps running there when its
 //! window is closed, like other download managers.
 
-#[cfg_attr(not(windows), allow(dead_code))]
+#[derive(Clone, Copy)]
 pub enum TrayAction {
     Show,
     AddUrl,
@@ -262,6 +263,12 @@ mod imp {
 #[cfg(not(windows))]
 mod imp {
     use super::{DownloadAction, TrayAction};
+
+    /// Per-download mini tray icons (added in 1.0.6): on Windows each
+    /// hidden download window gets its own small tray icon. On Linux
+    /// the main tray icon is the SNI service above; mini icons are not
+    /// implemented yet, so these stay no-ops and the app simply shows
+    /// no per-download icons.
     pub fn show_download(_id: u64, _tip: &str, _progress: Option<f32>, _labels: (&str, &str)) -> bool {
         false
     }
@@ -270,15 +277,146 @@ mod imp {
     pub fn take_download_actions() -> Vec<(u64, DownloadAction)> {
         Vec::new()
     }
-    pub struct Tray;
+    use ksni::blocking::TrayMethods;
+    use ksni::menu::{CheckmarkItem, Disposition, MenuItem, StandardItem};
+    use ksni::{Icon, ToolTip};
+    use std::sync::mpsc::{Receiver, Sender};
+
+    /// Tray pixmaps in the SNI "ARGB32" order (alpha byte first), one file
+    /// per size. Clients pick the size that fits their panel.
+    fn pixmap(size: i32, bytes: &'static [u8]) -> Icon {
+        Icon { width: size, height: size, data: bytes.to_vec() }
+    }
+
+    fn pixmaps() -> Vec<Icon> {
+        vec![
+            pixmap(16, include_bytes!("../ui/tray16.argb")),
+            pixmap(22, include_bytes!("../ui/tray22.argb")),
+            pixmap(24, include_bytes!("../ui/tray24.argb")),
+            pixmap(32, include_bytes!("../ui/tray32.argb")),
+            pixmap(48, include_bytes!("../ui/tray48.argb")),
+            pixmap(64, include_bytes!("../ui/tray64.argb")),
+        ]
+    }
+
+    /// The tray service side. It lives on a thread of its own (ksni's DBus
+    /// service); everything it does is: draw the menu from `limiter_on`, and
+    /// send the user's pick to the UI thread through `tx`.
+    struct KsniTray {
+        tx: Sender<TrayAction>,
+        limiter_on: bool,
+    }
+
+    impl ksni::Tray for KsniTray {
+        fn id(&self) -> String {
+            "ezoo-download".into()
+        }
+
+        fn title(&self) -> String {
+            "Ezoo Download".into()
+        }
+
+        fn icon_name(&self) -> String {
+            // installed by the .deb / the AppImage; the pixmap below is the
+            // fallback for portable copies
+            "ezoo-download-tray".into()
+        }
+
+        fn icon_pixmap(&self) -> Vec<Icon> {
+            pixmaps()
+        }
+
+        fn tool_tip(&self) -> ToolTip {
+            ToolTip {
+                icon_name: "ezoo-download-tray".into(),
+                icon_pixmap: Vec::new(),
+                title: "Ezoo Download".into(),
+                description: "Download manager".into(),
+            }
+        }
+
+        /// A click on the icon itself (left, on panels that send activate).
+        fn activate(&mut self, _x: i32, _y: i32) {
+            let _ = self.tx.send(TrayAction::Show);
+        }
+
+        /// The menu, read again by the panel each time it opens or after
+        /// `Handle::update` is called from the app.
+        fn menu(&self) -> Vec<MenuItem<Self>> {
+            let item = |label: &str, action: TrayAction, tx: Sender<TrayAction>| {
+                MenuItem::Standard(StandardItem {
+                    label: label.to_string(),
+                    enabled: true,
+                    visible: true,
+                    icon_name: String::new(),
+                    icon_data: Vec::new(),
+                    shortcut: Vec::new(),
+                    disposition: Disposition::Normal,
+                    activate: Box::new(move |_| {
+                        let _ = tx.send(action);
+                    }),
+                })
+            };
+            let menu = vec![
+                item("Restore Ezoo Download", TrayAction::Show, self.tx.clone()),
+                MenuItem::Separator,
+                item("Add new download…", TrayAction::AddUrl, self.tx.clone()),
+                item("Resume all downloads", TrayAction::ResumeAll, self.tx.clone()),
+                item("Stop all downloads", TrayAction::StopAll, self.tx.clone()),
+                MenuItem::Separator,
+                MenuItem::Checkmark(CheckmarkItem {
+                    label: "Speed Limiter".into(),
+                    enabled: true,
+                    visible: true,
+                    checked: self.limiter_on,
+                    icon_name: String::new(),
+                    icon_data: Vec::new(),
+                    shortcut: Vec::new(),
+                    disposition: Disposition::Normal,
+                    activate: {
+                        let tx = self.tx.clone();
+                        Box::new(move |tray: &mut Self| {
+                            tray.limiter_on = !tray.limiter_on;
+                            let _ = tx.send(TrayAction::ToggleLimiter);
+                        })
+                    },
+                }),
+                item("Scheduler…", TrayAction::Scheduler, self.tx.clone()),
+                item("Options…", TrayAction::Options, self.tx.clone()),
+                MenuItem::Separator,
+                item("About", TrayAction::About, self.tx.clone()),
+                item("Exit", TrayAction::Exit, self.tx.clone()),
+            ];
+            menu
+        }
+    }
+
+    pub struct Tray {
+        rx: Receiver<TrayAction>,
+        handle: ksni::blocking::Handle<KsniTray>,
+    }
+
     impl Tray {
         pub fn new() -> Option<Tray> {
-            None
+            let (tx, rx) = std::sync::mpsc::channel();
+            // assume_sni_available: the panel can come up after the app at
+            // sign-in (autostart) — keep the service and register when the
+            // StatusNotifierWatcher appears, instead of giving up at once.
+            // No host at all (a plain window manager, a headless box): like
+            // on Windows, the program then simply has no tray icon.
+            let handle = KsniTray { tx, limiter_on: false }.assume_sni_available(true).spawn().ok()?;
+            Some(Tray { rx, handle })
         }
+
+        /// Clicks since the last call.
         pub fn poll(&self) -> Vec<TrayAction> {
-            Vec::new()
+            self.rx.try_iter().collect()
         }
-        pub fn set_limiter(&self, _on: bool) {}
+
+        /// Keep the check mark of "Speed Limiter" in step with the app.
+        pub fn set_limiter(&self, on: bool) {
+            self.handle.update(|t| t.limiter_on = on);
+        }
     }
 }
 
