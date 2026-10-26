@@ -550,12 +550,16 @@ impl Manager {
 
     /// Move / rename a finished file ("Save as" for downloads that are done).
     pub fn move_file(&self, id: DownloadId, new_path: &Path) -> anyhow::Result<()> {
-        let mut inner = self.inner.lock().unwrap();
-        let e = inner.entries.get_mut(&id).ok_or_else(|| anyhow!("download not found"))?;
-        if e.rec.status != Status::Completed {
-            anyhow::bail!("only finished downloads can be moved");
-        }
-        let from = e.rec.target_path();
+        // the list is not held while the file moves: a copy to another disk
+        // can take minutes and everything else must go on meanwhile
+        let from = {
+            let inner = self.inner.lock().unwrap();
+            let e = inner.entries.get(&id).ok_or_else(|| anyhow!("download not found"))?;
+            if e.rec.status != Status::Completed {
+                anyhow::bail!("only finished downloads can be moved");
+            }
+            e.rec.target_path()
+        };
         if let Some(dir) = new_path.parent() {
             std::fs::create_dir_all(dir)?;
         }
@@ -564,12 +568,14 @@ impl Manager {
             std::fs::copy(&from, new_path)?;
             std::fs::remove_file(&from)?;
         }
-        e.rec.save_dir = new_path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-        e.rec.file_name = new_path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| e.rec.file_name.clone());
-        e.rec.category = self.settings.read().unwrap().category_of(&e.rec.file_name, &e.rec.url);
+        let mut inner = self.inner.lock().unwrap();
+        if let Some(e) = inner.entries.get_mut(&id) {
+            e.rec.save_dir = new_path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+            if let Some(n) = new_path.file_name() {
+                e.rec.file_name = n.to_string_lossy().into_owned();
+            }
+            e.rec.category = self.settings.read().unwrap().category_of(&e.rec.file_name, &e.rec.url);
+        }
         inner.dirty = true;
         Ok(())
     }
@@ -826,9 +832,11 @@ impl Manager {
 
     // ---------------------------------------------------------------- queries
 
+    /// Every download, for the list (without the part tables: the list does
+    /// not show them, and copying them several times a second costs).
     pub fn snapshot(&self) -> Vec<DownloadView> {
         let inner = self.inner.lock().unwrap();
-        inner.entries.values().map(make_view).collect()
+        inner.entries.values().map(|e| view_of(e, false)).collect()
     }
 
     /// One download (cheap: used many times a second by progress windows).
@@ -1309,8 +1317,24 @@ impl Manager {
             progress.assembling.store(true, Ordering::Relaxed);
             let (input, tmp) = (part.clone(), part.with_extension("mp3tmp"));
             let t2 = tmp.clone();
-            tokio::task::spawn_blocking(move || mux::to_mp3(&input, &t2, ytdlp::MP3_KBPS)).await??;
+            let title = song_title(&rec.file_name);
+            tokio::task::spawn_blocking(move || mux::to_mp3(&input, &t2, ytdlp::MP3_KBPS, Some(&title))).await??;
             std::fs::rename(&tmp, &part)?;
+        }
+        if rec.kind == DownloadKind::Hls && filename::extension(&rec.file_name) == "ts" && mux::find_ffmpeg().is_some() {
+            // a joined stream: an ordinary MP4 plays everywhere and can be
+            // wound forward; if that fails the .ts file stays as it is
+            progress.assembling.store(true, Ordering::Relaxed);
+            let (input, tmp) = (part.clone(), part.with_extension("mp4tmp"));
+            let t2 = tmp.clone();
+            let made = tokio::task::spawn_blocking(move || mux::ts_to_mp4(&input, &t2)).await.map(|r| r.is_ok()).unwrap_or(false);
+            if made && std::fs::rename(&tmp, &part).is_ok() {
+                let (stem, _) = filename::split_ext(&rec.file_name);
+                let name = filename::unique_name(&rec.save_dir, &format!("{stem}.mp4"));
+                self.update(id, move |x| x.file_name = name);
+            } else {
+                let _ = std::fs::remove_file(&tmp);
+            }
         }
         self.finish_file(id, &rec)
     }
@@ -1722,8 +1746,11 @@ impl Manager {
                 }
             }
             self.track_quota(&mut inner, now, fresh_bytes);
-            let due = now.duration_since(inner.last_save) > Duration::from_secs(3);
-            if due && (inner.dirty || any_running) {
+            // changes to the list: after 3 s; only progress of running
+            // downloads: every 10 s (resume works from there anyway)
+            let since = now.duration_since(inner.last_save);
+            let due = (inner.dirty && since > Duration::from_secs(3)) || (any_running && since > Duration::from_secs(10));
+            if due {
                 inner.dirty = false;
                 inner.last_save = now;
                 Some(collect_records(&inner))
@@ -1890,8 +1917,16 @@ impl Manager {
     }
 }
 
-/// Delete every temporary file of a download. Returns false if something
-/// could not be removed (still open), so the caller can retry.
+/// The name an MP3 file shows: its file name without the quality part.
+fn song_title(file_name: &str) -> String {
+    let (stem, _) = filename::split_ext(file_name);
+    let t = stem.trim();
+    match t.rfind(" [") {
+        Some(i) if t.ends_with(']') => t[..i].trim().to_string(),
+        _ => t.to_string(),
+    }
+}
+
 /// Bytes from the start of a file with no gap.
 fn ready_from_start(segs: &[segments::Segment]) -> u64 {
     let mut ready = 0u64;
@@ -1945,6 +1980,8 @@ fn remove_torrent_data(rec: &DownloadRecord) -> bool {
     ok
 }
 
+/// Delete every temporary file of a download. Returns false if something
+/// could not be removed (still open), so the caller can retry.
 fn remove_temp_files(rec: &DownloadRecord) -> bool {
     let mut ok = true;
     if rec.kind == DownloadKind::Torrent && rec.status != Status::Completed {
@@ -1962,6 +1999,10 @@ fn remove_temp_files(rec: &DownloadRecord) -> bool {
 }
 
 fn make_view(e: &Entry) -> DownloadView {
+    view_of(e, true)
+}
+
+fn view_of(e: &Entry, with_parts: bool) -> DownloadView {
     let bytes = e.progress.bytes.load(Ordering::Relaxed);
     let mut status = e.rec.status;
     if status == Status::Downloading && e.progress.assembling.load(Ordering::Relaxed) {
@@ -1977,7 +2018,7 @@ fn make_view(e: &Entry) -> DownloadView {
         Some(t) if speed > 1.0 => Some((t.saturating_sub(downloaded) as f64 / speed) as u64),
         _ => None,
     };
-    let segments = if status == Status::Completed {
+    let segments = if status == Status::Completed || !with_parts {
         Vec::new()
     } else {
         e.segs.lock().unwrap().iter().map(|s| (s.start, s.pos, s.end, s.active)).collect()
@@ -2106,7 +2147,13 @@ mod name_tests {
 
 #[cfg(test)]
 mod inside_tests {
-    use super::inside;
+    use super::{inside, song_title};
+    #[test]
+    fn mp3_titles() {
+        assert_eq!(song_title("My Song [mp3].mp3"), "My Song");
+        assert_eq!(song_title("Live [2024] mix.mp3"), "Live [2024] mix");
+        assert_eq!(song_title("plain.mp3"), "plain");
+    }
     use std::path::Path;
     #[test]
     fn nothing_outside_the_folder() {

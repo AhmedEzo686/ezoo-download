@@ -169,6 +169,16 @@
   }
   // size of the button: the slider in the add-in's menu (50% - 200%)
   const OLD_SIZES = { small: 0.85, normal: 1, large: 1.25 };
+  // its look: the add-in's menu > "Button style"
+  const STYLES = ["blue", "dark", "light", "green", "icon"];
+  let look = "blue";
+  const applyLook = () => {
+    for (const b of bubbles.values()) {
+      const w = b.root.querySelector(".wrap");
+      if (w) w.className = "wrap " + look;
+      placeOne(b);
+    }
+  };
   const clampZoom = (z) => Math.min(2, Math.max(0.5, Number(z) || 1));
   let zoom = 1;
   const applyZoom = () => {
@@ -192,11 +202,18 @@
     // storage not reachable (add-in reloading): stays on
   }
   try {
-    chrome.storage.local.get({ bubbleScale: null, bubbleSize: "normal" }, (o) => {
+    chrome.storage.local.get({ bubbleScale: null, bubbleSize: "normal", bubbleStyle: "blue" }, (o) => {
       zoom = clampZoom(o && o.bubbleScale != null ? o.bubbleScale : OLD_SIZES[o && o.bubbleSize]);
+      look = STYLES.includes(o && o.bubbleStyle) ? o.bubbleStyle : "blue";
       applyZoom();
+      applyLook();
     });
     chrome.storage.onChanged.addListener((ch) => {
+      if (ch.bubbleStyle) {
+        look = STYLES.includes(ch.bubbleStyle.newValue) ? ch.bubbleStyle.newValue : "blue";
+        applyLook();
+        return;
+      }
       if (ch.bubbleScale) zoom = clampZoom(ch.bubbleScale.newValue);
       else if (ch.bubbleSize) zoom = clampZoom(OLD_SIZES[ch.bubbleSize.newValue]);
       else return;
@@ -246,7 +263,24 @@
     .act:hover { background: #1a56b8; }
     .off { cursor: default; opacity: .7; }
     .off:hover { background: #fff; }
-    .err { color: #d1342f; }`;
+    .err { color: #d1342f; }
+    /* looks */
+    .dark .btn { background: linear-gradient(#3a3f47, #23272e); border-color: #15181c; }
+    .dark .btn:hover, .dark .btn.open { background: linear-gradient(#454b55, #2a2f37); }
+    .dark .ico path { fill: #23272e; }
+    .light .btn { background: linear-gradient(#ffffff, #e9eef5); border-color: #b8c3d1; color: #1f2733; }
+    .light .btn:hover, .light .btn.open { background: linear-gradient(#ffffff, #dfe7f1); }
+    .light .ico circle { fill: #1d63d6; }
+    .light .ico path { fill: #fff; }
+    .light .side { border-left-color: #c9d3df; }
+    .light .spin { border-color: rgba(29,99,214,.3); border-top-color: #1d63d6; }
+    .green .btn { background: linear-gradient(#35b36b, #1f8a4c); border-color: #176b3a; }
+    .green .btn:hover, .green .btn.open { background: linear-gradient(#3cc276, #1d8048); }
+    .green .ico path { fill: #1f8a4c; }
+    .icon .btn { border-radius: 50%; }
+    .icon .part { padding: 5px; }
+    .icon #label, .icon .caret, .icon .side { display: none; }
+    .icon .ico { width: 16px; height: 16px; }`;
 
   function isMain(video) {
     return TOP && video === biggestVideo();
@@ -299,7 +333,7 @@
       el("style", { text: STYLE }),
       el(
         "div",
-        { class: "wrap" },
+        { class: "wrap " + look },
         el(
           "div",
           { class: "btn", id: "main" },
@@ -358,7 +392,7 @@
     return isMain(b.video) ? items : [];
   }
 
-  function lookUp(b) {
+  function lookUp(b, stream) {
     // another video on the page (or nothing found for it yet): look it up now
     b.loading = true;
     b.open = true;
@@ -368,6 +402,7 @@
       // neither is there
       {
         type: "swiftget-resolve-video",
+        resolve: stream || "",
         // in a frame that is only a player: the add-in uses the page around it
         page: ownLink(b.video) || (directSrc(b.video) || !TOP ? "" : location.href),
         src: directSrc(b.video),
@@ -375,9 +410,9 @@
       },
       (res) => {
         b.loading = false;
-        if (chrome.runtime.lastError || !res) return notRunning(b, () => lookUp(b));
+        if (chrome.runtime.lastError || !res) return notRunning(b, () => lookUp(b, stream));
         if (res.error) {
-          if (/not running/i.test(res.error)) return notRunning(b, () => lookUp(b));
+          if (/not running/i.test(res.error)) return notRunning(b, () => lookUp(b, stream));
           return renderOne(b, res.error, true);
         }
         b.own = res.items || [];
@@ -591,6 +626,8 @@
   }
 
   function download(b, m) {
+    // a stream whose qualities are not known yet: ask the app for them
+    if (m.resolve) return lookUp(b, m.resolve);
     const fileName = `${cleanTitle()}.${m.ext || "mp4"}`;
     chrome.runtime.sendMessage(
       { type: "swiftget-download", item: m, title: document.title, fileName, referrer: location.href },
@@ -674,9 +711,25 @@
       seen.add(url);
       out.push({ url, text: (text || "").replace(/\s+/g, " ").trim().slice(0, 200) });
     };
-    for (const a of document.querySelectorAll("a[href]")) if (inSel(a)) add(a.href, a.innerText || a.title);
-    for (const el of document.querySelectorAll("img[src], video[src], audio[src], source[src], embed[src]")) {
-      if (inSel(el)) add(el.src, el.alt || el.title || "");
+    // the page itself and the parts built as web components
+    const roots = [document];
+    try {
+      for (const el of document.querySelectorAll("*")) if (el.shadowRoot) roots.push(el.shadowRoot);
+    } catch (_) {
+      /* a strange page */
+    }
+    for (const root of roots) {
+      for (const a of root.querySelectorAll("a[href]")) if (inSel(a)) add(a.href, a.innerText || a.title);
+      for (const el of root.querySelectorAll("img[src], video[src], audio[src], source[src], embed[src]")) {
+        if (inSel(el)) add(el.src, el.alt || el.title || "");
+      }
+    }
+    // addresses written as plain text (pages that show a list of links, a
+    // note or a paste): what the user sees is what is collected
+    const text = sel ? String(sel) : (document.body && document.body.innerText) || "";
+    for (const m of text.slice(0, 2000000).matchAll(/\bhttps?:\/\/[^\s"'<>()\[\]{}]+/gi)) {
+      add(m[0].replace(/[.,;:!?]+$/, ""), "");
+      if (out.length > 5000) break;
     }
     return { page: location.href, links: out };
   }

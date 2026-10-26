@@ -17,7 +17,59 @@ permissions:
   contents: write
 
 jobs:
+  # Ezoo Download's own small ffmpeg (tools/ffmpeg/build.sh): built from the
+  # official sources, both checked (exact commit / SHA-256), kept in the cache
+  # until the script or a version changes
+  ffmpeg:
+    runs-on: ubuntu-24.04
+    env:
+      FFMPEG_TAG: n8.0.3
+      FFMPEG_COMMIT: 8ae0b34901ba60a802f183ee75a250a9fc3e09a5
+      LAME_URL: https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz
+      LAME_SHA256: ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ffmpeg-out
+          key: ffmpeg-${{ env.FFMPEG_COMMIT }}-lame-${{ env.LAME_SHA256 }}-${{ hashFiles('tools/ffmpeg/build.sh') }}
+      - name: Build ffmpeg
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q mingw-w64 nasm pkg-config make
+          git clone -q --depth 1 --branch "$FFMPEG_TAG" https://github.com/FFmpeg/FFmpeg ffmpeg-src
+          test "$(git -C ffmpeg-src rev-parse HEAD)" = "$FFMPEG_COMMIT" || { echo "::error::ffmpeg source is not the expected commit"; exit 1; }
+          curl -sSfL -o lame.tar.gz "$LAME_URL"
+          echo "$LAME_SHA256  lame.tar.gz" | sha256sum -c -
+          tar xzf lame.tar.gz
+          CC=x86_64-w64-mingw32-gcc tools/ffmpeg/build.sh ffmpeg-src lame-3.100 ffmpeg-out
+          echo "$FFMPEG_TAG ($FFMPEG_COMMIT), LAME 3.100" > ffmpeg-out/ffmpeg-version.txt
+      - name: Test files for our ffmpeg (made with the system's full ffmpeg)
+        run: |
+          sudo apt-get install -y -q ffmpeg >/dev/null
+          mkdir -p ffmpeg-test && cd ffmpeg-test
+          F="ffmpeg -hide_banner -loglevel error -y"
+          V="-f lavfi -i testsrc2=size=320x180:rate=25:duration=4"; A="-f lavfi -i sine=frequency=500:duration=4:sample_rate=48000"
+          $F $V -c:v libx264 -an -movflags +frag_keyframe+empty_moov -f mp4 v.mp4
+          $F $A -c:a aac -vn -movflags +frag_keyframe+empty_moov -f mp4 a.m4a
+          $F $V -c:v libvpx-vp9 -deadline realtime -an -f webm v.webm
+          $F $A -c:a libopus -vn -f webm a.webm
+          $F $V $A -c:v libx264 -c:a aac -f mpegts s.ts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ffmpeg
+          path: ffmpeg-out
+          retention-days: 3
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ffmpeg-test
+          path: ffmpeg-test
+          retention-days: 3
+
   windows:
+    needs: ffmpeg
     runs-on: windows-latest
     steps:
       # actions pinned to exact commits (a moved tag can't change the build)
@@ -26,6 +78,29 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ffmpeg
+          path: ffmpeg-out
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ffmpeg-test
+          path: ffmpeg-test
+      - name: Check our ffmpeg (everything Ezoo Download asks of it)
+        shell: pwsh
+        run: |
+          $ff = "ffmpeg-out/ffmpeg.exe"; $t = "ffmpeg-test"
+          function Run([string[]]$a, $out) {
+            & $ff -hide_banner -loglevel error -y @a $out
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $out) -or (Get-Item $out).Length -lt 1000) { throw "our ffmpeg failed: $($a -join ' ') $out" }
+          }
+          Run @("-i", "$t/v.mp4", "-i", "$t/a.m4a", "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-movflags", "+faststart", "-f", "mp4") "$t/o1.mp4"
+          Run @("-i", "$t/v.webm", "-i", "$t/a.webm", "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", "-f", "webm") "$t/o2.webm"
+          Run @("-i", "$t/a.webm", "-vn", "-map", "0:a:0", "-c:a", "libmp3lame", "-b:a", "192k", "-f", "mp3") "$t/o3.mp3"
+          Run @("-f", "mpegts", "-i", "$t/s.ts", "-map", "0:v?", "-map", "0:a?", "-c", "copy", "-movflags", "+faststart", "-f", "mp4") "$t/o4.mp4"
+          $n = (Get-Item "$t/v.mp4").Length / 2
+          Run @("-protocol_whitelist", "file,subfile", "-i", "subfile,,start,0,end,$n,,:$((Resolve-Path "$t/v.mp4").Path)", "-c", "copy", "-f", "matroska") "$t/o5.mkv"
+          Write-Host "our ffmpeg: $((Get-Item $ff).Length / 1MB) MB, all checks passed"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
@@ -104,25 +179,8 @@ jobs:
             $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
             [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
           }
-          $rel = Invoke-RestMethod "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest" -Headers @{ "User-Agent" = "EzooDownload-ci"; "Authorization" = "Bearer ${{ github.token }}" }
-          $asset = $rel.assets | Where-Object { $_.name -match '^ffmpeg-n[0-9.]+-latest-win64-gpl-[0-9.]+\.zip$' } |
-            Sort-Object { [version](($_.name -replace '^ffmpeg-n([0-9.]+)-.*$', '$1') + '.0') } | Select-Object -Last 1
-          Invoke-WebRequest $asset.browser_download_url -OutFile ffmpeg.zip
-          # only the build its makers published: SHA-256 from their checksum list
-          $sums = $rel.assets | Where-Object { $_.name -eq "checksums.sha256" } | Select-Object -First 1
-          if (-not $sums) { throw "the ffmpeg release has no checksums.sha256" }
-          $sumText = (Invoke-WebRequest $sums.browser_download_url).Content
-          if ($sumText -is [byte[]]) { $sumText = [Text.Encoding]::UTF8.GetString($sumText) }
-          $want = ($sumText -split "`n" | Where-Object { $_ -match "^([0-9a-fA-F]{64})\s+\*?$([regex]::Escape($asset.name))\s*$" } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
-          $got = (Get-FileHash ffmpeg.zip -Algorithm SHA256).Hash
-          if (-not $want -or $got -ne $want.ToUpper()) { throw "ffmpeg.zip does not match its published SHA-256" }
-          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-tmp
-          Copy-Item (Get-ChildItem ffmpeg-tmp -Recurse -Filter ffmpeg.exe | Select-Object -First 1).FullName "$p/tools/"
-          # GPL: the FFmpeg license goes next to the program
-          $lic = Get-ChildItem ffmpeg-tmp -Recurse -Filter "LICENSE*" | Select-Object -First 1
-          if ($lic) { Copy-Item $lic.FullName "$p/tools/ffmpeg-LICENSE.txt" }
-          $u = $asset.updated_at; if ($u -is [datetime]) { $u = $u.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
-          "$($asset.name) $u" | Set-Content "$p/tools/ffmpeg-version.txt" -NoNewline
+          # our own small ffmpeg (job "ffmpeg") and its licences
+          Copy-Item ffmpeg-out/* "$p/tools/"
           # yt-dlp of one release, checked against that release's SHA2-256SUMS
           $yt = Invoke-RestMethod "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest" -Headers @{ "User-Agent" = "EzooDownload-ci"; "Authorization" = "Bearer ${{ github.token }}" }
           $ytExe = $yt.assets | Where-Object { $_.name -eq "yt-dlp.exe" } | Select-Object -First 1

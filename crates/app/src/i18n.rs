@@ -46,6 +46,11 @@ pub fn current() -> &'static str {
     LANGS[CURRENT.load(Ordering::Relaxed) % LANGS.len()].0
 }
 
+/// The windows read from right to left (Arabic).
+pub fn is_rtl() -> bool {
+    current() == "ar"
+}
+
 #[allow(dead_code)]
 pub fn is_arabic() -> bool {
     current() == "ar"
@@ -538,6 +543,32 @@ const AR: &[(&str, &str)] = &[
     ("Stop download", "إيقاف التحميل"),
     ("This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.", "هذا التورنت يعمل بالفعل (قد يكون ما زال يشارك ملفاته). انتظر قليلًا، أو اخرج من Ezoo Download وافتحه مرة أخرى."),
     ("The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.", "يمكن إيقاف إضافة المتصفح مؤقتًا من نافذتها نفسها، دون تعطيلها من صفحة الإضافات في المتصفح."),
+    ("Ezoo Download will restart now to show its windows in the direction of the new language. Downloads continue after it opens.\n\nRestart now?", "سيُعاد تشغيل Ezoo Download الآن لتظهر نوافذه باتجاه اللغة الجديدة. التحميلات تكمل بعد فتحه.\n\nإعادة التشغيل الآن؟"),
+    ("The drive of the download folder is locked by BitLocker. Unlock it in Windows, or choose another folder (right-click the download > Properties).", "القرص الذي فيه مجلد التحميل مقفول بواسطة BitLocker. افتح قفله من ويندوز، أو اختر مجلدًا آخر (زر الفأرة الأيمن على التحميل > الخصائص)."),
+    ("Restore Ezoo Download", "إظهار Ezoo Download"),
+    ("Add new download…", "إضافة تحميل جديد…"),
+    ("Resume all downloads", "استكمال كل التحميلات"),
+    ("Stop all downloads", "إيقاف كل التحميلات"),
+    ("Speed Limiter", "محدد السرعة"),
+    ("Scheduler…", "المجدول…"),
+    ("Options…", "الخيارات…"),
+    ("About", "حول البرنامج"),
+    ("Exit", "خروج"),
+    ("Arabic: every window now reads from right to left (the program restarts once when the direction changes).", "العربية: كل النوافذ أصبحت من اليمين إلى اليسار (يُعاد تشغيل البرنامج مرة واحدة عند تغيير الاتجاه)."),
+    ("The program has its own small FFmpeg inside: video and sound are joined, MP3 files are made and live streams are saved, with nothing extra to download.", "البرنامج فيه نسخة FFmpeg صغيرة خاصة به: دمج الفيديو والصوت، وعمل ملفات MP3، وحفظ البث المباشر، بدون تحميل أي شيء إضافي."),
+    ("Live streams are saved as MP4 files.", "البث المباشر يُحفظ كملف MP4."),
+    ("MP3 files keep the title of the audio file.", "ملفات MP3 تحتفظ بعنوان الملف الصوتي."),
+    ("Much less memory and processor work, also with many downloads at once.", "استهلاك أقل بكثير للذاكرة والمعالج، حتى مع تحميلات كثيرة في نفس الوقت."),
+    ("No more freezes when a file is deleted or moved during its download, and message windows no longer hide behind the main window.", "لا مزيد من التهنيج عند حذف ملف أو نقله أثناء تحميله، ونوافذ الرسائل لم تعد تختفي خلف النافذة الرئيسية."),
+    ("Downloads are taken from the browser before its own Save As window opens.", "التحميلات تُؤخذ من المتصفح قبل أن تظهر نافذة \"حفظ باسم\" الخاصة به."),
+    ("The browser button finds more videos, also streams in several qualities, and on more sites.", "زر المتصفح يجد فيديوهات أكثر، ومنها البث بجودات متعددة، وعلى مواقع أكثر."),
+    ("AV1 qualities are offered when a video has them.", "جودات AV1 تظهر عندما يكون الفيديو متاحًا بها."),
+    ("The window of a download gets smaller when its details are hidden.", "نافذة التحميل تصغر عند إخفاء التفاصيل."),
+    ("The video button in the browser has five looks to choose from (in the add-in's window).", "زر الفيديو في المتصفح له خمسة أشكال تختار منها (من نافذة الإضافة)."),
+    ("A clear message when the download folder is on a drive locked by BitLocker.", "رسالة واضحة عندما يكون مجلد التحميل على قرص مقفول بواسطة BitLocker."),
+    ("Fixed videos that could not be downloaded on some computers because of the Windows temporary folder.", "تم إصلاح فيديوهات كانت لا تُحمَّل على بعض الأجهزة بسبب مجلد الملفات المؤقتة في ويندوز."),
+    ("The Grabber also finds links written as plain text, and the menu next to the clock is in the program's language.", "الجامع يجد أيضًا الروابط المكتوبة كنص عادي، وقائمة الأيقونة بجوار الساعة أصبحت بلغة البرنامج."),
+    ("The speed limit stays smooth with many connections, and the clipboard also catches the file types you added.", "تحديد السرعة يبقى سلسًا مع الاتصالات الكثيرة، ومراقبة الحافظة تلتقط أيضًا أنواع الملفات التي أضفتها."),
 ];
 
 #[cfg(test)]

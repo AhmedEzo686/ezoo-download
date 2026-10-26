@@ -255,7 +255,7 @@ pub(crate) fn wire(ui: &Ui) {
         let ui = ui.clone();
         d.on_browse_bg(move || {
             let Some(d) = ui.settings_dlg.upgrade() else { return };
-            let pick = rfd::FileDialog::new().add_filter(t("Pictures"), &["png", "jpg", "jpeg"]).pick_file();
+            let pick = crate::winfx::file_box().add_filter(t("Pictures"), &["png", "jpg", "jpeg"]).pick_file();
             if let Some(f) = pick {
                 d.set_bg_image(f.display().to_string().into());
                 crate::apply_look(&ui, &look_of(&d));
@@ -277,22 +277,22 @@ pub(crate) fn wire(ui: &Ui) {
             match which.as_str() {
                 "download" => {
                     let start = PathBuf::from(d.get_download_dir().as_str());
-                    if let Some(dir) = rfd::FileDialog::new().set_directory(start).pick_folder() {
+                    if let Some(dir) = crate::winfx::file_box().set_directory(start).pick_folder() {
                         d.set_download_dir(dir.display().to_string().into());
                     }
                 }
                 "temp" => {
-                    if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                    if let Some(dir) = crate::winfx::file_box().pick_folder() {
                         d.set_temp_dir(dir.display().to_string().into());
                     }
                 }
                 "virus" => {
-                    if let Some(f) = rfd::FileDialog::new().add_filter("Program", &["exe", "com", "bat", "cmd"]).pick_file() {
+                    if let Some(f) = crate::winfx::file_box().add_filter("Program", &["exe", "com", "bat", "cmd"]).pick_file() {
                         d.set_virus_program(f.display().to_string().into());
                     }
                 }
                 s if s.starts_with("sound:") => {
-                    let mut dlg = rfd::FileDialog::new().add_filter("Sound", &["wav"]);
+                    let mut dlg = crate::winfx::file_box().add_filter("Sound", &["wav"]);
                     if cfg!(windows) {
                         dlg = dlg.set_directory(r"C:\Windows\Media");
                     }
@@ -453,7 +453,7 @@ pub(crate) fn wire(ui: &Ui) {
                     }
                     apply_theme(&ui2, theme);
                     apply_view_settings(&ui2, &view);
-                    set_language(&ui2, crate::i18n::effective(&view.language));
+                    crate::change_language(&ui2, crate::i18n::effective(&view.language));
                     let _ = d.hide();
                     refresh(&ui2);
                     if port_changed {

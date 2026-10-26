@@ -263,7 +263,7 @@ pub(crate) fn wire(ui: &Ui) {
         let (w, mgr) = (d.as_weak(), ui.ctx.mgr.clone());
         d.on_browse(move || {
             let Some(d) = w.upgrade() else { return };
-            if let Some(dir) = rfd::FileDialog::new().set_directory(mgr.settings().download_dir).pick_folder() {
+            if let Some(dir) = crate::winfx::file_box().set_directory(mgr.settings().download_dir).pick_folder() {
                 d.set_folder(dir.display().to_string().into());
             }
         });

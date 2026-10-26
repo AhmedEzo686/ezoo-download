@@ -346,7 +346,10 @@ pub fn build_options(full: &Value) -> YtInfo {
         if v.hls {
             continue; // video-only stream: we can't add sound to it
         }
-        let key = format!("{q}|{}", container.to_uppercase());
+        // AV1 is its own choice next to H.264: the same picture in a much
+        // smaller file (newer players and computers)
+        let av1 = v.codec_name() == "AV1" && container == "mp4";
+        let key = format!("{q}|{}{}", container.to_uppercase(), if av1 { " AV1" } else { "" });
         if !seen.insert(key.clone()) {
             continue; // already have this resolution in this container (better codec)
         }
@@ -463,8 +466,8 @@ pub fn netscape_cookies(cookies: &[BrowserCookie]) -> String {
 /// The arguments for looking at one page. `--ignore-config`: settings files
 /// of yt-dlp on the computer (which could add `--exec` and the like) are not
 /// read; `--`: the address can never be taken for an option.
-fn resolve_args(page_url: &str, cookie_file: Option<&Path>) -> Vec<std::ffi::OsString> {
-    let mut a: Vec<std::ffi::OsString> = ["--ignore-config", "-J", "--no-playlist", "--no-warnings", "--no-progress", "--socket-timeout", "20"]
+fn resolve_args(page_url: &str, cookie_file: Option<&Path>, referer: Option<&str>) -> Vec<std::ffi::OsString> {
+    let mut a: Vec<std::ffi::OsString> = ["--ignore-config", "-J", "--no-playlist", "--no-warnings", "--no-progress", "--no-cache-dir", "--socket-timeout", "20"]
         .iter()
         .map(Into::into)
         .collect();
@@ -472,13 +475,18 @@ fn resolve_args(page_url: &str, cookie_file: Option<&Path>) -> Vec<std::ffi::OsS
         a.push("--cookies".into());
         a.push(c.into());
     }
+    // the page a stream was found on (many video servers want it)
+    if let Some(r) = referer.filter(|r| r.starts_with("https://") || r.starts_with("http://")) {
+        a.push("--referer".into());
+        a.push(r.into());
+    }
     a.push("--".into());
     a.push(page_url.into());
     a
 }
 
 fn playlist_args(url: &str, cookie_file: Option<&Path>) -> Vec<std::ffi::OsString> {
-    let mut a: Vec<std::ffi::OsString> = ["--ignore-config", "-J", "--flat-playlist", "--yes-playlist", "--no-warnings", "--socket-timeout", "20"]
+    let mut a: Vec<std::ffi::OsString> = ["--ignore-config", "-J", "--flat-playlist", "--yes-playlist", "--no-warnings", "--no-cache-dir", "--socket-timeout", "20"]
         .iter()
         .map(Into::into)
         .collect();
@@ -498,7 +506,8 @@ fn cookie_file(cookies: &[BrowserCookie]) -> anyhow::Result<std::path::PathBuf> 
     let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     for _ in 0..5 {
         let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("ezoo-cookies-{}-{nanos:x}-{n}.txt", std::process::id()));
+        let base = crate::tools::work_dir().unwrap_or_else(std::env::temp_dir);
+        let path = base.join(format!("ezoo-cookies-{}-{nanos:x}-{n}.txt", std::process::id()));
         match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(mut f) => {
                 f.write_all(netscape_cookies(cookies).as_bytes())?;
@@ -511,10 +520,21 @@ fn cookie_file(cookies: &[BrowserCookie]) -> anyhow::Result<std::path::PathBuf> 
     bail!("could not make a cookie file")
 }
 
-fn run_ytdlp(tool: &Path, page_url: &str, cookie_file: Option<&Path>) -> anyhow::Result<Value> {
+/// yt-dlp, started so that its own temporary files go to our folder: on
+/// some computers the Windows temporary folder is on a drive Windows does
+/// not let programs walk through ("WinError 448 ... untrusted mount point").
+fn ytdlp_command(tool: &Path) -> Command {
     let mut cmd = Command::new(tool);
-    cmd.args(resolve_args(page_url, cookie_file));
+    if let Some(dir) = crate::tools::work_dir() {
+        cmd.env("TEMP", &dir).env("TMP", &dir).current_dir(&dir);
+    }
     hide_window(&mut cmd);
+    cmd
+}
+
+fn run_ytdlp(tool: &Path, page_url: &str, cookie_file: Option<&Path>, referer: Option<&str>) -> anyhow::Result<Value> {
+    let mut cmd = ytdlp_command(tool);
+    cmd.args(resolve_args(page_url, cookie_file, referer));
     let out = cmd.output().context("could not start yt-dlp")?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
@@ -625,10 +645,51 @@ fn with_cookies<T>(
 /// age-limited YouTube videos, ...). Cookies the browser gave earlier for
 /// the same site are used when none come with this call.
 pub fn resolve(page_url: &str, cookies: Option<&[BrowserCookie]>) -> anyhow::Result<YtInfo> {
+    resolve_for(page_url, cookies, None)
+}
+
+/// The same, for a stream found on a page (`referer`: that page).
+pub fn resolve_for(page_url: &str, cookies: Option<&[BrowserCookie]>, referer: Option<&str>) -> anyhow::Result<YtInfo> {
+    // the same page again within a few minutes (the add-in asks again when
+    // the tab comes back, a playlist video is picked): no new yt-dlp run,
+    // which takes seconds and much memory
+    if let Some(info) = cached(page_url) {
+        return Ok(info);
+    }
+    let info = resolve_now(page_url, cookies, referer)?;
+    remember(page_url, &info);
+    Ok(info)
+}
+
+/// Results of the last minutes (the links in them stay good for hours).
+static RESULTS: std::sync::Mutex<Vec<(String, std::time::Instant, YtInfo)>> = std::sync::Mutex::new(Vec::new());
+const KEEP_RESULTS: Duration = Duration::from_secs(10 * 60);
+
+fn cached(page_url: &str) -> Option<YtInfo> {
+    let mut list = RESULTS.lock().unwrap_or_else(|p| p.into_inner());
+    list.retain(|(_, at, _)| at.elapsed() < KEEP_RESULTS);
+    list.iter().find(|(u, _, _)| u == page_url).map(|(_, _, i)| i.clone())
+}
+
+fn remember(page_url: &str, info: &YtInfo) {
+    let mut list = RESULTS.lock().unwrap_or_else(|p| p.into_inner());
+    list.retain(|(u, _, _)| u != page_url);
+    list.push((page_url.to_string(), std::time::Instant::now(), info.clone()));
+    if list.len() > 30 {
+        list.remove(0);
+    }
+}
+
+/// Forget a page's result: its links stopped working (fresh ones wanted).
+pub fn forget(page_url: &str) {
+    RESULTS.lock().unwrap_or_else(|p| p.into_inner()).retain(|(u, _, _)| u != page_url);
+}
+
+fn resolve_now(page_url: &str, cookies: Option<&[BrowserCookie]>, referer: Option<&str>) -> anyhow::Result<YtInfo> {
     let tool = find_tool("yt-dlp")
         .ok_or_else(|| anyhow!("yt-dlp.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again"))?;
     let cookies = cookies.filter(|c| !c.is_empty());
-    let json = with_cookies(page_url, cookies, |file| run_ytdlp(&tool, page_url, file))?;
+    let json = with_cookies(page_url, cookies, |file| run_ytdlp(&tool, page_url, file, referer))?;
     let info = build_options(&json);
     if info.options.is_empty() {
         bail!("no downloadable video was found on this page");
@@ -638,10 +699,15 @@ pub fn resolve(page_url: &str, cookies: Option<&[BrowserCookie]>) -> anyhow::Res
 
 /// Fresh links for a choice made earlier (links expire after a few hours).
 pub fn resolve_key(page_url: &str, key: &str) -> anyhow::Result<YtOption> {
-    resolve(page_url, None)?
-        .options
-        .into_iter()
+    forget(page_url);
+    let options = resolve(page_url, None)?.options;
+    // a choice saved by an older version: "2160p|MP4" may now be "2160p|MP4 AV1"
+    let alt = key.strip_suffix(" AV1").map(String::from).unwrap_or_else(|| format!("{key} AV1"));
+    options
+        .iter()
         .find(|o| o.key == key)
+        .or_else(|| options.iter().find(|o| o.key == alt))
+        .cloned()
         .ok_or_else(|| anyhow!("this quality is not offered any more"))
 }
 
@@ -665,9 +731,8 @@ pub struct PlaylistInfo {
 pub fn playlist(url: &str) -> anyhow::Result<PlaylistInfo> {
     let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe was not found next to EzooDownload.exe"))?;
     let json = with_cookies(url, None, |file| {
-        let mut cmd = Command::new(&tool);
+        let mut cmd = ytdlp_command(&tool);
         cmd.args(playlist_args(url, file));
-        hide_window(&mut cmd);
         let out = cmd.output().context("could not start yt-dlp")?;
         if !out.status.success() {
             let err = String::from_utf8_lossy(&out.stderr);
@@ -744,9 +809,8 @@ pub fn pick_option(options: &[YtOption], wanted: &str) -> Option<YtOption> {
 /// Update yt-dlp right now ("Help > Update video downloader"). Blocking.
 pub fn update_now() -> anyhow::Result<String> {
     let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe was not found next to EzooDownload.exe"))?;
-    let mut cmd = Command::new(&tool);
+    let mut cmd = ytdlp_command(&tool);
     cmd.args(["--ignore-config", "-U"]);
-    hide_window(&mut cmd);
     let out = cmd.output().context("could not start yt-dlp")?;
     let text = format!("{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
     let last = text.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("done").trim().to_string();
@@ -775,9 +839,8 @@ pub fn update_if_due(data_dir: &Path) {
     if !tool.is_absolute() {
         return; // installed elsewhere (e.g. winget): leave updates to that
     }
-    let mut cmd = Command::new(&tool);
+    let mut cmd = ytdlp_command(&tool);
     cmd.args(["--ignore-config", "-U"]);
-    hide_window(&mut cmd);
     if cmd.output().map(|o| o.status.success()).unwrap_or(false) {
         let _ = std::fs::write(&stamp, b"ok");
     }
@@ -834,20 +897,27 @@ mod tests {
         assert_eq!(info.title, "Cool video");
         assert_eq!(info.site, "Youtube");
         let keys: Vec<&str> = info.options.iter().map(|o| o.key.as_str()).collect();
-        assert_eq!(keys, ["1080p60|WEBM", "1080p|MP4", "1080p|WEBM", "720p|MP4", "360p|MP4+A", "audio|M4A", "audio|MP3"]);
+        assert_eq!(keys, ["1080p60|WEBM", "1080p|MP4", "1080p|WEBM", "1080p|MP4 AV1", "720p|MP4", "360p|MP4+A", "audio|M4A", "audio|MP3"]);
         let mp4 = &info.options[1];
         assert_eq!(mp4.video_url, "https://gv/137");
         assert_eq!(mp4.audio_url.as_deref(), Some("https://gv/140"));
         assert_eq!(mp4.size, 94000);
         assert_eq!(info.options[0].audio_url.as_deref(), Some("https://gv/251"));
-        assert_eq!(info.options[5].label, "Audio only · M4A 130k");
-        assert_eq!(info.options[6].ext, "mp3");
-        assert_eq!(info.options[6].video_url, info.options[5].video_url);
+        // AV1: its own choice, smaller than the H.264 one
+        let av1 = &info.options[3];
+        assert_eq!(av1.codec, "AV1");
+        assert!(av1.label.ends_with("MP4 AV1"), "{}", av1.label);
+        assert!(av1.size < mp4.size);
+        assert_eq!(info.options[6].label, "Audio only · M4A 130k");
+        assert_eq!(info.options[7].ext, "mp3");
+        assert_eq!(info.options[7].video_url, info.options[6].video_url);
         // the resolution in plain words
         assert_eq!(mp4.label, "1080p Full HD · MP4");
         assert_eq!(mp4.tag, "Full HD");
-        assert_eq!(info.options[3].tag, "HD");
-        assert_eq!(info.options[4].tag, "SD");
+        assert_eq!(info.options[4].tag, "HD");
+        assert_eq!(info.options[5].tag, "SD");
+        // a playlist asking for 1080: the H.264 one (plays everywhere)
+        assert_eq!(pick_option(&info.options, "1080").unwrap().key, "1080p|MP4");
         assert_eq!(pick_option(&info.options, "mp3").unwrap().key, MP3_KEY);
         assert_eq!(pick_option(&info.options, "audio").unwrap().key, "audio|M4A");
     }
@@ -930,10 +1000,13 @@ mod tests {
 
     #[test]
     fn yt_dlp_settings_files_and_options_are_never_used() {
-        let a: Vec<String> = resolve_args("-x --exec calc", Some(Path::new("c.txt"))).iter().map(|x| x.to_string_lossy().into_owned()).collect();
+        let a: Vec<String> = resolve_args("-x --exec calc", Some(Path::new("c.txt")), Some("-o x")).iter().map(|x| x.to_string_lossy().into_owned()).collect();
         assert_eq!(a[0], "--ignore-config");
         // the address comes after "--": yt-dlp can't read it as an option
         assert_eq!(&a[a.len() - 2..], ["--", "-x --exec calc"]);
+        assert!(!a.iter().any(|x| x == "--referer"), "only a web address is a referer");
+        let r: Vec<String> = resolve_args("https://cdn/x.mpd", None, Some("https://site/page")).iter().map(|x| x.to_string_lossy().into_owned()).collect();
+        assert!(r.windows(2).any(|w| w[0] == "--referer" && w[1] == "https://site/page"));
         let p: Vec<String> = playlist_args("-o x", None).iter().map(|x| x.to_string_lossy().into_owned()).collect();
         assert_eq!(p[0], "--ignore-config");
         assert_eq!(&p[p.len() - 2..], ["--", "-o x"]);

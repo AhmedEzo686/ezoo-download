@@ -121,7 +121,7 @@ pub(crate) fn wire(ui: &Ui) {
             let Some(d) = w.upgrade() else { return };
             // on top of this window, which waits for it
             d.set_front(false);
-            if let Some(p) = crate::winfx::on_top_of(rfd::FileDialog::new(), d.window()).add_filter("Torrent", &["torrent"]).pick_file() {
+            if let Some(p) = crate::winfx::on_top_of(crate::winfx::file_box(), d.window()).add_filter("Torrent", &["torrent"]).pick_file() {
                 d.set_source(p.display().to_string().into());
                 d.invoke_load();
             }
@@ -156,7 +156,7 @@ pub(crate) fn wire(ui: &Ui) {
         d.on_browse(move || {
             let Some(d) = w.upgrade() else { return };
             d.set_front(false);
-            if let Some(dir) = crate::winfx::on_top_of(rfd::FileDialog::new(), d.window()).set_directory(d.get_folder().as_str()).pick_folder() {
+            if let Some(dir) = crate::winfx::on_top_of(crate::winfx::file_box(), d.window()).set_directory(d.get_folder().as_str()).pick_folder() {
                 d.set_folder(dir.display().to_string().into());
             }
         });

@@ -841,6 +841,9 @@ msgstr "https://example.com/gallery/"
 msgid "Start exploring"
 msgstr "Durchsuchen starten"
 
+msgid "Some pages make their links only in the browser (with scripts, or as plain text). For them: open the page in the browser, right-click it and choose \"Download all links with Ezoo Download\": every link you see there is collected."
+msgstr "Manche Seiten erzeugen ihre Links nur im Browser (mit Skripten oder als reinen Text). Dafür: Öffnen Sie die Seite im Browser, klicken Sie mit der rechten Maustaste und wählen Sie \"Download all links with Ezoo Download\": jeder sichtbare Link wird gesammelt."
+
 msgid "Get"
 msgstr "Holen"
 

@@ -197,7 +197,10 @@ function wanted(cfg, url, fileName, mime, keys) {
     // no extension (download.php?id=…): go by the type the server sends
     return !!mime && !/^(text\/html|image\/|text\/plain)/i.test(mime);
   }
-  return exts.some((e) => wildcard(e, ext));
+  if (exts.some((e) => wildcard(e, ext))) return true;
+  // an extension not in the list, but the server says it is a file to
+  // download (not a page, picture or text the browser shows)
+  return !!mime && /^(application\/(octet-stream|x-|zip|vnd\.|pdf|java-archive|gzip)|video\/|audio\/)/i.test(mime) && !/^(html?|xhtml|php\d?|aspx?|jsp|json|xml|js|css|txt)$/.test(ext);
 }
 
 // keys held when the user clicked the link (sent by the page)
@@ -272,19 +275,25 @@ function isNewDownload(item) {
   return true;
 }
 
-chrome.downloads.onCreated.addListener(async (item) => {
+/** Should Ezoo Download take this browser download? */
+async function shouldTake(item) {
   const opts = await getOpts();
-  if (!opts.enabled || !opts.intercept) return;
+  if (!opts.enabled || !opts.intercept) return false;
   const url = item.finalUrl || item.url;
-  if (!url || !/^https?:/i.test(url)) return; // blob:, data:, file: stay in the browser
-  if (!isNewDownload(item)) return;
-  if (await takeBypass(url)) return;
-  if (opts.minSizeKB > 0 && item.totalBytes > 0 && item.totalBytes < opts.minSizeKB * 1024) return;
-  if (!(await appAlive())) return; // app not running: let the browser handle it
+  if (!url || !/^https?:/i.test(url)) return false; // blob:, data:, file: stay in the browser
+  if (!isNewDownload(item)) return false;
+  if (await takeBypass(url)) return false;
+  if (opts.minSizeKB > 0 && item.totalBytes > 0 && item.totalBytes < opts.minSizeKB * 1024) return false;
+  if (!(await appAlive())) return false; // app not running: let the browser handle it
   const cfg = await getConfig();
-  if (!wanted(cfg, url, baseName(item.filename), item.mime, currentKeys())) return;
-  if (await appSaysBrowser([item.url, url])) return; // the user chose the browser for it
+  if (!wanted(cfg, url, baseName(item.filename), item.mime, currentKeys())) return false;
+  if (await appSaysBrowser([item.url, url])) return false; // the user chose the browser for it
+  return true;
+}
 
+/** Take it from the browser and give it to the app. */
+async function takeOver(item) {
+  const url = item.finalUrl || item.url;
   try {
     await chrome.downloads.cancel(item.id);
     await chrome.downloads.erase({ id: item.id });
@@ -302,6 +311,47 @@ chrome.downloads.onCreated.addListener(async (item) => {
     await addBypass(url);
     chrome.downloads.download({ url });
   }
+}
+
+// Chrome, Edge, Brave, Opera: decided before the browser asks where to
+// save it, so its own "Save as" window never shows up for files the app
+// takes. Firefox has no such moment: there it is decided when it starts.
+const DECIDE_EARLY = !!(chrome.downloads.onDeterminingFilename && chrome.downloads.onDeterminingFilename.addListener);
+if (DECIDE_EARLY) {
+  chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+    let answered = false;
+    const keep = () => {
+      if (!answered) {
+        answered = true;
+        try {
+          suggest();
+        } catch (_) {
+          /* the download is gone */
+        }
+      }
+    };
+    // never leave the browser waiting long
+    const guard = setTimeout(keep, 4000);
+    shouldTake(item)
+      .then((take) => {
+        clearTimeout(guard);
+        if (take && !answered) {
+          answered = true;
+          return takeOver(item);
+        }
+        keep();
+      })
+      .catch(() => {
+        clearTimeout(guard);
+        keep();
+      });
+    return true; // answered later
+  });
+}
+
+chrome.downloads.onCreated.addListener(async (item) => {
+  if (DECIDE_EARLY) return;
+  if (await shouldTake(item)) await takeOver(item);
 });
 
 // ---------------------------------------------------------------- per-tab state
@@ -361,7 +411,12 @@ async function itemsForTab(tabId) {
   const resolvedFound = items.some((i) => i.yt);
   for (const m of media) {
     // when the app already found the real qualities, raw streams are noise
-    if (resolvedFound && /HLS|video/i.test(m.type)) continue;
+    if (resolvedFound && /HLS|DASH|video/i.test(m.type)) continue;
+    if (m.dash) {
+      // its qualities are read by the app when it is clicked
+      items.push({ label: "Video stream (DASH) · choose a quality", sub: m.url, resolve: m.url, ext: "mp4" });
+      continue;
+    }
     items.push({
       label: `${m.type}${m.size ? " · " + fmtSize(m.size) : ""}`,
       sub: m.url,
@@ -398,6 +453,7 @@ async function clearTab(tabId) {
 
 const MEDIA_TYPE = /^(video|audio)\//i;
 const HLS_TYPE = /mpegurl/i;
+const DASH_TYPE = /dash\+xml/i;
 
 function headerMap(list) {
   const out = {};
@@ -424,8 +480,14 @@ chrome.webRequest.onHeadersReceived.addListener(
     const h = headerMap(d.responseHeaders);
     const type = (h["content-type"] || "").toLowerCase();
     const isHls = HLS_TYPE.test(type) || /\.m3u8(\?|$)/i.test(url);
+    // DASH: a list of the parts of a video in several qualities (.mpd)
+    const isDash = DASH_TYPE.test(type) || /\.mpd(\?|$)/i.test(url);
     const isMedia = MEDIA_TYPE.test(type) && !type.includes("mp2t"); // skip HLS chunks
-    if (!isHls && !isMedia) return;
+    if (!isHls && !isDash && !isMedia) return;
+    if (isDash) {
+      addMedia(d.tabId, { url, type: "DASH stream", size: 0, ext: "mp4", dash: true });
+      return;
+    }
     // byte-range pieces of a bigger stream can't be saved as a file
     if (/[?&](range|bytestart)=/i.test(url)) return;
 
@@ -529,14 +591,14 @@ chrome.storage.onChanged.addListener((ch, area) => {
 // Ask the app (yt-dlp) for the qualities of a video page.
 const resolving = new Map(); // tabId -> page being resolved
 
-async function askApp(page) {
+async function askApp(page, referer) {
   const { port } = await getOpts();
   const r = await fetchWithTimeout(
     apiUrl(port, "/resolve"),
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-SwiftGet": "1" },
-      body: JSON.stringify({ url: page, cookieList: await cookieList(page) }),
+      body: JSON.stringify({ url: page, cookieList: await cookieList(referer || page), referer: referer || null }),
     },
     90000
   );
@@ -610,6 +672,16 @@ async function resolvePage(tabId, page, embedded = false) {
 
 /** The bubble of a video that is not the page's main one was clicked. */
 async function resolveOneVideo(msg, tab) {
+  // a DASH stream of the page: its own qualities
+  if (msg.resolve && /^https?:/i.test(msg.resolve)) {
+    try {
+      const r = await askApp(msg.resolve, tab && tab.url);
+      if (r.resolved && r.resolved.options.length) return { items: optionItems(r.resolved, msg.resolve) };
+      return { error: r.resolveError || "Can't get this video" };
+    } catch (e) {
+      return { error: (await appAlive()) ? String((e && e.message) || e) : "Ezoo Download is not running" };
+    }
+  }
   // a player in a frame (Dailymotion, news sites...): what was found for the
   // whole page (its qualities, its streams) is what this player plays
   if (msg.frame && tab) {

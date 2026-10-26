@@ -12,6 +12,12 @@ const EXTENSIONS: &[&str] = &[
 
 /// Returns the URL when `text` is a single http(s) link to a known file type.
 pub fn downloadable_url(text: &str) -> Option<String> {
+    downloadable_url_with(text, &[])
+}
+
+/// The same, also taking the file types the user added in Options
+/// ("File Types" list of the browser add-in).
+pub fn downloadable_url_with(text: &str, own: &[String]) -> Option<String> {
     let t = text.trim();
     if t.is_empty() || t.len() > 4096 || t.contains(char::is_whitespace) {
         return None;
@@ -26,7 +32,7 @@ pub fn downloadable_url(text: &str) -> Option<String> {
     }
     let path = u.path().to_ascii_lowercase();
     let ext = path.rsplit('.').next()?;
-    if path.contains('.') && EXTENSIONS.contains(&ext) {
+    if path.contains('.') && (EXTENSIONS.contains(&ext) || own.iter().any(|e| e.eq_ignore_ascii_case(ext))) {
         Some(t.to_string())
     } else {
         None
@@ -34,9 +40,13 @@ pub fn downloadable_url(text: &str) -> Option<String> {
 }
 
 /// Polls the clipboard once a second on its own thread.
-pub fn spawn(enabled: impl Fn() -> bool + Send + 'static, on_url: impl Fn(String) + Send + 'static) {
+pub fn spawn(
+    enabled: impl Fn() -> bool + Send + 'static,
+    own_types: impl Fn() -> Vec<String> + Send + 'static,
+    on_url: impl Fn(String) + Send + 'static,
+) {
     std::thread::Builder::new()
-        .name("swiftget-clipboard".into())
+        .name("ezoo-clipboard".into())
         .spawn(move || {
             let Ok(mut clip) = arboard::Clipboard::new() else { return };
             // ignore whatever was already copied before we started
@@ -51,10 +61,25 @@ pub fn spawn(enabled: impl Fn() -> bool + Send + 'static, on_url: impl Fn(String
                 if !enabled() {
                     continue;
                 }
-                if let Some(u) = downloadable_url(&text) {
+                if let Some(u) = downloadable_url_with(&text, &own_types()) {
                     on_url(u);
                 }
             }
         })
         .ok();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn links_in_the_clipboard() {
+        assert_eq!(downloadable_url("https://example.com/file.zip").as_deref(), Some("https://example.com/file.zip"));
+        assert_eq!(downloadable_url("https://example.com/index.html"), None);
+        assert_eq!(downloadable_url("two words"), None);
+        let own = vec!["xyz".to_string()];
+        assert_eq!(downloadable_url_with("https://example.com/a.XYZ", &own).as_deref(), Some("https://example.com/a.XYZ"));
+        assert_eq!(downloadable_url("https://example.com/a.xyz"), None);
+    }
 }

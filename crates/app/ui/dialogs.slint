@@ -3,24 +3,27 @@
 // Find, Duplicate link, Shutdown countdown, Site Grabber / Download all
 // links, Tip of the day and Refresh download address.
 
-import { Button, LineEdit, SpinBox, CheckBox, ComboBox, ListView, TextEdit, ScrollView, AboutSlint, Slider } from "std-widgets.slint";
-import { Cols, PairRow, LinkRow, QueueRow, DownloadRow, Theme, ThemedWindow, TypeIcon, BigTypeIcon, HeaderCell, Cell, Glyph } from "common.slint";
+import { Button, LineEdit, SpinBox, ComboBox, ListView, TextEdit, ScrollView, AboutSlint, Slider } from "std-widgets.slint";
+import { Cols, PairRow, LinkRow, QueueRow, DownloadRow, Theme, ThemedWindow, TypeIcon, BigTypeIcon, HeaderCell, Cell, Glyph, HRow, CheckBox } from "common.slint";
 
 // ------------------------------------------------------------------ small parts
 
 component Label inherits Text {
+    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
     vertical-alignment: center;
     color: Theme.text;
     font-size: 12px * Theme.font-scale;
 }
 
 component Hint inherits Text {
+    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
     color: Theme.muted;
     font-size: 11px * Theme.font-scale;
     wrap: word-wrap;
 }
 
 component Section inherits Text {
+    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
     color: Theme.accent;
     font-size: 12px * Theme.font-scale;
     font-weight: 700;
@@ -41,7 +44,7 @@ component Radio inherits Rectangle {
         }
     }
     Rectangle {
-        x: 0;
+        x: Theme.rtl ? parent.width - 14px : 0;
         y: (parent.height - 14px) / 2;
         width: 14px;
         height: 14px;
@@ -59,7 +62,9 @@ component Radio inherits Rectangle {
         }
     }
     lbl := Text {
-        x: 20px;
+        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+        x: Theme.rtl ? 0px : 20px;
+        width: parent.width - 20px;
         height: parent.height;
         text: root.text;
         vertical-alignment: center;
@@ -83,7 +88,9 @@ component SideTab inherits Rectangle {
         }
     }
     Text {
+        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
         x: 10px;
+        width: parent.width - 20px;
         height: parent.height;
         text: root.text;
         vertical-alignment: center;
@@ -138,7 +145,7 @@ component PairList inherits Rectangle {
         Rectangle {
             height: 22px;
             background: @linear-gradient(180deg, Theme.header-top 0%, Theme.header-bottom 100%);
-            HorizontalLayout {
+            HRow {
                 HeaderCell {
                     text: root.head-a;
                     horizontal-stretch: 1;
@@ -164,8 +171,9 @@ component PairList inherits Rectangle {
                         root.picked(i);
                     }
                 }
-                HorizontalLayout {
-                    padding-left: 6px;
+                HRow {
+                    padding-left: Theme.rtl ? (0px) : (6px);
+                    padding-right: Theme.rtl ? (6px) : (0px);
                     Cell {
                         text: r.a;
                         horizontal-stretch: 1;
@@ -203,6 +211,7 @@ export component ColumnsDialog inherits ThemedWindow {
             text: @tr("Show these columns in the download list:");
         }
         Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: @tr("File Name (always shown)");
             color: Theme.muted;
             font-size: 12px * Theme.font-scale;
@@ -284,7 +293,7 @@ export component ColumnsDialog inherits ThemedWindow {
                 root.cols.parent = self.checked;
             }
         }
-        HorizontalLayout {
+        HRow {
             spacing: 8px;
             padding-top: 8px;
             Button {
@@ -336,50 +345,58 @@ export component CategoryDialog inherits ThemedWindow {
         spacing: 8px;
         GridLayout {
             spacing: 8px;
-            Row {
-                Label {
-                    text: @tr("Category name");
-                }
-                LineEdit {
-                    text <=> root.name;
-                    enabled: !root.builtin;
-                    placeholder-text: @tr("e.g. Courses");
-                }
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 0;
+                text: @tr("Category name");
             }
-            Row {
-                Label {
-                    text: @tr("File types");
-                }
-                LineEdit {
-                    text <=> root.exts;
-                    placeholder-text: @tr("mp4 mkv avi (separated by spaces)");
-                }
+            LineEdit {
+                col: Theme.rtl ? 0 : 1;
+                row: 0;
+                text <=> root.name;
+                enabled: !root.builtin;
+                placeholder-text: @tr("e.g. Courses");
             }
-            Row {
-                Label {
-                    text: @tr("Sites");
-                }
-                LineEdit {
-                    text <=> root.sites;
-                    placeholder-text: @tr("udemy.com *.coursera.org (optional)");
-                }
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 1;
+                text: @tr("File types");
             }
-            Row {
-                Label {
-                    text: @tr("Save files to");
+            LineEdit {
+                col: Theme.rtl ? 0 : 1;
+                row: 1;
+                text <=> root.exts;
+                placeholder-text: @tr("mp4 mkv avi (separated by spaces)");
+            }
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 2;
+                text: @tr("Sites");
+            }
+            LineEdit {
+                col: Theme.rtl ? 0 : 1;
+                row: 2;
+                text <=> root.sites;
+                placeholder-text: @tr("udemy.com *.coursera.org (optional)");
+            }
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 3;
+                text: @tr("Save files to");
+            }
+            HRow {
+                col: Theme.rtl ? 0 : 1;
+                row: 3;
+                spacing: 6px;
+                LineEdit {
+                    text <=> root.folder;
+                    horizontal-stretch: 1;
+                    placeholder-text: @tr("automatic (Downloads\\{})", root.name);
                 }
-                HorizontalLayout {
-                    spacing: 6px;
-                    LineEdit {
-                        text <=> root.folder;
-                        horizontal-stretch: 1;
-                        placeholder-text: @tr("automatic (Downloads\\{})", root.name);
-                    }
-                    Button {
-                        text: "…";
-                        clicked => {
-                            root.browse();
-                        }
+                Button {
+                    text: "…";
+                    clicked => {
+                        root.browse();
                     }
                 }
             }
@@ -387,9 +404,10 @@ export component CategoryDialog inherits ThemedWindow {
         Hint {
             text: @tr("Files with these extensions, or from these sites, are put into this category and saved to its folder.");
         }
-        HorizontalLayout {
+        HRow {
             spacing: 8px;
             Text {
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 text: root.message;
                 color: Theme.err;
                 vertical-alignment: center;
@@ -432,7 +450,7 @@ export component FindDialog inherits ThemedWindow {
     VerticalLayout {
         padding: 14px;
         spacing: 8px;
-        HorizontalLayout {
+        HRow {
             spacing: 8px;
             Label {
                 text: @tr("Find what");
@@ -460,7 +478,7 @@ export component FindDialog inherits ThemedWindow {
             text: @tr("Address, referer and parent web page");
             checked <=> root.in-address;
         }
-        HorizontalLayout {
+        HRow {
             spacing: 14px;
             CheckBox {
                 text: @tr("Match case");
@@ -471,9 +489,10 @@ export component FindDialog inherits ThemedWindow {
                 checked <=> root.whole;
             }
         }
-        HorizontalLayout {
+        HRow {
             spacing: 8px;
             Text {
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 text: root.message;
                 color: Theme.muted;
                 vertical-alignment: center;
@@ -529,7 +548,7 @@ export component PropertiesDialog inherits ThemedWindow {
     VerticalLayout {
         padding: 14px;
         spacing: 10px;
-        HorizontalLayout {
+        HRow {
             spacing: 14px;
             BigTypeIcon {
                 kind: root.kind;
@@ -539,105 +558,123 @@ export component PropertiesDialog inherits ThemedWindow {
                 spacing-horizontal: 12px;
                 spacing-vertical: 4px;
                 horizontal-stretch: 1;
-                Row {
-                    Label {
-                        text: @tr("Type");
-                        color: Theme.muted;
-                    }
-                    Label {
-                        text: root.type-text;
-                    }
+                Label {
+                    col: Theme.rtl ? 1 : 0;
+                    row: 0;
+                    text: @tr("Type");
+                    color: Theme.muted;
                 }
-                Row {
-                    Label {
-                        text: @tr("Status");
-                        color: Theme.muted;
-                    }
-                    Label {
-                        text: root.status;
-                        color: root.done ? Theme.ok : Theme.text;
-                    }
+                Label {
+                    col: Theme.rtl ? 0 : 1;
+                    row: 0;
+                    text: root.type-text;
                 }
-                Row {
-                    Label {
-                        text: @tr("Size");
-                        color: Theme.muted;
-                    }
-                    Label {
-                        text: root.size;
-                    }
+                Label {
+                    col: Theme.rtl ? 1 : 0;
+                    row: 1;
+                    text: @tr("Status");
+                    color: Theme.muted;
                 }
-                Row {
-                    Label {
-                        text: @tr("Date added");
-                        color: Theme.muted;
-                    }
-                    Label {
-                        text: root.added;
-                    }
+                Label {
+                    col: Theme.rtl ? 0 : 1;
+                    row: 1;
+                    text: root.status;
+                    color: root.done ? Theme.ok : Theme.text;
                 }
-                Row {
-                    Label {
-                        text: @tr("Last try date");
-                        color: Theme.muted;
-                    }
-                    Label {
-                        text: root.last-try;
-                    }
+                Label {
+                    col: Theme.rtl ? 1 : 0;
+                    row: 2;
+                    text: @tr("Size");
+                    color: Theme.muted;
+                }
+                Label {
+                    col: Theme.rtl ? 0 : 1;
+                    row: 2;
+                    text: root.size;
+                }
+                Label {
+                    col: Theme.rtl ? 1 : 0;
+                    row: 3;
+                    text: @tr("Date added");
+                    color: Theme.muted;
+                }
+                Label {
+                    col: Theme.rtl ? 0 : 1;
+                    row: 3;
+                    text: root.added;
+                }
+                Label {
+                    col: Theme.rtl ? 1 : 0;
+                    row: 4;
+                    text: @tr("Last try date");
+                    color: Theme.muted;
+                }
+                Label {
+                    col: Theme.rtl ? 0 : 1;
+                    row: 4;
+                    text: root.last-try;
                 }
             }
         }
         GridLayout {
             spacing: 8px;
-            Row {
-                Label {
-                    text: @tr("Save To");
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 0;
+                text: @tr("Save To");
+            }
+            HRow {
+                col: Theme.rtl ? 0 : 1;
+                row: 0;
+                spacing: 6px;
+                LineEdit {
+                    text <=> root.save-to;
+                    horizontal-stretch: 1;
                 }
-                HorizontalLayout {
-                    spacing: 6px;
-                    LineEdit {
-                        text <=> root.save-to;
-                        horizontal-stretch: 1;
+                Button {
+                    text: "…";
+                    clicked => {
+                        root.browse();
                     }
-                    Button {
-                        text: "…";
-                        clicked => {
-                            root.browse();
-                        }
-                    }
                 }
             }
-            Row {
-                Label {
-                    text: @tr("Address");
-                }
-                LineEdit {
-                    text <=> root.url;
-                    enabled: !root.done;
-                }
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 1;
+                text: @tr("Address");
             }
-            Row {
-                Label {
-                    text: @tr("Referer");
-                }
-                LineEdit {
-                    text <=> root.referer;
-                }
+            LineEdit {
+                col: Theme.rtl ? 0 : 1;
+                row: 1;
+                text <=> root.url;
+                enabled: !root.done;
             }
-            Row {
-                Label {
-                    text: @tr("Description");
-                }
-                LineEdit {
-                    text <=> root.description;
-                }
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 2;
+                text: @tr("Referer");
+            }
+            LineEdit {
+                col: Theme.rtl ? 0 : 1;
+                row: 2;
+                text <=> root.referer;
+            }
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 3;
+                text: @tr("Description");
+            }
+            LineEdit {
+                col: Theme.rtl ? 0 : 1;
+                row: 3;
+                text <=> root.description;
             }
         }
         CheckBox {
             text: @tr("Use authorization (server login)");
             checked <=> root.use-login;
         }
-        if root.use-login: HorizontalLayout {
+        if root.use-login: HRow {
             spacing: 8px;
             Label {
                 text: @tr("Login");
@@ -661,6 +698,7 @@ export component PropertiesDialog inherits ThemedWindow {
             border-color: Theme.line;
             background: Theme.panel;
             Text {
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 x: 8px;
                 width: parent.width - 16px;
                 height: parent.height;
@@ -671,9 +709,12 @@ export component PropertiesDialog inherits ThemedWindow {
                 color: root.done ? Theme.ok : Theme.err;
             }
         }
-        HorizontalLayout {
+        GridLayout {
+            // a row that reads from right to left in Arabic (wrapped text needs a grid)
             spacing: 8px;
             Button {
+                col: Theme.rtl ? 3 : 0;
+                row: 0;
                 text: @tr("Open");
                 enabled: root.done;
                 clicked => {
@@ -681,6 +722,9 @@ export component PropertiesDialog inherits ThemedWindow {
                 }
             }
             Text {
+                col: Theme.rtl ? 2 : 1;
+                row: 0;
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 text: root.message;
                 color: Theme.err;
                 vertical-alignment: center;
@@ -688,6 +732,8 @@ export component PropertiesDialog inherits ThemedWindow {
                 wrap: word-wrap;
             }
             Button {
+                col: Theme.rtl ? 1 : 2;
+                row: 0;
                 text: @tr("OK");
                 primary: true;
                 clicked => {
@@ -695,6 +741,8 @@ export component PropertiesDialog inherits ThemedWindow {
                 }
             }
             Button {
+                col: Theme.rtl ? 0 : 3;
+                row: 0;
                 text: @tr("Cancel");
                 clicked => {
                     root.cancel();
@@ -725,6 +773,7 @@ export component DuplicateDialog inherits ThemedWindow {
             text: @tr("This address is already in the download list:");
         }
         Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.file-name + "  (" + root.existing-status + ")";
             font-weight: 600;
             color: Theme.accent;
@@ -758,7 +807,7 @@ export component DuplicateDialog inherits ThemedWindow {
             text: @tr("Remember my choice (Options > Downloads)");
             checked <=> root.remember;
         }
-        HorizontalLayout {
+        HRow {
             alignment: end;
             spacing: 8px;
             Button {
@@ -795,6 +844,7 @@ export component CountdownDialog inherits ThemedWindow {
         padding: 18px;
         spacing: 12px;
         Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: @tr("All downloads are finished.");
             font-size: 14px * Theme.font-scale;
             font-weight: 700;
@@ -809,7 +859,7 @@ export component CountdownDialog inherits ThemedWindow {
             border-radius: 5px;
             background: Theme.bar-bg;
             Rectangle {
-                x: 0;
+                x: Theme.rtl ? parent.width - self.width : 0;
                 height: parent.height;
                 border-radius: 5px;
                 width: parent.width * (root.seconds-total > 0 ? root.seconds-left / root.seconds-total : 0);
@@ -819,7 +869,7 @@ export component CountdownDialog inherits ThemedWindow {
                 }
             }
         }
-        HorizontalLayout {
+        HRow {
             alignment: end;
             spacing: 8px;
             Button {
@@ -889,10 +939,13 @@ export component SchedulerDialog inherits ThemedWindow {
     callback apply();
     callback close-window();
 
-    HorizontalLayout {
+    GridLayout {
+        // a row that reads from right to left in Arabic (wrapped text needs a grid)
         padding: 10px;
         spacing: 10px;
         VerticalLayout {
+            col: Theme.rtl ? 1 : 0;
+            row: 0;
             width: 210px;
             spacing: 6px;
             Rectangle {
@@ -909,8 +962,9 @@ export component SchedulerDialog inherits ThemedWindow {
                                 root.pick-queue(i);
                             }
                         }
-                        HorizontalLayout {
-                            padding-left: 8px;
+                        HRow {
+                            padding-left: Theme.rtl ? (0px) : (8px);
+                            padding-right: Theme.rtl ? (8px) : (0px);
                             spacing: 6px;
                             VerticalLayout {
                                 alignment: center;
@@ -931,7 +985,7 @@ export component SchedulerDialog inherits ThemedWindow {
                     }
                 }
             }
-            HorizontalLayout {
+            HRow {
                 spacing: 6px;
                 Button {
                     text: @tr("New queue");
@@ -950,9 +1004,11 @@ export component SchedulerDialog inherits ThemedWindow {
             }
         }
         VerticalLayout {
+            col: Theme.rtl ? 0 : 1;
+            row: 0;
             horizontal-stretch: 1;
             spacing: 8px;
-            HorizontalLayout {
+            HRow {
                 spacing: 8px;
                 Label {
                     text: @tr("Queue name");
@@ -962,7 +1018,7 @@ export component SchedulerDialog inherits ThemedWindow {
                     horizontal-stretch: 1;
                 }
             }
-            HorizontalLayout {
+            HRow {
                 spacing: 2px;
                 TabBtn {
                     text: @tr("Schedule");
@@ -1002,7 +1058,7 @@ export component SchedulerDialog inherits ThemedWindow {
                         text: @tr("Start the queue automatically");
                         checked <=> root.start-enabled;
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Start time (HH:MM)");
@@ -1017,7 +1073,7 @@ export component SchedulerDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 14px;
                         Radio {
                             text: @tr("Daily");
@@ -1045,7 +1101,7 @@ export component SchedulerDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    if !root.once: HorizontalLayout {
+                    if !root.once: HRow {
                         spacing: 4px;
                         CheckBox {
                             text: @tr("Mon");
@@ -1084,7 +1140,7 @@ export component SchedulerDialog inherits ThemedWindow {
                         height: 1px;
                         background: Theme.grid;
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         CheckBox {
                             text: @tr("Stop the queue at");
@@ -1104,7 +1160,7 @@ export component SchedulerDialog inherits ThemedWindow {
                         height: 1px;
                         background: Theme.grid;
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("When the queue is done");
@@ -1134,7 +1190,7 @@ export component SchedulerDialog inherits ThemedWindow {
                         width-b: 90px;
                         width-c: 110px;
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 6px;
                         Button {
                             text: @tr("Move up");
@@ -1169,7 +1225,7 @@ export component SchedulerDialog inherits ThemedWindow {
                     padding: 12px;
                     spacing: 10px;
                     alignment: start;
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Download");
@@ -1186,7 +1242,7 @@ export component SchedulerDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Number of retries for each file if downloading failed");
@@ -1203,7 +1259,7 @@ export component SchedulerDialog inherits ThemedWindow {
                     Label {
                         text: @tr("Save all files of this queue to");
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 6px;
                         LineEdit {
                             text <=> root.folder;
@@ -1223,9 +1279,13 @@ export component SchedulerDialog inherits ThemedWindow {
                     }
                 }
             }
-            HorizontalLayout {
+            GridLayout {
+                // a row that reads from right to left in Arabic (wrapped text needs a grid)
                 spacing: 8px;
                 Text {
+                    col: Theme.rtl ? 4 : 0;
+                    row: 0;
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.message;
                     color: Theme.err;
                     vertical-alignment: center;
@@ -1233,6 +1293,8 @@ export component SchedulerDialog inherits ThemedWindow {
                     wrap: word-wrap;
                 }
                 Button {
+                    col: Theme.rtl ? 3 : 1;
+                    row: 0;
                     text: @tr("Start now");
                     enabled: !root.running;
                     clicked => {
@@ -1240,6 +1302,8 @@ export component SchedulerDialog inherits ThemedWindow {
                     }
                 }
                 Button {
+                    col: Theme.rtl ? 2 : 2;
+                    row: 0;
                     text: @tr("Stop");
                     enabled: root.running;
                     clicked => {
@@ -1247,6 +1311,8 @@ export component SchedulerDialog inherits ThemedWindow {
                     }
                 }
                 Button {
+                    col: Theme.rtl ? 1 : 3;
+                    row: 0;
                     text: @tr("Apply");
                     primary: true;
                     clicked => {
@@ -1254,6 +1320,8 @@ export component SchedulerDialog inherits ThemedWindow {
                     }
                 }
                 Button {
+                    col: Theme.rtl ? 0 : 4;
+                    row: 0;
                     text: @tr("Close");
                     clicked => {
                         root.close-window();
@@ -1314,7 +1382,7 @@ export component GrabberDialog inherits ThemedWindow {
             VerticalLayout {
                 padding: 10px;
                 spacing: 8px;
-                HorizontalLayout {
+                HRow {
                     spacing: 8px;
                     Label {
                         text: @tr("Start page");
@@ -1338,7 +1406,10 @@ export component GrabberDialog inherits ThemedWindow {
                         }
                     }
                 }
-                HorizontalLayout {
+                Hint {
+                    text: @tr("Some pages make their links only in the browser (with scripts, or as plain text). For them: open the page in the browser, right-click it and choose \"Download all links with Ezoo Download\": every link you see there is collected.");
+                }
+                HRow {
                     spacing: 8px;
                     Label {
                         text: @tr("Get");
@@ -1358,7 +1429,7 @@ export component GrabberDialog inherits ThemedWindow {
                         horizontal-stretch: 1;
                     }
                 }
-                HorizontalLayout {
+                HRow {
                     spacing: 8px;
                     Label {
                         text: @tr("Levels to explore");
@@ -1391,6 +1462,7 @@ export component GrabberDialog inherits ThemedWindow {
                     }
                 }
                 Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.progress-text;
                     font-size: 11px * Theme.font-scale;
                     color: root.exploring ? Theme.accent : Theme.muted;
@@ -1398,7 +1470,7 @@ export component GrabberDialog inherits ThemedWindow {
                 }
             }
         }
-        HorizontalLayout {
+        HRow {
             spacing: 8px;
             Label {
                 text: @tr("Show");
@@ -1442,7 +1514,7 @@ export component GrabberDialog inherits ThemedWindow {
                 Rectangle {
                     height: 22px;
                     background: @linear-gradient(180deg, Theme.header-top 0%, Theme.header-bottom 100%);
-                    HorizontalLayout {
+                    HRow {
                         HeaderCell {
                             text: "";
                             width: 54px;
@@ -1475,8 +1547,9 @@ export component GrabberDialog inherits ThemedWindow {
                                 root.toggle(i);
                             }
                         }
-                        HorizontalLayout {
-                            padding-left: 6px;
+                        HRow {
+                            padding-left: Theme.rtl ? (0px) : (6px);
+                            padding-right: Theme.rtl ? (6px) : (0px);
                             spacing: 4px;
                             Rectangle {
                                 width: 24px;
@@ -1539,7 +1612,7 @@ export component GrabberDialog inherits ThemedWindow {
                 color: Theme.muted;
             }
         }
-        HorizontalLayout {
+        HRow {
             spacing: 8px;
             Label {
                 text: @tr("Save to");
@@ -1563,7 +1636,7 @@ export component GrabberDialog inherits ThemedWindow {
                 current-index <=> root.queue-index;
             }
         }
-        HorizontalLayout {
+        HRow {
             spacing: 8px;
             CheckBox {
                 text: @tr("Use link texts as descriptions");
@@ -1578,7 +1651,7 @@ export component GrabberDialog inherits ThemedWindow {
                 color: root.message != "" ? Theme.err : Theme.muted;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
-                horizontal-alignment: right;
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.left : TextHorizontalAlignment.right;
             }
             Button {
                 text: @tr("Download checked");
@@ -1618,9 +1691,12 @@ export component TipDialog inherits ThemedWindow {
     VerticalLayout {
         padding: 16px;
         spacing: 12px;
-        HorizontalLayout {
+        GridLayout {
+            // a row that reads from right to left in Arabic (wrapped text needs a grid)
             spacing: 14px;
             Rectangle {
+                col: Theme.rtl ? 1 : 0;
+                row: 0;
                 width: 44px;
                 height: 44px;
                 border-radius: 22px;
@@ -1634,15 +1710,19 @@ export component TipDialog inherits ThemedWindow {
                 }
             }
             VerticalLayout {
+                col: Theme.rtl ? 0 : 1;
+                row: 0;
                 spacing: 6px;
                 horizontal-stretch: 1;
                 Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: @tr("Did you know…");
                     font-size: 14px * Theme.font-scale;
                     font-weight: 700;
                     color: Theme.text;
                 }
                 Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.tip;
                     wrap: word-wrap;
                     color: Theme.text;
@@ -1650,13 +1730,14 @@ export component TipDialog inherits ThemedWindow {
                     vertical-stretch: 1;
                 }
                 Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.counter;
                     color: Theme.muted;
                     font-size: 11px * Theme.font-scale;
                 }
             }
         }
-        HorizontalLayout {
+        HRow {
             spacing: 8px;
             CheckBox {
                 text: @tr("Show tips at startup");
@@ -1701,6 +1782,7 @@ export component RefreshDialog inherits ThemedWindow {
         padding: 16px;
         spacing: 10px;
         Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.file-name;
             font-weight: 700;
             color: Theme.accent;
@@ -1710,9 +1792,10 @@ export component RefreshDialog inherits ThemedWindow {
             text: @tr("1. Open the web page where you got this file.\n2. Click the download link there again (or start the video).\n3. Ezoo Download takes the new address and continues from where it stopped.");
             wrap: word-wrap;
         }
-        if root.page != "": HorizontalLayout {
+        if root.page != "": HRow {
             spacing: 8px;
             Text {
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 text: root.page;
                 color: Theme.muted;
                 font-size: 11px * Theme.font-scale;
@@ -1733,7 +1816,7 @@ export component RefreshDialog inherits ThemedWindow {
         Label {
             text: @tr("Or paste the new address here:");
         }
-        HorizontalLayout {
+        HRow {
             spacing: 6px;
             LineEdit {
                 text <=> root.new-url;
@@ -1748,7 +1831,7 @@ export component RefreshDialog inherits ThemedWindow {
                 }
             }
         }
-        HorizontalLayout {
+        HRow {
             alignment: end;
             Button {
                 text: @tr("Stop waiting");
@@ -1762,7 +1845,7 @@ export component RefreshDialog inherits ThemedWindow {
 
 // ------------------------------------------------------------------ Options
 
-component SoundRow inherits HorizontalLayout {
+component SoundRow inherits HRow {
     in property <string> label;
     in-out property <string> path;
     callback browse();
@@ -1905,7 +1988,7 @@ export component SettingsDialog inherits ThemedWindow {
     VerticalLayout {
         padding: 10px;
         spacing: 8px;
-        HorizontalLayout {
+        HRow {
             vertical-stretch: 1;
             spacing: 8px;
             Rectangle {
@@ -1936,7 +2019,7 @@ export component SettingsDialog inherits ThemedWindow {
                     padding: 14px;
                     spacing: 10px;
                     alignment: start;
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Theme");
@@ -1950,7 +2033,7 @@ export component SettingsDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Window opacity");
@@ -1971,7 +2054,7 @@ export component SettingsDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Text size");
@@ -1992,7 +2075,7 @@ export component SettingsDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Font");
@@ -2009,7 +2092,7 @@ export component SettingsDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Background picture");
@@ -2035,7 +2118,7 @@ export component SettingsDialog inherits ThemedWindow {
                             }
                         }
                     }
-                    if root.bg-image != "": HorizontalLayout {
+                    if root.bg-image != "": HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Picture visibility");
@@ -2063,7 +2146,7 @@ export component SettingsDialog inherits ThemedWindow {
                     padding: 14px;
                     spacing: 8px;
                     alignment: start;
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Language");
@@ -2098,7 +2181,7 @@ export component SettingsDialog inherits ThemedWindow {
                         text: @tr("Show \"Tip of the day\" at startup");
                         checked <=> root.show-tips;
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("On double click on a download");
@@ -2122,7 +2205,7 @@ export component SettingsDialog inherits ThemedWindow {
                     Hint {
                         text: @tr("Chrome and Edge: load the \"extension\" folder in chrome://extensions (Developer mode > Load unpacked). Downloads, videos and the right click menu then go to Ezoo Download.");
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Button {
                             text: @tr("Add Ezoo Download to my browser…");
@@ -2134,7 +2217,7 @@ export component SettingsDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Hold this key to let the browser download by itself");
@@ -2148,7 +2231,7 @@ export component SettingsDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Hold this key to force Ezoo Download to take a link");
@@ -2162,7 +2245,7 @@ export component SettingsDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Browser extension port");
@@ -2191,7 +2274,7 @@ export component SettingsDialog inherits ThemedWindow {
                         font-size: 12px * Theme.font-scale;
                         wrap: word-wrap;
                     }
-                    HorizontalLayout {
+                    HRow {
                         alignment: end;
                         Button {
                             text: @tr("Default");
@@ -2223,7 +2306,7 @@ export component SettingsDialog inherits ThemedWindow {
                         text: @tr("Show the \"Download this video\" panel on web players");
                         checked <=> root.panel-enabled;
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Don't show it on these sites");
@@ -2234,7 +2317,7 @@ export component SettingsDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Smallest video (KB)");
@@ -2270,7 +2353,7 @@ export component SettingsDialog inherits ThemedWindow {
                     Label {
                         text: @tr("Main download folder");
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 6px;
                         LineEdit {
                             text <=> root.download-dir;
@@ -2303,7 +2386,7 @@ export component SettingsDialog inherits ThemedWindow {
                     Label {
                         text: @tr("Temporary folder (parts while downloading)");
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 6px;
                         LineEdit {
                             text <=> root.temp-dir;
@@ -2339,7 +2422,7 @@ export component SettingsDialog inherits ThemedWindow {
                         text: @tr("Show the \"Download complete\" window");
                         checked <=> root.complete-dialog;
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Show the download progress window");
@@ -2353,7 +2436,7 @@ export component SettingsDialog inherits ThemedWindow {
                             horizontal-stretch: 1;
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("If a duplicate link is added");
@@ -2379,7 +2462,7 @@ export component SettingsDialog inherits ThemedWindow {
                         text: @tr("Check every finished file for viruses with this program");
                         checked <=> root.virus-scan;
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 6px;
                         LineEdit {
                             text <=> root.virus-program;
@@ -2395,7 +2478,7 @@ export component SettingsDialog inherits ThemedWindow {
                             }
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Command line parameters");
@@ -2428,44 +2511,52 @@ export component SettingsDialog inherits ThemedWindow {
                     spacing: 8px;
                     GridLayout {
                         spacing: 8px;
-                        Row {
-                            Label {
-                                text: @tr("Connection type / speed");
-                            }
-                            ComboBox {
-                                model: [@tr("Low speed (modem, mobile)"), @tr("Medium speed (DSL)"), @tr("High speed (fiber, cable, LAN)")];
-                                current-index <=> root.connection-type;
-                            }
+                        Label {
+                            col: Theme.rtl ? 1 : 0;
+                            row: 0;
+                            text: @tr("Connection type / speed");
                         }
-                        Row {
-                            Label {
-                                text: @tr("Default max. connections number");
-                            }
-                            SpinBox {
-                                minimum: 1;
-                                maximum: 32;
-                                value <=> root.connections;
-                            }
+                        ComboBox {
+                            col: Theme.rtl ? 0 : 1;
+                            row: 0;
+                            model: [@tr("Low speed (modem, mobile)"), @tr("Medium speed (DSL)"), @tr("High speed (fiber, cable, LAN)")];
+                            current-index <=> root.connection-type;
                         }
-                        Row {
-                            Label {
-                                text: @tr("Downloads at the same time (0 = no limit)");
-                            }
-                            SpinBox {
-                                minimum: 0;
-                                maximum: 100;
-                                value <=> root.max-active;
-                            }
+                        Label {
+                            col: Theme.rtl ? 1 : 0;
+                            row: 1;
+                            text: @tr("Default max. connections number");
                         }
-                        Row {
-                            Label {
-                                text: @tr("Retries on error");
-                            }
-                            SpinBox {
-                                minimum: 0;
-                                maximum: 100;
-                                value <=> root.retries;
-                            }
+                        SpinBox {
+                            col: Theme.rtl ? 0 : 1;
+                            row: 1;
+                            minimum: 1;
+                            maximum: 32;
+                            value <=> root.connections;
+                        }
+                        Label {
+                            col: Theme.rtl ? 1 : 0;
+                            row: 2;
+                            text: @tr("Downloads at the same time (0 = no limit)");
+                        }
+                        SpinBox {
+                            col: Theme.rtl ? 0 : 1;
+                            row: 2;
+                            minimum: 0;
+                            maximum: 100;
+                            value <=> root.max-active;
+                        }
+                        Label {
+                            col: Theme.rtl ? 1 : 0;
+                            row: 3;
+                            text: @tr("Retries on error");
+                        }
+                        SpinBox {
+                            col: Theme.rtl ? 0 : 1;
+                            row: 3;
+                            minimum: 0;
+                            maximum: 100;
+                            value <=> root.retries;
                         }
                     }
                     Section {
@@ -2479,7 +2570,7 @@ export component SettingsDialog inherits ThemedWindow {
                         head-b: @tr("Connections");
                         width-b: 110px;
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 6px;
                         LineEdit {
                             text <=> root.server-host;
@@ -2509,7 +2600,7 @@ export component SettingsDialog inherits ThemedWindow {
                     Section {
                         text: @tr("Download limits");
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 6px;
                         CheckBox {
                             text: @tr("Download no more than");
@@ -2572,58 +2663,66 @@ export component SettingsDialog inherits ThemedWindow {
                     }
                     GridLayout {
                         spacing: 8px;
-                        Row {
-                            Label {
-                                text: @tr("Proxy address");
-                            }
-                            HorizontalLayout {
-                                spacing: 6px;
-                                LineEdit {
-                                    text <=> root.proxy-host;
-                                    enabled: root.proxy-mode == 2;
-                                    placeholder-text: @tr("proxy.example.com");
-                                    horizontal-stretch: 1;
-                                }
-                                Label {
-                                    text: @tr("Port");
-                                }
-                                SpinBox {
-                                    width: 100px;
-                                    minimum: 1;
-                                    maximum: 65535;
-                                    value <=> root.proxy-port;
-                                    enabled: root.proxy-mode == 2;
-                                }
-                            }
+                        Label {
+                            col: Theme.rtl ? 1 : 0;
+                            row: 0;
+                            text: @tr("Proxy address");
                         }
-                        Row {
-                            Label {
-                                text: @tr("User name");
-                            }
+                        HRow {
+                            col: Theme.rtl ? 0 : 1;
+                            row: 0;
+                            spacing: 6px;
                             LineEdit {
-                                text <=> root.proxy-user;
+                                text <=> root.proxy-host;
+                                enabled: root.proxy-mode == 2;
+                                placeholder-text: @tr("proxy.example.com");
+                                horizontal-stretch: 1;
+                            }
+                            Label {
+                                text: @tr("Port");
+                            }
+                            SpinBox {
+                                width: 100px;
+                                minimum: 1;
+                                maximum: 65535;
+                                value <=> root.proxy-port;
                                 enabled: root.proxy-mode == 2;
                             }
                         }
-                        Row {
-                            Label {
-                                text: @tr("Password");
-                            }
-                            LineEdit {
-                                text <=> root.proxy-password;
-                                input-type: InputType.password;
-                                enabled: root.proxy-mode == 2;
-                            }
+                        Label {
+                            col: Theme.rtl ? 1 : 0;
+                            row: 1;
+                            text: @tr("User name");
                         }
-                        Row {
-                            Label {
-                                text: @tr("Don't use the proxy for");
-                            }
-                            LineEdit {
-                                text <=> root.proxy-bypass;
-                                enabled: root.proxy-mode == 2;
-                                placeholder-text: @tr("localhost 127.0.0.1 *.local");
-                            }
+                        LineEdit {
+                            col: Theme.rtl ? 0 : 1;
+                            row: 1;
+                            text <=> root.proxy-user;
+                            enabled: root.proxy-mode == 2;
+                        }
+                        Label {
+                            col: Theme.rtl ? 1 : 0;
+                            row: 2;
+                            text: @tr("Password");
+                        }
+                        LineEdit {
+                            col: Theme.rtl ? 0 : 1;
+                            row: 2;
+                            text <=> root.proxy-password;
+                            input-type: InputType.password;
+                            enabled: root.proxy-mode == 2;
+                        }
+                        Label {
+                            col: Theme.rtl ? 1 : 0;
+                            row: 3;
+                            text: @tr("Don't use the proxy for");
+                        }
+                        LineEdit {
+                            col: Theme.rtl ? 0 : 1;
+                            row: 3;
+                            text <=> root.proxy-bypass;
+                            enabled: root.proxy-mode == 2;
+                            placeholder-text: @tr("localhost 127.0.0.1 *.local");
                         }
                     }
                     Hint {
@@ -2651,34 +2750,40 @@ export component SettingsDialog inherits ThemedWindow {
                     }
                     GridLayout {
                         spacing: 8px;
-                        Row {
-                            Label {
-                                text: @tr("Site / path");
-                            }
-                            LineEdit {
-                                text <=> root.login-site;
-                                placeholder-text: @tr("example.com/members");
-                            }
+                        Label {
+                            col: Theme.rtl ? 1 : 0;
+                            row: 0;
+                            text: @tr("Site / path");
                         }
-                        Row {
-                            Label {
-                                text: @tr("User name");
-                            }
-                            LineEdit {
-                                text <=> root.login-user;
-                            }
+                        LineEdit {
+                            col: Theme.rtl ? 0 : 1;
+                            row: 0;
+                            text <=> root.login-site;
+                            placeholder-text: @tr("example.com/members");
                         }
-                        Row {
-                            Label {
-                                text: @tr("Password");
-                            }
-                            LineEdit {
-                                text <=> root.login-password;
-                                input-type: InputType.password;
-                            }
+                        Label {
+                            col: Theme.rtl ? 1 : 0;
+                            row: 1;
+                            text: @tr("User name");
+                        }
+                        LineEdit {
+                            col: Theme.rtl ? 0 : 1;
+                            row: 1;
+                            text <=> root.login-user;
+                        }
+                        Label {
+                            col: Theme.rtl ? 1 : 0;
+                            row: 2;
+                            text: @tr("Password");
+                        }
+                        LineEdit {
+                            col: Theme.rtl ? 0 : 1;
+                            row: 2;
+                            text <=> root.login-password;
+                            input-type: InputType.password;
                         }
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 6px;
                         alignment: end;
                         Button {
@@ -2763,7 +2868,7 @@ export component SettingsDialog inherits ThemedWindow {
                         text: @tr("Turn the speed limiter on");
                         checked <=> root.limiter-on;
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Maximum download speed (KB/s)");
@@ -2789,7 +2894,7 @@ export component SettingsDialog inherits ThemedWindow {
                     padding: 14px;
                     spacing: 10px;
                     alignment: start;
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Keep sharing a finished torrent for (minutes)");
@@ -2806,7 +2911,7 @@ export component SettingsDialog inherits ThemedWindow {
                     Hint {
                         text: @tr("0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent.");
                     }
-                    HorizontalLayout {
+                    HRow {
                         spacing: 8px;
                         Label {
                             text: @tr("Maximum upload speed (KB/s, 0 = no limit)");
@@ -2826,10 +2931,11 @@ export component SettingsDialog inherits ThemedWindow {
                 }
             }
         }
-        HorizontalLayout {
+        HRow {
             alignment: end;
             spacing: 8px;
             Text {
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 text: root.message;
                 color: Theme.err;
                 vertical-alignment: center;
@@ -2887,7 +2993,7 @@ export component TorrentDialog inherits ThemedWindow {
         Label {
             text: @tr("A magnet link, or a .torrent file:");
         }
-        HorizontalLayout {
+        HRow {
             spacing: 8px;
             LineEdit {
                 text <=> root.source;
@@ -2907,7 +3013,7 @@ export component TorrentDialog inherits ThemedWindow {
                 }
             }
         }
-        HorizontalLayout {
+        HRow {
             spacing: 10px;
             if root.name != "": TypeIcon {
                 kind: "torrent";
@@ -2917,6 +3023,7 @@ export component TorrentDialog inherits ThemedWindow {
             VerticalLayout {
                 alignment: center;
                 Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.name;
                     font-size: 14px * Theme.font-scale;
                     font-weight: 700;
@@ -2924,6 +3031,7 @@ export component TorrentDialog inherits ThemedWindow {
                     overflow: elide;
                 }
                 Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.info;
                     font-size: 11px * Theme.font-scale;
                     color: Theme.muted;
@@ -2931,7 +3039,7 @@ export component TorrentDialog inherits ThemedWindow {
                 }
             }
         }
-        HorizontalLayout {
+        HRow {
             spacing: 6px;
             visible: root.files.length > 1;
             Rectangle {
@@ -2960,7 +3068,7 @@ export component TorrentDialog inherits ThemedWindow {
                 Rectangle {
                     height: 22px;
                     background: @linear-gradient(180deg, Theme.header-top 0%, Theme.header-bottom 100%);
-                    HorizontalLayout {
+                    HRow {
                         HeaderCell {
                             text: "";
                             width: 34px;
@@ -2985,8 +3093,9 @@ export component TorrentDialog inherits ThemedWindow {
                                 root.toggle(i);
                             }
                         }
-                        HorizontalLayout {
-                            padding-left: 8px;
+                        HRow {
+                            padding-left: Theme.rtl ? (0px) : (8px);
+                            padding-right: Theme.rtl ? (8px) : (0px);
                             spacing: 4px;
                             Rectangle {
                                 width: 26px;
@@ -3008,11 +3117,14 @@ export component TorrentDialog inherits ThemedWindow {
                                     }
                                 }
                             }
-                            TypeIcon {
-                                kind: f.kind;
+                            Rectangle {
                                 width: 16px;
-                                height: 16px;
-                                y: 4px;
+                                TypeIcon {
+                                    kind: f.kind;
+                                    width: 16px;
+                                    height: 16px;
+                                    y: 4px;
+                                }
                             }
                             Cell {
                                 text: f.name;
@@ -3022,7 +3134,7 @@ export component TorrentDialog inherits ThemedWindow {
                                 text: f.ext;
                                 width: 86px;
                                 color: Theme.muted;
-                                horizontal-alignment: right;
+                                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.left : TextHorizontalAlignment.right;
                             }
                         }
                     }
@@ -3042,26 +3154,28 @@ export component TorrentDialog inherits ThemedWindow {
         }
         GridLayout {
             spacing: 8px;
-            Row {
-                Label {
-                    text: @tr("Save to");
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 0;
+                text: @tr("Save to");
+            }
+            HRow {
+                col: Theme.rtl ? 0 : 1;
+                row: 0;
+                spacing: 6px;
+                LineEdit {
+                    text <=> root.folder;
+                    horizontal-stretch: 1;
                 }
-                HorizontalLayout {
-                    spacing: 6px;
-                    LineEdit {
-                        text <=> root.folder;
-                        horizontal-stretch: 1;
-                    }
-                    Button {
-                        text: "…";
-                        clicked => {
-                            root.browse();
-                        }
+                Button {
+                    text: "…";
+                    clicked => {
+                        root.browse();
                     }
                 }
             }
         }
-        HorizontalLayout {
+        HRow {
             spacing: 10px;
             CheckBox {
                 text: @tr("Start now");
@@ -3071,7 +3185,7 @@ export component TorrentDialog inherits ThemedWindow {
                 text: root.message != "" ? root.message : root.checked-text;
                 color: root.message != "" ? Theme.err : Theme.muted;
                 vertical-alignment: center;
-                horizontal-alignment: right;
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.left : TextHorizontalAlignment.right;
                 horizontal-stretch: 1;
                 overflow: elide;
             }
@@ -3127,7 +3241,7 @@ export component PlaylistDialog inherits ThemedWindow {
         Label {
             text: @tr("Paste the address of a playlist:");
         }
-        HorizontalLayout {
+        HRow {
             spacing: 8px;
             LineEdit {
                 text <=> root.url;
@@ -3147,19 +3261,21 @@ export component PlaylistDialog inherits ThemedWindow {
             }
         }
         Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.status;
             font-size: 11px * Theme.font-scale;
             color: Theme.muted;
             overflow: elide;
         }
         if root.playlist-title != "": Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.playlist-title;
             font-size: 14px * Theme.font-scale;
             font-weight: 700;
             color: Theme.text;
             overflow: elide;
         }
-        HorizontalLayout {
+        HRow {
             spacing: 6px;
             Rectangle {
                 horizontal-stretch: 1;
@@ -3187,7 +3303,7 @@ export component PlaylistDialog inherits ThemedWindow {
                 Rectangle {
                     height: 22px;
                     background: @linear-gradient(180deg, Theme.header-top 0%, Theme.header-bottom 100%);
-                    HorizontalLayout {
+                    HRow {
                         HeaderCell {
                             text: "";
                             width: 34px;
@@ -3216,8 +3332,9 @@ export component PlaylistDialog inherits ThemedWindow {
                                 root.toggle(i);
                             }
                         }
-                        HorizontalLayout {
-                            padding-left: 8px;
+                        HRow {
+                            padding-left: Theme.rtl ? (0px) : (8px);
+                            padding-right: Theme.rtl ? (8px) : (0px);
                             spacing: 4px;
                             Rectangle {
                                 width: 26px;
@@ -3252,7 +3369,7 @@ export component PlaylistDialog inherits ThemedWindow {
                                 text: e.ext;
                                 width: 76px;
                                 color: Theme.muted;
-                                horizontal-alignment: right;
+                                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.left : TextHorizontalAlignment.right;
                             }
                         }
                     }
@@ -3268,51 +3385,55 @@ export component PlaylistDialog inherits ThemedWindow {
         }
         GridLayout {
             spacing: 8px;
-            Row {
-                Label {
-                    text: @tr("Quality");
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 0;
+                text: @tr("Quality");
+            }
+            HRow {
+                col: Theme.rtl ? 0 : 1;
+                row: 0;
+                spacing: 8px;
+                ComboBox {
+                    width: 240px;
+                    model: [@tr("Best quality (MP4)"), @tr("2160p 4K"), @tr("1440p 2K"), @tr("1080p Full HD"), @tr("720p HD"), @tr("480p SD"), @tr("360p SD"), @tr("Audio only (M4A)"), @tr("Audio MP3")];
+                    current-index <=> root.quality;
                 }
-                HorizontalLayout {
-                    spacing: 8px;
-                    ComboBox {
-                        width: 240px;
-                        model: [@tr("Best quality (MP4)"), @tr("2160p 4K"), @tr("1440p 2K"), @tr("1080p Full HD"), @tr("720p HD"), @tr("480p SD"), @tr("360p SD"), @tr("Audio only (M4A)"), @tr("Audio MP3")];
-                        current-index <=> root.quality;
-                    }
-                    Label {
-                        text: @tr("Files at the same time");
-                    }
-                    SpinBox {
-                        width: 90px;
-                        minimum: 1;
-                        maximum: 8;
-                        value <=> root.parallel;
-                    }
-                    Rectangle {
-                        horizontal-stretch: 1;
-                    }
+                Label {
+                    text: @tr("Files at the same time");
+                }
+                SpinBox {
+                    width: 90px;
+                    minimum: 1;
+                    maximum: 8;
+                    value <=> root.parallel;
+                }
+                Rectangle {
+                    horizontal-stretch: 1;
                 }
             }
-            Row {
-                Label {
-                    text: @tr("Save to");
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 1;
+                text: @tr("Save to");
+            }
+            HRow {
+                col: Theme.rtl ? 0 : 1;
+                row: 1;
+                spacing: 6px;
+                LineEdit {
+                    text <=> root.folder;
+                    horizontal-stretch: 1;
                 }
-                HorizontalLayout {
-                    spacing: 6px;
-                    LineEdit {
-                        text <=> root.folder;
-                        horizontal-stretch: 1;
-                    }
-                    Button {
-                        text: "…";
-                        clicked => {
-                            root.browse();
-                        }
+                Button {
+                    text: "…";
+                    clicked => {
+                        root.browse();
                     }
                 }
             }
         }
-        HorizontalLayout {
+        HRow {
             spacing: 10px;
             CheckBox {
                 text: @tr("Number the files");
@@ -3326,7 +3447,7 @@ export component PlaylistDialog inherits ThemedWindow {
                 text: root.message != "" ? root.message : root.checked-text;
                 color: root.message != "" ? Theme.err : Theme.muted;
                 vertical-alignment: center;
-                horizontal-alignment: right;
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.left : TextHorizontalAlignment.right;
                 horizontal-stretch: 1;
             }
             Button {
@@ -3376,7 +3497,7 @@ component BrowserCard inherits Rectangle {
         padding: 12px;
         spacing: 8px;
         alignment: center;
-        HorizontalLayout {
+        HRow {
             alignment: center;
             Rectangle {
                 width: 52px;
@@ -3448,14 +3569,18 @@ export component BrowserDialog inherits ThemedWindow {
         padding: 16px;
         spacing: 12px;
         Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: @tr("Click your browser:");
             font-size: 14px * Theme.font-scale;
             font-weight: 700;
             color: Theme.text;
         }
-        HorizontalLayout {
+        GridLayout {
+            // a row that reads from right to left in Arabic (wrapped text needs a grid)
             spacing: 12px;
             for b[i] in root.browsers: BrowserCard {
+                col: Theme.rtl ? root.browsers.length - 1 - i : i;
+                row: 0;
                 horizontal-stretch: 1;
                 data: b;
                 add => {
@@ -3475,6 +3600,7 @@ export component BrowserDialog inherits ThemedWindow {
                     text: @tr("Almost done:");
                 }
                 Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.steps;
                     wrap: word-wrap;
                     font-size: 12px * Theme.font-scale;
@@ -3482,9 +3608,10 @@ export component BrowserDialog inherits ThemedWindow {
                 }
             }
         }
-        HorizontalLayout {
+        HRow {
             spacing: 8px;
             Text {
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 text: root.folder;
                 font-size: 11px * Theme.font-scale;
                 color: Theme.muted;
@@ -3529,7 +3656,7 @@ export component AboutDialog inherits ThemedWindow {
     VerticalLayout {
         padding: 22px;
         spacing: 10px;
-        HorizontalLayout {
+        HRow {
             alignment: center;
             Image {
                 source: @image-url("icon.png");
@@ -3555,7 +3682,7 @@ export component AboutDialog inherits ThemedWindow {
             font-size: 13px * Theme.font-scale;
             color: Theme.text;
         }
-        HorizontalLayout {
+        HRow {
             alignment: center;
             spacing: 10px;
             Button {
@@ -3578,7 +3705,7 @@ export component AboutDialog inherits ThemedWindow {
             color: Theme.muted;
             wrap: word-wrap;
         }
-        HorizontalLayout {
+        HRow {
             alignment: center;
             Button {
                 text: @tr("Support with PayPal");
@@ -3594,7 +3721,7 @@ export component AboutDialog inherits ThemedWindow {
         AboutSlint {
             preferred-height: 90px;
         }
-        HorizontalLayout {
+        HRow {
             alignment: end;
             Button {
                 text: @tr("Close");
@@ -3661,24 +3788,24 @@ export component WhatsNewDialog inherits ThemedWindow {
                     padding: 12px;
                     spacing: 8px;
                     alignment: start;
-                    for line in root.items: HorizontalLayout {
+                    for line in root.items: GridLayout {
+                        // the dot on the side where the reading starts
                         spacing: 8px;
-                        if !root.rtl: Text {
+                        Text {
+                            col: root.rtl ? 1 : 0;
+                            row: 0;
                             text: "•";
                             color: Theme.accent;
                             font-weight: 700;
                         }
                         Text {
+                            col: root.rtl ? 0 : 1;
+                            row: 0;
                             text: line;
                             color: Theme.text;
                             wrap: word-wrap;
                             horizontal-alignment: root.side;
                             horizontal-stretch: 1;
-                        }
-                        if root.rtl: Text {
-                            text: "•";
-                            color: Theme.accent;
-                            font-weight: 700;
                         }
                     }
                 }
@@ -3699,8 +3826,9 @@ export component WhatsNewDialog inherits ThemedWindow {
                     wrap: word-wrap;
                     horizontal-alignment: root.side;
                 }
-                HorizontalLayout {
-                    alignment: root.rtl ? end : start;
+                // an HRow already starts on the right in Arabic
+                HRow {
+                    alignment: start;
                     Button {
                         text: @tr("Support with PayPal");
                         primary: true;
@@ -3711,8 +3839,8 @@ export component WhatsNewDialog inherits ThemedWindow {
                 }
             }
         }
-        HorizontalLayout {
-            alignment: root.rtl ? start : end;
+        HRow {
+            alignment: end;
             Button {
                 text: @tr("OK");
                 clicked => {
@@ -3742,9 +3870,12 @@ export component UpdateDialog inherits ThemedWindow {
     VerticalLayout {
         padding: 18px;
         spacing: 12px;
-        HorizontalLayout {
+        GridLayout {
+            // a row that reads from right to left in Arabic (wrapped text needs a grid)
             spacing: 14px;
             Rectangle {
+                col: Theme.rtl ? 1 : 0;
+                row: 0;
                 width: 44px;
                 height: 44px;
                 border-radius: 22px;
@@ -3757,9 +3888,12 @@ export component UpdateDialog inherits ThemedWindow {
                 }
             }
             VerticalLayout {
+                col: Theme.rtl ? 0 : 1;
+                row: 0;
                 alignment: center;
                 spacing: 4px;
                 Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.heading;
                     font-size: 14px * Theme.font-scale;
                     font-weight: 700;
@@ -3767,6 +3901,7 @@ export component UpdateDialog inherits ThemedWindow {
                     wrap: word-wrap;
                 }
                 Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.detail;
                     color: Theme.muted;
                     wrap: word-wrap;
@@ -3780,7 +3915,7 @@ export component UpdateDialog inherits ThemedWindow {
             clip: true;
             // known size: how far it is; otherwise a moving piece
             if root.state == 2 && root.progress >= 0: Rectangle {
-                x: 0;
+                x: Theme.rtl ? parent.width - self.width : 0;
                 width: parent.width * clamp(root.progress, 0, 1);
                 height: parent.height;
                 border-radius: 5px;
@@ -3795,7 +3930,7 @@ export component UpdateDialog inherits ThemedWindow {
                 x: mod(animation-tick() / 1ms, 1600) / 1600 * (parent.width * 1.3) - parent.width * 0.3;
             }
         }
-        HorizontalLayout {
+        HRow {
             alignment: end;
             Button {
                 text: root.state == 2 || root.state == 3 ? @tr("Hide") : @tr("Close");

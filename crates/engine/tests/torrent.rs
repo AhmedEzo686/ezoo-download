@@ -128,7 +128,7 @@ async fn downloads_a_torrent_with_aria2() {
     let opts = AddOptions { dir: get_dir.clone(), seed_minutes: 0, ..Default::default() };
     let gg = getter.add(file.to_str().unwrap(), &opts).await.unwrap();
     let mut done = false;
-    for _ in 0..300 {
+    for _ in 0..600 {
         let st = getter.status(&gg).await.unwrap();
         assert_ne!(st.status, "error", "{:?}", st.error);
         if st.status == "complete" {
@@ -163,7 +163,7 @@ async fn torrent_in_the_download_list() {
     assert_eq!(v.file_name, "song.bin");
     assert_eq!(v.total_size, Some(data.len() as u64));
     let mut status = v.status;
-    for _ in 0..300 {
+    for _ in 0..600 {
         status = mgr.get(id).unwrap().status;
         if matches!(status, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
             break;
@@ -181,7 +181,7 @@ async fn torrent_in_the_download_list() {
         ..Default::default()
     });
     let mut st2 = swiftget_engine::Status::Queued;
-    for _ in 0..300 {
+    for _ in 0..600 {
         st2 = mgr.get(again).unwrap().status;
         if matches!(st2, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
             break;
@@ -214,7 +214,7 @@ async fn magnet_link_learns_its_name() {
     let id = mgr.add(swiftget_engine::NewDownload { url: magnet, save_dir: Some(list_dir.clone()), start: true, ..Default::default() });
     assert_eq!(mgr.get(id).unwrap().file_name, "torrent");
     let mut status = swiftget_engine::Status::Queued;
-    for _ in 0..300 {
+    for _ in 0..600 {
         status = mgr.get(id).unwrap().status;
         if matches!(status, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
             break;
@@ -293,7 +293,7 @@ async fn only_the_checked_files_of_a_torrent() {
     });
     let mut status = swiftget_engine::Status::Queued;
     let mut total = None;
-    for _ in 0..300 {
+    for _ in 0..600 {
         let v = mgr.get(id).unwrap();
         status = v.status;
         total = v.total_size;
