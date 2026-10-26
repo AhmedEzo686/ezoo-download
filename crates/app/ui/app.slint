@@ -109,7 +109,7 @@ component DownloadItem inherits Rectangle {
             if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
                 root.drag-last = 0;
                 root.dragged-out = false;
-                root.pick(Theme.native-macos ? ev.modifiers.meta : ev.modifiers.control, ev.modifiers.shift);
+                root.pick(ev.modifiers.control, ev.modifiers.shift);
             }
             // right click: select the row and open the menu where the mouse is
             if (ev.button == PointerEventButton.right && ev.kind == PointerEventKind.up) {
@@ -1241,16 +1241,17 @@ export component MainWindow inherits ThemedWindow {
             }
         }
     }
+    // Slint normalizes macOS Command to modifiers.control.
     keys := FocusScope {
         key-pressed(event) => {
-            if ((Theme.native-macos ? event.modifiers.meta : event.modifiers.control) && (event.text == "a" || event.text == "A")) { root.select-all(); return accept; }
+            if (event.modifiers.control && (event.text == "a" || event.text == "A")) { root.select-all(); return accept; }
             if (event.text == Key.Delete && root.selected-id >= 0) { root.delete(root.selected-id); return accept; }
             if (event.text == Key.Return && root.selected-id >= 0) { root.row-activated(root.selected-id); return accept; }
             if (event.text == Key.F3) { root.find-next(); return accept; }
-            if ((Theme.native-macos ? event.modifiers.meta : event.modifiers.control) && (event.text == "f" || event.text == "F")) { search-box.focus(); return accept; }
-            if ((Theme.native-macos ? event.modifiers.meta : event.modifiers.control) && (event.text == "n" || event.text == "N")) { root.add-url(); return accept; }
-            if ((Theme.native-macos ? event.modifiers.meta : event.modifiers.control) && (event.text == "b" || event.text == "B")) { root.add-batch(); return accept; }
-            if (Theme.native-macos && event.modifiers.meta && event.text == ",") { root.open-settings(0); return accept; }
+            if (event.modifiers.control && (event.text == "f" || event.text == "F")) { search-box.focus(); return accept; }
+            if (event.modifiers.control && (event.text == "n" || event.text == "N")) { root.add-url(); return accept; }
+            if (event.modifiers.control && (event.text == "b" || event.text == "B")) { root.add-batch(); return accept; }
+            if (Theme.native-macos && event.modifiers.control && event.text == ",") { root.open-settings(0); return accept; }
             reject
         }
         HorizontalLayout {
