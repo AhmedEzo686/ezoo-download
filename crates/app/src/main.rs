@@ -300,7 +300,7 @@ fn main() -> anyhow::Result<()> {
         let mut s = mgr.settings();
         if !s.autostart_set {
             // the installer already asked; a copy run without it starts with Windows
-            if !autostart::installed_by_setup() {
+            if cfg!(windows) && !autostart::installed_by_setup() {
                 autostart::set(true);
             }
             s.autostart_set = true;
@@ -2408,6 +2408,11 @@ pub(crate) fn reveal_in_folder(v: &DownloadView) {
             return;
         }
     }
+    #[cfg(target_os = "macos")]
+    if v.status == Status::Completed && v.save_path.exists() {
+        let _ = std::process::Command::new("/usr/bin/open").arg("-R").arg(&v.save_path).spawn();
+        return;
+    }
     let _ = std::fs::create_dir_all(&dir);
     let _ = open::that(&dir);
 }
@@ -2745,6 +2750,7 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
         return;
     }
     let Ok(d) = DetailsDialog::new() else { return };
+    d.set_native_frame(cfg!(target_os = "macos"));
     let settings = ui.ctx.mgr.settings();
     set_theme_of(d.global::<Theme>(), &Look::of(&settings));
     // the tabs' controls are set once, so typing in them isn't overwritten

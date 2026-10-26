@@ -58,6 +58,10 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_bg_image(s.background_image.clone().into());
     d.set_bg_strength(s.background_strength.clamp(10, 80) as f32);
     d.set_start_with_windows(autostart::is_enabled());
+    if cfg!(target_os = "macos") {
+        d.set_startup_label(t("Launch Ezoo Download when I sign in").into());
+    }
+    d.set_windows_features(cfg!(windows));
     d.set_close_to_tray(s.close_to_tray);
     d.set_clipboard(s.clipboard_monitor);
     d.set_auto_clipboard(s.auto_start_clipboard);
@@ -158,8 +162,8 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.browser_port = d.get_port().clamp(1024, 65535) as u16;
     s.skip_key = KEYS[d.get_skip_key().clamp(0, 3) as usize].into();
     s.force_key = KEYS[d.get_force_key().clamp(0, 3) as usize].into();
-    if d.get_start_with_windows() != autostart::is_enabled() {
-        autostart::set(d.get_start_with_windows());
+    if d.get_start_with_windows() != autostart::is_enabled() && !autostart::set(d.get_start_with_windows()) {
+        return Err(t("Could not change the startup setting."));
     }
     // File types
     s.capture_exts = d.get_capture_exts().split_whitespace().collect::<Vec<_>>().join(" ");
@@ -287,7 +291,11 @@ pub(crate) fn wire(ui: &Ui) {
                     }
                 }
                 "virus" => {
-                    if let Some(f) = rfd::FileDialog::new().add_filter("Program", &["exe", "com", "bat", "cmd"]).pick_file() {
+                    let mut picker = rfd::FileDialog::new();
+                    if cfg!(windows) {
+                        picker = picker.add_filter("Program", &["exe", "com", "bat", "cmd"]);
+                    }
+                    if let Some(f) = picker.pick_file() {
                         d.set_virus_program(f.display().to_string().into());
                     }
                 }

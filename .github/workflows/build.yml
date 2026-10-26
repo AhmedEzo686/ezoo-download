@@ -1,4 +1,4 @@
-name: Build Ezoo Download for Windows
+name: Build Ezoo Download for Windows and macOS
 
 # Every push: build and keep the result as an artifact.
 # A push to main whose commit message contains [release] also publishes a
@@ -11,12 +11,85 @@ on:
     paths-ignore:
       - "README.md"
       - "docs/**"
+  pull_request:
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  macos:
+    name: macOS (${{ matrix.arch }})
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            arch: x86_64
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: macos-${{ matrix.arch }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Install optional media helpers for integration tests
+        run: brew install yt-dlp ffmpeg aria2
+      - name: Run extension tests
+        run: |
+          node extension/test/yt-core.test.js
+          node extension/test/background.sim.js
+      - name: Check workspace
+        run: cargo check --workspace --all-targets --target "${{ matrix.target }}"
+      - name: Run tests
+        run: cargo test --workspace --target "${{ matrix.target }}" --no-fail-fast
+      - name: Build and package app
+        run: ./build-macos.sh --target "${{ matrix.target }}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: EzooDownload-macos-${{ matrix.arch }}
+          path: |
+            dist/EzooDownload-macos-${{ matrix.arch }}.zip
+            dist/EzooDownload-macos-${{ matrix.arch }}.zip.sha256
+          if-no-files-found: error
+
+  publish-macos:
+    # The Windows job creates the release and its signed Windows updater
+    # metadata first. Attach the macOS builds to that same release only.
+    needs: [windows, macos]
+    if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: EzooDownload-macos-*
+          path: macos-artifacts
+          merge-multiple: true
+      - name: Attach macOS archives to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' Cargo.toml | head -n 1)
+          gh release upload "v$version" macos-artifacts/*.zip macos-artifacts/*.sha256 --repo "${{ github.repository }}" --clobber
+
   windows:
     runs-on: windows-latest
     steps:

@@ -45,6 +45,10 @@ fn apply_as(setup: PathBuf, sha256: String, visible: bool) {
 }
 
 pub fn spawn(ctx: &Ctx) {
+    // Only Windows releases currently have a signed, installable update feed.
+    if !cfg!(windows) {
+        return;
+    }
     // leftovers of an update that is installed now
     if let Ok(rd) = std::fs::read_dir(update_dir()) {
         for e in rd.flatten() {
@@ -122,6 +126,10 @@ fn size_text(n: u64) -> String {
 /// Help > Check for updates: look now instead of waiting for the next check,
 /// in the update window.
 pub fn check_now(ui: &Ui) {
+    if !cfg!(windows) {
+        let _ = open::that("https://github.com/AhmedEzo686/ezoo-download/releases/latest");
+        return;
+    }
     let Some(d) = ui.updater.upgrade() else { return };
     open_window!(d);
     let set = |state: i32, heading: String, detail: String| {

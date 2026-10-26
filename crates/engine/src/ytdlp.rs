@@ -626,7 +626,7 @@ fn with_cookies<T>(
 /// the same site are used when none come with this call.
 pub fn resolve(page_url: &str, cookies: Option<&[BrowserCookie]>) -> anyhow::Result<YtInfo> {
     let tool = find_tool("yt-dlp")
-        .ok_or_else(|| anyhow!("yt-dlp.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again"))?;
+        .ok_or_else(|| anyhow!(crate::tools::missing_tool_message("yt-dlp")))?;
     let cookies = cookies.filter(|c| !c.is_empty());
     let json = with_cookies(page_url, cookies, |file| run_ytdlp(&tool, page_url, file))?;
     let info = build_options(&json);
@@ -663,7 +663,7 @@ pub struct PlaylistInfo {
 /// The videos of a playlist (or channel page), without looking at each
 /// video yet (`--flat-playlist`, fast). Blocking.
 pub fn playlist(url: &str) -> anyhow::Result<PlaylistInfo> {
-    let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe was not found next to EzooDownload.exe"))?;
+    let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!(crate::tools::missing_tool_message("yt-dlp")))?;
     let json = with_cookies(url, None, |file| {
         let mut cmd = Command::new(&tool);
         cmd.args(playlist_args(url, file));
@@ -743,7 +743,10 @@ pub fn pick_option(options: &[YtOption], wanted: &str) -> Option<YtOption> {
 
 /// Update yt-dlp right now ("Help > Update video downloader"). Blocking.
 pub fn update_now() -> anyhow::Result<String> {
-    let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe was not found next to EzooDownload.exe"))?;
+    let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!(crate::tools::missing_tool_message("yt-dlp")))?;
+    if cfg!(target_os = "macos") {
+        return Ok("On macOS, update the video downloader with `brew upgrade yt-dlp`, then try again.".into());
+    }
     let mut cmd = Command::new(&tool);
     cmd.args(["--ignore-config", "-U"]);
     hide_window(&mut cmd);
@@ -761,6 +764,9 @@ pub fn update_now() -> anyhow::Result<String> {
 /// once a day, for the copy next to the app. Blocking; call it from a
 /// background thread.
 pub fn update_if_due(data_dir: &Path) {
+    if cfg!(target_os = "macos") {
+        return;
+    }
     let stamp = data_dir.join("yt-dlp-updated");
     let due = std::fs::metadata(&stamp)
         .and_then(|m| m.modified())

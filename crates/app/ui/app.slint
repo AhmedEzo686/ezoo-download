@@ -2296,8 +2296,9 @@ export component DetailsDialog inherits ThemedWindow {
     title: root.percent + " " + root.name;
     preferred-width: 560px;
     min-width: 520px;
-    // its own title bar (with "hide next to the clock" beside minimize)
-    no-frame: true;
+    // macOS supplies a native title bar and resize handles.
+    in property <bool> native-frame: false;
+    no-frame: !root.native-frame;
 
     in property <string> name;
     in property <string> percent;
@@ -2354,7 +2355,8 @@ export component DetailsDialog inherits ThemedWindow {
       padding: 1px;
       spacing: 0px;
       Rectangle {
-        height: 30px;
+        visible: !root.native-frame;
+        height: root.native-frame ? 0px : 30px;
         background: Theme.panel;
         HorizontalLayout {
             spacing: 0px;
@@ -2833,6 +2835,7 @@ export component DetailsDialog inherits ThemedWindow {
     }
     // a corner to make the window bigger
     Rectangle {
+        visible: !root.native-frame;
         x: root.width - 14px;
         y: root.height - 14px;
         width: 14px;

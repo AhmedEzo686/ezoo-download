@@ -1815,6 +1815,8 @@ export component SettingsDialog inherits ThemedWindow {
     callback browse-bg();
     // the look changed: show it at once (the settings are kept on OK)
     callback preview-look();
+    in property <string> startup-label: @tr("Launch Ezoo Download on Windows startup");
+    in property <bool> windows-features: true;
     in-out property <bool> start-with-windows;
     in-out property <bool> close-to-tray;
     in-out property <bool> clipboard;
@@ -1959,6 +1961,7 @@ export component SettingsDialog inherits ThemedWindow {
                             width: 200px;
                             minimum: 50;
                             maximum: 100;
+                            enabled: root.windows-features;
                             value <=> root.window-opacity;
                             changed(v) => {
                                 root.preview-opacity(v);
@@ -2078,11 +2081,12 @@ export component SettingsDialog inherits ThemedWindow {
                         }
                     }
                     CheckBox {
-                        text: @tr("Launch Ezoo Download on Windows startup");
+                        text: root.startup-label;
                         checked <=> root.start-with-windows;
                     }
                     CheckBox {
                         text: @tr("Keep running next to the clock when the window is closed");
+                        enabled: root.windows-features;
                         checked <=> root.close-to-tray;
                     }
                     CheckBox {

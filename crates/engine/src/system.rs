@@ -1,5 +1,5 @@
-//! Windows bits: free disk space, file system type, shut down / sleep /
-//! hibernate, file dates and the virus checker.
+//! Platform services: disk space, file system type, power actions, file
+//! dates and the virus checker.
 
 use crate::config::AfterDone;
 use std::path::Path;
@@ -30,7 +30,12 @@ pub fn check_room(dir: &Path, needed: u64, total: Option<u64>) -> Result<(), Str
     if let Some(total) = total {
         if total >= 4 * 1024 * 1024 * 1024 {
             if let Some(fs) = file_system(&dir) {
-                if fs.eq_ignore_ascii_case("FAT32") || fs.eq_ignore_ascii_case("FAT") {
+                if fs.eq_ignore_ascii_case("FAT32") || fs.eq_ignore_ascii_case("FAT") || fs.eq_ignore_ascii_case("msdos") {
+                    #[cfg(target_os = "macos")]
+                    return Err(format!(
+                        "This disk uses {fs}, which can't hold files bigger than 4 GB. Save the file to an APFS or exFAT disk."
+                    ));
+                    #[cfg(not(target_os = "macos"))]
                     return Err(format!(
                         "This disk uses {fs}, which can't hold files bigger than 4 GB. Save the file to an NTFS or exFAT disk."
                     ));
@@ -243,7 +248,54 @@ mod imp {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+mod imp {
+    use super::AfterDone;
+    use std::ffi::{CStr, CString};
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+    use std::process::Command;
+
+    fn stat(dir: &Path) -> Option<libc::statfs> {
+        let path = CString::new(dir.as_os_str().as_bytes()).ok()?;
+        let mut out = std::mem::MaybeUninit::<libc::statfs>::uninit();
+        // The C string remains alive for the call; statfs initializes the
+        // complete output structure only when it returns zero.
+        if unsafe { libc::statfs(path.as_ptr(), out.as_mut_ptr()) } != 0 {
+            return None;
+        }
+        Some(unsafe { out.assume_init() })
+    }
+
+    pub fn free_space(dir: &Path) -> Option<u64> {
+        let fs = stat(dir)?;
+        fs.f_bavail.checked_mul(u64::from(fs.f_bsize))
+    }
+
+    pub fn file_system(dir: &Path) -> Option<String> {
+        let fs = stat(dir)?;
+        // macOS returns the filesystem name as a NUL-terminated array.
+        Some(unsafe { CStr::from_ptr(fs.f_fstypename.as_ptr()) }.to_string_lossy().into_owned())
+    }
+
+    pub fn power(action: AfterDone, _force: bool) {
+        // Never change the Mac's hibernation settings or force-close apps.
+        // macOS controls safe sleep itself; explicit hibernation is unsupported.
+        match action {
+            AfterDone::Sleep => {
+                let _ = Command::new("/usr/bin/pmset").arg("sleepnow").spawn();
+            }
+            AfterDone::Shutdown => {
+                let _ = Command::new("/usr/bin/osascript")
+                    .args(["-e", "tell application \"System Events\" to shut down"])
+                    .spawn();
+            }
+            _ => {}
+        }
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 mod imp {
     use super::AfterDone;
     use std::path::Path;
@@ -259,6 +311,18 @@ mod imp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn mac_disk_information_and_room_check() {
+        let dir = std::env::temp_dir();
+        assert!(free_space(&dir).unwrap() > 0);
+        assert!(!file_system(&dir).unwrap().is_empty());
+        let missing = dir.join(format!("ezoo-no-disk-{}", std::process::id())).join("file");
+        assert!(free_space(&missing).is_none());
+        assert!(check_room(&missing, 1, Some(1)).is_ok());
+        assert!(check_room(&dir, u64::MAX, None).is_err());
+    }
+
     #[test]
     fn args() {
         assert_eq!(split_args(r#"/scan "C:\a b\x.zip" -q"#), vec!["/scan", r"C:\a b\x.zip", "-q"]);
