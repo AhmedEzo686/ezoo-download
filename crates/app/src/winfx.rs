@@ -75,13 +75,11 @@ pub(crate) fn centered(screen: (i32, i32), screen_size: (u32, u32), size: (u32, 
     (x, y)
 }
 
-#[cfg(windows)]
 fn place_now(w: &slint::Window, maximizable: bool) -> bool {
     use slint::winit_030::{winit, WinitWindowAccessor};
     w.with_winit_window(|win: &winit::window::Window| place_winit(win, maximizable)).is_some()
 }
 
-#[cfg(windows)]
 fn place_winit(win: &slint::winit_030::winit::window::Window, maximizable: bool) {
     use slint::winit_030::winit;
     use winit::window::WindowButtons;
@@ -101,11 +99,6 @@ fn place_winit(win: &slint::winit_030::winit::window::Window, maximizable: bool)
         let (x, y) = centered((p.x, p.y), (s.width, s.height), (o.width, o.height));
         win.set_outer_position(winit::dpi::PhysicalPosition::new(x, y));
     }
-}
-
-#[cfg(not(windows))]
-fn place_now(_w: &slint::Window, _maximizable: bool) -> bool {
-    true
 }
 
 /// A window was just opened: put it in the middle of the screen

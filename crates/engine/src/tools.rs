@@ -9,8 +9,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
-const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
-/// the SHA-256 of every file of that release, published by yt-dlp
 const YTDLP_SUMS_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
 /// the SHA-256 of every build, published with the ffmpeg builds
 const FFMPEG_SUMS_NAME: &str = "checksums.sha256";
@@ -37,18 +35,46 @@ struct GhRelease {
     assets: Vec<GhAsset>,
 }
 
-/// The newest stable 64-bit Windows build: "ffmpeg-n7.1-latest-win64-gpl-7.1.zip"
-/// (the highest n<version>), else the master build.
+/// The newest stable build of the running platform: "ffmpeg-n7.1-latest-win64-
+/// gpl-7.1.zip" on Windows, "ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz" on
+/// Linux (the highest n<version>), else the master build.
 fn pick_ffmpeg(assets: &[GhAsset]) -> Option<&GhAsset> {
-    let re = regex::Regex::new(r"^ffmpeg-n([0-9.]+)-latest-win64-gpl-[0-9.]+\.zip$").ok()?;
+    let (re_src, master) = if cfg!(windows) {
+        (r"^ffmpeg-n([0-9.]+)-latest-win64-gpl-[0-9.]+\.zip$", "ffmpeg-master-latest-win64-gpl.zip")
+    } else {
+        (r"^ffmpeg-n([0-9.]+)-latest-linux64-gpl-[0-9.]+\.tar\.xz$", "ffmpeg-master-latest-linux64-gpl.tar.xz")
+    };
+    let re = regex::Regex::new(re_src).ok()?;
     let key = |v: &str| v.split('.').map(|p| p.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
     assets
         .iter()
         .filter_map(|a| re.captures(&a.name).map(|c| (key(&c[1]), a)))
         .max_by(|x, y| x.0.cmp(&y.0))
         .map(|(_, a)| a)
-        .or_else(|| assets.iter().find(|a| a.name == "ffmpeg-master-latest-win64-gpl.zip"))
+        .or_else(|| assets.iter().find(|a| a.name == master))
 }
+
+/// The yt-dlp release asset for the running platform (yt-dlp's checksum list
+/// is keyed by the asset name).
+fn ytdlp_asset() -> &'static str {
+    if cfg!(windows) {
+        "yt-dlp.exe"
+    } else {
+        match std::env::consts::ARCH {
+            "aarch64" => "yt-dlp_linux_aarch64",
+            _ => "yt-dlp_linux",
+        }
+    }
+}
+
+#[cfg(unix)]
+fn make_executable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) {}
 
 fn exe(name: &str) -> String {
     if cfg!(windows) {
@@ -183,11 +209,14 @@ fn replace(new: &Path, target: &Path) -> anyhow::Result<()> {
 /// yt-dlp missing: get it. Present: `yt-dlp -U` (at most once a day).
 async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
     if bundled("yt-dlp").is_none() {
-        if cfg!(windows) {
-            if let Some(dir) = writable_dir("yt-dlp") {
-                if let Ok(sums) = get_text(client, YTDLP_SUMS_URL).await {
-                    if let Some(sum) = sum_for(&sums, "yt-dlp.exe") {
-                        let _ = download(client, YTDLP_URL, &dir.join(exe("yt-dlp")), &sum).await;
+        if let Some(dir) = writable_dir("yt-dlp") {
+            if let Ok(sums) = get_text(client, YTDLP_SUMS_URL).await {
+                let asset = ytdlp_asset();
+                if let Some(sum) = sum_for(&sums, asset) {
+                    let url = format!("https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset}");
+                    let dest = dir.join(exe("yt-dlp"));
+                    if download(client, &url, &dest, &sum).await.is_ok() {
+                        make_executable(&dest);
                     }
                 }
             }
@@ -215,9 +244,6 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
 /// ffmpeg: compare with the newest release build and replace it when
 /// there's a newer one (or when it's missing).
 async fn ffmpeg(client: &reqwest::Client, data_dir: &Path) -> anyhow::Result<()> {
-    if !cfg!(windows) {
-        return Ok(());
-    }
     let present = bundled("ffmpeg");
     let stamp = data_dir.join("ffmpeg-checked");
     if present.is_some() && !due(&stamp, Duration::from_secs(20 * 3600)) {
@@ -256,18 +282,30 @@ async fn ffmpeg(client: &reqwest::Client, data_dir: &Path) -> anyhow::Result<()>
         let _ = std::fs::write(&stamp, b"ok");
         return Ok(());
     }
-    // download the zip, unpack it with Windows' own tar, take ffmpeg.exe
+    // download the archive, unpack it with the system's tar, take ffmpeg
     let work = std::env::temp_dir().join(format!("ezoo-ffmpeg-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work)?;
-    let zip = work.join("ffmpeg.zip");
+    let archive = work.join(&asset.name);
     let sum = sum_for(&get_text(client, &sums_url).await?, &asset.name)
         .ok_or_else(|| anyhow::anyhow!("no checksum for {}", asset.name))?;
-    download(client, &zip_url, &zip, &sum).await?;
-    let (zip2, work2) = (zip.clone(), work.clone());
+    download(client, &zip_url, &archive, &sum).await?;
+    let (arch, work2) = (archive.clone(), work.clone());
     let unpacked = tokio::task::spawn_blocking(move || {
-        let mut cmd = Command::new(crate::system::windows_tool("tar.exe"));
-        cmd.arg("-xf").arg(&zip2).arg("-C").arg(&work2);
+        // Windows' own tar and GNU tar both pick the format from the file;
+        // GNU tar needs -J asked for in some builds, so pass it for .xz
+        let xz = arch.to_string_lossy().ends_with(".tar.xz");
+        let mut cmd = if cfg!(windows) {
+            Command::new(crate::system::windows_tool("tar.exe"))
+        } else {
+            Command::new("tar")
+        };
+        if xz {
+            cmd.arg("-xJf");
+        } else {
+            cmd.arg("-xf");
+        }
+        cmd.arg(&arch).arg("-C").arg(&work2);
         hide_window(&mut cmd);
         cmd.output().map(|o| o.status.success()).unwrap_or(false)
     })
@@ -279,11 +317,12 @@ async fn ffmpeg(client: &reqwest::Client, data_dir: &Path) -> anyhow::Result<()>
             let staged = dir.join("ffmpeg.new");
             std::fs::copy(&f, &staged)?;
             replace(&staged, &dir.join(exe("ffmpeg")))?;
+            make_executable(&dir.join(exe("ffmpeg")));
             std::fs::write(&version_file, &latest)?;
             let _ = std::fs::write(&stamp, b"ok");
             Ok(())
         }
-        None => Err(anyhow::anyhow!("ffmpeg.exe was not found in the download")),
+        None => Err(anyhow::anyhow!("ffmpeg was not found in the download")),
     };
     let _ = std::fs::remove_dir_all(&work);
     result
@@ -382,8 +421,25 @@ mod tests {
             a("ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip"),
             a("ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz"),
         ];
-        assert_eq!(pick_ffmpeg(&list).unwrap().name, "ffmpeg-n7.1-latest-win64-gpl-7.1.zip");
-        assert_eq!(pick_ffmpeg(&list[..1]).unwrap().name, "ffmpeg-master-latest-win64-gpl.zip");
+        let picked = pick_ffmpeg(&list).unwrap().name.clone();
+        if cfg!(windows) {
+            assert_eq!(picked, "ffmpeg-n7.1-latest-win64-gpl-7.1.zip");
+            assert_eq!(pick_ffmpeg(&list[..1]).unwrap().name, "ffmpeg-master-latest-win64-gpl.zip");
+        } else {
+            assert_eq!(picked, "ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz");
+        }
+    }
+
+    #[test]
+    fn ytdlp_asset_matches_platform() {
+        let asset = ytdlp_asset();
+        if cfg!(windows) {
+            assert_eq!(asset, "yt-dlp.exe");
+        } else if std::env::consts::ARCH == "aarch64" {
+            assert_eq!(asset, "yt-dlp_linux_aarch64");
+        } else {
+            assert_eq!(asset, "yt-dlp_linux");
+        }
     }
 
     #[test]

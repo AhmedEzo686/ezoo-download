@@ -2,11 +2,12 @@
 
 # Ezoo Download
 
-برنامج سطح مكتب لنظام ويندوز، مكتوب بلغة Rust
+برنامج سطح مكتب لنظام ويندوز ولينكس، مكتوب بلغة Rust
 
 تطوير **Ahmed Ezzat**
 
 ![Windows](https://img.shields.io/badge/Windows-10%20%2C%2011-0078D6?style=flat-square&logo=windows11&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-.deb%20%7C%20AppImage-FCC624?style=flat-square&logo=linux&logoColor=black)
 ![Rust](https://img.shields.io/badge/Made%20with-Rust-B7410E?style=flat-square&logo=rust&logoColor=white)
 ![Language](https://img.shields.io/badge/UI-عربي%20%7C%20English-success?style=flat-square)
 
@@ -51,11 +52,22 @@
 
 شغّل الملف **`BUILD.bat`**، وستجد ملف الإعداد `EzooDownload-Setup` في مجلد **`dist`**.
 
+### لينكس 🐧
+
+نسخة لينكس (`.deb` و`AppImage`) تُبنى بسكربت واحد، مع أيقونة شريط StatusNotifierItem، وتشغيل تلقائي XDG، وأيقونات hicolor:
+
+```bash
+bash packaging/linux/build-linux.sh
+```
+
+ستجد المخرجات في مجلد `dist/`. للتثبيت والاستعمال وتفاصيل إضافة المتصفح، راجع **[دليل لينكس الكامل](packaging/linux/README-Linux.md)**.
+
 ---
 
 ## ⚙️ متطلبات التشغيل
 
 - **Windows 10 أو Windows 11** (إصدار 64-bit)
+- **Linux** (إصدار 64-bit؛ التبعيات مذكورة في `packaging/linux/debian/control`)
 - اتصال بالإنترنت
 
 ---
@@ -99,6 +111,7 @@
 │  ├─ ui/              النوافذ
 │  └─ lang/            ترجمات الواجهة
 ├─ extension/          إضافة المتصفح
+├─ packaging/linux/    حزم لينكس (.deb وAppImage)
 └─ BUILD.bat           البناء
 ```
 

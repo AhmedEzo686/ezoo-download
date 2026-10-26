@@ -25,5 +25,19 @@ mod imp {
 
 #[cfg(not(windows))]
 mod imp {
-    pub fn play(_path: &str) {}
+    use std::process::{Command, Stdio};
+
+    fn try_spawn(cmd: &mut Command) -> bool {
+        cmd.stdout(Stdio::null()).stderr(Stdio::null()).stdin(Stdio::null());
+        cmd.spawn().is_ok()
+    }
+
+    /// Fire and forget, like Windows' SND_ASYNC: PulseAudio's `paplay` is on
+    /// every desktop, `aplay` (ALSA) is the fallback elsewhere.
+    pub fn play(path: &str) {
+        if try_spawn(Command::new("paplay").arg(path)) {
+            return;
+        }
+        let _ = try_spawn(Command::new("aplay").arg("-q").arg(path));
+    }
 }

@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Ezoo Download
+Name[ar]=إيزو داونلود
+GenericName=Download Manager
+GenericName[ar]=مدير التنزيلات
+Comment=Download files with multiple connections
+Comment[ar]=نزّل الملفات باتصالات متعددة مع استئناف ومجدول
+Exec=EzooDownload
+Icon=ezoo-download
+Terminal=false
+Categories=Network;FileTransfer;
+Keywords=download;manager;ezoo;تحميل;تنزيل;
+StartupNotify=true
+StartupWMClass=EzooDownload
