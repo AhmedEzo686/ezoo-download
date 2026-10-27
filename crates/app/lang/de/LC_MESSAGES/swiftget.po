@@ -4,6 +4,51 @@ msgstr ""
 "Language: de\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid "Download a file from an address you type or paste (Ctrl+N)."
+msgstr "Eine Datei von einer eingegebenen oder eingefügten Adresse herunterladen (Strg+N)."
+
+msgid "Download many links at once, or numbered files from one address (Ctrl+B)."
+msgstr "Viele Links auf einmal herunterladen oder nummerierte Dateien von einer Adresse (Strg+B)."
+
+msgid "Continue the selected downloads from where they stopped."
+msgstr "Die ausgewählten Downloads dort fortsetzen, wo sie angehalten haben."
+
+msgid "Pause the selected downloads; they can be resumed later."
+msgstr "Die ausgewählten Downloads anhalten; sie lassen sich später fortsetzen."
+
+msgid "Pause every running download."
+msgstr "Alle laufenden Downloads anhalten."
+
+msgid "Remove the selected downloads from the list. The files stay on your computer."
+msgstr "Die ausgewählten Downloads aus der Liste entfernen. Die Dateien bleiben auf dem Computer."
+
+msgid "Remove all finished downloads from the list. The files stay on your computer."
+msgstr "Alle fertigen Downloads aus der Liste entfernen. Die Dateien bleiben auf dem Computer."
+
+msgid "All the settings of the program."
+msgstr "Alle Einstellungen des Programms."
+
+msgid "Start or stop queues at the times you choose."
+msgstr "Warteschlangen zu den gewählten Zeiten starten oder anhalten."
+
+msgid "Limit the download speed so the internet stays usable for other things."
+msgstr "Die Geschwindigkeit begrenzen, damit das Internet für anderes nutzbar bleibt."
+
+msgid "Start the files of a queue, one after another."
+msgstr "Die Dateien einer Warteschlange nacheinander starten."
+
+msgid "Stop the files of a queue."
+msgstr "Die Dateien einer Warteschlange anhalten."
+
+msgid "Collect the files of a web site: pictures, videos, archives…"
+msgstr "Die Dateien einer Website sammeln: Bilder, Videos, Archive…"
+
+msgid "Download all or some videos of a playlist."
+msgstr "Alle oder einige Videos einer Playlist herunterladen."
+
+msgid "Download a .torrent file or a magnet link."
+msgstr "Eine .torrent-Datei oder einen Magnet-Link herunterladen."
+
 msgid "{} downloads selected"
 msgstr "{} Downloads ausgewählt"
 
@@ -15,6 +60,9 @@ msgstr "Fortschritt anzeigen"
 
 msgid "Open with…"
 msgstr "Öffnen mit…"
+
+msgid "Play while downloading"
+msgstr "Während des Downloads abspielen"
 
 msgid "Open folder"
 msgstr "Ordner öffnen"
@@ -79,6 +127,42 @@ msgstr "Eigenschaften…"
 msgid "Ezoo Download"
 msgstr "Ezoo Download"
 
+msgid "File Name"
+msgstr "Dateiname"
+
+msgid "Q"
+msgstr "W"
+
+msgid "Size"
+msgstr "Größe"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Time left"
+msgstr "Restzeit"
+
+msgid "Transfer rate"
+msgstr "Übertragungsrate"
+
+msgid "Last Try Date"
+msgstr "Letzter Versuch"
+
+msgid "Description"
+msgstr "Beschreibung"
+
+msgid "Date Added"
+msgstr "Hinzugefügt am"
+
+msgid "Save To"
+msgstr "Speichern in"
+
+msgid "Referer"
+msgstr "Referer"
+
+msgid "Parent Web Page"
+msgstr "Ursprungsseite"
+
 msgid "Tasks"
 msgstr "Aufgaben"
 
@@ -96,6 +180,9 @@ msgstr "Website-Grabber starten…"
 
 msgid "Download a playlist…"
 msgstr "Playlist herunterladen…"
+
+msgid "Add a torrent / magnet link…"
+msgstr "Torrent / Magnet-Link hinzufügen…"
 
 msgid "Export"
 msgstr "Exportieren"
@@ -199,29 +286,11 @@ msgstr "Nach Reihenfolge des Hinzufügens"
 msgid "File name"
 msgstr "Dateiname"
 
-msgid "Size"
-msgstr "Größe"
-
-msgid "Status"
-msgstr "Status"
-
-msgid "Time left"
-msgstr "Restzeit"
-
-msgid "Transfer rate"
-msgstr "Übertragungsrate"
-
 msgid "Last try date"
 msgstr "Letzter Versuch"
 
-msgid "Description"
-msgstr "Beschreibung"
-
 msgid "Save to"
 msgstr "Speichern in"
-
-msgid "Referer"
-msgstr "Referer"
 
 msgid "Parent web page"
 msgstr "Ursprungsseite"
@@ -271,8 +340,8 @@ msgstr "Petrol-Nacht"
 msgid "Rose"
 msgstr "Rosé"
 
-msgid "Transparency…"
-msgstr "Transparenz…"
+msgid "Appearance…"
+msgstr "Darstellung…"
 
 msgid "Help"
 msgstr "Hilfe"
@@ -337,6 +406,9 @@ msgstr "Grabber"
 msgid "Playlist"
 msgstr "Playlist"
 
+msgid "Torrent"
+msgstr "Torrent"
+
 msgid "Filter the list…"
 msgstr "Liste filtern…"
 
@@ -363,24 +435,6 @@ msgstr "Neue Warteschlange"
 
 msgid "Edit"
 msgstr "Bearbeiten"
-
-msgid "File Name"
-msgstr "Dateiname"
-
-msgid "Q"
-msgstr "W"
-
-msgid "Last Try Date"
-msgstr "Letzter Versuch"
-
-msgid "Date Added"
-msgstr "Hinzugefügt am"
-
-msgid "Save To"
-msgstr "Speichern in"
-
-msgid "Parent Web Page"
-msgstr "Ursprungsseite"
 
 msgid "Nothing matches “{}”."
 msgstr "Nichts passt zu „{}“."
@@ -558,6 +612,9 @@ msgstr "Nr."
 
 msgid "Info"
 msgstr "Info"
+
+msgid "Hide next to the clock"
+msgstr "Neben der Uhr ausblenden"
 
 msgid "Download complete"
 msgstr "Download abgeschlossen"
@@ -784,6 +841,9 @@ msgstr "https://example.com/gallery/"
 msgid "Start exploring"
 msgstr "Durchsuchen starten"
 
+msgid "Some pages make their links only in the browser (with scripts, or as plain text). For them: open the page in the browser, right-click it and choose \"Download all links with Ezoo Download\": every link you see there is collected."
+msgstr "Manche Seiten erzeugen ihre Links nur im Browser (mit Skripten oder als reinen Text). Dafür: Öffnen Sie die Seite im Browser, klicken Sie mit der rechten Maustaste und wählen Sie \"Download all links with Ezoo Download\": jeder sichtbare Link wird gesammelt."
+
 msgid "Get"
 msgstr "Holen"
 
@@ -934,8 +994,35 @@ msgstr "Website-Logins"
 msgid "Sounds"
 msgstr "Klänge"
 
+msgid "Appearance"
+msgstr "Darstellung"
+
+msgid "Torrents"
+msgstr "Torrents"
+
 msgid "Window opacity"
 msgstr "Fensterdeckkraft"
+
+msgid "Text size"
+msgstr "Textgröße"
+
+msgid "Font"
+msgstr "Schriftart"
+
+msgid "Default (Segoe UI)"
+msgstr "Standard (Segoe UI)"
+
+msgid "Background picture"
+msgstr "Hintergrundbild"
+
+msgid "none (the theme's colors)"
+msgstr "keines (Farben des Designs)"
+
+msgid "Browse…"
+msgstr "Durchsuchen…"
+
+msgid "Picture visibility"
+msgstr "Sichtbarkeit des Bildes"
 
 msgid "Launch Ezoo Download on Windows startup"
 msgstr "Ezoo Download beim Windows-Start starten"
@@ -1017,9 +1104,6 @@ msgstr "Kleinstes Audio (KB)"
 
 msgid "Main download folder"
 msgstr "Haupt-Download-Ordner"
-
-msgid "Browse…"
-msgstr "Durchsuchen…"
 
 msgid "Sort files into folders by category (Video, Music, Programs, Compressed, Documents, Images…)"
 msgstr "Dateien nach Kategorie in Ordner sortieren (Video, Musik, Programme, Archive, Dokumente, Bilder…)"
@@ -1204,6 +1288,36 @@ msgstr "Begrenzer beim Start von Ezoo Download immer einschalten"
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "Jeder Download kann auch ein eigenes Limit haben: sein Fortschrittsfenster > Registerkarte Geschwindigkeitsbegrenzer."
 
+msgid "Keep sharing a finished torrent for (minutes)"
+msgstr "Einen fertigen Torrent weiter teilen für (Minuten)"
+
+msgid "0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent."
+msgstr "0 = aufhören, sobald alle Dateien da sind. Länger teilen hilft den anderen, die denselben Torrent laden."
+
+msgid "Maximum upload speed (KB/s, 0 = no limit)"
+msgstr "Höchste Upload-Geschwindigkeit (KB/s, 0 = keine Grenze)"
+
+msgid "While a torrent downloads it also sends pieces to others (that is how torrents work). A limit keeps your internet free for other things."
+msgstr "Beim Herunterladen sendet ein Torrent auch Teile an andere (so funktionieren Torrents). Eine Grenze hält das Internet für anderes frei."
+
+msgid "Add a torrent"
+msgstr "Torrent hinzufügen"
+
+msgid "A magnet link, or a .torrent file:"
+msgstr "Ein Magnet-Link oder eine .torrent-Datei:"
+
+msgid "magnet:?xt=urn:btih:…  or  C:\\…\\file.torrent"
+msgstr "magnet:?xt=urn:btih:…  oder  C:\\…\\file.torrent"
+
+msgid "Open .torrent file…"
+msgstr ".torrent-Datei öffnen…"
+
+msgid "A magnet link brings its file list from the other computers when it starts: all its files are downloaded."
+msgstr "Ein Magnet-Link holt seine Dateiliste beim Start von den anderen Computern: alle seine Dateien werden geladen."
+
+msgid "Paste a magnet link or open a .torrent file: what it shares shows up here."
+msgstr "Einen Magnet-Link einfügen oder eine .torrent-Datei öffnen: ihr Inhalt erscheint hier."
+
 msgid "Download a playlist"
 msgstr "Playlist herunterladen"
 
@@ -1237,20 +1351,29 @@ msgstr "Qualität"
 msgid "Best quality (MP4)"
 msgstr "Beste Qualität (MP4)"
 
-msgid "1080p"
-msgstr "1080p"
+msgid "2160p 4K"
+msgstr "2160p 4K"
 
-msgid "720p"
-msgstr "720p"
+msgid "1440p 2K"
+msgstr "1440p 2K"
 
-msgid "480p"
-msgstr "480p"
+msgid "1080p Full HD"
+msgstr "1080p Full HD"
 
-msgid "360p"
-msgstr "360p"
+msgid "720p HD"
+msgstr "720p HD"
+
+msgid "480p SD"
+msgstr "480p SD"
+
+msgid "360p SD"
+msgstr "360p SD"
 
 msgid "Audio only (M4A)"
 msgstr "Nur Audio (M4A)"
+
+msgid "Audio MP3"
+msgstr "Audio MP3"
 
 msgid "Files at the same time"
 msgstr "Dateien gleichzeitig"
@@ -1284,3 +1407,18 @@ msgstr "Gefällt Ihnen Ezoo Download? Sie können die Entwicklung unterstützen:
 
 msgid "Support with PayPal"
 msgstr "Mit PayPal unterstützen"
+
+msgid "Support with InstaPay"
+msgstr "Mit InstaPay unterstützen"
+
+msgid "InstaPay: a7medek@instapay (scan the code with your bank's app)"
+msgstr "InstaPay: a7medek@instapay (Code mit der App Ihrer Bank scannen)"
+
+msgid "What's new in Ezoo Download"
+msgstr "Neu in Ezoo Download"
+
+msgid "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal or InstaPay. Thank you!"
+msgstr "Ezoo Download ist kostenlos und werbefrei. Wenn es Ihnen hilft und Sie die Entwicklung unterstützen möchten, können Sie mit PayPal oder InstaPay etwas schenken. Danke!"
+
+msgid "Hide"
+msgstr "Ausblenden"

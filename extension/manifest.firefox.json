@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ezoo Download",
-  "version": "1.0.4",
+  "version": "1.0.7",
   "description": "Ezoo Download extension.",
   "permissions": [
     "downloads",
@@ -48,7 +48,9 @@
       "js": [
         "content.js"
       ],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_about_blank": true
     }
   ],
   "browser_specific_settings": {

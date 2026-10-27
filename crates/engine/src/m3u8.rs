@@ -90,7 +90,15 @@ fn parse_iv(s: &str) -> Option<[u8; 16]> {
     Some(out)
 }
 
+/// A real stream has a few thousand parts; a list far beyond this is an
+/// attack on memory and disk, not a video.
+pub const MAX_PARTS: usize = 200_000;
+pub const MAX_PLAYLIST_BYTES: usize = 32 << 20;
+
 pub fn parse_media(base: &str, text: &str) -> anyhow::Result<MediaPlaylist> {
+    if text.len() > MAX_PLAYLIST_BYTES {
+        bail!("the stream's list is too big");
+    }
     let mut pl = MediaPlaylist::default();
     let mut seq: u64 = 0;
     let mut key: Option<Key> = None;
@@ -122,12 +130,15 @@ pub fn parse_media(base: &str, text: &str) -> anyhow::Result<MediaPlaylist> {
         } else if line.starts_with("#EXT-X-ENDLIST") {
             pl.ended = true;
         } else if !line.starts_with('#') {
+            if pl.parts.len() >= MAX_PARTS {
+                bail!("the stream has too many parts");
+            }
             pl.parts.push(Part {
                 url: resolve(base, line)?,
                 sequence: seq,
                 key: key.clone(),
             });
-            seq += 1;
+            seq = seq.wrapping_add(1);
         }
     }
     Ok(pl)
@@ -136,6 +147,17 @@ pub fn parse_media(base: &str, text: &str) -> anyhow::Result<MediaPlaylist> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn oversized_lists_are_refused() {
+        let mut huge = String::from("#EXTM3U\n");
+        for i in 0..=MAX_PARTS {
+            huge.push_str(&format!("p{i}.ts\n"));
+        }
+        assert!(parse_media("https://x.example/a/list.m3u8", &huge).is_err());
+        assert!(parse_media("https://x.example/a/list.m3u8", &"#".repeat(MAX_PLAYLIST_BYTES + 1)).is_err());
+        assert!(parse_media("https://x.example/a/list.m3u8", "#EXTM3U\np1.ts\n").is_ok());
+    }
 
     #[test]
     fn attrs_with_quotes() {

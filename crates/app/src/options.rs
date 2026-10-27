@@ -1,6 +1,6 @@
 //! The Options window (all its tabs).
 
-use crate::to_front;
+use crate::open_window;
 use crate::*;
 use swiftget_engine::config::{ServerLimit, SiteLogin, DEFAULT_CAPTURE_EXTS};
 use crate::i18n::{t, tf};
@@ -29,8 +29,7 @@ pub(crate) fn open(ui: &Ui, tab: i32) {
     fill(ui, &d, &s);
     d.set_tab(tab);
     d.set_message(SharedString::new());
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 fn show_lists(ui: &Ui, d: &SettingsDialog) {
@@ -54,6 +53,10 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_language(crate::i18n::index_of(crate::i18n::effective(&s.language)) as i32);
     d.set_theme(s.theme as i32);
     d.set_window_opacity(s.opacity.clamp(50, 100) as f32);
+    d.set_text_size(s.font_scale.clamp(80, 150) as f32);
+    d.set_font_index(crate::FONTS.iter().position(|f| *f == s.font_family).unwrap_or(0) as i32);
+    d.set_bg_image(s.background_image.clone().into());
+    d.set_bg_strength(s.background_strength.clamp(10, 80) as f32);
     d.set_start_with_windows(autostart::is_enabled());
     d.set_close_to_tray(s.close_to_tray);
     d.set_clipboard(s.clipboard_monitor);
@@ -126,6 +129,8 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_limiter_on(s.speed_limit_on);
     d.set_speed_limit(s.speed_limit_kb.clamp(1, 1_000_000) as i32);
     d.set_limiter_startup(s.limiter_on_startup);
+    d.set_seed_minutes(s.torrent_seed_minutes.min(10080) as i32);
+    d.set_torrent_upload(s.torrent_upload_kb.min(1_000_000) as i32);
     show_lists(ui, d);
 }
 
@@ -141,6 +146,10 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.language = crate::i18n::LANGS[(d.get_language().max(0) as usize).min(crate::i18n::LANGS.len() - 1)].0.into();
     s.theme = d.get_theme().clamp(0, 8) as u32;
     s.opacity = (d.get_window_opacity().round() as u32).clamp(50, 100);
+    s.font_scale = (d.get_text_size().round() as u32).clamp(80, 150);
+    s.font_family = crate::FONTS.get(d.get_font_index().max(0) as usize).copied().unwrap_or("").to_string();
+    s.background_image = d.get_bg_image().to_string();
+    s.background_strength = (d.get_bg_strength().round() as u32).clamp(10, 80);
     s.close_to_tray = d.get_close_to_tray();
     s.clipboard_monitor = d.get_clipboard();
     s.auto_start_clipboard = d.get_auto_clipboard();
@@ -216,11 +225,43 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.speed_limit_on = d.get_limiter_on();
     s.speed_limit_kb = d.get_speed_limit().max(1) as u64;
     s.limiter_on_startup = d.get_limiter_startup();
+    s.torrent_seed_minutes = d.get_seed_minutes().max(0) as u32;
+    s.torrent_upload_kb = d.get_torrent_upload().max(0) as u64;
     Ok(s)
+}
+
+/// The look the Options window shows now (not saved yet).
+fn look_of(d: &SettingsDialog) -> crate::Look {
+    crate::Look {
+        mode: d.get_theme().clamp(0, 8),
+        scale: (d.get_text_size().round() as u32).clamp(80, 150) as f32 / 100.0,
+        family: crate::FONTS.get(d.get_font_index().max(0) as usize).copied().unwrap_or("").to_string(),
+        background: d.get_bg_image().to_string(),
+        strength: (d.get_bg_strength().round() as u32).clamp(10, 80) as f32 / 100.0,
+    }
 }
 
 pub(crate) fn wire(ui: &Ui) {
     let Some(d) = ui.settings_dlg.upgrade() else { return };
+    {
+        let ui = ui.clone();
+        d.on_preview_look(move || {
+            if let Some(d) = ui.settings_dlg.upgrade() {
+                crate::apply_look(&ui, &look_of(&d));
+            }
+        });
+    }
+    {
+        let ui = ui.clone();
+        d.on_browse_bg(move || {
+            let Some(d) = ui.settings_dlg.upgrade() else { return };
+            let pick = crate::winfx::file_box().add_filter(t("Pictures"), &["png", "jpg", "jpeg"]).pick_file();
+            if let Some(f) = pick {
+                d.set_bg_image(f.display().to_string().into());
+                crate::apply_look(&ui, &look_of(&d));
+            }
+        });
+    }
     {
         let ui = ui.clone();
         d.on_preview_opacity(move |v| {
@@ -236,22 +277,22 @@ pub(crate) fn wire(ui: &Ui) {
             match which.as_str() {
                 "download" => {
                     let start = PathBuf::from(d.get_download_dir().as_str());
-                    if let Some(dir) = rfd::FileDialog::new().set_directory(start).pick_folder() {
+                    if let Some(dir) = crate::winfx::file_box().set_directory(start).pick_folder() {
                         d.set_download_dir(dir.display().to_string().into());
                     }
                 }
                 "temp" => {
-                    if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                    if let Some(dir) = crate::winfx::file_box().pick_folder() {
                         d.set_temp_dir(dir.display().to_string().into());
                     }
                 }
                 "virus" => {
-                    if let Some(f) = rfd::FileDialog::new().add_filter("Program", &["exe", "com", "bat", "cmd"]).pick_file() {
+                    if let Some(f) = crate::winfx::file_box().add_filter("Program", &["exe", "com", "bat", "cmd"]).pick_file() {
                         d.set_virus_program(f.display().to_string().into());
                     }
                 }
                 s if s.starts_with("sound:") => {
-                    let mut dlg = rfd::FileDialog::new().add_filter("Sound", &["wav"]);
+                    let mut dlg = crate::winfx::file_box().add_filter("Sound", &["wav"]);
                     if cfg!(windows) {
                         dlg = dlg.set_directory(r"C:\Windows\Media");
                     }
@@ -412,7 +453,7 @@ pub(crate) fn wire(ui: &Ui) {
                     }
                     apply_theme(&ui2, theme);
                     apply_view_settings(&ui2, &view);
-                    set_language(&ui2, crate::i18n::effective(&view.language));
+                    crate::change_language(&ui2, crate::i18n::effective(&view.language));
                     let _ = d.hide();
                     refresh(&ui2);
                     if port_changed {
@@ -430,10 +471,11 @@ pub(crate) fn wire(ui: &Ui) {
             if let Some(d) = w.upgrade() {
                 let _ = d.hide();
             }
-            // the slider only showed it: back to the saved opacity
+            // the sliders only showed it: back to the saved look
             if let Some(m) = ui.ctx.main.upgrade() {
                 crate::winfx::set_opacity(m.window(), ui.ctx.mgr.settings().opacity);
             }
+            crate::apply_look(&ui, &crate::Look::of(&ui.ctx.mgr.settings()));
         });
     }
 }

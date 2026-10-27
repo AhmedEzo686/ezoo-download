@@ -1,6 +1,6 @@
 //! Site Grabber and "Download all links" (both use the same window).
 
-use crate::to_front;
+use crate::open_window;
 use crate::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use swiftget_engine::grabber::{self, FoundFile, GrabOptions, GrabProgress};
@@ -127,14 +127,12 @@ fn reset(ui: &Ui, d: &GrabberDialog, links_mode: bool) {
 pub(crate) fn open_grabber(ui: &Ui) {
     let Some(d) = ui.grabber.upgrade() else { return };
     if d.window().is_visible() && !d.get_links_mode() {
-        let _ = d.show();
-        to_front!(d);
+        open_window!(d);
         return;
     }
     reset(ui, &d, false);
     show(ui);
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 /// "Download all links with Ezoo Download" from the browser.
@@ -159,8 +157,7 @@ pub(crate) fn open_links(ui: &Ui, l: api::LinksRequest) {
     d.set_start_url(l.page.clone().into());
     show(ui);
     bring_to_front(&ui.ctx);
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 /// New files from the explorer, and its counters (10 times a second).
@@ -306,7 +303,7 @@ pub(crate) fn wire(ui: &Ui) {
         let (w, mgr) = (d.as_weak(), ui.ctx.mgr.clone());
         d.on_browse(move || {
             let Some(d) = w.upgrade() else { return };
-            if let Some(dir) = rfd::FileDialog::new().set_directory(mgr.settings().download_dir).pick_folder() {
+            if let Some(dir) = crate::winfx::file_box().set_directory(mgr.settings().download_dir).pick_folder() {
                 d.set_folder(dir.display().to_string().into());
             }
         });

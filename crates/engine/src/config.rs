@@ -187,6 +187,8 @@ pub struct SiteLogin {
     /// "example.com" or "example.com/members"; "*" allowed
     pub site: String,
     pub user: String,
+    /// encrypted on the disk (secret.rs)
+    #[serde(with = "crate::secret::string")]
     pub password: String,
 }
 
@@ -198,6 +200,22 @@ const SETTINGS_VERSION: u32 = 4;
 /// Columns of the download list that can be shown or hidden (View > Columns).
 pub const ALL_COLUMNS: [&str; 11] =
     ["q", "size", "status", "eta", "speed", "last", "desc", "added", "saveto", "referer", "parent"];
+/// Width a column starts with (pixels).
+pub fn default_column_width(key: &str) -> u32 {
+    match key {
+        "name" => 280,
+        "q" => 30,
+        "size" => 82,
+        "status" => 110,
+        "eta" => 80,
+        "speed" => 92,
+        "last" => 140,
+        "desc" => 170,
+        "added" => 140,
+        _ => 190,
+    }
+}
+
 pub const DEFAULT_COLUMNS: [&str; 7] = ["q", "size", "status", "eta", "speed", "last", "desc"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -231,10 +249,24 @@ pub struct Settings {
     pub theme: u32,
     /// how solid the main window is, 50..=100 (%)
     pub opacity: u32,
+    /// size of all texts, 80..=150 (%)
+    pub font_scale: u32,
+    /// font of all windows ("" = Windows' own, Segoe UI)
+    pub font_family: String,
+    /// a picture behind the main window ("" = none, the theme's colors)
+    pub background_image: String,
+    /// how much of the picture shows through the panels, 10..=80 (%)
+    pub background_strength: u32,
     /// version that ran last time: after an update "What's new" is shown once
     pub last_version: String,
     /// speed limiter switched on (the limit itself is speed_limit_kb)
     pub speed_limit_on: bool,
+    /// torrents: minutes of sharing after one is complete (0 = stop at once)
+    #[serde(default)]
+    pub torrent_seed_minutes: u32,
+    /// torrents: most upload speed in KB/s (0 = no limit)
+    #[serde(default)]
+    pub torrent_upload_kb: u64,
     /// "remember this path for this category" from the download dialog
     pub category_dirs: std::collections::BTreeMap<String, PathBuf>,
     pub hide_categories: bool,
@@ -300,6 +332,8 @@ pub struct Settings {
     pub proxy_host: String,
     pub proxy_port: u16,
     pub proxy_user: String,
+    /// encrypted on the disk (secret.rs)
+    #[serde(with = "crate::secret::string")]
     pub proxy_password: String,
     /// don't use the proxy for these addresses (space separated)
     pub proxy_bypass: String,
@@ -312,6 +346,10 @@ pub struct Settings {
     pub sound_queue_done: String,
     /// visible list columns (see ALL_COLUMNS) and toolbar look
     pub columns: Vec<String>,
+    /// order of the list's columns (dragged in the header), "name" included
+    pub column_order: Vec<String>,
+    /// width of each column in pixels (dragged in the header)
+    pub column_widths: std::collections::BTreeMap<String, u32>,
     pub toolbar_small: bool,
     /// options-on-completion: close running programs when shutting down
     pub force_shutdown: bool,
@@ -345,8 +383,14 @@ impl Default for Settings {
             show_progress_window: true,
             theme: 0,
             opacity: 100,
+            font_scale: 100,
+            font_family: String::new(),
+            background_image: String::new(),
+            background_strength: 45,
             last_version: String::new(),
             speed_limit_on: false,
+            torrent_seed_minutes: 0,
+            torrent_upload_kb: 0,
             category_dirs: Default::default(),
             hide_categories: false,
             sort_by: "date".into(),
@@ -396,6 +440,8 @@ impl Default for Settings {
             sound_queue_start: default_sound("Windows Notify System Generic.wav"),
             sound_queue_done: default_sound("chimes.wav"),
             columns: DEFAULT_COLUMNS.iter().map(|c| c.to_string()).collect(),
+            column_order: Vec::new(),
+            column_widths: Default::default(),
             toolbar_small: false,
             force_shutdown: false,
             extension_prompted: false,
@@ -526,6 +572,31 @@ impl Settings {
 
     pub fn column_visible(&self, key: &str) -> bool {
         self.columns.iter().any(|c| c == key)
+    }
+
+    /// The visible columns of the download list, in their order, with their
+    /// widths: "name" always, the others as View > Columns says.
+    pub fn column_layout(&self) -> Vec<(String, u32)> {
+        let mut order: Vec<String> = self
+            .column_order
+            .iter()
+            .filter(|k| k.as_str() == "name" || ALL_COLUMNS.contains(&k.as_str()))
+            .cloned()
+            .collect();
+        order.dedup();
+        for k in std::iter::once("name").chain(ALL_COLUMNS) {
+            if !order.iter().any(|o| o == k) {
+                order.push(k.to_string());
+            }
+        }
+        order
+            .into_iter()
+            .filter(|k| k == "name" || self.column_visible(k))
+            .map(|k| {
+                let w = self.column_widths.get(&k).copied().unwrap_or_else(|| default_column_width(&k));
+                (k, w.clamp(36, 2000))
+            })
+            .collect()
     }
 
     pub fn queue(&self, id: u64) -> Option<&QueueDef> {
@@ -670,5 +741,29 @@ mod tests {
         s.server_limits.push(ServerLimit { host: "slow.example.com".into(), connections: 2 });
         assert_eq!(s.connections_for("https://a.slow.example.com/x", 32), 2);
         assert_eq!(s.connections_for("https://fast.example.com/x", 32), 32);
+    }
+}
+
+#[cfg(test)]
+mod column_tests {
+    use super::*;
+
+    #[test]
+    fn columns_keep_their_order_and_width() {
+        let mut s = Settings::default();
+        let keys = |s: &Settings| s.column_layout().into_iter().map(|c| c.0).collect::<Vec<_>>();
+        // new settings: the name first, then the default columns
+        assert_eq!(keys(&s)[0], "name");
+        assert!(keys(&s).contains(&"size".to_string()));
+        s.column_order = vec!["size".into(), "name".into(), "bogus".into()];
+        s.column_widths.insert("size".into(), 5);
+        s.column_widths.insert("name".into(), 400);
+        let l = s.column_layout();
+        assert_eq!(l[0], ("size".to_string(), 36)); // never narrower than 36
+        assert_eq!(l[1], ("name".to_string(), 400));
+        assert!(!keys(&s).contains(&"bogus".to_string()));
+        // hidden in View > Columns: not shown, order kept for later
+        s.columns.retain(|c| c != "size");
+        assert_eq!(keys(&s)[0], "name");
     }
 }

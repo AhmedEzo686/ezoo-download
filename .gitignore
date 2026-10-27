@@ -3,3 +3,4 @@
 build-cache/
 signing/
 __pycache__/
+tools/ffmpeg/win64/

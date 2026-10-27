@@ -21,13 +21,15 @@ pub mod m3u8;
 pub mod manager;
 pub mod model;
 pub mod mux;
+pub mod secret;
 pub mod segments;
 pub mod selfupdate;
 pub mod store;
 pub mod system;
 pub mod tools;
+pub mod torrent;
 pub mod ytdlp;
 
 pub use config::{AfterDone, Schedule, Settings};
-pub use manager::{default_data_dir, DetailsEdit, Event, Manager};
+pub use manager::{default_data_dir, DetailsEdit, Event, Manager, PreviewSource};
 pub use model::*;

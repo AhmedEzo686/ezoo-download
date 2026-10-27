@@ -20,6 +20,26 @@
   button { background: #1f6feb; color: #fff; border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; }
   button:hover { background: #1a5fcc; }
   .empty { color: #6b7686; }
+  .switch { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #e6eaf0; font-size: 13px; }
+  .switch b { font-weight: 600; }
+  .switch small { display: block; color: #6b7686; font-size: 11.5px; }
+  .switch label { margin-left: auto; position: relative; width: 40px; height: 22px; flex: none; cursor: pointer; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .switch .knob { position: absolute; inset: 0; background: #b9c0cb; border-radius: 11px; transition: background .15s; }
+  .switch .knob::before { content: ""; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch input:checked + .knob { background: #1a9e5a; }
+  .switch input:checked + .knob::before { transform: translateX(18px); }
+  .switch input:focus-visible + .knob { outline: 2px solid #1f6feb; outline-offset: 2px; }
+  body.off section, body.off .size { opacity: .45; pointer-events: none; }
+  .size { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e6eaf0; font-size: 13px; color: #6b7686; }
+  .size input[type=range] { flex: 1; accent-color: #1f6feb; }
+  .size select { margin-left: auto; padding: 2px 6px; border: 1px solid #d5dbe4; border-radius: 6px; font: inherit; }
+  .size output { min-width: 40px; text-align: right; color: #1f2733; font-variant-numeric: tabular-nums; }
+  .size .reset { background: none; color: #1f6feb; padding: 0 2px; font-size: 12px; }
+  .size .reset:hover { background: none; text-decoration: underline; }
+  .media .all { background: #e8f0fe; color: #1f6feb; }
+  .media .all:hover { background: #d6e4fd; }
+  .open { margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -29,6 +49,32 @@
     <span class="dot" id="status">checking…</span>
     <button class="gear" id="settings" title="Settings">⚙</button>
   </header>
+  <div class="switch">
+    <div>
+      <b id="onText">Ezoo Download is on</b>
+      <small id="onHint">Downloads and videos of this browser go to Ezoo Download</small>
+    </div>
+    <label title="Turn the add-in on or off">
+      <input type="checkbox" id="enabled" checked aria-label="Ezoo Download on / off">
+      <span class="knob"></span>
+    </label>
+  </div>
+  <div class="size">
+    <span>Download button size</span>
+    <input type="range" id="scale" min="50" max="200" step="5" value="100" aria-label="Download button size">
+    <output id="scaleText">100%</output>
+    <button class="reset" id="scaleReset" title="Back to normal size">Reset</button>
+  </div>
+  <div class="size">
+    <span>Button style</span>
+    <select id="look" aria-label="Button style">
+      <option value="blue">Blue</option>
+      <option value="dark">Dark</option>
+      <option value="light">Light</option>
+      <option value="green">Green</option>
+      <option value="icon">Icon only</option>
+    </select>
+  </div>
   <section>
     <h3>Media on this page</h3>
     <div id="media"><div class="empty">Nothing detected yet. Start playing the video.</div></div>

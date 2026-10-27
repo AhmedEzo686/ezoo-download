@@ -11,7 +11,7 @@ mod imp {
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
     fn reg(args: &[&str]) -> bool {
-        Command::new("reg")
+        Command::new(swiftget_engine::system::windows_tool("reg.exe"))
             .args(args)
             .creation_flags(CREATE_NO_WINDOW)
             .output()

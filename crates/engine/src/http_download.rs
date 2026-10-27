@@ -6,7 +6,7 @@
 //! biggest remaining segment, so all connections stay busy until the end.
 
 use crate::fileio::{make_sparse, write_at};
-use crate::http::{request, ConnGuard, Progress, Shared};
+use crate::http::{http_status_of, is_network_error, reconnect_delay, request, ConnGuard, HttpStatus, NetDrop, Progress, Shared};
 use crate::model::RequestHeaders;
 use crate::segments::{self, Segment};
 use anyhow::{anyhow, bail};
@@ -195,6 +195,7 @@ impl Worker {
     /// the previous attempt stopped.
     async fn download_segment(&self, idx: usize) -> anyhow::Result<()> {
         let mut attempt = 0u32;
+        let mut net_tries = 0u32;
         loop {
             if self.cancel.is_cancelled() {
                 return Err(Cancelled.into());
@@ -215,10 +216,28 @@ impl Worker {
                     let after = self.segs.lock().unwrap()[idx].pos;
                     if after > before {
                         attempt = 0; // it was making progress, don't give up yet
+                        net_tries = 0;
                     }
-                    attempt += 1;
-                    if attempt > self.job.retries {
-                        return Err(e);
+                    let network = is_network_error(&e);
+                    let status = http_status_of(&e);
+                    if network {
+                        // no internet / reset / stall: wait as long as it takes,
+                        // the part keeps what it already has
+                        net_tries += 1;
+                        self.progress.waiting.store(true, Ordering::Relaxed);
+                    } else {
+                        attempt += 1;
+                        // an expired or removed link won't come back by itself
+                        let gone = matches!(status, Some(401 | 403 | 404 | 410));
+                        let limit = if gone { self.job.retries.min(2) } else { self.job.retries };
+                        if attempt > limit {
+                            if gone {
+                                return Err(e.context(
+                                    "the link has expired or the file was removed - use \"Refresh download address\"",
+                                ));
+                            }
+                            return Err(e);
+                        }
                     }
                     if !self.segmented {
                         // can't resume without ranges: restart from zero
@@ -228,9 +247,15 @@ impl Worker {
                         s.pos = s.start;
                         let _ = self.file.set_len(0);
                     }
-                    let backoff = Duration::from_secs((1u64 << attempt.min(5)).min(30));
+                    let backoff = if network {
+                        reconnect_delay(net_tries)
+                    } else {
+                        Duration::from_secs((1u64 << attempt.min(5)).min(30))
+                    };
                     tokio::select! {
                         _ = tokio::time::sleep(backoff) => {},
+                        // another part got through: the internet is back
+                        _ = self.progress.back_online.notified() => {},
                         _ = self.cancel.cancelled() => return Err(Cancelled.into()),
                     }
                 }
@@ -259,17 +284,20 @@ impl Worker {
         let status = resp.status();
         if self.segmented {
             if status != StatusCode::PARTIAL_CONTENT {
+                if status.is_client_error() || status.is_server_error() {
+                    return Err(HttpStatus(status.as_u16()).into());
+                }
                 bail!("server did not accept the byte range (HTTP {})", status.as_u16());
             }
         } else if !status.is_success() {
-            bail!("server answered HTTP {}", status.as_u16());
+            return Err(HttpStatus(status.as_u16()).into());
         }
         let _guard = ConnGuard::new(&self.progress);
 
         loop {
             let chunk = match tokio::time::timeout(STALL_TIMEOUT, resp.chunk()).await {
                 Ok(r) => r?,
-                Err(_) => bail!("connection timed out"),
+                Err(_) => return Err(NetDrop("connection timed out").into()),
             };
             let Some(chunk) = chunk else { break };
             self.shared.limiter.acquire(chunk.len()).await;
@@ -285,6 +313,7 @@ impl Worker {
                     write_at(&self.file, &chunk[..take], s.pos)?;
                     s.pos += take as u64;
                     self.progress.bytes.fetch_add(take as u64, Ordering::Relaxed);
+                    self.progress.online();
                 }
                 s.pos >= stop
             };
@@ -303,7 +332,7 @@ impl Worker {
         if s.pos >= s.end.min(req_end) {
             Ok(())
         } else {
-            bail!("connection closed early")
+            Err(NetDrop("connection closed early").into())
         }
     }
 }

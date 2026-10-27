@@ -46,6 +46,11 @@ pub fn current() -> &'static str {
     LANGS[CURRENT.load(Ordering::Relaxed) % LANGS.len()].0
 }
 
+/// The windows read from right to left (Arabic).
+pub fn is_rtl() -> bool {
+    current() == "ar"
+}
+
 #[allow(dead_code)]
 pub fn is_arabic() -> bool {
     current() == "ar"
@@ -387,6 +392,183 @@ const AR: &[(&str, &str)] = &[
         "أيقونة جديدة لقوائم التشغيل، وأيقونة أصغر في شريط عنوان النافذة.",
     ),
     ("Support Ezoo Download with PayPal from Help > About.", "ادعم Ezoo Download عبر PayPal من مساعدة > حول."),
+    // 1.0.5
+    (
+        "The main window can be maximized to the full screen.",
+        "نافذة البرنامج الرئيسية يمكن تكبيرها لملء الشاشة.",
+    ),
+    (
+        "Columns of the list can be resized and moved by dragging their titles.",
+        "أعمدة القائمة يمكن تكبيرها وتصغيرها ونقلها بسحب عناوينها.",
+    ),
+    (
+        "Toolbar names are bold, and the size of the video button can be chosen in the add-in's window.",
+        "أسماء أزرار الشريط بخط عريض، ويمكن اختيار حجم زر الفيديو من نافذة الإضافة.",
+    ),
+    (
+        "Pictures",
+        "الصور",
+    ),
+    (
+        "Checking for updates…",
+        "جارٍ البحث عن تحديثات…",
+    ),
+    (
+        "This is version {}.",
+        "هذا هو الإصدار {}.",
+    ),
+    (
+        "Could not check for updates",
+        "تعذّر البحث عن تحديثات",
+    ),
+    (
+        "Ezoo Download is up to date",
+        "Ezoo Download محدَّث",
+    ),
+    (
+        "Version {} is the newest version.",
+        "الإصدار {} هو أحدث إصدار.",
+    ),
+    (
+        "Version {} is available",
+        "الإصدار {} متاح",
+    ),
+    (
+        "This copy was not installed with the setup, so it cannot update itself.",
+        "هذه النسخة لم تُثبَّت ببرنامج الإعداد، لذلك لا يمكنها تحديث نفسها.",
+    ),
+    (
+        "Downloading version {}…",
+        "جارٍ تحميل الإصدار {}…",
+    ),
+    (
+        "Installing version {}…",
+        "جارٍ تثبيت الإصدار {}…",
+    ),
+    (
+        "Ezoo Download closes now and opens again when it is installed.",
+        "سيُغلق Ezoo Download الآن ويفتح من جديد بعد التثبيت.",
+    ),
+    (
+        "Could not get the update",
+        "تعذّر الحصول على التحديث",
+    ),
+    (
+        "Text size, font and a picture behind the main window (Options > Appearance).",
+        "حجم الخط والخط وصورة خلف النافذة الرئيسية (الخيارات > المظهر).",
+    ),
+    (
+        "Windows open in the middle of the screen; only the main window can be maximized.",
+        "النوافذ تفتح في منتصف الشاشة، والنافذة الرئيسية وحدها يمكن تكبيرها.",
+    ),
+    (
+        "Drag a finished file from the list onto the desktop or into a folder.",
+        "اسحب ملفًا مكتملًا من القائمة إلى سطح المكتب أو إلى أي مجلد.",
+    ),
+    (
+        "The progress of a download shows on its taskbar button.",
+        "تقدّم التحميل يظهر على زر النافذة في شريط المهام.",
+    ),
+    (
+        "Check for updates shows the check, the download and the installation in its own window.",
+        "البحث عن تحديثات يعرض البحث والتحميل والتثبيت في نافذة خاصة.",
+    ),
+    (
+        "Playlist videos are saved with their own original titles and their original sound.",
+        "فيديوهات قوائم التشغيل تُحفظ بعناوينها الأصلية وصوتها الأصلي.",
+    ),
+    (
+        "Closing a download's window (X) stops the download; Resume opens it again.",
+        "إغلاق نافذة التحميل (X) يوقف التحميل، و«استئناف» يفتحها من جديد.",
+    ),
+    (
+        "The download button on videos in the browser is smaller, and its size can be changed in the add-in's settings.",
+        "زر التحميل على الفيديوهات في المتصفح أصبح أصغر، ويمكن تغيير حجمه من إعدادات الإضافة.",
+    ),
+    (
+        "Updates are signed: Ezoo Download installs only updates made by its developer.",
+        "التحديثات أصبحت موقّعة: Ezoo Download لا يثبّت إلا التحديثات الصادرة من مطوّره.",
+    ),
+    (
+        "Downloaded files are marked as coming from the internet, so Windows warns before opening an unsafe file.",
+        "الملفات المحمّلة تُعلَّم بأنها من الإنترنت، فيحذّرك ويندوز قبل فتح ملف غير آمن.",
+    ),
+    (
+        "Saved passwords and site logins are encrypted with your Windows account.",
+        "كلمات المرور وبيانات دخول المواقع المحفوظة أصبحت مشفّرة بحساب ويندوز الخاص بك.",
+    ),
+    (
+        "The video helpers (yt-dlp and ffmpeg) are checked before they are used.",
+        "أدوات الفيديو (yt-dlp و ffmpeg) يتم التحقق منها قبل استخدامها.",
+    ),
+    (
+        "More protection against harmful web pages and links.",
+        "حماية أكبر من صفحات الويب والروابط الضارة.",
+    ),
+    // 1.0.6
+    ("Torrents: open a .torrent file or a magnet link and choose which of its files to download.", "التورنت: افتح ملف تورنت أو رابط magnet واختر أي ملفاته تريد تحميلها."),
+    ("A dropped internet connection no longer stops a download: it waits and goes on by itself from where it was.", "انقطاع الإنترنت لم يعد يوقف التحميل: ينتظر ثم يكمل وحده من حيث توقف."),
+    ("An expired link or a removed file is explained in plain words, with what to do about it.", "الرابط المنتهي أو الملف المحذوف يُشرح بكلمات بسيطة مع ما يجب فعله."),
+    ("Watch a video or listen to a song while it is still downloading (right-click > Play while downloading).", "شاهد فيديو أو استمع لملف صوتي وهو ما زال يُحمَّل، دون انتظار انتهاء التحميل (زر الفأرة الأيمن > تشغيل أثناء التحميل)."),
+    ("YouTube videos can be saved as MP3 files.", "يمكن حفظ فيديوهات يوتيوب كملفات MP3."),
+    ("Qualities are shown in plain words too: SD, HD, Full HD, 2K, 4K.", "الجودات تظهر أيضًا بكلمات واضحة: SD وHD وFull HD و2K و4K."),
+    ("The video button in the browser lists every quality with its format, length and size, has a size slider, and works on videos in frames, in full screen and in more players.", "زر الفيديو في المتصفح يعرض كل جودة بنوعها ومدتها وحجمها، وله شريط لتغيير حجمه، ويعمل على الفيديوهات داخل الإطارات وفي ملء الشاشة وفي مشغلات أكثر."),
+    ("Videos that need a login or an age check use your browser's sign-in, also in playlists.", "الفيديوهات التي تحتاج تسجيل دخول أو تأكيد العمر تستخدم تسجيل دخولك في المتصفح، وفي قوائم التشغيل أيضًا."),
+    ("Toolbar buttons explain what they do when the mouse rests on them.", "أزرار شريط الأدوات تشرح وظيفتها عند وضع الفأرة عليها."),
+    ("A download's window can be hidden next to the clock.", "يمكن إخفاء نافذة التحميل بجوار الساعة."),
+    ("File icons are easier to tell apart.", "أيقونات الملفات أصبحت أسهل في التمييز."),
+    ("Menus show one clear mark on the chosen option.", "القوائم تعرض علامة واحدة واضحة على الاختيار المحدد."),
+    ("The window of a finished download no longer offers \"Open with…\", so a file can't be changed by mistake.", "نافذة التحميل المكتمل لم تعد تعرض \"فتح باستخدام…\"، فلا يتغير الملف بالخطأ."),
+    ("Fixed a crash around the Tips window.", "تم إصلاح توقف مفاجئ كان يحدث مع نافذة النصائح."),
+    ("Only videos and sound files can be played while they download.", "يمكن تشغيل الفيديوهات والملفات الصوتية فقط أثناء تحميلها."),
+    ("This video comes in many small pieces that are joined at the end: it can be played when the download is done.", "هذا الفيديو يأتي في أجزاء صغيرة كثيرة تُجمع في النهاية: يمكن تشغيله بعد انتهاء التحميل."),
+    ("Nothing to play yet: wait until a part of the file is downloaded, then try again.", "لا يوجد ما يمكن تشغيله بعد: انتظر حتى يُحمَّل جزء من الملف ثم حاول مرة أخرى."),
+    ("Could not open the player: {}", "تعذر فتح المشغل: {}"),
+    ("This video needs a login or an age check. Open it once in the browser where you are signed in (with the Ezoo Download extension), then try again.", "هذا الفيديو يحتاج تسجيل دخول أو تأكيد العمر. افتحه مرة في المتصفح الذي سجلت فيه دخولك (مع إضافة Ezoo Download) ثم حاول مرة أخرى."),
+    ("The link has expired or the file was removed. Right-click the download and use \"Refresh download address\".", "انتهت صلاحية الرابط أو حُذف الملف. اضغط بزر الفأرة الأيمن على التحميل واستخدم \"تحديث رابط التحميل\"."),
+    ("Waiting for connection…", "في انتظار الاتصال…"),
+    ("Getting the file list…", "جارٍ جلب قائمة الملفات…"),
+    ("Torrent: {} peers", "تورنت: {} أجهزة متصلة"),
+    ("Torrent", "تورنت"),
+    ("No internet connection - it will continue by itself when it is back…", "لا يوجد اتصال بالإنترنت - سيكمل التحميل وحده عند عودته…"),
+    ("{} of {} files checked", "تم تحديد {} من {} ملفات"),
+    ("Magnet link", "رابط magnet"),
+    ("The file list comes from the other computers when it starts", "قائمة الملفات تأتي من الأجهزة الأخرى عند البدء"),
+    ("This is not a magnet link or a .torrent file", "هذا ليس رابط magnet أو ملف تورنت"),
+    ("This .torrent file can't be read: {}", "تعذرت قراءة ملف تورنت هذا: {}"),
+    ("{} in {} files", "{} في {} ملفات"),
+    ("Check at least one file", "حدد ملفًا واحدًا على الأقل"),
+    ("Choose where to save it", "اختر مكان الحفظ"),
+    ("Show download progress", "عرض تقدّم التحميل"),
+    ("Stop download", "إيقاف التحميل"),
+    ("This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.", "هذا التورنت يعمل بالفعل (قد يكون ما زال يشارك ملفاته). انتظر قليلًا، أو اخرج من Ezoo Download وافتحه مرة أخرى."),
+    ("The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.", "يمكن إيقاف إضافة المتصفح مؤقتًا من نافذتها نفسها، دون تعطيلها من صفحة الإضافات في المتصفح."),
+    ("Ezoo Download will restart now to show its windows in the direction of the new language. Downloads continue after it opens.\n\nRestart now?", "سيُعاد تشغيل Ezoo Download الآن لتظهر نوافذه باتجاه اللغة الجديدة. التحميلات تكمل بعد فتحه.\n\nإعادة التشغيل الآن؟"),
+    ("The drive of the download folder is locked by BitLocker. Unlock it in Windows, or choose another folder (right-click the download > Properties).", "القرص الذي فيه مجلد التحميل مقفول بواسطة BitLocker. افتح قفله من ويندوز، أو اختر مجلدًا آخر (زر الفأرة الأيمن على التحميل > الخصائص)."),
+    ("Restore Ezoo Download", "إظهار Ezoo Download"),
+    ("Add new download…", "إضافة تحميل جديد…"),
+    ("Resume all downloads", "استكمال كل التحميلات"),
+    ("Stop all downloads", "إيقاف كل التحميلات"),
+    ("Speed Limiter", "محدد السرعة"),
+    ("Scheduler…", "المجدول…"),
+    ("Options…", "الخيارات…"),
+    ("About", "حول البرنامج"),
+    ("Exit", "خروج"),
+    ("Arabic: every window now reads from right to left (the program restarts once when the direction changes).", "العربية: كل النوافذ أصبحت من اليمين إلى اليسار (يُعاد تشغيل البرنامج مرة واحدة عند تغيير الاتجاه)."),
+    ("The program has its own small FFmpeg inside: video and sound are joined, MP3 files are made and live streams are saved, with nothing extra to download.", "البرنامج فيه نسخة FFmpeg صغيرة خاصة به: دمج الفيديو والصوت، وعمل ملفات MP3، وحفظ البث المباشر، بدون تحميل أي شيء إضافي."),
+    ("Live streams are saved as MP4 files.", "البث المباشر يُحفظ كملف MP4."),
+    ("MP3 files keep the title of the audio file.", "ملفات MP3 تحتفظ بعنوان الملف الصوتي."),
+    ("Much less memory and processor work, also with many downloads at once.", "استهلاك أقل بكثير للذاكرة والمعالج، حتى مع تحميلات كثيرة في نفس الوقت."),
+    ("No more freezes when a file is deleted or moved during its download, and message windows no longer hide behind the main window.", "لا مزيد من التهنيج عند حذف ملف أو نقله أثناء تحميله، ونوافذ الرسائل لم تعد تختفي خلف النافذة الرئيسية."),
+    ("Downloads are taken from the browser before its own Save As window opens.", "التحميلات تُؤخذ من المتصفح قبل أن تظهر نافذة \"حفظ باسم\" الخاصة به."),
+    ("The browser button finds more videos, also streams in several qualities, and on more sites.", "زر المتصفح يجد فيديوهات أكثر، ومنها البث بجودات متعددة، وعلى مواقع أكثر."),
+    ("AV1 qualities are offered when a video has them.", "جودات AV1 تظهر عندما يكون الفيديو متاحًا بها."),
+    ("The window of a download gets smaller when its details are hidden.", "نافذة التحميل تصغر عند إخفاء التفاصيل."),
+    ("The video button in the browser has five looks to choose from (in the add-in's window).", "زر الفيديو في المتصفح له خمسة أشكال تختار منها (من نافذة الإضافة)."),
+    ("A clear message when the download folder is on a drive locked by BitLocker.", "رسالة واضحة عندما يكون مجلد التحميل على قرص مقفول بواسطة BitLocker."),
+    ("Fixed videos that could not be downloaded on some computers because of the Windows temporary folder.", "تم إصلاح فيديوهات كانت لا تُحمَّل على بعض الأجهزة بسبب مجلد الملفات المؤقتة في ويندوز."),
+    ("The Grabber also finds links written as plain text, and the menu next to the clock is in the program's language.", "الجامع يجد أيضًا الروابط المكتوبة كنص عادي، وقائمة الأيقونة بجوار الساعة أصبحت بلغة البرنامج."),
+    ("The speed limit stays smooth with many connections, and the clipboard also catches the file types you added.", "تحديد السرعة يبقى سلسًا مع الاتصالات الكثيرة، ومراقبة الحافظة تلتقط أيضًا أنواع الملفات التي أضفتها."),
 ];
 
 #[cfg(test)]

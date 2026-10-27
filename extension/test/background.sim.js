@@ -6,6 +6,7 @@ const listeners = {}; const on = (n) => ({ addListener: (f) => (listeners[n] = f
 const session = {}; const localStore = {}; let reloads = 0; let pingExt = null; const sent = []; const tabMsgs = []; let tabUrl = "https://www.youtube.com/watch?v=AAAAAAAAAAA";
 const chrome = {
   storage: {
+    onChanged: on("store"),
     local: { get: async (d) => (typeof d === "string" ? (d in localStore ? { [d]: localStore[d] } : {}) : { ...d, ...localStore }), set: async (o) => Object.assign(localStore, o) },
     session: {
       get: async (k) => { const ks = Array.isArray(k) ? k : [k]; const o = {}; for (const x of ks) if (x in session) o[x] = JSON.parse(JSON.stringify(session[x])); return o; },
@@ -13,16 +14,16 @@ const chrome = {
       remove: async (k) => { for (const x of [].concat(k)) delete session[x]; },
     },
   },
-  downloads: { onCreated: on("dl"), cancel: async () => {}, erase: async () => {}, download: (o) => browserDl.push(o.url) },
+  downloads: { onCreated: on("dl"), onDeterminingFilename: on("det"), cancel: async (id) => { cancelled.push(id); }, erase: async () => {}, download: (o) => browserDl.push(o.url) },
   webRequest: { onHeadersReceived: on("headers"), onBeforeRequest: on("before") },
-  tabs: { onUpdated: on("upd"), onRemoved: on("rm"), get: async (id) => ({ id, url: tabUrl }),
+  tabs: { onUpdated: on("upd"), onRemoved: on("rm"), get: async (id) => ({ id, url: tabUrl }), query: async () => [{ id: 7 }],
           sendMessage: async (id, m) => tabMsgs.push(m) },
   action: { setBadgeBackgroundColor: () => {}, setBadgeText: async () => {} },
   runtime: { onInstalled: on("inst"), onStartup: on("start"), onMessage: on("msg"), getManifest: () => ({ version: "1.0.4" }), reload: () => { reloads++; } },
   contextMenus: { removeAll: () => {}, create: () => {}, onClicked: on("ctx") },
   cookies: { getAll: async () => [] },
 };
-const ytCalls = []; const browserDl = []; let appDown = false;
+const ytCalls = []; const browserDl = []; const cancelled = []; const suggested = []; let appDown = false;
 const fetch = async (url, opts = {}) => {
   if (url.endsWith("/ping") && pingExt) return { ok: true, status: 200, json: async () => ({ ext: pingExt }) };
   if (url.endsWith("/add")) { if (appDown) throw new TypeError("Failed to fetch"); sent.push(JSON.parse(opts.body)); }
@@ -53,7 +54,8 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   }
   const last = tabMsgs[tabMsgs.length - 1];
   assert.strictEqual(last.type, "swiftget-media");
-  assert.strictEqual(last.items[0].label, "1080p · MP4");
+  assert.strictEqual(last.items[0].label, "1080p Full HD · MP4");
+  assert.strictEqual(last.items[0].yt.tag, "Full HD");
   console.log("button shows:", last.items.map((i) => i.label).join(" | "));
 
   // user clicks 1080p on the page
@@ -114,7 +116,16 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   console.log("Instagram reel via app:", req3.fileName);
   // browser downloads: only new ones, each once, no loop when the app fails
   const now = new Date().toISOString();
-  const dl = async (o) => { await listeners.dl({ id: Math.random(), state: "in_progress", startTime: now, ...o }); await tick(); };
+  // Chrome style: decided before "Save as" (the browser waits for suggest)
+  const dl = async (o) => {
+    const item = { id: Math.random(), state: "in_progress", startTime: now, ...o };
+    await listeners.dl(item); // nothing happens here any more
+    const waits = listeners.det(item, () => suggested.push(item.id));
+    assert.strictEqual(waits, true, "the browser waits for our answer");
+    for (let i = 0; i < 20; i++) await tick();
+    const kept = suggested.includes(item.id), taken = cancelled.includes(item.id);
+    assert(kept !== taken, "answered exactly once: left to the browser or taken by the app");
+  };
   let before = sent.length;
   await dl({ url: "https://example.com/old.pdf", startTime: new Date(Date.now() - 3600e3).toISOString() });
   await dl({ url: "https://example.com/done.pdf", state: "complete" });
@@ -143,5 +154,48 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   assert.strictEqual(reloads, 1, "same version: nothing");
   pingExt = null;
   console.log("self update: reloads once when the program has a newer add-in");
+  // a player inside a frame (Dailymotion's "geo.dailymotion.com/player/…"):
+  // the page around it is looked up, its qualities are offered
+  {
+    const page = "https://www.dailymotion.com/video/xac78kk";
+    const n = ytCalls.length;
+    const res = await new Promise((resolve) =>
+      listeners.msg({ type: "swiftget-resolve-video", page: "", src: "", frame: true }, { tab: { id: 21, url: page }, frameId: 4 }, resolve));
+    assert(res.items && res.items.length >= 2, "qualities of the page: " + JSON.stringify(res));
+    assert.strictEqual(ytCalls[n].url, page, "the page, not the player frame");
+    assert(!ytCalls.slice(n).some((c) => /geo\.dailymotion\.com/.test(c.url)));
+    console.log("player in a frame: uses the page's qualities");
+  }
+  // the on / off switch of the add-in's window
+  {
+    localStore.enabled = false;
+    listeners.store({ enabled: { newValue: false } }, "local");
+    const before = sent.length;
+    await dl({ url: "https://example.com/while-off.zip" });
+    assert.strictEqual(sent.length, before, "off: the browser keeps its downloads");
+    const cfg = await new Promise((r) => listeners.msg({ type: "swiftget-config" }, { tab: { id: 7, url: tabUrl } }, r));
+    assert.strictEqual(cfg.enabled, false, "off: no buttons on videos");
+    const n = tabMsgs.length;
+    await ctx.pushToTab(7);
+    assert.strictEqual(tabMsgs.slice(n).pop().items.length, 0, "off: nothing offered on the page");
+    localStore.enabled = true;
+    await dl({ url: "https://example.com/while-on.zip" });
+    assert.strictEqual(sent.length, before + 1, "on again: back to the app");
+    console.log("on / off switch: off leaves everything to the browser");
+  }
+  // a DASH stream (.mpd): offered, its qualities come from the app
+  {
+    listeners.headers({ tabId: 31, url: "https://cdn.example/v/manifest.mpd", statusCode: 200, responseHeaders: [{ name: "Content-Type", value: "application/dash+xml" }] });
+    await tick(); await tick();
+    const items = await new Promise((r) => listeners.msg({ type: "swiftget-get-media", tabId: 31 }, {}, r));
+    const dash = items.find((i) => i.resolve);
+    assert(dash && dash.resolve.endsWith(".mpd"), "DASH stream offered: " + JSON.stringify(items));
+    const n = ytCalls.length;
+    const res = await new Promise((r) => listeners.msg({ type: "swiftget-resolve-video", resolve: dash.resolve }, { tab: { id: 31, url: "https://site.example/watch/1" } }, r));
+    assert(res.items && res.items.length, "its qualities");
+    assert.strictEqual(ytCalls[n].url, dash.resolve);
+    assert.strictEqual(ytCalls[n].referer, "https://site.example/watch/1", "the page goes along as referrer");
+    console.log("DASH stream: offered, qualities from the app with the page as referrer");
+  }
   console.log("background simulation: all checks passed");
 })().catch((e) => { console.error(e); process.exit(1); });

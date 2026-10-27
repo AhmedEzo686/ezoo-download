@@ -110,6 +110,21 @@ function videoIdOf(pageUrl) {
   }
 }
 
+/** The resolution in plain words: SD, HD, Full HD, 2K, 4K, 8K. */
+function qualityTag(h) {
+  if (!h) return "";
+  if (h >= 4320) return "8K";
+  if (h >= 2160) return "4K";
+  if (h >= 1440) return "2K";
+  if (h >= 1080) return "Full HD";
+  if (h >= 720) return "HD";
+  return "SD";
+}
+
+/** The "MP3" choice: the app downloads the sound and makes an MP3 file of it. */
+const MP3_KEY = "audio|MP3";
+const MP3_KBPS = 192;
+
 function fmtSize(n) {
   if (!n) return "";
   const u = ["B", "KB", "MB", "GB"];
@@ -154,14 +169,21 @@ function buildOptions(streams) {
   for (const v of videos) {
     const q = `${v.h ? v.h + "p" : "video"}${v.fps && v.fps > 30 ? v.fps : ""}`;
     const fmt = v.codec ? `${v.ext.toUpperCase()} ${v.codec}` : v.ext.toUpperCase();
+    const tag = qualityTag(v.h);
+    const named = tag ? `${q} ${tag}` : q;
+    const kbpsOf = (size) => (size && v.dur ? Math.round((size * 8) / v.dur / 1000) : 0);
     const key = `${q}|${fmt}`;
     if (seen.has(key)) continue;
     seen.add(key);
     if (v.kind === "av") {
       options.push({
-        label: `${q} · ${fmt}`,
+        label: `${named} · ${fmt}`,
         sub: `${fmtSize(v.size)} · video with sound`,
         quality: q,
+        tag,
+        codec: v.codec || "",
+        duration: v.dur || 0,
+        kbps: kbpsOf(v.size),
         videoUrl: v.url,
         audioUrl: null,
         ext: v.ext,
@@ -178,9 +200,13 @@ function buildOptions(streams) {
     }
     if (!audio) continue; // the player has not loaded any sound yet
     options.push({
-      label: `${q} · ${ext === "mkv" ? "MKV" : fmt}`,
+      label: `${named} · ${ext === "mkv" ? "MKV" : fmt}`,
       sub: fmtSize(v.size + audio.size),
       quality: q,
+      tag,
+      codec: v.codec || "",
+      duration: v.dur || 0,
+      kbps: kbpsOf(v.size + audio.size),
       videoUrl: v.url,
       audioUrl: audio.url,
       ext,
@@ -193,10 +219,26 @@ function buildOptions(streams) {
       label: `Audio only · ${audioOnly.ext.toUpperCase()}${audioOnly.abr ? " " + audioOnly.abr + "k" : ""}`,
       sub: fmtSize(audioOnly.size),
       quality: "audio",
+      duration: audioOnly.dur || 0,
+      kbps: audioOnly.abr || 0,
       videoUrl: audioOnly.url,
       audioUrl: null,
       ext: audioOnly.ext,
       size: audioOnly.size,
+    });
+    // the same sound as an MP3 file (made by the app after the download)
+    const mp3Size = audioOnly.dur ? Math.round((audioOnly.dur * MP3_KBPS * 1000) / 8) : 0;
+    options.push({
+      label: `Audio · MP3 ${MP3_KBPS}k`,
+      sub: mp3Size ? `about ${fmtSize(mp3Size)}` : "",
+      key: MP3_KEY,
+      quality: "mp3",
+      duration: audioOnly.dur || 0,
+      kbps: MP3_KBPS,
+      videoUrl: audioOnly.url,
+      audioUrl: null,
+      ext: "mp3",
+      size: mp3Size,
     });
   }
   return options;
@@ -213,5 +255,5 @@ function cleanYoutubeTitle(title) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { YT_ITAGS, parseStream, videoIdOf, buildOptions, cleanYoutubeTitle, fmtSize };
+  module.exports = { YT_ITAGS, parseStream, videoIdOf, buildOptions, cleanYoutubeTitle, fmtSize, qualityTag, MP3_KEY };
 }

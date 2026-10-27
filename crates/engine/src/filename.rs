@@ -37,8 +37,7 @@ pub fn from_url(u: &str) -> Option<String> {
     let parsed = url::Url::parse(u).ok()?;
     let last = parsed
         .path_segments()?
-        .filter(|s| !s.is_empty())
-        .last()?
+        .rfind(|s| !s.is_empty())?
         .to_string();
     let name = percent_decode_str(&last).decode_utf8_lossy().into_owned();
     if name.trim().is_empty() {

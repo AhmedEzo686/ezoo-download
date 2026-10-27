@@ -1,6 +1,6 @@
 // Ezoo Download – shared look: data types, themes, icons and small widgets.
 
-import { Button, LineEdit, SpinBox, CheckBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
+import { Button, LineEdit, SpinBox, CheckBox as StdCheckBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
 
 export struct DownloadRow {
     id: int,
@@ -24,6 +24,12 @@ export struct DownloadRow {
     parent: string,
     // 0 queued, 1 running, 2 paused, 3 complete, 4 error
     state: int,
+}
+
+// a column of the download list, in the order shown (drag to move / resize)
+export struct ColDef {
+    key: string,
+    width: length,
 }
 
 // which list columns are visible (View > Columns)
@@ -97,16 +103,30 @@ export global Theme {
     // themes: Light, Dark, Ocean blue, Midnight purple, Forest green, Black,
     // Sunset, Teal night, Rose
     out property <bool> dark: mode == 1 || mode == 3 || mode == 5 || mode == 7;
-    out property <color> window: [#f0f0f0, #1e1f22, #e8f1fb, #15131d, #eef5ef, #000000, #fbf1ea, #0f1c1e, #fbf0f4][mode];
-    out property <color> panel: [#ffffff, #26282c, #ffffff, #1d1a29, #ffffff, #0b0b0b, #ffffff, #142527, #ffffff][mode];
-    out property <color> toolbar-top: [#fdfdfd, #2e3136, #2f80ed, #2b2545, #2f9e5b, #121212, #f07b3f, #1b3a3d, #e05a8a][mode];
-    out property <color> toolbar-bottom: [#e7ebf0, #24262a, #1b5fc4, #1e1a33, #1f7a43, #050505, #d4513a, #132b2e, #c23d6e][mode];
+    // Options > General > Text size / Font
+    in-out property <float> font-scale: 1.0;
+    in-out property <string> font-family: "";
+    // a picture behind the main window: how much of it shows through (0..0.8)
+    in-out property <float> glass: 0;
+    // Arabic: every window reads from right to left
+    in-out property <bool> rtl: false;
+    out property <color> window: window-base;
+    out property <color> panel: panel-base.transparentize(glass);
+    out property <color> toolbar-top: toolbar-top-base.transparentize(glass);
+    out property <color> toolbar-bottom: toolbar-bottom-base.transparentize(glass);
+    out property <color> header-top: header-top-base.transparentize(glass);
+    out property <color> header-bottom: header-bottom-base.transparentize(glass);
+    out property <color> grid: grid-base.transparentize(glass);
+    property <color> window-base: [#f0f0f0, #1e1f22, #e8f1fb, #15131d, #eef5ef, #000000, #fbf1ea, #0f1c1e, #fbf0f4][mode];
+    property <color> panel-base: [#ffffff, #26282c, #ffffff, #1d1a29, #ffffff, #0b0b0b, #ffffff, #142527, #ffffff][mode];
+    property <color> toolbar-top-base: [#fdfdfd, #2e3136, #2f80ed, #2b2545, #2f9e5b, #121212, #f07b3f, #1b3a3d, #e05a8a][mode];
+    property <color> toolbar-bottom-base: [#e7ebf0, #24262a, #1b5fc4, #1e1a33, #1f7a43, #050505, #d4513a, #132b2e, #c23d6e][mode];
     out property <color> toolbar-text: [#1b1f24, #e8eaed, #ffffff, #ece9f6, #ffffff, #f2f2f2, #ffffff, #e3f4f3, #ffffff][mode];
     out property <color> toolbar-hover: [#e5f1fb, #3a3e45, #4a92f0, #3a3260, #45b06f, #262626, #f5955f, #26504f, #e97aa1][mode];
     out property <color> line: [#d9dde3, #3a3d42, #c6d8ef, #352f4d, #c9dfcf, #262626, #efd2c2, #24403f, #efcdda][mode];
-    out property <color> grid: [#eef0f3, #2f3237, #eaf2fc, #26223a, #eaf4ec, #141414, #fbeee6, #1a2e30, #fbedf2][mode];
-    out property <color> header-top: [#ffffff, #2e3136, #f7fbff, #26223a, #f8fcf9, #161616, #fffaf6, #1b3133, #fffafc][mode];
-    out property <color> header-bottom: [#eef1f5, #282a2e, #e3eefb, #201c31, #e2f0e6, #0e0e0e, #f8e5d9, #16292b, #f8e3eb][mode];
+    property <color> grid-base: [#eef0f3, #2f3237, #eaf2fc, #26223a, #eaf4ec, #141414, #fbeee6, #1a2e30, #fbedf2][mode];
+    property <color> header-top-base: [#ffffff, #2e3136, #f7fbff, #26223a, #f8fcf9, #161616, #fffaf6, #1b3133, #fffafc][mode];
+    property <color> header-bottom-base: [#eef1f5, #282a2e, #e3eefb, #201c31, #e2f0e6, #0e0e0e, #f8e5d9, #16292b, #f8e3eb][mode];
     out property <color> text: [#1b1f24, #e8eaed, #13243a, #ece9f6, #15281b, #f2f2f2, #2e1a12, #e3f4f3, #2e1420][mode];
     out property <color> muted: [#5f6b78, #9aa0a6, #557090, #a59fc0, #557a61, #9a9a9a, #8a6352, #8fb3b0, #8a5a6c][mode];
     out property <color> accent: [#1f6feb, #5b9dff, #1565c0, #a78bfa, #1f8a4c, #4ea1ff, #d4513a, #2ec4b6, #c23d6e][mode];
@@ -120,6 +140,87 @@ export global Theme {
     out property <color> input-bg: dark ? #2b2d31 : #ffffff;
 }
 
+// A row that runs from right to left for Arabic (Theme.rtl), otherwise
+// like HorizontalLayout.
+export component HRow inherits FlexboxLayout {
+    flex-direction: Theme.rtl ? FlexboxLayoutDirection.row-reverse : FlexboxLayoutDirection.row;
+    flex-wrap: no-wrap;
+    alignment: stretch;
+}
+
+// The standard check box, with the box on the right for Arabic (Theme.rtl).
+export component CheckBox inherits VerticalLayout {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in-out property <bool> checked;
+    callback toggled();
+    alignment: center;
+    if !Theme.rtl: StdCheckBox {
+        text: root.text;
+        enabled: root.enabled;
+        checked <=> root.checked;
+        toggled => {
+            root.toggled();
+        }
+    }
+    if Theme.rtl: Rectangle {
+        min-height: 20px;
+        accessible-role: checkbox;
+        accessible-checkable: true;
+        accessible-checked: root.checked;
+        accessible-label: root.text;
+        accessible-enabled: root.enabled;
+        accessible-action-default => {
+            if (root.enabled) {
+                root.checked = !root.checked;
+                root.toggled();
+            }
+        }
+        opacity: root.enabled ? 1.0 : 0.45;
+        rtl-touch := TouchArea {
+            enabled: root.enabled;
+            clicked => {
+                root.checked = !root.checked;
+                root.toggled();
+            }
+        }
+        HRow {
+            spacing: 12px;
+            alignment: start;
+            Rectangle {
+                width: 18px;
+                Rectangle {
+                    y: (parent.height - 18px) / 2;
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 3px;
+                    border-width: root.checked ? 0px : 1px;
+                    border-color: Theme.muted;
+                    background: root.checked ? Theme.accent : rtl-touch.has-hover ? Theme.hover : Theme.input-bg;
+                    if root.checked: Path {
+                        x: 3px;
+                        y: 3px;
+                        width: 12px;
+                        height: 12px;
+                        viewbox-width: 12;
+                        viewbox-height: 12;
+                        stroke: white;
+                        stroke-width: 1.6px;
+                        fill: transparent;
+                        commands: "M 1.5 6.5 L 4.5 9.5 L 10.5 2.5";
+                    }
+                }
+            }
+            Text {
+                text: root.text;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                color: Theme.text;
+            }
+        }
+    }
+}
+
 // Applies the light/dark look to the standard widgets of every window.
 export component ThemedWindow inherits Window {
     property <bool> dark: Theme.dark;
@@ -130,7 +231,40 @@ export component ThemedWindow inherits Window {
         Palette.color-scheme = self.dark ? ColorScheme.dark : ColorScheme.light;
     }
     background: Theme.window;
+    // 12px is the size Windows gives Slint by default (the message font)
+    default-font-size: 12px * Theme.font-scale;
+    default-font-family: Theme.font-family;
     icon: @image-url("icon-window.png");
+}
+
+// A button of a window's own title bar (windows drawn without the Windows
+// frame): "tray" (hide next to the clock), "min" or "close".
+export component CaptionButton inherits Rectangle {
+    in property <string> kind;
+    callback clicked();
+    out property <bool> hovered: ca.has-hover;
+    width: 44px;
+    background: ca.pressed ? (root.kind == "close" ? #c50f1f : Theme.line) : ca.has-hover ? (root.kind == "close" ? #e81123 : Theme.hover) : transparent;
+    ca := TouchArea {
+        clicked => {
+            root.clicked();
+        }
+    }
+    Path {
+        x: (parent.width - 10px) / 2;
+        y: (parent.height - 10px) / 2;
+        width: 10px;
+        height: 10px;
+        viewbox-width: 10;
+        viewbox-height: 10;
+        stroke-width: 1px;
+        stroke: root.kind == "close" && ca.has-hover ? white : Theme.text;
+        fill: transparent;
+        commands: root.kind == "close" ? "M 0 0 L 10 10 M 10 0 L 0 10"
+            : root.kind == "min" ? "M 0 5.5 L 10 5.5"
+            // an arrow down into a tray
+            : "M 5 0 L 5 6.5 M 2.2 3.8 L 5 6.5 L 7.8 3.8 M 0.5 6.5 L 0.5 9.5 L 9.5 9.5 L 9.5 6.5";
+    }
 }
 
 // Small vector icons for menus, lists and buttons (fonts on Windows don't
@@ -386,6 +520,25 @@ export component Icon inherits Rectangle {
             commands: "M 24 23 L 26 23 L 26 27 L 28 27 L 25 30 L 22 27 L 24 27 Z";
         }
     }
+    if root.kind == "torrent": Rectangle {
+        // a red magnet with a download arrow
+        P {
+            fill: @linear-gradient(180deg, #ff5a7a 0%, #c81e45 100%);
+            commands: "M 3 3 L 10 3 L 10 14 A 4 4 0 0 0 18 14 L 18 3 L 25 3 L 25 14 A 11 11 0 0 1 3 14 Z";
+        }
+        P {
+            fill: #dfe6ee;
+            commands: "M 3 3 L 10 3 L 10 8 L 3 8 Z M 18 3 L 25 3 L 25 8 L 18 8 Z";
+        }
+        P {
+            fill: #1f6feb;
+            commands: "M 25 18 A 6.5 6.5 0 1 1 24.99 18 Z";
+        }
+        P {
+            fill: white;
+            commands: "M 24 20.5 L 26 20.5 L 26 24.5 L 28.3 24.5 L 25 28.3 L 21.7 24.5 L 24 24.5 Z";
+        }
+    }
     if root.kind == "grabber": Rectangle {
         // a globe with a download arrow
         P {
@@ -524,94 +677,161 @@ export component G inherits Path {
     viewbox-height: 16;
 }
 
-// Colorful file-type icon: rounded tile with a white symbol.
+// File-type icon. Every kind has its own shape and color, so they are told
+// apart at a glance: a film strip (video), a round note (music), a zipped
+// box (archives), a page with a folded corner (documents)…
 export component TypeIcon inherits Rectangle {
     in property <string> kind: "general";
     width: 18px;
     height: 18px;
-    property <color> base: root.kind == "video" ? #e5484d
-        : root.kind == "audio" ? #8e4ec6
-        : root.kind == "archive" ? #c27c0e
-        : root.kind == "pdf" ? #d93025
+    // documents: a page with a folded corner in their color
+    property <bool> page: root.kind == "pdf" || root.kind == "doc" || root.kind == "sheet" || root.kind == "slides" || root.kind == "text" || root.kind == "general";
+    property <color> page-color: root.kind == "pdf" ? #e03131
         : root.kind == "doc" ? #2b6cde
         : root.kind == "sheet" ? #1e8e3e
         : root.kind == "slides" ? #e8710a
         : root.kind == "text" ? #6b7785
-        : root.kind == "exe" ? #4a5568
-        : root.kind == "apk" ? #2e9e5b
-        : root.kind == "disc" ? #5b7083
-        : root.kind == "image" ? #12a594
         : #8a94a0;
-    border-radius: self.width * 0.22;
-    background: @linear-gradient(180deg, root.base.brighter(25%) 0%, root.base 100%);
-    if root.kind == "video": G {
-        fill: white;
-        commands: "M 6 4.5 L 12 8 L 6 11.5 Z";
+    // ---- video: a blue film strip with a play sign
+    if root.kind == "video": Rectangle {
+        G {
+            fill: @linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%);
+            commands: "M 1.5 3 L 14.5 3 L 14.5 13 L 1.5 13 Z";
+        }
+        G {
+            fill: #dbeafe;
+            commands: "M 2.3 4 L 3.5 4 L 3.5 5.2 L 2.3 5.2 Z M 2.3 7.4 L 3.5 7.4 L 3.5 8.6 L 2.3 8.6 Z M 2.3 10.8 L 3.5 10.8 L 3.5 12 L 2.3 12 Z M 12.5 4 L 13.7 4 L 13.7 5.2 L 12.5 5.2 Z M 12.5 7.4 L 13.7 7.4 L 13.7 8.6 L 12.5 8.6 Z M 12.5 10.8 L 13.7 10.8 L 13.7 12 L 12.5 12 Z";
+        }
+        G {
+            fill: white;
+            commands: "M 6.4 5.4 L 10.6 8 L 6.4 10.6 Z";
+        }
     }
-    if root.kind == "audio": G {
-        fill: white;
-        commands: "M 9.6 3 L 12.2 3.9 L 12.2 5.4 L 10.6 4.9 L 10.6 10.6 A 2.2 1.8 0 1 1 9.6 9.2 Z";
+    // ---- music: a purple circle with a note
+    if root.kind == "audio": Rectangle {
+        G {
+            fill: @linear-gradient(180deg, #a855f7 0%, #7e22ce 100%);
+            commands: "M 8 1 A 7 7 0 1 1 7.99 1 Z";
+        }
+        G {
+            fill: white;
+            commands: "M 7.2 4 L 11.2 3.2 L 11.2 4.7 L 8.4 5.3 L 8.4 10.4 A 1.8 1.5 0 1 1 7.2 9.1 Z";
+        }
     }
-    if root.kind == "archive": G {
-        fill: white;
-        commands: "M 7 2 L 9 2 L 9 3 L 7 3 Z M 7 4 L 9 4 L 9 5 L 7 5 Z M 7 6 L 9 6 L 9 7 L 7 7 Z M 6.3 8 L 9.7 8 L 9.7 12.5 L 6.3 12.5 Z";
+    // ---- archives: a yellow box with a zipper
+    if root.kind == "archive": Rectangle {
+        G {
+            fill: @linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
+            commands: "M 2 4 L 14 4 L 14 14 L 2 14 Z";
+        }
+        G {
+            fill: #b45309;
+            commands: "M 1.5 2.2 L 14.5 2.2 L 14.5 4.6 L 1.5 4.6 Z";
+        }
+        G {
+            fill: #3f2a07;
+            commands: "M 7 4.6 L 9 4.6 L 9 5.6 L 7 5.6 Z M 7 6.6 L 9 6.6 L 9 7.6 L 7 7.6 Z M 7 8.6 L 9 8.6 L 9 9.6 L 7 9.6 Z";
+        }
+        G {
+            fill: white;
+            stroke: #3f2a07;
+            stroke-width: 0.6px;
+            commands: "M 6.6 10.2 L 9.4 10.2 L 9.4 12.8 L 6.6 12.8 Z";
+        }
     }
-    if root.kind == "pdf" || root.kind == "doc" || root.kind == "text": G {
-        stroke: white;
-        stroke-width: 1.3px;
-        commands: "M 4.5 4.5 L 11.5 4.5 M 4.5 7 L 11.5 7 M 4.5 9.5 L 11.5 9.5 M 4.5 12 L 9 12";
+    // ---- documents: a page with a folded corner and its sign
+    if root.page: Rectangle {
+        G {
+            fill: @linear-gradient(180deg, root.page-color.brighter(20%) 0%, root.page-color 100%);
+            commands: "M 3 1 L 10 1 L 14 5 L 14 15 L 3 15 Z";
+        }
+        G {
+            fill: root.page-color.darker(35%);
+            commands: "M 10 1 L 14 5 L 10 5 Z";
+        }
+        if root.kind == "pdf" || root.kind == "doc" || root.kind == "text" || root.kind == "general": G {
+            stroke: white;
+            stroke-width: 1.1px;
+            commands: "M 5 7.5 L 12 7.5 M 5 9.8 L 12 9.8 M 5 12.1 L 10 12.1";
+        }
+        if root.kind == "sheet": G {
+            stroke: white;
+            stroke-width: 0.9px;
+            commands: "M 5 7 L 12 7 L 12 13 L 5 13 Z M 5 9 L 12 9 M 5 11 L 12 11 M 8 7 L 8 13";
+        }
+        if root.kind == "slides": G {
+            fill: white;
+            commands: "M 5 12.5 L 6.6 12.5 L 6.6 10 L 5 10 Z M 7.7 12.5 L 9.3 12.5 L 9.3 8 L 7.7 8 Z M 10.4 12.5 L 12 12.5 L 12 9 L 10.4 9 Z";
+        }
     }
-    if root.kind == "sheet": G {
-        stroke: white;
-        stroke-width: 1px;
-        commands: "M 4 4 L 12 4 L 12 12 L 4 12 Z M 4 6.7 L 12 6.7 M 4 9.3 L 12 9.3 M 7 4 L 7 12";
-    }
-    if root.kind == "slides": G {
-        stroke: white;
-        stroke-width: 1.2px;
-        commands: "M 3.5 4 L 12.5 4 L 12.5 10 L 3.5 10 Z M 8 10 L 8 12.5 M 6 12.5 L 10 12.5";
-    }
+    // ---- programs: a dark window with a title bar
     if root.kind == "exe": Rectangle {
         G {
-            stroke: white;
-            stroke-width: 1.2px;
-            commands: "M 3.5 4 L 12.5 4 L 12.5 12 L 3.5 12 Z";
+            fill: #334155;
+            commands: "M 1.5 2.5 L 14.5 2.5 L 14.5 13.5 L 1.5 13.5 Z";
+        }
+        G {
+            fill: #38bdf8;
+            commands: "M 1.5 2.5 L 14.5 2.5 L 14.5 5 L 1.5 5 Z";
         }
         G {
             fill: white;
-            commands: "M 3.5 4 L 12.5 4 L 12.5 6.2 L 3.5 6.2 Z";
+            commands: "M 4 7 L 7 9.2 L 4 11.4 Z M 8 10.4 L 12 10.4 L 12 11.4 L 8 11.4 Z";
         }
     }
-    if root.kind == "apk": G {
-        stroke: white;
-        stroke-width: 1.2px;
-        commands: "M 5.5 2.8 L 10.5 2.8 L 10.5 13.2 L 5.5 13.2 Z M 7.3 11.5 L 8.7 11.5";
+    // ---- apps for phones: a green phone
+    if root.kind == "apk": Rectangle {
+        G {
+            fill: @linear-gradient(180deg, #4ade80 0%, #16a34a 100%);
+            commands: "M 4.5 1 L 11.5 1 L 11.5 15 L 4.5 15 Z";
+        }
+        G {
+            fill: white;
+            commands: "M 5.5 2.5 L 10.5 2.5 L 10.5 12 L 5.5 12 Z";
+        }
+        G {
+            fill: white;
+            commands: "M 7.2 13.2 L 8.8 13.2 L 8.8 14.2 L 7.2 14.2 Z";
+        }
     }
+    // ---- disc images: a silver disc
     if root.kind == "disc": Rectangle {
         G {
-            stroke: white;
-            stroke-width: 1.3px;
-            commands: "M 8 3 A 5 5 0 1 1 7.99 3 Z";
+            fill: @linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+            stroke: #64748b;
+            stroke-width: 0.6px;
+            commands: "M 8 1 A 7 7 0 1 1 7.99 1 Z";
         }
         G {
-            fill: white;
-            commands: "M 8 6.7 A 1.3 1.3 0 1 1 7.99 6.7 Z";
+            fill: #475569;
+            commands: "M 8 6 A 2 2 0 1 1 7.99 6 Z";
         }
     }
+    // ---- pictures: a teal frame with hills and a sun
     if root.kind == "image": Rectangle {
         G {
-            fill: white;
-            commands: "M 3.5 11.8 L 6.5 7.5 L 8.6 10.2 L 10 8.6 L 12.5 11.8 Z";
+            fill: @linear-gradient(180deg, #2dd4bf 0%, #0f766e 100%);
+            commands: "M 1.5 2.5 L 14.5 2.5 L 14.5 13.5 L 1.5 13.5 Z";
         }
         G {
             fill: white;
-            commands: "M 10.5 3.6 A 1.3 1.3 0 1 1 10.49 3.6 Z";
+            commands: "M 2.5 12.5 L 6.3 7.6 L 8.7 10.4 L 10.3 8.6 L 13.5 12.5 Z";
+        }
+        G {
+            fill: #fde68a;
+            commands: "M 11 4 A 1.4 1.4 0 1 1 10.99 4 Z";
         }
     }
-    if root.kind == "general": G {
-        stroke: white;
-        stroke-width: 1.2px;
-        commands: "M 5 3 L 9.5 3 L 11.5 5 L 11.5 13 L 5 13 Z";
+    // ---- torrents: a red and gray magnet
+    if root.kind == "torrent": Rectangle {
+        G {
+            fill: #e11d48;
+            commands: "M 2 2 L 6 2 L 6 8 A 2 2 0 0 0 10 8 L 10 2 L 14 2 L 14 8 A 6 6 0 0 1 2 8 Z";
+        }
+        G {
+            fill: #cbd5e1;
+            commands: "M 2 2 L 6 2 L 6 4.5 L 2 4.5 Z M 10 2 L 14 2 L 14 4.5 L 10 4.5 Z";
+        }
     }
 }
 
@@ -621,7 +841,7 @@ export component BigTypeIcon inherits VerticalLayout {
     in property <string> ext;
     spacing: 4px;
     alignment: start;
-    HorizontalLayout {
+    HRow {
         alignment: center;
         TypeIcon {
             kind: root.kind;
@@ -632,13 +852,24 @@ export component BigTypeIcon inherits VerticalLayout {
     Text {
         text: root.ext;
         horizontal-alignment: center;
-        font-size: 11px;
+        font-size: 11px * Theme.font-scale;
         font-weight: 700;
         color: Theme.muted;
     }
 }
 
 // ------------------------------------------------------------------ main window parts
+
+// The note under a toolbar button the mouse rests on (one per window).
+export global ToolTip {
+    in-out property <string> title;
+    in-out property <string> text;
+    in-out property <length> x;
+    in-out property <length> y;
+    // the mouse is on a button (the note shows after a moment)
+    in-out property <bool> pending;
+    in-out property <bool> shown;
+}
 
 export component ToolBtn inherits Rectangle {
     in property <string> icon;
@@ -647,34 +878,89 @@ export component ToolBtn inherits Rectangle {
     // View > Toolbar > Small buttons: icon only
     in property <bool> small;
     callback clicked();
-    width: root.small ? 34px : 70px;
-    height: root.small ? 34px : 62px;
+    // small buttons: every one fits a 960 px wide window
+    width: root.small ? 34px : 56px;
+    height: root.small ? 34px : 56px;
+    // a name that is still too long never covers the next button
+    clip: true;
     border-radius: 3px;
     border-width: ta.has-hover && root.enabled ? 1px : 0px;
     border-color: Theme.select-line;
     background: !root.enabled ? transparent : ta.pressed ? Theme.select : ta.has-hover ? Theme.toolbar-hover : transparent;
+    // what the button does, shown when the mouse rests on it
+    pure function describe(k: string) -> string {
+        if (k == "add") { return @tr("Download a file from an address you type or paste (Ctrl+N)."); }
+        if (k == "batch") { return @tr("Download many links at once, or numbered files from one address (Ctrl+B)."); }
+        if (k == "resume") { return @tr("Continue the selected downloads from where they stopped."); }
+        if (k == "stop") { return @tr("Pause the selected downloads; they can be resumed later."); }
+        if (k == "stopall") { return @tr("Pause every running download."); }
+        if (k == "delete") { return @tr("Remove the selected downloads from the list. The files stay on your computer."); }
+        if (k == "deletedone") { return @tr("Remove all finished downloads from the list. The files stay on your computer."); }
+        if (k == "options") { return @tr("All the settings of the program."); }
+        if (k == "scheduler") { return @tr("Start or stop queues at the times you choose."); }
+        if (k == "limiter") { return @tr("Limit the download speed so the internet stays usable for other things."); }
+        if (k == "startqueue") { return @tr("Start the files of a queue, one after another."); }
+        if (k == "stopqueue") { return @tr("Stop the files of a queue."); }
+        if (k == "grabber") { return @tr("Collect the files of a web site: pictures, videos, archives…"); }
+        if (k == "playlist") { return @tr("Download all or some videos of a playlist."); }
+        if (k == "torrent") { return @tr("Download a .torrent file or a magnet link."); }
+        return "";
+    }
     ta := TouchArea {
         width: parent.width;
         height: parent.height;
-        enabled: root.enabled;
+        enabled: true;
         clicked => {
-            root.clicked();
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+        changed has-hover => {
+            if (self.has-hover) {
+                ToolTip.title = root.text;
+                ToolTip.text = root.describe(root.icon);
+                ToolTip.x = root.absolute-position.x;
+                ToolTip.y = root.absolute-position.y + root.height + 4px;
+                ToolTip.shown = false;
+                ToolTip.pending = true;
+            } else if (ToolTip.title == root.text) {
+                ToolTip.pending = false;
+                ToolTip.shown = false;
+            }
+        }
+        pointer-event(ev) => {
+            // a click hides the note
+            if (ev.kind == PointerEventKind.down) {
+                ToolTip.pending = false;
+                ToolTip.shown = false;
+            }
         }
     }
     if !root.small: VerticalLayout {
         alignment: center;
-        spacing: 4px;
+        spacing: 3px;
+        padding-left: 1px;
+        padding-right: 1px;
         opacity: root.enabled ? 1.0 : 0.35;
-        HorizontalLayout {
+        HRow {
             alignment: center;
             Icon {
+                width: 26px;
+                height: 26px;
                 kind: root.icon;
             }
         }
+        // a long name goes on two lines ("Delete / Done"); "…" does not work
+        // for right-to-left (Arabic) text, which would spill over the next button
         Text {
             text: root.text;
-            font-size: 11px;
+            font-size: 10px * Theme.font-scale;
+            // bold, so the names read well on every theme
+            font-weight: 700;
             horizontal-alignment: center;
+            vertical-alignment: top;
+            wrap: word-wrap;
+            max-height: 26px * Theme.font-scale;
             color: Theme.toolbar-text;
         }
     }
@@ -689,9 +975,9 @@ export component ToolBtn inherits Rectangle {
 }
 
 export component ToolSeparator inherits Rectangle {
-    width: 9px;
+    width: 7px;
     Rectangle {
-        x: 4px;
+        x: 3px;
         y: 8px;
         width: 1px;
         height: parent.height - 16px;
@@ -734,9 +1020,9 @@ export component TreeItem inherits Rectangle {
             }
         }
     }
-    HorizontalLayout {
-        padding-left: 4px + root.indent * 16px;
-        padding-right: 6px;
+    HRow {
+        padding-left: Theme.rtl ? (6px) : (4px + root.indent * 16px);
+        padding-right: Theme.rtl ? (4px + root.indent * 16px) : (6px);
         spacing: 5px;
         Rectangle {
             width: 11px;
@@ -799,19 +1085,21 @@ export component TreeItem inherits Rectangle {
             }
         }
         Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.text;
             vertical-alignment: center;
             horizontal-stretch: 1;
             overflow: elide;
             color: Theme.text;
-            font-size: 12px;
+            font-size: 12px * Theme.font-scale;
             font-weight: root.bold ? 600 : 400;
         }
         Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.count;
             vertical-alignment: center;
             color: Theme.muted;
-            font-size: 11px;
+            font-size: 11px * Theme.font-scale;
         }
     }
 }
@@ -823,15 +1111,44 @@ export component HeaderCell inherits Rectangle {
     in property <string> key;
     in property <string> sort-by;
     in property <bool> sort-desc;
+    // drag the right edge to resize, drag the title to move it
+    in property <bool> adjustable;
     callback sort(string);
+    // the new width while the edge is dragged; done when it is let go
+    callback resized(length);
+    callback resize-done();
+    // the title was dragged and let go at `x` (in the header)
+    callback dropped(length);
+    // a long (Arabic) title is cut at its own column, never over the next one
+    clip: true;
+    property <bool> moving;
+    property <length> start-width;
+    property <length> start-x;
     height: 24px;
-    background: ta.has-hover && root.key != "" ? Theme.hover : transparent;
+    background: root.moving ? Theme.select : ta.has-hover && (root.key != "" || root.adjustable) ? Theme.hover : transparent;
     ta := TouchArea {
         width: parent.width;
         height: parent.height;
-        enabled: root.key != "";
+        enabled: root.key != "" || root.adjustable;
+        mouse-cursor: root.moving ? MouseCursor.grabbing : MouseCursor.default;
+        pointer-event(ev) => {
+            if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                root.moving = false;
+            }
+            if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.up && root.moving) {
+                root.dropped(root.x + self.mouse-x);
+            }
+        }
+        moved => {
+            if (root.adjustable && self.pressed && abs(self.mouse-x - self.pressed-x) > 10px) {
+                root.moving = true;
+            }
+        }
         clicked => {
-            root.sort(root.key);
+            if (!root.moving && root.key != "") {
+                root.sort(root.key);
+            }
+            root.moving = false;
         }
     }
     Text {
@@ -839,30 +1156,55 @@ export component HeaderCell inherits Rectangle {
         width: parent.width - 12px;
         height: parent.height;
         text: root.text;
-        horizontal-alignment: root.align;
+        // Arabic: the sides of the columns are mirrored too
+        horizontal-alignment: !Theme.rtl ? root.align : root.align == TextHorizontalAlignment.left ? TextHorizontalAlignment.right : root.align == TextHorizontalAlignment.right ? TextHorizontalAlignment.left : root.align;
         vertical-alignment: center;
-        font-size: 12px;
+        font-size: 12px * Theme.font-scale;
         color: Theme.text;
         overflow: elide;
     }
     if root.key != "" && root.key == root.sort-by: Glyph {
-        x: root.align == TextHorizontalAlignment.right ? 2px : parent.width - 16px;
+        x: (root.align == TextHorizontalAlignment.right) != Theme.rtl ? 2px : parent.width - 16px;
         y: (parent.height - 16px) / 2;
         kind: root.sort-desc ? "caret-down" : "caret-up";
         tint: Theme.muted;
     }
     Rectangle {
-        x: parent.width - 1px;
+        x: Theme.rtl ? 0px : parent.width - 1px;
         y: 4px;
         width: 1px;
         height: parent.height - 8px;
         background: Theme.line;
     }
+    // the edge to resize the column
+    if root.adjustable: edge := TouchArea {
+        x: Theme.rtl ? -3px : parent.width - 5px;
+        width: 8px;
+        height: parent.height;
+        mouse-cursor: MouseCursor.col-resize;
+        pointer-event(ev) => {
+            if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                root.start-width = root.width;
+                root.start-x = self.absolute-position.x + self.mouse-x;
+            }
+            if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.up) {
+                root.resize-done();
+            }
+        }
+        moved => {
+            if (self.pressed) {
+                // measured on the screen: the edge itself moves with the column
+                // Arabic: the edge is on the left, pulling it left widens the column
+                root.resized(max(36px, root.start-width + (Theme.rtl ? -1 : 1) * (self.absolute-position.x + self.mouse-x - root.start-x)));
+            }
+        }
+    }
 }
 
 export component Cell inherits Text {
     vertical-alignment: center;
-    font-size: 12px;
+    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+    font-size: 12px * Theme.font-scale;
     color: Theme.text;
     overflow: elide;
 }
@@ -887,9 +1229,9 @@ export component MenuEntry inherits Rectangle {
             root.clicked();
         }
     }
-    HorizontalLayout {
-        padding-left: root.indent ? 26px : 8px;
-        padding-right: 10px;
+    HRow {
+        padding-left: Theme.rtl ? (10px) : (root.indent ? 26px : 8px);
+        padding-right: Theme.rtl ? (root.indent ? 26px : 8px) : (10px);
         spacing: 8px;
         opacity: root.enabled ? 1.0 : 0.4;
         Rectangle {
@@ -901,10 +1243,11 @@ export component MenuEntry inherits Rectangle {
             }
         }
         Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.text;
             color: Theme.text;
             vertical-alignment: center;
-            font-size: 12px;
+            font-size: 12px * Theme.font-scale;
             font-weight: root.bold ? 700 : 400;
             overflow: elide;
             horizontal-stretch: 1;
@@ -927,9 +1270,11 @@ export component MenuLabel inherits Rectangle {
     in property <string> text;
     height: 22px;
     Text {
-        x: 34px;
+        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+        x: Theme.rtl ? 0px : 34px;
+        width: parent.width - 34px;
         text: root.text;
-        font-size: 11px;
+        font-size: 11px * Theme.font-scale;
         color: Theme.muted;
         vertical-alignment: center;
         height: parent.height;

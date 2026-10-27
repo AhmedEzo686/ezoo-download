@@ -59,6 +59,68 @@ pub fn set_file_time(path: &Path, t: chrono::DateTime<chrono::Utc>) {
 }
 
 /// Run the virus checker on a finished file: `args` with "[File]" replaced.
+/// A program that comes with Windows, by its full path (System32), so a file
+/// with the same name somewhere else is never started instead.
+pub fn windows_tool(name: &str) -> std::path::PathBuf {
+    #[cfg(windows)]
+    {
+        let root = std::env::var_os("SystemRoot")
+            .or_else(|| std::env::var_os("windir"))
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+        if name.eq_ignore_ascii_case("explorer.exe") {
+            return root.join(name);
+        }
+        root.join("System32").join(name)
+    }
+    #[cfg(not(windows))]
+    {
+        std::path::PathBuf::from(name)
+    }
+}
+
+/// The address without a user name / password and without the "#..." part,
+/// for the "downloaded from" note of a file. None when it is not a web address.
+fn plain_web_url(u: &str) -> Option<String> {
+    let mut url = url::Url::parse(u.trim()).ok()?;
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return None;
+    }
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.set_fragment(None);
+    Some(url.to_string())
+}
+
+/// What Windows keeps in `<file>:Zone.Identifier` for a file from the
+/// internet (the "Mark of the Web", as browsers write it).
+pub fn zone_identifier(host_url: &str, referrer: Option<&str>) -> String {
+    let mut out = String::from("[ZoneTransfer]\r\nZoneId=3\r\n");
+    if let Some(r) = referrer.and_then(plain_web_url) {
+        out.push_str(&format!("ReferrerUrl={r}\r\n"));
+    }
+    if let Some(h) = plain_web_url(host_url) {
+        out.push_str(&format!("HostUrl={h}\r\n"));
+    }
+    out
+}
+
+/// Mark a downloaded file as coming from the internet, like browsers do:
+/// Windows SmartScreen and Office then warn before it is opened or run.
+/// Best effort (a disk without NTFS streams, e.g. FAT32, has no place for it).
+pub fn mark_from_internet(file: &Path, host_url: &str, referrer: Option<&str>) {
+    #[cfg(windows)]
+    {
+        let mut stream = file.as_os_str().to_owned();
+        stream.push(":Zone.Identifier");
+        let _ = std::fs::write(std::path::PathBuf::from(stream), zone_identifier(host_url, referrer));
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (file, host_url, referrer);
+    }
+}
+
 pub fn virus_scan(program: &str, args: &str, file: &Path) {
     let program = program.trim().trim_matches('"');
     if program.is_empty() {
@@ -159,7 +221,7 @@ mod imp {
     pub fn power(action: AfterDone, force: bool) {
         use std::os::windows::process::CommandExt;
         let run = |args: &[&str]| {
-            let _ = std::process::Command::new("shutdown")
+            let _ = std::process::Command::new(super::windows_tool("shutdown.exe"))
                 .args(args)
                 .creation_flags(0x0800_0000)
                 .spawn();
@@ -201,5 +263,17 @@ mod tests {
     fn args() {
         assert_eq!(split_args(r#"/scan "C:\a b\x.zip" -q"#), vec!["/scan", r"C:\a b\x.zip", "-q"]);
         assert_eq!(split_args(""), Vec::<String>::new());
+    }
+
+    #[test]
+    fn mark_of_the_web() {
+        let z = zone_identifier("https://user:pw@cdn.example.com/a.exe?x=1#frag", Some("https://example.com/page"));
+        assert!(z.starts_with("[ZoneTransfer]\r\nZoneId=3\r\n"));
+        assert!(z.contains("HostUrl=https://cdn.example.com/a.exe?x=1\r\n"));
+        assert!(z.contains("ReferrerUrl=https://example.com/page\r\n"));
+        assert!(!z.contains("pw") && !z.contains("frag"));
+        // only web addresses are written down
+        let z = zone_identifier("file:///C:/x.exe", Some("javascript:alert(1)"));
+        assert_eq!(z, "[ZoneTransfer]\r\nZoneId=3\r\n");
     }
 }

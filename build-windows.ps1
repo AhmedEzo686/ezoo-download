@@ -99,39 +99,57 @@ Copy-Item -Force "$stage\extension-firefox\manifest.firefox.json" "$stage\extens
 Remove-Item "$stage\extension-firefox\manifest.firefox.json" -Force
 Remove-Item "$stage\extension\manifest.firefox.json" -Force -ErrorAction SilentlyContinue
 
-# ffmpeg (joins video + audio) and yt-dlp (finds video links): downloaded
-# once into build-cache, the app keeps them updated by itself afterwards
-if (-not (Test-Path "$cache\ffmpeg.exe")) {
-    Step "Downloading ffmpeg (joins video + audio)"
-    try {
-        # builds published on GitHub: newest stable 64-bit Windows one
-        $rel = Invoke-RestMethod "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest" -Headers @{ "User-Agent" = "EzooDownload-build" }
-        $asset = $rel.assets | Where-Object { $_.name -match '^ffmpeg-n[0-9.]+-latest-win64-gpl-[0-9.]+\.zip$' } |
-            Sort-Object { [version](($_.name -replace '^ffmpeg-n([0-9.]+)-.*$', '$1') + '.0') } | Select-Object -Last 1
-        if (-not $asset) { $asset = $rel.assets | Where-Object { $_.name -eq 'ffmpeg-master-latest-win64-gpl.zip' } | Select-Object -First 1 }
-        $zip = Join-Path $env:TEMP "ezoo-ffmpeg.zip"
-        $tmp = Join-Path $env:TEMP "ezoo-ffmpeg"
-        Invoke-WebRequest $asset.browser_download_url -OutFile $zip
-        if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
-        Expand-Archive $zip -DestinationPath $tmp
-        $ff = Get-ChildItem $tmp -Recurse -Filter ffmpeg.exe | Select-Object -First 1
-        Copy-Item $ff.FullName $cache -Force
-        $lic = Get-ChildItem $tmp -Recurse -Filter "LICENSE*" | Select-Object -First 1
-        if ($lic) { Copy-Item $lic.FullName "$cache\ffmpeg-LICENSE.txt" -Force }
-        Remove-Item -Recurse -Force $tmp, $zip
-        # the same text the app compares with when it looks for updates
-        $u = $asset.updated_at; if ($u -is [datetime]) { $u = $u.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
-        "$($asset.name) $u" | Set-Content "$cache\ffmpeg-version.txt" -NoNewline
-    } catch {
-        Write-Host "Could not download ffmpeg now. Ezoo Download gets it by itself later." -ForegroundColor Yellow
+# yt-dlp (finds video links) and aria2 (torrents): downloaded once into
+# build-cache, the app keeps yt-dlp updated by itself afterwards
+# The SHA-256 of a file from a checksum list ("<sha256>  <name>" lines), checked.
+function Assert-Sha256($file, $sumsUrl, $name) {
+    $text = (Invoke-WebRequest $sumsUrl -UseBasicParsing).Content
+    if ($text -is [byte[]]) { $text = [Text.Encoding]::UTF8.GetString($text) }
+    $want = ($text -split "`n" | Where-Object { $_ -match "^([0-9a-fA-F]{64})\s+\*?$([regex]::Escape($name))\s*$" } |
+        ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
+    $got = (Get-FileHash $file -Algorithm SHA256).Hash
+    if (-not $want -or $got -ne $want.ToUpper()) {
+        Remove-Item -Force $file -ErrorAction SilentlyContinue
+        throw "$name does not match its published SHA-256"
     }
+}
+# ffmpeg: our own small build (tools\ffmpeg\build.sh; GitHub builds it for
+# every release). A ready one in tools\ffmpeg\win64 is used when it is there;
+# the big public build of earlier versions is not used any more.
+$ours = Join-Path $PSScriptRoot "tools\ffmpeg\win64"
+if (Test-Path "$ours\ffmpeg.exe") {
+    foreach ($f in @("ffmpeg.exe", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "ffmpeg-version.txt")) {
+        if (Test-Path "$ours\$f") { Copy-Item "$ours\$f" $cache -Force }
+    }
+} elseif ((Test-Path "$cache\ffmpeg.exe") -and ((Get-Item "$cache\ffmpeg.exe").Length -gt 20MB)) {
+    Remove-Item "$cache\ffmpeg.exe", "$cache\ffmpeg-version.txt" -Force -ErrorAction SilentlyContinue
+    Write-Host "The old big ffmpeg was removed. Put our small ffmpeg.exe in tools\ffmpeg\win64 (it comes with the source zip, or from a GitHub build)." -ForegroundColor Yellow
 }
 if (-not (Test-Path "$cache\yt-dlp.exe")) {
     Step "Downloading yt-dlp (finds the links of videos)"
     try {
-        Invoke-WebRequest "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$cache\yt-dlp.exe"
+        $yt = Invoke-RestMethod "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest" -Headers @{ "User-Agent" = "EzooDownload-build" }
+        $ytExe = $yt.assets | Where-Object { $_.name -eq "yt-dlp.exe" } | Select-Object -First 1
+        $ytSums = $yt.assets | Where-Object { $_.name -eq "SHA2-256SUMS" } | Select-Object -First 1
+        Invoke-WebRequest $ytExe.browser_download_url -OutFile "$cache\yt-dlp.exe"
+        Assert-Sha256 "$cache\yt-dlp.exe" $ytSums.browser_download_url "yt-dlp.exe"
     } catch {
         Write-Host "Could not download yt-dlp now. Ezoo Download gets it by itself later." -ForegroundColor Yellow
+    }
+}
+if (-not (Test-Path "$cache\aria2c.exe")) {
+    Step "Downloading aria2 (torrents)"
+    try {
+        $zip = Join-Path $cache "aria2.zip"
+        Invoke-WebRequest "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" -OutFile $zip
+        if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne "67D015301EEF0B612191212D564C5BB0A14B5B9C4796B76454276A4D28D9B288") { throw "aria2.zip does not match its SHA-256" }
+        $tmp = Join-Path $cache "aria2-tmp"
+        Expand-Archive $zip -DestinationPath $tmp -Force
+        Copy-Item (Get-ChildItem $tmp -Recurse -Filter aria2c.exe | Select-Object -First 1).FullName "$cache\aria2c.exe" -Force
+        Copy-Item (Get-ChildItem $tmp -Recurse -Filter COPYING | Select-Object -First 1).FullName "$cache\aria2-COPYING.txt" -Force
+        Remove-Item $tmp -Recurse -Force
+    } catch {
+        Write-Host "Could not download aria2 now. Ezoo Download gets it by itself later." -ForegroundColor Yellow
     }
 }
 # Visual C++ runtime: the program already carries it (static CRT, see
@@ -142,9 +160,10 @@ New-Item -ItemType Directory -Force $redist | Out-Null
 if (Test-Path "$cache\vc_redist.x64.exe") { Copy-Item "$cache\vc_redist.x64.exe" $redist -Force }
 Copy-Item "THIRD-PARTY-NOTICES.txt" $stage -Force
 # the Firefox add-on signed by Mozilla for this version (stays in Firefox for good)
-$signedXpi = "extension-signed\ezoo-download-firefox-$version.xpi"
+$extVersion = (Get-Content (Join-Path $PSScriptRoot "extension\manifest.firefox.json") -Raw | ConvertFrom-Json).version
+$signedXpi = "extension-signed\ezoo-download-firefox-$extVersion.xpi"
 if (Test-Path $signedXpi) { Copy-Item $signedXpi (Join-Path $stage "ezoo-download-firefox.xpi") -Force }
-foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt")) {
+foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "aria2c.exe", "aria2-COPYING.txt")) {
     if (Test-Path "$cache\$f") { Copy-Item "$cache\$f" $tools -Force }
 }
 

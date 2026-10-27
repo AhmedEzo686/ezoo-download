@@ -2,7 +2,7 @@
 //! Duplicate link, shut down countdown, Tip of the day, Refresh download
 //! address, and Export / Import of the list.
 
-use crate::to_front;
+use crate::open_window;
 use crate::*;
 use swiftget_engine::config::{CategoryDef, ALL_COLUMNS, DEFAULT_COLUMNS};
 use swiftget_engine::ef2::{self, Ef2Item};
@@ -14,8 +14,7 @@ use crate::i18n::{t, tf};
 pub(crate) fn open_columns(ui: &Ui) {
     let Some(d) = ui.columns.upgrade() else { return };
     d.set_cols(cols_from(&ui.ctx.mgr.settings()));
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 fn cols_to_list(c: &Cols) -> Vec<String> {
@@ -57,8 +56,7 @@ pub(crate) fn open_category(ui: &Ui, name: Option<String>) {
             d.set_folder(s.category_dirs.get(n).map(|p| p.display().to_string()).unwrap_or_default().into());
         }
     }
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 fn save_category(ui: &Ui) {
@@ -148,8 +146,7 @@ pub(crate) fn delete_category(ui: &Ui, name: &str) {
 pub(crate) fn open_find(ui: &Ui) {
     if let Some(d) = ui.find.upgrade() {
         d.set_message(SharedString::new());
-        let _ = d.show();
-        to_front!(d);
+        open_window!(d);
     }
 }
 
@@ -230,7 +227,7 @@ pub(crate) fn open_properties(ui: &Ui, id: u64) {
     d.set_last_try(v.finished_at.or(v.last_try).map(fmt_time).unwrap_or_default().into());
     d.set_result(
         match (&v.error, v.status) {
-            (Some(e), _) => e.clone(),
+            (Some(e), _) => crate::err_text(e),
             (None, Status::Completed) => t("The file was downloaded successfully"),
             _ => String::new(),
         }
@@ -245,8 +242,7 @@ pub(crate) fn open_properties(ui: &Ui, id: u64) {
     d.set_user(v.headers.auth.as_ref().map(|a| a.0.clone()).unwrap_or_default().into());
     d.set_password(v.headers.auth.as_ref().map(|a| a.1.clone()).unwrap_or_default().into());
     d.set_message(SharedString::new());
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 fn save_properties(ui: &Ui) {
@@ -267,7 +263,15 @@ fn save_properties(ui: &Ui) {
     let target = PathBuf::from(d.get_save_to().trim());
     if !target.as_os_str().is_empty() && target != v.save_path {
         let result = if v.status == Status::Completed {
-            ui.ctx.mgr.move_file(id, &target)
+            // on its own thread: a move to another disk is a copy
+            let mgr = ui.ctx.mgr.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = mgr.move_file(id, &target) {
+                    let text = format!("{e:#}");
+                    let _ = slint::invoke_from_event_loop(move || crate::message(&text));
+                }
+            });
+            Ok(())
         } else {
             let dir = target.parent().map(Path::to_path_buf).unwrap_or_default();
             let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -296,8 +300,7 @@ pub(crate) fn ask_duplicate(ui: &Ui, p: PendingAdd) {
     d.set_choice(1);
     d.set_remember(false);
     *ui.pending.borrow_mut() = Some(p);
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 // ---------------------------------------------------------------- shut down countdown
@@ -315,8 +318,7 @@ pub(crate) fn start_countdown(ui: &Ui, action: AfterDone) {
     d.set_seconds_total(COUNTDOWN);
     d.set_seconds_left(COUNTDOWN);
     *ui.power.borrow_mut() = Some((action, COUNTDOWN));
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 pub(crate) fn tick_countdown(ui: &Ui) {
@@ -347,29 +349,60 @@ fn power_now(ui: &Ui) {
 
 // ---------------------------------------------------------------- tips
 
+/// http:// or https:// with a host: safe to hand to the browser.
+pub(crate) fn is_web_address(s: &str) -> bool {
+    url::Url::parse(s.trim())
+        .map(|u| matches!(u.scheme(), "http" | "https") && u.host_str().is_some_and(|h| !h.is_empty()))
+        .unwrap_or(false)
+}
+
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 10] = [
-    "A \"Download this video\" button on every video of a page, and you can drag it anywhere on the video.",
-    "Videos with several sound tracks: the original language is downloaded, not a dubbed one.",
-    "New languages: French, Spanish, German, Portuguese, Turkish and Russian.",
-    "Five new themes and a window opacity setting (View > Theme).",
-    "Brave is supported (Help > Add Ezoo Download to my browser).",
-    "Firefox: the add-on stays in Firefox after it is closed.",
-    "The browser add-in window is bigger; its settings moved to the add-in's own settings page.",
-    "Windows of the program open in front of the main window.",
-    "A new playlist icon, and a smaller icon on the window title.",
-    "Support Ezoo Download with PayPal from Help > About.",
+const WHATS_NEW: [&str; 15] = [
+    "Arabic: every window now reads from right to left (the program restarts once when the direction changes).",
+    "The program has its own small FFmpeg inside: video and sound are joined, MP3 files are made and live streams are saved, with nothing extra to download.",
+    "Live streams are saved as MP4 files.",
+    "MP3 files keep the title of the audio file.",
+    "Much less memory and processor work, also with many downloads at once.",
+    "No more freezes when a file is deleted or moved during its download, and message windows no longer hide behind the main window.",
+    "Downloads are taken from the browser before its own Save As window opens.",
+    "The browser button finds more videos, also streams in several qualities, and on more sites.",
+    "AV1 qualities are offered when a video has them.",
+    "The window of a download gets smaller when its details are hidden.",
+    "The video button in the browser has five looks to choose from (in the add-in's window).",
+    "A clear message when the download folder is on a drive locked by BitLocker.",
+    "Fixed videos that could not be downloaded on some computers because of the Windows temporary folder.",
+    "The Grabber also finds links written as plain text, and the menu next to the clock is in the program's language.",
+    "The speed limit stays smooth with many connections, and the clipboard also catches the file types you added.",
 ];
 
-pub(crate) fn whats_new() {
-    let mut text = tf("Ezoo Download was updated to version {} by itself.", &[&env!("CARGO_PKG_VERSION")]);
-    text.push_str("\n\n");
-    text.push_str(&t("What's new:"));
-    for line in WHATS_NEW {
-        text.push_str("\n•  ");
-        text.push_str(&t(line));
-    }
-    crate::message(&text);
+thread_local! {
+    static WHATS_NEW_WIN: std::cell::RefCell<Option<WhatsNewDialog>> = const { std::cell::RefCell::new(None) };
+}
+
+/// After an update: what is new, in its own window (right to left in
+/// Arabic), with a word about supporting the free program.
+pub(crate) fn whats_new(ui: &Ui) {
+    let Ok(d) = WhatsNewDialog::new() else { return };
+    crate::set_theme_of(d.global::<Theme>(), &crate::Look::of(&ui.ctx.mgr.settings()));
+    d.set_rtl(crate::i18n::is_arabic());
+    d.set_heading(tf("Ezoo Download was updated to version {} by itself.", &[&env!("CARGO_PKG_VERSION")]).into());
+    let items: Vec<SharedString> = WHATS_NEW.iter().map(|l| t(l).into()).collect();
+    d.set_items(ModelRc::new(VecModel::from(items)));
+    d.on_open_link(|u| {
+        if u.starts_with("https://") {
+            let _ = open::that(u.as_str());
+        }
+    });
+    let w = d.as_weak();
+    d.on_close_window(move || {
+        if let Some(d) = w.upgrade() {
+            let _ = d.hide();
+        }
+        // let the window go after this click
+        slint::Timer::single_shot(std::time::Duration::from_millis(1), || WHATS_NEW_WIN.with(|x| *x.borrow_mut() = None));
+    });
+    open_window!(d);
+    WHATS_NEW_WIN.with(|x| *x.borrow_mut() = Some(d));
 }
 
 const TIPS: [&str; 14] = [
@@ -389,6 +422,15 @@ const TIPS: [&str; 14] = [
     "Hold Alt while clicking a link in the browser to let the browser download it by itself.",
 ];
 
+/// The tip at start, once no message box is open (they must not mix).
+pub(crate) fn show_tip_when_free(ui: Ui) {
+    if modal_open() {
+        slint::Timer::single_shot(std::time::Duration::from_millis(700), move || show_tip_when_free(ui));
+        return;
+    }
+    show_tip(&ui, false);
+}
+
 pub(crate) fn show_tip(ui: &Ui, from_menu: bool) {
     let Some(d) = ui.tips.upgrade() else { return };
     let mut s = ui.ctx.mgr.settings();
@@ -401,8 +443,7 @@ pub(crate) fn show_tip(ui: &Ui, from_menu: bool) {
         s.tip_index = ((i + 1) % TIPS.len()) as u32;
         let _ = ui.ctx.mgr.set_settings(s);
     }
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 // ---------------------------------------------------------------- refresh download address
@@ -418,8 +459,7 @@ pub(crate) fn open_refresh(ui: &Ui, id: u64) {
     d.set_page(v.parent_page.clone().unwrap_or_default().into());
     d.set_waiting(true);
     d.set_new_url(SharedString::new());
-    let _ = d.show();
-    to_front!(d);
+    open_window!(d);
 }
 
 /// The browser sent a download while we were waiting for a new address.
@@ -438,7 +478,7 @@ pub(crate) fn refresh_received(ui: &Ui, id: u64, url: &str, headers: RequestHead
 
 pub(crate) fn export_list(mgr: &Arc<Manager>, kind: &str) {
     let ef2 = kind == "ef2";
-    let Some(path) = rfd::FileDialog::new()
+    let Some(path) = crate::winfx::file_box()
         .set_file_name(if ef2 { "ezoo-download-list.ef2" } else { "ezoo-download-links.txt" })
         .add_filter(if ef2 { "Download list" } else { "Text file" }, &[if ef2 { "ef2" } else { "txt" }])
         .save_file()
@@ -469,7 +509,7 @@ pub(crate) fn export_list(mgr: &Arc<Manager>, kind: &str) {
 
 pub(crate) fn import_list(ui: &Ui, kind: &str) {
     let ef2 = kind == "ef2";
-    let Some(path) = rfd::FileDialog::new()
+    let Some(path) = crate::winfx::file_box()
         .add_filter(if ef2 { "Download list" } else { "Text file" }, &[if ef2 { "ef2" } else { "txt" }])
         .pick_file()
     else {
@@ -530,8 +570,7 @@ pub(crate) fn wire(ui: &Ui) {
             let w = d.as_weak();
             d.on_reset(move || {
                 if let Some(d) = w.upgrade() {
-                    let mut s = Settings::default();
-                    s.columns = DEFAULT_COLUMNS.iter().map(|c| c.to_string()).collect();
+                    let s = Settings { columns: DEFAULT_COLUMNS.iter().map(|c| c.to_string()).collect(), ..Default::default() };
                     d.set_cols(cols_from(&s));
                 }
             });
@@ -550,7 +589,7 @@ pub(crate) fn wire(ui: &Ui) {
             let w = d.as_weak();
             d.on_browse(move || {
                 let Some(d) = w.upgrade() else { return };
-                if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                if let Some(dir) = crate::winfx::file_box().pick_folder() {
                     d.set_folder(dir.display().to_string().into());
                 }
             });
@@ -588,7 +627,7 @@ pub(crate) fn wire(ui: &Ui) {
             d.on_browse(move || {
                 let Some(d) = w.upgrade() else { return };
                 let current = PathBuf::from(d.get_save_to().as_str());
-                let mut dlg = rfd::FileDialog::new();
+                let mut dlg = crate::winfx::file_box();
                 if let Some(dir) = current.parent().filter(|p| p.exists()) {
                     dlg = dlg.set_directory(dir);
                 }
@@ -604,7 +643,7 @@ pub(crate) fn wire(ui: &Ui) {
             let ui = ui.clone();
             d.on_open_file(move || {
                 if let Some(v) = ui.props_id.get().and_then(|id| ui.ctx.mgr.get(id)) {
-                    let _ = open::that(&v.save_path);
+                    crate::open_download(&v.save_path);
                 }
             });
         }
@@ -699,8 +738,10 @@ pub(crate) fn wire(ui: &Ui) {
             d.on_open_page(move || {
                 if let Some(d) = w.upgrade() {
                     let page = d.get_page().to_string();
-                    if !page.is_empty() {
-                        let _ = open::that(page);
+                    // only a web page: the address came from the browser or
+                    // a list file and must never start a program
+                    if is_web_address(&page) {
+                        let _ = open::that(page.trim());
                     }
                 }
             });
@@ -733,6 +774,28 @@ pub(crate) fn wire(ui: &Ui) {
                 ui.refresh_id.set(None);
                 slint::CloseRequestResponse::HideWindow
             });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_web_address;
+
+    #[test]
+    fn only_web_pages_are_opened() {
+        assert!(is_web_address("https://example.com/page"));
+        assert!(is_web_address(" http://example.com "));
+        for bad in [
+            "C:\\Windows\\System32\\calc.exe",
+            "\\\\server\\share\\x.exe",
+            "file:///C:/x.exe",
+            "javascript:alert(1)",
+            "ms-settings:",
+            "https://",
+            "",
+        ] {
+            assert!(!is_web_address(bad), "{bad}");
         }
     }
 }

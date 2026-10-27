@@ -1,5 +1,6 @@
 //! The helper programs that come with Ezoo Download: yt-dlp (finds the video
-//! links) and ffmpeg (joins video + audio), both from their GitHub releases. They live in the "tools" folder
+//! links) and aria2 (torrents) from their GitHub releases, and our own small
+//! ffmpeg build (joins video + audio, MP3; built by tools/ffmpeg/build.sh). They live in the "tools" folder
 //! of the install folder. Once a day, silently, Ezoo Download checks for new
 //! versions and updates them, and puts them back if one went missing.
 
@@ -9,34 +10,15 @@ use std::process::Command;
 use std::time::{Duration, SystemTime};
 
 const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
-/// ffmpeg builds published on GitHub (rolling release "latest")
-const FFMPEG_RELEASE_API: &str = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest";
-
-#[derive(serde::Deserialize)]
-struct GhAsset {
-    name: String,
-    browser_download_url: String,
-    #[serde(default)]
-    updated_at: String,
-}
-
-#[derive(serde::Deserialize)]
-struct GhRelease {
-    assets: Vec<GhAsset>,
-}
-
-/// The newest stable 64-bit Windows build: "ffmpeg-n7.1-latest-win64-gpl-7.1.zip"
-/// (the highest n<version>), else the master build.
-fn pick_ffmpeg(assets: &[GhAsset]) -> Option<&GhAsset> {
-    let re = regex::Regex::new(r"^ffmpeg-n([0-9.]+)-latest-win64-gpl-[0-9.]+\.zip$").ok()?;
-    let key = |v: &str| v.split('.').map(|p| p.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
-    assets
-        .iter()
-        .filter_map(|a| re.captures(&a.name).map(|c| (key(&c[1]), a)))
-        .max_by(|x, y| x.0.cmp(&y.0))
-        .map(|(_, a)| a)
-        .or_else(|| assets.iter().find(|a| a.name == "ffmpeg-master-latest-win64-gpl.zip"))
-}
+/// the SHA-256 of every file of that release, published by yt-dlp
+const YTDLP_SUMS_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
+/// none of the helpers is anywhere near this big
+const MAX_TOOL_BYTES: u64 = 400 << 20;
+/// aria2 for torrents: one fixed, known build (it changes rarely), checked
+/// against this SHA-256 before use
+pub const ARIA2_URL: &str = "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip";
+pub const ARIA2_ZIP_SHA256: &str = "67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288";
+pub const ARIA2_EXE_SHA256: &str = "be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2";
 
 fn exe(name: &str) -> String {
     if cfg!(windows) {
@@ -57,6 +39,13 @@ pub fn tool_dirs() -> Vec<PathBuf> {
         v.push(p.data_dir().join("tools"));
     }
     v
+}
+
+/// A folder of ours for the helpers' temporary files.
+pub fn work_dir() -> Option<PathBuf> {
+    let dir = directories::ProjectDirs::from("com", "Ezoo", "EzooDownload")?.data_dir().join("tmp");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
 }
 
 /// A tool shipped with the app (not one somewhere on PATH).
@@ -94,7 +83,36 @@ fn due(stamp: &Path, every: Duration) -> bool {
         .unwrap_or(true)
 }
 
-async fn download(client: &reqwest::Client, url: &str, dest: &Path) -> anyhow::Result<()> {
+/// The SHA-256 of `name` in a checksum list ("<sha256>  <name>" per line).
+pub fn sum_for(list: &str, name: &str) -> Option<String> {
+    list.lines().find_map(|l| {
+        let mut it = l.split_whitespace();
+        let (sum, file) = (it.next()?, it.next()?);
+        (file.trim_start_matches('*') == name && sum.len() == 64 && sum.chars().all(|c| c.is_ascii_hexdigit()))
+            .then(|| sum.to_ascii_lowercase())
+    })
+}
+
+async fn get_text(client: &reqwest::Client, url: &str) -> anyhow::Result<String> {
+    let text = client
+        .get(url)
+        .header(reqwest::header::USER_AGENT, crate::config::DEFAULT_USER_AGENT)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    if text.len() > 1 << 20 {
+        anyhow::bail!("unexpected answer from {url}");
+    }
+    Ok(text)
+}
+
+/// Download `url` to `dest`. It is used only when its SHA-256 is `sha256`
+/// (from the checksum list its makers publish): a changed or broken file is
+/// thrown away and never run.
+async fn download(client: &reqwest::Client, url: &str, dest: &Path, sha256: &str) -> anyhow::Result<()> {
+    use sha2::{Digest, Sha256};
     let mut resp = client
         .get(url)
         .header(reqwest::header::USER_AGENT, crate::config::DEFAULT_USER_AGENT)
@@ -104,15 +122,23 @@ async fn download(client: &reqwest::Client, url: &str, dest: &Path) -> anyhow::R
     use std::io::Write;
     let tmp = dest.with_extension("download");
     let mut file = std::fs::File::create(&tmp)?;
-    let mut total = 0usize;
+    let mut h = Sha256::new();
+    let mut total: u64 = 0;
     while let Some(chunk) = resp.chunk().await? {
+        total += chunk.len() as u64;
+        if total > MAX_TOOL_BYTES {
+            drop(file);
+            let _ = std::fs::remove_file(&tmp);
+            anyhow::bail!("the download of {url} is far bigger than expected");
+        }
+        h.update(&chunk);
         file.write_all(&chunk)?;
-        total += chunk.len();
     }
     drop(file);
-    if total < 1024 {
+    let got: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    if !got.eq_ignore_ascii_case(sha256) {
         let _ = std::fs::remove_file(&tmp);
-        anyhow::bail!("the download of {url} was too small");
+        anyhow::bail!("the download of {url} does not match its published SHA-256");
     }
     replace(&tmp, dest)
 }
@@ -136,7 +162,11 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
     if bundled("yt-dlp").is_none() {
         if cfg!(windows) {
             if let Some(dir) = writable_dir("yt-dlp") {
-                let _ = download(client, YTDLP_URL, &dir.join(exe("yt-dlp"))).await;
+                if let Ok(sums) = get_text(client, YTDLP_SUMS_URL).await {
+                    if let Some(sum) = sum_for(&sums, "yt-dlp.exe") {
+                        let _ = download(client, YTDLP_URL, &dir.join(exe("yt-dlp")), &sum).await;
+                    }
+                }
             }
         }
         return;
@@ -148,7 +178,10 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
     let Some(tool) = bundled("yt-dlp") else { return };
     let ok = tokio::task::spawn_blocking(move || {
         let mut cmd = Command::new(&tool);
-        cmd.arg("-U");
+        if let Some(dir) = work_dir() {
+            cmd.env("TEMP", &dir).env("TMP", &dir).current_dir(&dir);
+        }
+        cmd.args(["--ignore-config", "-U"]);
         hide_window(&mut cmd);
         cmd.output().map(|o| o.status.success()).unwrap_or(false)
     })
@@ -159,72 +192,62 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
     }
 }
 
-/// ffmpeg: compare with the newest release build and replace it when
-/// there's a newer one (or when it's missing).
-async fn ffmpeg(client: &reqwest::Client, data_dir: &Path) -> anyhow::Result<()> {
-    if !cfg!(windows) {
-        return Ok(());
-    }
-    let present = bundled("ffmpeg");
-    let stamp = data_dir.join("ffmpeg-checked");
-    if present.is_some() && !due(&stamp, Duration::from_secs(20 * 3600)) {
-        return Ok(());
-    }
-    let text = client
-        .get(FFMPEG_RELEASE_API)
-        .header(reqwest::header::USER_AGENT, crate::config::DEFAULT_USER_AGENT)
-        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-        .send()
-        .await?
-        .error_for_status()?
-        .text()
-        .await?;
-    let release: GhRelease = serde_json::from_str(&text)?;
-    let Some(asset) = pick_ffmpeg(&release.assets) else {
-        anyhow::bail!("no ffmpeg build in the release");
+/// ffmpeg is our own small build that comes with the setup (and is
+/// updated with the program). Copies of the big public build that older
+/// versions downloaded by themselves are removed, so ours is the one used.
+fn ffmpeg_cleanup() {
+    let Some(ours) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("tools").join(exe("ffmpeg")))) else {
+        return;
     };
-    // name + date: changes whenever a new build is published
-    let latest = format!("{} {}", asset.name, asset.updated_at);
-    let zip_url = asset.browser_download_url.clone();
-    if !zip_url.starts_with("https://github.com/") {
-        anyhow::bail!("unexpected ffmpeg download address");
+    if !ours.exists() {
+        return;
     }
-    let Some(dir) = writable_dir("ffmpeg") else { return Ok(()) };
-    let version_file = dir.join("ffmpeg-version.txt");
-    let current = std::fs::read_to_string(&version_file).unwrap_or_default();
-    if present.is_some() && current.trim() == latest {
-        let _ = std::fs::write(&stamp, b"ok");
+    if let Some(p) = directories::ProjectDirs::from("com", "Ezoo", "EzooDownload") {
+        let dir = p.data_dir().join("tools");
+        for f in [exe("ffmpeg"), "ffmpeg-version.txt".into(), "ffmpeg-LICENSE.txt".into()] {
+            let _ = std::fs::remove_file(dir.join(f));
+        }
+    }
+}
+
+/// aria2c missing (an older install): get the known build.
+async fn aria2(client: &reqwest::Client) -> anyhow::Result<()> {
+    if !cfg!(windows) || bundled("aria2c").is_some() {
         return Ok(());
     }
-    // download the zip, unpack it with Windows' own tar, take ffmpeg.exe
-    let work = std::env::temp_dir().join(format!("ezoo-ffmpeg-{}", std::process::id()));
+    let Some(dir) = writable_dir("aria2c") else { return Ok(()) };
+    let work = std::env::temp_dir().join(format!("ezoo-aria2-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work)?;
-    let zip = work.join("ffmpeg.zip");
-    download(client, &zip_url, &zip).await?;
+    let zip = work.join("aria2.zip");
+    download(client, ARIA2_URL, &zip, ARIA2_ZIP_SHA256).await?;
     let (zip2, work2) = (zip.clone(), work.clone());
     let unpacked = tokio::task::spawn_blocking(move || {
-        let mut cmd = Command::new("tar");
+        let mut cmd = Command::new(crate::system::windows_tool("tar.exe"));
         cmd.arg("-xf").arg(&zip2).arg("-C").arg(&work2);
         hide_window(&mut cmd);
         cmd.output().map(|o| o.status.success()).unwrap_or(false)
     })
     .await
     .unwrap_or(false);
-    let found = unpacked.then(|| find_file(&work, &exe("ffmpeg"))).flatten();
+    let found = unpacked.then(|| find_file(&work, &exe("aria2c"))).flatten();
     let result = match found {
-        Some(f) => {
-            let staged = dir.join("ffmpeg.new");
+        Some(f) if sha256_of(&f).as_deref() == Some(ARIA2_EXE_SHA256) => {
+            let staged = dir.join("aria2c.new");
             std::fs::copy(&f, &staged)?;
-            replace(&staged, &dir.join(exe("ffmpeg")))?;
-            std::fs::write(&version_file, &latest)?;
-            let _ = std::fs::write(&stamp, b"ok");
-            Ok(())
+            replace(&staged, &dir.join(exe("aria2c")))
         }
-        None => Err(anyhow::anyhow!("ffmpeg.exe was not found in the download")),
+        Some(_) => Err(anyhow::anyhow!("aria2c.exe does not match its known SHA-256")),
+        None => Err(anyhow::anyhow!("aria2c.exe was not found in the download")),
     };
     let _ = std::fs::remove_dir_all(&work);
     result
+}
+
+fn sha256_of(path: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let data = std::fs::read(path).ok()?;
+    Some(Sha256::digest(&data).iter().map(|b| format!("{b:02x}")).collect())
 }
 
 fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
@@ -245,10 +268,11 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
 /// missing). Never shows anything; errors just mean "try again later".
 pub async fn update_all(client: reqwest::Client, data_dir: PathBuf) {
     yt_dlp(&client, &data_dir).await;
-    let _ = ffmpeg(&client, &data_dir).await;
+    ffmpeg_cleanup();
+    let _ = aria2(&client).await;
     // leftovers of earlier updates
     for dir in tool_dirs() {
-        for name in ["yt-dlp", "ffmpeg"] {
+        for name in ["yt-dlp", "ffmpeg", "aria2c"] {
             let _ = std::fs::remove_file(dir.join(exe(name)).with_extension("old"));
         }
     }
@@ -269,20 +293,6 @@ pub fn spawn_updater(rt: &tokio::runtime::Handle, client: reqwest::Client, data_
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn picks_stable_ffmpeg() {
-        let a = |n: &str| GhAsset { name: n.into(), browser_download_url: String::new(), updated_at: String::new() };
-        let list = vec![
-            a("ffmpeg-master-latest-win64-gpl.zip"),
-            a("ffmpeg-n7.1-latest-win64-gpl-7.1.zip"),
-            a("ffmpeg-n7.0-latest-win64-gpl-7.0.zip"),
-            a("ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip"),
-            a("ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz"),
-        ];
-        assert_eq!(pick_ffmpeg(&list).unwrap().name, "ffmpeg-n7.1-latest-win64-gpl-7.1.zip");
-        assert_eq!(pick_ffmpeg(&list[..1]).unwrap().name, "ffmpeg-master-latest-win64-gpl.zip");
-    }
-
     #[test]
     fn replace_and_find() {
         let dir = std::env::temp_dir().join(format!("ezoo-tools-test-{}", std::process::id()));
