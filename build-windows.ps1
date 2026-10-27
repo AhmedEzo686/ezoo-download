@@ -161,8 +161,29 @@ if (Test-Path "$cache\vc_redist.x64.exe") { Copy-Item "$cache\vc_redist.x64.exe"
 Copy-Item "THIRD-PARTY-NOTICES.txt" $stage -Force
 # the Firefox add-on signed by Mozilla for this version (stays in Firefox for good)
 $extVersion = (Get-Content (Join-Path $PSScriptRoot "extension\manifest.firefox.json") -Raw | ConvertFrom-Json).version
+# Firefox keeps only add-ons signed by Mozilla (an unsigned one is gone
+# when Firefox closes). The signed one of this version; else the one of the
+# newest release (Firefox checks Mozilla's signature itself, and the add-on
+# updates itself from there); else the newest signed one kept here.
 $signedXpi = "extension-signed\ezoo-download-firefox-$extVersion.xpi"
-if (Test-Path $signedXpi) { Copy-Item $signedXpi (Join-Path $stage "ezoo-download-firefox.xpi") -Force }
+$xpiOut = Join-Path $stage "ezoo-download-firefox.xpi"
+if (Test-Path $signedXpi) {
+    Copy-Item $signedXpi $xpiOut -Force
+} else {
+    try {
+        Invoke-WebRequest "https://github.com/AhmedEzo686/ezoo-download/releases/latest/download/ezoo-download-firefox.xpi" -OutFile $xpiOut
+        # a real add-on is a zip file ("PK" at the start)
+        $head = [System.IO.File]::ReadAllBytes($xpiOut) | Select-Object -First 2
+        if (-not ($head.Count -eq 2 -and $head[0] -eq 0x50 -and $head[1] -eq 0x4B)) { Remove-Item $xpiOut -Force }
+    } catch {
+        Remove-Item $xpiOut -Force -ErrorAction SilentlyContinue
+    }
+    if (-not (Test-Path $xpiOut)) {
+        $newest = Get-ChildItem "extension-signed" -Filter "ezoo-download-firefox-*.xpi" -ErrorAction SilentlyContinue |
+            Sort-Object { [version]($_.BaseName -replace "^ezoo-download-firefox-", "") } -Descending | Select-Object -First 1
+        if ($newest) { Copy-Item $newest.FullName $xpiOut -Force }
+    }
+}
 foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "aria2c.exe", "aria2-COPYING.txt")) {
     if (Test-Path "$cache\$f") { Copy-Item "$cache\$f" $tools -Force }
 }

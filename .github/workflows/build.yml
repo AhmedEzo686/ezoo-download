@@ -179,6 +179,14 @@ jobs:
             $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
             [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
           }
+          # not signed this time: the newest signed one kept in the project, so
+          # the setup still has an add-on that stays in Firefox (it updates
+          # itself later from the releases)
+          if (-not (Test-Path "$p/ezoo-download-firefox.xpi")) {
+            $newest = Get-ChildItem "extension-signed" -Filter "ezoo-download-firefox-*.xpi" -ErrorAction SilentlyContinue |
+              Sort-Object { [version]($_.BaseName -replace "^ezoo-download-firefox-", "") } -Descending | Select-Object -First 1
+            if ($newest) { Copy-Item $newest.FullName "$p/ezoo-download-firefox.xpi" }
+          }
           # our own small ffmpeg (job "ffmpeg") and its licences
           Copy-Item ffmpeg-out/* "$p/tools/"
           # yt-dlp of one release, checked against that release's SHA2-256SUMS
