@@ -60,7 +60,7 @@ fn write_font(name: &str, bytes: &[u8]) -> std::io::Result<()> {
     // "InstaArabi-Regular.ttf" -> "InstaArabi (TrueType)"
     let family = name.split('-').next().unwrap_or(name).trim_end_matches(".ttf");
     let label = wide(format!("{family} (TrueType)"));
-    let key = wide(r"Software\Microsoft\Windows NT\CurrentVersion\Fonts");
+    let key = wide(r"Software\Microsoft\Windows NT\CurrentVersion\Fonts".to_string());
     let path = wide(f.display().to_string());
     unsafe {
         let mut hkey = std::ptr::null_mut();
@@ -73,7 +73,7 @@ fn write_font(name: &str, bytes: &[u8]) -> std::io::Result<()> {
             windows_sys::Win32::System::Registry::KEY_SET_VALUE,
             std::ptr::null(),
             &mut hkey,
-            std::ptr::null(),
+            std::ptr::null_mut(),
         );
         if open == 0 {
             windows_sys::Win32::System::Registry::RegSetValueExW(

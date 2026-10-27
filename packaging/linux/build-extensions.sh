@@ -25,6 +25,9 @@ VERSION="$(grep -m1 '^version' "$ROOT/Cargo.toml" | sed 's/.*"\(.*\)".*/\1/')"
 EXT_VERSION="$(python3 -c "import json;print(json.load(open('$ROOT/extension/manifest.json'))['version'])")"
 OUT="${1:-$ROOT/dist}"
 mkdir -p "$OUT"
+# Absolute from here on: zip_dir() below cds into the staging dir, so a
+# relative OUT would make zip write into a non-existent path (CI failure).
+OUT="$(cd "$OUT" && pwd)"
 
 command -v zip >/dev/null 2>&1 || { echo "build-extensions.sh: zip not found" >&2; exit 1; }
 
