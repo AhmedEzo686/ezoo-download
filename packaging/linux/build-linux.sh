@@ -39,7 +39,7 @@ trap 'rm -rf "$STAGE"' EXIT
 # One download for all formats; each format stages from this directory.
 FFBIN=""
 if [ -z "${SKIP_FFMPEG:-}" ]; then
-    "$HERE/fetch-ffmpeg.sh" "$STAGE/ffmpeg-bin"
+    bash "$HERE/fetch-ffmpeg.sh" "$STAGE/ffmpeg-bin"
     FFBIN="$STAGE/ffmpeg-bin/ffmpeg"
 else
     echo "==> SKIP_FFMPEG=1: packaging WITHOUT the bundled ffmpeg" >&2
