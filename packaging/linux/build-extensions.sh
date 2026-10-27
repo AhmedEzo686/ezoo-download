@@ -62,9 +62,12 @@ if [ -n "${CRX_PRIVATE_KEY:-}" ]; then
     KEY="$STAGE/crx-key.pem"
     printf '%s' "$CRX_PRIVATE_KEY" > "$KEY"
     chmod 600 "$KEY"
-    # crx3 (CRXv3, Chrome 64+): an existing key file is reused, so the
+    # crx3 2.x (CRXv3, Chrome 64+): an existing key file is reused, so the
     # extension keeps its fixed id. Pinned version for reproducibility.
-    npx --yes crx3@1.1.2 -o "$OUT/ezoo-download-chrome-$EXT_VERSION.crx" -p "$KEY" "$STAGE/chrome"
+    # NOTE: crx3@1.1.2 crashes on Node 20+ ("super._final is not a function"
+    # in crx3stream.js); 2.0.0 guards that call and is verified to produce a
+    # spec-valid CRX3 with the same key-derived id.
+    npx --yes crx3@2.0.0 -o "$OUT/ezoo-download-chrome-$EXT_VERSION.crx" -p "$KEY" "$STAGE/chrome"
     rm -f "$KEY"
     # the CRX magic: a broken pack must not ship silently
     head -c 4 "$OUT/ezoo-download-chrome-$EXT_VERSION.crx" | grep -q "Cr24" \
