@@ -733,6 +733,12 @@ msgstr "Если завершена — показать, если нет — п
 msgid "Remember my choice (Options > Downloads)"
 msgstr "Запомнить мой выбор (Параметры > Загрузки)"
 
+msgid "Delete the downloaded files from the disk too (be careful)"
+msgstr "Удалить и скачанные файлы с диска (осторожно)"
+
+msgid "Don't show this question again"
+msgstr "Больше не задавать этот вопрос"
+
 msgid "All downloads are finished."
 msgstr "Все загрузки завершены."
 
@@ -1128,6 +1134,15 @@ msgstr "Показывать окно \"Сведения о файле\" для 
 
 msgid "Start downloading immediately while showing \"Download File Info\""
 msgstr "Сразу начинать загрузку, показывая \"Сведения о файле\""
+
+msgid "Ask before removing downloads from the list"
+msgstr "Спрашивать перед удалением загрузок из списка"
+
+msgid "Quality of MP3 files"
+msgstr "Качество файлов MP3"
+
+msgid "Download the subtitles of videos too, in these languages:"
+msgstr "Скачивать и субтитры видео на этих языках:"
 
 msgid "Show the download progress window"
 msgstr "Показывать окно хода загрузки"

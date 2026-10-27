@@ -82,6 +82,10 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_show_start_dialog(s.show_start_dialog);
     d.set_start_while_info(s.start_while_info);
     d.set_complete_dialog(s.show_complete_dialog);
+    d.set_ask_remove(s.ask_before_remove);
+    d.set_subtitles(s.subtitles);
+    d.set_subtitle_langs(s.subtitle_langs.clone().into());
+    d.set_mp3_index(match s.mp3_kbps { 0..=159 => 0, 160..=223 => 1, 224..=287 => 2, _ => 3 });
     d.set_progress_mode(s.progress_mode.min(2) as i32);
     d.set_duplicate_action(s.duplicate_action.min(3) as i32);
     d.set_set_file_date(s.set_file_date);
@@ -183,6 +187,10 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.show_start_dialog = d.get_show_start_dialog();
     s.start_while_info = d.get_start_while_info();
     s.show_complete_dialog = d.get_complete_dialog();
+    s.ask_before_remove = d.get_ask_remove();
+    s.subtitles = d.get_subtitles();
+    s.subtitle_langs = d.get_subtitle_langs().trim().chars().take(60).collect();
+    s.mp3_kbps = [128, 192, 256, 320][d.get_mp3_index().clamp(0, 3) as usize];
     s.progress_mode = d.get_progress_mode().clamp(0, 2) as u32;
     s.show_progress_window = s.progress_mode != 2;
     s.duplicate_action = d.get_duplicate_action().clamp(0, 3) as u32;

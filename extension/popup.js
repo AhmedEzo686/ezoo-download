@@ -36,6 +36,11 @@ async function init() {
   chrome.storage.local.get({ bubbleStyle: "blue" }, (o) => (look.value = o.bubbleStyle || "blue"));
   look.addEventListener("change", () => chrome.storage.local.set({ bubbleStyle: look.value }));
 
+  // full screen: the button stays out of the way unless the user wants it
+  const fullscreen = document.getElementById("fullscreen");
+  chrome.storage.local.get({ bubbleFullscreen: false }, (o) => (fullscreen.checked = !!o.bubbleFullscreen));
+  fullscreen.addEventListener("change", () => chrome.storage.local.set({ bubbleFullscreen: fullscreen.checked }));
+
   // size of the "Download this video" button on pages (also in the settings page)
   const scale = document.getElementById("scale");
   const scaleText = document.getElementById("scaleText");

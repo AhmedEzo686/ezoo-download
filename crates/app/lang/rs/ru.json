@@ -245,5 +245,18 @@
  "A clear message when the download folder is on a drive locked by BitLocker.": "Понятное сообщение, если папка загрузок находится на диске, заблокированном BitLocker.",
  "Fixed videos that could not be downloaded on some computers because of the Windows temporary folder.": "Исправлены видео, которые не скачивались на некоторых компьютерах из-за временной папки Windows.",
  "The Grabber also finds links written as plain text, and the menu next to the clock is in the program's language.": "Сборщик находит и ссылки, написанные простым текстом, а меню у часов теперь на языке программы.",
- "The speed limit stays smooth with many connections, and the clipboard also catches the file types you added.": "Ограничение скорости остаётся ровным при многих подключениях, а буфер обмена ловит и добавленные вами типы файлов."
+ "The speed limit stays smooth with many connections, and the clipboard also catches the file types you added.": "Ограничение скорости остаётся ровным при многих подключениях, а буфер обмена ловит и добавленные вами типы файлов.",
+ "Remove these {} downloads from the download list?": "Убрать эти загрузки ({}) из списка?",
+ "Remove “{}” from the download list?": "Убрать «{}» из списка загрузок?",
+ "A click on a file link in the browser goes straight to Ezoo Download: the browser's own Save As window no longer opens (Brave too).": "Щелчок по ссылке на файл в браузере сразу передаётся в Ezoo Download: окно «Сохранить как» браузера больше не открывается (и в Brave).",
+ "Changing the folder or the name in \"Download File Info\" no longer gives a small broken file, and a name typed without its extension keeps it.": "Смена папки или имени в окне «Сведения о файле» больше не даёт маленький испорченный файл, а имя без расширения его сохраняет.",
+ "Big files keep going by themselves when the server has trouble: Ezoo Download tries again later on its own.": "Большие файлы продолжают скачиваться сами, когда у сервера проблемы: Ezoo Download сам повторит попытку позже.",
+ "Torrents: a .torrent link in the browser opens the torrent window at once, .torrent files and magnet links open with Ezoo Download, and a .torrent file can be dropped on the window.": "Торренты: ссылка .torrent в браузере сразу открывает окно торрента, файлы .torrent и magnet-ссылки открываются в Ezoo Download, а файл .torrent можно перетащить на окно.",
+ "Removing downloads can delete their files from the disk too (if you tick it), and the question can be turned off.": "При удалении загрузок можно удалить и их файлы с диска (если отметить), а вопрос можно отключить.",
+ "Ctrl+A, Ctrl+N and the other shortcuts work with the Arabic keyboard too, and files are selected with the mouse in both directions.": "Ctrl+A, Ctrl+N и другие сочетания работают и с арабской раскладкой, а файлы выделяются мышью в обе стороны.",
+ "The download window is smaller, never gets wider for a long name, and its title bar is like the main window's.": "Окно загрузки меньше, не расширяется из-за длинного имени, а его заголовок как у главного окна.",
+ "The video button in the browser hides in full screen (or not: the add-in's window), stays closed when you close it, and streams show their quality first.": "Кнопка видео в браузере прячется в полноэкранном режиме (или нет: окно дополнения), остаётся закрытой, если её закрыть, а потоки сначала показывают качество.",
+ "Firefox: the add-in is signed again and updates by itself.": "Firefox: дополнение снова подписано и обновляется само.",
+ "Playlists have 240p and 144p, the MP3 quality can be chosen, and the subtitles of videos can be downloaded too (Options > Downloads).": "В плейлистах есть 240p и 144p, качество MP3 можно выбрать, а субтитры видео тоже можно скачать (Параметры > Загрузки).",
+ "The toolbar grows with bigger text, so the names are never cut.": "Панель инструментов растёт вместе с крупным текстом, названия не обрезаются."
 }

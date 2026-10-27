@@ -202,10 +202,17 @@ fn main() -> anyhow::Result<()> {
             }
         }
     }
+    // a .torrent file / magnet link opened with Ezoo Download (double click)
+    let open_torrent = std::env::args().skip(1).find(|a| api::torrent_source_ok(a));
     // One instance only: if the port is taken by us, bring that one to front.
     let server = match first {
         Ok(s) => Some(s),
         Err(_) => {
+            if let Some(src) = &open_torrent {
+                if api::notify_open_torrent(port, src) {
+                    return Ok(());
+                }
+            }
             if api::notify_existing(port) {
                 return Ok(());
             }
@@ -528,6 +535,18 @@ fn main() -> anyhow::Result<()> {
             let ui = ui.clone();
             Timer::single_shot(Duration::from_millis(600), move || extra::show_tip_when_free(ui));
         }
+    }
+    if let Some(src) = open_torrent {
+        // opened from Windows with a torrent: its window, once everything is up
+        Timer::single_shot(Duration::from_millis(500), move || torrent_ui::open_source(&src));
+    }
+    {
+        // a .torrent file dropped on the window
+        winfx::on_files_dropped(main.window(), |path| {
+            if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("torrent")) && path.is_file() {
+                torrent_ui::open_source(&path.display().to_string());
+            }
+        });
     }
     slint::run_event_loop_until_quit()?;
     preview::clean_all();
@@ -1165,6 +1184,7 @@ thread_local! {
 fn handle_api(ui: &Ui, event: api::ApiEvent) {
     match event {
         api::ApiEvent::Show => bring_to_front(&ui.ctx),
+        api::ApiEvent::OpenTorrent(s) => torrent_ui::open_source(&s),
         api::ApiEvent::Playlist(url) => playlist::open_url(ui, &url),
         api::ApiEvent::Links(l) => grab::open_links(ui, l),
         api::ApiEvent::Add(req) => {
@@ -1193,6 +1213,11 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
             // a torrent's magnet link from a page: the torrent window asks first
             if swiftget_engine::torrent::is_magnet(&req.url) {
                 torrent_ui::open_source(&req.url);
+                return;
+            }
+            // a .torrent file's link: straight to the torrent window too
+            if torrent_ui::looks_like_torrent(&req.url, req.file_name.as_deref()) {
+                torrent_ui::fetch_and_open(&ui.ctx, req.url, headers, req.file_name);
                 return;
             }
             // "Refresh download address": this is the new link we waited for
@@ -1289,7 +1314,14 @@ fn wire_add(ui: &Ui) {
             if let Some(name) = current.file_name() {
                 dlg = dlg.set_file_name(name.to_string_lossy());
             }
+            // Windows adds the file's own extension when a name is typed without it
+            if let Some(ext) = current.extension().map(|e| e.to_string_lossy().into_owned()).filter(|e| !e.is_empty()) {
+                dlg = dlg.add_filter(ext.to_ascii_uppercase(), &[ext.as_str()]).add_filter("*", &["*"]);
+            }
             if let Some(p) = dlg.save_file() {
+                let suggested = current.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let name = p.file_name().map(|n| with_extension_of(&n.to_string_lossy(), &suggested)).unwrap_or_default();
+                let p = p.with_file_name(name);
                 d.set_save_as(p.display().to_string().into());
             }
         });
@@ -2144,9 +2176,16 @@ fn confirm_add(ui: &Ui, start: bool) {
         return;
     }
     let save_as = PathBuf::from(d.get_save_as().trim());
+    // the name as the program suggested it (its extension is the real one)
+    let suggested = {
+        let st = ctx.add_state.lock().unwrap();
+        let early = st.early_id.and_then(|id| ctx.mgr.get(id)).map(|v| v.file_name);
+        let auto = Path::new(&st.auto_path).file_name().map(|n| n.to_string_lossy().into_owned());
+        early.or(auto).or_else(|| st.probe.as_ref().map(|p| p.file_name.clone())).unwrap_or_default()
+    };
     let name = save_as
         .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
+        .map(|n| with_extension_of(&n.to_string_lossy(), &suggested))
         .filter(|n| !n.trim().is_empty());
     let dir = save_as.parent().map(Path::to_path_buf).filter(|p| !p.as_os_str().is_empty());
     let settings = ctx.mgr.settings();
@@ -2254,6 +2293,22 @@ fn confirm_add(ui: &Ui, start: bool) {
     }
 }
 
+/// A name typed without its extension ("My video") gets the one of the
+/// file (".mp4"), so Windows knows how to open it.
+pub(crate) fn with_extension_of(name: &str, suggested: &str) -> String {
+    let name = name.trim();
+    let ext = Path::new(suggested).extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
+    let has_ext = Path::new(name)
+        .extension()
+        .map(|e| !e.is_empty() && e.len() <= 5 && e.to_string_lossy().chars().all(|c| c.is_ascii_alphanumeric()))
+        .unwrap_or(false);
+    if has_ext || ext.is_empty() || name.is_empty() {
+        name.to_string()
+    } else {
+        format!("{name}.{ext}")
+    }
+}
+
 /// Really add it; open its progress window when it starts.
 pub(crate) fn finish_add(ui: &Ui, req: NewDownload) -> u64 {
     let start = req.start;
@@ -2339,6 +2394,10 @@ fn row_action(ui: &Ui, id: u64, action: &str) {
                     dlg = dlg.set_directory(dir);
                 }
                 if let Some(to) = dlg.save_file() {
+                    let to = {
+                        let n = to.file_name().map(|n| with_extension_of(&n.to_string_lossy(), &v.file_name)).unwrap_or_default();
+                        to.with_file_name(n)
+                    };
                     // on its own thread: a move to another disk is a copy
                     let mgr = ui.ctx.mgr.clone();
                     std::thread::spawn(move || {
@@ -2411,24 +2470,23 @@ fn delete_downloads(ui: &Ui, ids: Vec<u64>) {
         0 => {}
         1 => delete_download(&ui.ctx, ids[0]),
         n => {
-            // the list only: files on the disk are never deleted from here
             let ui2 = ui.clone();
-            confirm(
-                &ui.ctx,
-                &t("Delete downloads"),
-                &tf(
-                    "Remove these {} downloads from the download list?\n\nOnly the list entries are removed: the downloaded files stay on your computer.\n(Parts of unfinished downloads are cleaned up.)",
-                    &[&n],
-                ),
-                move || {
-                    ui2.ctx.mgr.remove_many(&ids);
-                    ui2.sel.borrow_mut().ids.clear();
-                    if let Some(w) = ui2.ctx.main.upgrade() {
-                        w.set_selected_id(-1);
+            let text = tf("Remove these {} downloads from the download list?", &[&n]);
+            ask_remove(&ui.ctx, &t("Delete downloads"), &text, move |delete_files| {
+                if delete_files {
+                    for id in &ids {
+                        ui2.ctx.mgr.remove(*id, true);
                     }
-                    refresh(&ui2);
-                },
-            );
+                } else {
+                    // the list only (parts of unfinished downloads are cleaned up)
+                    ui2.ctx.mgr.remove_many(&ids);
+                }
+                ui2.sel.borrow_mut().ids.clear();
+                if let Some(w) = ui2.ctx.main.upgrade() {
+                    w.set_selected_id(-1);
+                }
+                refresh(&ui2);
+            });
         }
     }
 }
@@ -2436,23 +2494,42 @@ fn delete_downloads(ui: &Ui, ids: Vec<u64>) {
 fn delete_download(ctx: &Ctx, id: u64) {
     let Some(v) = ctx.mgr.get(id) else { return };
     let text = if v.status == Status::Completed {
-        // the list only: the file stays on the disk
-        tf(
-            "Remove “{}” from the download list?\n\nOnly the list entry is removed: the file stays on your computer.",
-            &[&v.file_name],
-        )
+        tf("Remove “{}” from the download list?", &[&v.file_name])
     } else {
         tf("Delete the unfinished download “{}”?\nThe partly downloaded data will be removed.", &[&v.file_name])
     };
     let ctx2 = ctx.clone();
-    confirm(ctx, &t("Delete download"), &text, move || {
+    ask_remove(ctx, &t("Delete download"), &text, move |delete_files| {
         // its progress window goes away with it
-        ctx2.mgr.remove(id, false);
+        ctx2.mgr.remove(id, delete_files);
         if let Some(w) = ctx2.main.upgrade() {
             if w.get_selected_id() == id as i32 {
                 w.set_selected_id(-1);
             }
         }
+    });
+}
+
+/// Removing downloads from the list: the question (with "delete the files
+/// from the disk too" and "don't show this again"), or straight away when
+/// the user said not to ask. `remove` gets whether files go too.
+fn ask_remove(ctx: &Ctx, title: &str, text: &str, remove: impl FnOnce(bool) + 'static) {
+    let s = ctx.mgr.settings();
+    if !s.ask_before_remove {
+        // without the question only the list entries go: files are never
+        // deleted from the disk without the user seeing it right then
+        remove(false);
+        return;
+    }
+    let mgr = ctx.mgr.clone();
+    confirm_with(ctx, title, text, Some(s.remove_deletes_files), move |delete_files, dont_ask| {
+        let mut s = mgr.settings();
+        if s.remove_deletes_files != delete_files || s.ask_before_remove == dont_ask {
+            s.remove_deletes_files = delete_files;
+            s.ask_before_remove = !dont_ask;
+            let _ = mgr.set_settings(s);
+        }
+        remove(delete_files);
     });
 }
 
@@ -2462,22 +2539,30 @@ thread_local! {
 }
 
 /// What runs when a question is answered with OK.
-type OnOk = Box<dyn FnOnce()>;
+type OnOk = Box<dyn FnOnce(bool, bool)>;
 
 /// A yes / no question in a window of our own: it is shown in front of the
 /// download windows and the program goes on working while it waits (a
 /// Windows message box could end up behind them and seem to freeze it all).
 /// `on_ok` runs when OK is pressed.
 pub(crate) fn confirm(ctx: &Ctx, title: &str, text: &str, on_ok: impl FnOnce() + 'static) {
+    confirm_with(ctx, title, text, None, move |_, _| on_ok());
+}
+
+/// The same; `delete_files`: a question about removing downloads, with its
+/// two check boxes (this one ticked as given). `on_ok` gets both of them.
+fn confirm_with(ctx: &Ctx, title: &str, text: &str, delete_files: Option<bool>, on_ok: impl FnOnce(bool, bool) + 'static) {
     let Ok(d) = ConfirmDialog::new() else {
         if ask(text) {
-            on_ok();
+            on_ok(false, false);
         }
         return;
     };
     set_theme_of(d.global::<Theme>(), &Look::of(&ctx.mgr.settings()));
     d.set_heading(title.into());
     d.set_text(text.into());
+    d.set_removing(delete_files.is_some());
+    d.set_delete_files(delete_files.unwrap_or(false));
     let pending: Rc<RefCell<Option<OnOk>>> = Rc::new(RefCell::new(Some(Box::new(on_ok))));
     let close = |d: &ConfirmDialog| {
         let _ = d.hide();
@@ -2494,7 +2579,7 @@ pub(crate) fn confirm(ctx: &Ctx, title: &str, text: &str, on_ok: impl FnOnce() +
             let f = pending.borrow_mut().take();
             if ok {
                 if let Some(f) = f {
-                    f();
+                    f(d.get_delete_files(), d.get_dont_ask());
                 }
             }
         });
@@ -3156,5 +3241,18 @@ mod tests {
         let l = expand_pattern("https://example.com/*.pdf", true, "a", "c", 1).unwrap();
         assert_eq!(l.len(), 3);
         assert!(expand_pattern("https://example.com/x.pdf", false, "1", "2", 1).is_err());
+    }
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::with_extension_of;
+    #[test]
+    fn typed_names_keep_the_extension() {
+        assert_eq!(with_extension_of("My video", "Title [1080p].mp4"), "My video.mp4");
+        assert_eq!(with_extension_of("My video.mkv", "Title.mp4"), "My video.mkv");
+        assert_eq!(with_extension_of("Ep. 12 final", "a.rar"), "Ep. 12 final.rar");
+        assert_eq!(with_extension_of("setup", ""), "setup");
+        assert_eq!(with_extension_of("v1.2", "x.zip"), "v1.2");
     }
 }

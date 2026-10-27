@@ -733,6 +733,12 @@ msgstr "Bittiyse göster, bitmediyse sürdür"
 msgid "Remember my choice (Options > Downloads)"
 msgstr "Seçimimi hatırla (Seçenekler > İndirmeler)"
 
+msgid "Delete the downloaded files from the disk too (be careful)"
+msgstr "İndirilen dosyaları diskten de sil (dikkat)"
+
+msgid "Don't show this question again"
+msgstr "Bu soruyu bir daha gösterme"
+
 msgid "All downloads are finished."
 msgstr "Tüm indirmeler bitti."
 
@@ -1128,6 +1134,15 @@ msgstr "Tarayıcıdan gelen indirmeler için \"Dosya bilgileri\" penceresini gö
 
 msgid "Start downloading immediately while showing \"Download File Info\""
 msgstr "\"Dosya bilgileri\" gösterilirken hemen indirmeye başla"
+
+msgid "Ask before removing downloads from the list"
+msgstr "İndirmeleri listeden kaldırmadan önce sor"
+
+msgid "Quality of MP3 files"
+msgstr "MP3 dosyalarının kalitesi"
+
+msgid "Download the subtitles of videos too, in these languages:"
+msgstr "Videoların altyazılarını da bu dillerde indir:"
 
 msgid "Show the download progress window"
 msgstr "İndirme ilerleme penceresini göster"

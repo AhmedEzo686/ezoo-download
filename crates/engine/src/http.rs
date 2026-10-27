@@ -97,6 +97,44 @@ pub fn reconnect_delay(n: u32) -> Duration {
     })
 }
 
+/// A failure of the server or the transfer (busy server, "HTTP 503", a
+/// connection that broke off early) that may well go away by itself: the
+/// download tries again later on its own. Not: a link that expired or a
+/// file that was removed (401/403/404/410), a login, a full disk.
+pub fn is_passing_error(e: &anyhow::Error) -> bool {
+    if is_network_error(e) {
+        return true;
+    }
+    if let Some(s) = http_status_of(e) {
+        return s == 408 || s == 425 || s == 429 || (500..600).contains(&s);
+    }
+    let text = format!("{e:#}").to_ascii_lowercase();
+    let lasting = [
+        "expired", "removed", "login", "age check", "not enough", "no room", "disk", "space",
+        "access is denied", "permission", "bitlocker", "not found", "did not accept the byte range",
+        "web page", "missing", "cannot", "can't", "invalid",
+    ];
+    if lasting.iter().any(|w| text.contains(w)) {
+        return false;
+    }
+    ["closed early", "ended before", "timed out", "reset", "broken pipe", "unexpected eof", "connection"]
+        .iter()
+        .any(|w| text.contains(w))
+}
+
+/// How long to wait before the next try after a passing failure:
+/// 15 s, 30 s, 1 min, 2 min, 5 min, then every 10 minutes.
+pub fn retry_delay(n: u32) -> Duration {
+    Duration::from_secs(match n {
+        0 | 1 => 15,
+        2 => 30,
+        3 => 60,
+        4 => 120,
+        5 => 300,
+        _ => 600,
+    })
+}
+
 /// Counts an open connection for as long as it lives.
 pub struct ConnGuard(Arc<Progress>);
 impl ConnGuard {
@@ -393,5 +431,22 @@ mod refused_tests {
         assert!(!p.resumable, "the server refuses ranges: one plain connection");
         let used = p.headers_used.expect("it worked only without the cookie");
         assert!(used.cookies.is_none());
+    }
+}
+
+#[cfg(test)]
+mod passing_tests {
+    use super::*;
+    #[test]
+    fn which_failures_pass() {
+        assert!(is_passing_error(&anyhow::Error::new(HttpStatus(503))));
+        assert!(is_passing_error(&anyhow::Error::new(HttpStatus(429))));
+        assert!(!is_passing_error(&anyhow::Error::new(HttpStatus(404))));
+        assert!(!is_passing_error(&anyhow::Error::new(HttpStatus(403))));
+        assert!(is_passing_error(&anyhow::anyhow!("download ended before all parts were received")));
+        assert!(!is_passing_error(&anyhow::anyhow!("not enough room on the disk")));
+        assert!(!is_passing_error(&anyhow::Error::new(HttpStatus(410)).context("the link has expired or the file was removed")));
+        assert_eq!(retry_delay(1).as_secs(), 15);
+        assert_eq!(retry_delay(20).as_secs(), 600);
     }
 }

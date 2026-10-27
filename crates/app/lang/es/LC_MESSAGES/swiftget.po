@@ -733,6 +733,12 @@ msgstr "Si está terminado mostrarlo, si no reanudarlo"
 msgid "Remember my choice (Options > Downloads)"
 msgstr "Recordar mi elección (Opciones > Descargas)"
 
+msgid "Delete the downloaded files from the disk too (be careful)"
+msgstr "Borrar también los archivos descargados del disco (cuidado)"
+
+msgid "Don't show this question again"
+msgstr "No volver a mostrar esta pregunta"
+
 msgid "All downloads are finished."
 msgstr "Todas las descargas han terminado."
 
@@ -1128,6 +1134,15 @@ msgstr "Mostrar la ventana \"Información del archivo\" para las descargas del n
 
 msgid "Start downloading immediately while showing \"Download File Info\""
 msgstr "Empezar a descargar en seguida mientras se muestra \"Información del archivo\""
+
+msgid "Ask before removing downloads from the list"
+msgstr "Preguntar antes de quitar descargas de la lista"
+
+msgid "Quality of MP3 files"
+msgstr "Calidad de los archivos MP3"
+
+msgid "Download the subtitles of videos too, in these languages:"
+msgstr "Descargar también los subtítulos de los vídeos, en estos idiomas:"
 
 msgid "Show the download progress window"
 msgstr "Mostrar la ventana de progreso"

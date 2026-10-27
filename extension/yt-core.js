@@ -141,7 +141,8 @@ function fmtSize(n) {
  * Ads are separate short streams, so we keep the group with the longest
  * duration (the actual video).
  */
-function buildOptions(streams) {
+function buildOptions(streams, mp3Kbps) {
+  const MP3_RATE = [128, 192, 256, 320].includes(mp3Kbps) ? mp3Kbps : MP3_KBPS;
   const list = Object.values(streams || {});
   if (!list.length) return [];
   const groups = new Map();
@@ -227,14 +228,14 @@ function buildOptions(streams) {
       size: audioOnly.size,
     });
     // the same sound as an MP3 file (made by the app after the download)
-    const mp3Size = audioOnly.dur ? Math.round((audioOnly.dur * MP3_KBPS * 1000) / 8) : 0;
+    const mp3Size = audioOnly.dur ? Math.round((audioOnly.dur * MP3_RATE * 1000) / 8) : 0;
     options.push({
-      label: `Audio · MP3 ${MP3_KBPS}k`,
+      label: `Audio · MP3 ${MP3_RATE}k`,
       sub: mp3Size ? `about ${fmtSize(mp3Size)}` : "",
       key: MP3_KEY,
       quality: "mp3",
       duration: audioOnly.dur || 0,
-      kbps: MP3_KBPS,
+      kbps: MP3_RATE,
       videoUrl: audioOnly.url,
       audioUrl: null,
       ext: "mp3",

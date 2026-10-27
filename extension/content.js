@@ -18,6 +18,8 @@
   };
   // the on / off switch of the add-in's window
   let switchedOn = true;
+  // the video button in full screen too (the add-in's window); off: hidden there
+  let showInFullscreen = false;
   const panelAllowed = () =>
     switchedOn && panel.enabled !== false && !(panel.skipSites || []).some((s) => hostMatches(location.hostname.toLowerCase(), s));
 
@@ -202,6 +204,13 @@
     // storage not reachable (add-in reloading): stays on
   }
   try {
+    chrome.storage.local.get({ bubbleFullscreen: false }, (o) => (showInFullscreen = !!(o && o.bubbleFullscreen)));
+    chrome.storage.onChanged.addListener((ch) => {
+      if (ch.bubbleFullscreen) {
+        showInFullscreen = !!ch.bubbleFullscreen.newValue;
+        bubbles.forEach((b) => placeOne(b));
+      }
+    });
     chrome.storage.local.get({ bubbleScale: null, bubbleSize: "normal", bubbleStyle: "blue" }, (o) => {
       zoom = clampZoom(o && o.bubbleScale != null ? o.bubbleScale : OLD_SIZES[o && o.bubbleSize]);
       look = STYLES.includes(o && o.bubbleStyle) ? o.bubbleStyle : "blue";
@@ -573,7 +582,11 @@
   function placeOne(b) {
     const fs = document.fullscreenElement || document.webkitFullscreenElement;
     const r = b.video.getBoundingClientRect();
+    // closed with its X: it stays closed (also after full screen, a new size…)
+    // until the page shows another video; in full screen only when the user
+    // asked for it (the add-in's window)
     const onScreen =
+      !b.dismissed && (!fs || showInFullscreen) &&
       r.bottom > 0 && r.top < innerHeight && r.width >= 200 && r.height >= 100 && b.video.isConnected &&
       !(fs && fs.tagName === "VIDEO") && (!fs || fs.contains(b.video) || fs.shadowRoot);
     b.host.style.display = onScreen ? "block" : "none";
@@ -651,6 +664,74 @@
     place();
     for (const b of bubbles.values()) if (!b.own && !b.loading) renderOne(b);
   }
+
+  // File links (.zip, .exe, .mp4…): a click goes straight to Ezoo Download,
+  // so the browser never starts its own download (and never asks where to
+  // save it). The rules are the program's own (Options > File Types).
+  const wildcard = (pattern, text) =>
+    new RegExp(
+      "^" + String(pattern).toLowerCase().replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$"
+    ).test(String(text).toLowerCase());
+  let linkRules = null;
+  const refreshLinkRules = () =>
+    chrome.runtime.sendMessage({ type: "swiftget-link-rules" }, (res) => {
+      linkRules = chrome.runtime.lastError ? null : res || null;
+    });
+  refreshLinkRules();
+  setInterval(refreshLinkRules, 60000);
+  // shown by the browser itself, not downloaded: never taken from a click
+  const VIEWED = /^(html?|xhtml|php\d?|aspx?|jsp|cgi|pl|cfm|do|action|json|xml|txt|css|js|jpe?g|png|gif|webp|svg|bmp|ico|avif|pdf)$/;
+  const keyHeld = (e, k) => (k === "alt" ? e.altKey : k === "ctrl" ? e.ctrlKey : k === "shift" ? e.shiftKey : false);
+  function wantedLink(e, href) {
+    const r = linkRules;
+    if (!r || !switchedOn) return false;
+    let u;
+    try {
+      u = new URL(href);
+    } catch {
+      return false;
+    }
+    if (!/^https?:$/.test(u.protocol)) return false;
+    if (r.skipKey !== "none" && keyHeld(e, r.skipKey)) return false;
+    const forced = r.forceKey !== "none" && keyHeld(e, r.forceKey);
+    // Ctrl / Shift / Meta + click: a new tab or window, unless that is the "take it" key
+    if (!forced && (e.ctrlKey || e.shiftKey || e.metaKey || e.altKey)) return false;
+    const host = u.hostname.toLowerCase();
+    if ((r.skipSites || []).some((s) => hostMatches(host, s))) return false;
+    if ((r.skipAddresses || []).some((a) => wildcard(a, href))) return false;
+    const last = decodeURIComponent(u.pathname.split("/").pop() || "");
+    const dot = last.lastIndexOf(".");
+    const ext = dot > 0 ? last.slice(dot + 1).toLowerCase() : "";
+    if (!ext || VIEWED.test(ext)) return false;
+    // a .torrent file opens in the program's torrent window
+    if (forced || ext === "torrent") return true;
+    return (r.exts || []).some((x) => wildcard(x, ext));
+  }
+  addEventListener(
+    "click",
+    (e) => {
+      if (e.button !== 0 || e.defaultPrevented) return;
+      const a = e.composedPath ? e.composedPath().find((n) => n && n.tagName === "A" && n.href) : null;
+      if (!a || a.dataset.ezooPass) return;
+      const href = String(a.href);
+      if (!wantedLink(e, href)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      chrome.runtime.sendMessage({ type: "swiftget-link", url: href }, (res) => {
+        // not taken (the app is closed, the user chose the browser): the browser's way
+        if (chrome.runtime.lastError || !res || !res.ok) {
+          const tmp = document.createElement("a");
+          tmp.href = href;
+          if (a.hasAttribute("download")) tmp.setAttribute("download", a.getAttribute("download") || "");
+          tmp.dataset.ezooPass = "1";
+          document.documentElement.appendChild(tmp);
+          tmp.click();
+          tmp.remove();
+        }
+      });
+    },
+    true
+  );
 
   // magnet links of torrents go to Ezoo Download (Alt + click: to the browser)
   addEventListener(

@@ -51,7 +51,10 @@ component DownloadItem inherits Rectangle {
         }
         moved => {
             // a finished file pulled sideways: hand it to Windows to drop elsewhere
-            if (self.pressed && root.done && !root.dragged-out && abs(self.mouse-x - self.pressed-x) > 12px) {
+            // (only a clearly sideways pull on its own row: moving up or down
+            // over other rows selects them instead)
+            if (self.pressed && root.done && !root.dragged-out && root.drag-last == 0 && self.mouse-y >= 0 && self.mouse-y < root.height
+                && abs(self.mouse-x - self.pressed-x) > 24px && abs(self.mouse-x - self.pressed-x) > 2 * abs(self.mouse-y - self.pressed-y)) {
                 root.dragged-out = true;
                 root.drag-out();
                 return;
@@ -1123,8 +1126,8 @@ export component MainWindow inherits ThemedWindow {
     property <length> qmenu-x;
     property <bool> qmenu-start: true;
     queue-menu := PopupWindow {
-        x: Theme.rtl ? max(0px, root.qmenu-x + 62px - 220px) : root.qmenu-x;
-        y: 66px;
+        x: Theme.rtl ? max(0px, root.qmenu-x + max(62px, 62px * Theme.font-scale) - 220px) : root.qmenu-x;
+        y: max(66px, 40px + 26px * Theme.font-scale);
         width: 220px;
         height: qm-list.preferred-height;
         Rectangle {
@@ -1168,7 +1171,7 @@ export component MainWindow inherits ThemedWindow {
     }
     keys := FocusScope {
         key-pressed(event) => {
-            if (event.modifiers.control && (event.text == "a" || event.text == "A")) {
+            if (event.modifiers.control && (event.text == "a" || event.text == "A" || event.text == "ش")) {
                 root.select-all();
                 return accept;
             }
@@ -1184,15 +1187,15 @@ export component MainWindow inherits ThemedWindow {
                 root.find-next();
                 return accept;
             }
-            if (event.modifiers.control && (event.text == "f" || event.text == "F")) {
+            if (event.modifiers.control && (event.text == "f" || event.text == "F" || event.text == "ب")) {
                 root.find();
                 return accept;
             }
-            if (event.modifiers.control && (event.text == "n" || event.text == "N")) {
+            if (event.modifiers.control && (event.text == "n" || event.text == "N" || event.text == "ى")) {
                 root.add-url();
                 return accept;
             }
-            if (event.modifiers.control && (event.text == "b" || event.text == "B")) {
+            if (event.modifiers.control && (event.text == "b" || event.text == "B" || event.text == "لا" || event.text == "ﻻ")) {
                 root.add-batch();
                 return accept;
             }
@@ -1202,7 +1205,8 @@ export component MainWindow inherits ThemedWindow {
         VerticalLayout {
             // ---- toolbar (buttons that don't fit a narrow window are cut off)
             Rectangle {
-                height: root.toolbar-small ? 42px : 64px;
+                // bigger text (Options > Appearance): a taller bar, the names are never cut
+                height: root.toolbar-small ? 42px : max(64px, 38px + 26px * Theme.font-scale);
                 min-width: 0px;
                 clip: true;
                 background: @linear-gradient(180deg, Theme.toolbar-top 0%, Theme.toolbar-bottom 100%);
@@ -1302,7 +1306,7 @@ export component MainWindow inherits ThemedWindow {
                         icon: "startqueue";
                         text: @tr("Start Queue");
                         small: root.toolbar-small;
-                        width: root.toolbar-small ? 34px : 62px;
+                        width: root.toolbar-small ? 34px : max(62px, 62px * Theme.font-scale);
                         clicked => {
                             root.qmenu-start = true;
                             root.qmenu-x = self.x;
@@ -1313,7 +1317,7 @@ export component MainWindow inherits ThemedWindow {
                         icon: "stopqueue";
                         text: @tr("Stop Queue");
                         small: root.toolbar-small;
-                        width: root.toolbar-small ? 34px : 62px;
+                        width: root.toolbar-small ? 34px : max(62px, 62px * Theme.font-scale);
                         clicked => {
                             root.qmenu-start = false;
                             root.qmenu-x = self.x;
@@ -2368,8 +2372,8 @@ export component DetailsDialog inherits ThemedWindow {
     in property <bool> front;
     always-on-top: root.front;
     title: root.percent + " " + root.name;
-    preferred-width: 560px;
-    min-width: 520px;
+    preferred-width: 500px;
+    min-width: 440px;
     // its own title bar (with "hide next to the clock" beside minimize)
     no-frame: true;
 
@@ -2433,7 +2437,9 @@ export component DetailsDialog inherits ThemedWindow {
       Rectangle {
         height: 30px;
         background: Theme.panel;
-        HRow {
+        // the title bar is laid out like the Windows one (buttons on the
+        // right) in every language, like the main window
+        HorizontalLayout {
             spacing: 0px;
             Rectangle {
                 horizontal-stretch: 1;
@@ -2444,9 +2450,9 @@ export component DetailsDialog inherits ThemedWindow {
                         }
                     }
                 }
-                HRow {
-                    padding-left: Theme.rtl ? (0px) : (8px);
-                    padding-right: Theme.rtl ? (8px) : (0px);
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
                     spacing: 7px;
                     Rectangle {
                         width: 16px;
@@ -2457,13 +2463,22 @@ export component DetailsDialog inherits ThemedWindow {
                             y: 7px;
                         }
                     }
-                    Text {
-                        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
-                        text: root.title;
-                        vertical-alignment: center;
-                        overflow: elide;
-                        color: Theme.text;
+                    // a long (Arabic) name is cut at its own place: never over
+                    // the icon, never making the window wider
+                    Rectangle {
+                        min-width: 0px;
                         horizontal-stretch: 1;
+                        clip: true;
+                        Text {
+                            width: parent.width;
+                            height: parent.height;
+                            // Arabic names start on the right (next to the buttons)
+                            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                            text: root.title;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            color: Theme.text;
+                        }
                     }
                 }
             }
@@ -2529,10 +2544,10 @@ export component DetailsDialog inherits ThemedWindow {
             background: Theme.panel;
             border-width: 1px;
             border-color: Theme.line;
-            min-height: 176px;
+            min-height: 150px;
             if root.tab == 0: VerticalLayout {
-                padding: 10px;
-                spacing: 6px;
+                padding: 8px;
+                spacing: 4px;
                 alignment: start;
                 HRow {
                     spacing: 8px;
@@ -2542,6 +2557,8 @@ export component DetailsDialog inherits ThemedWindow {
                         height: 20px;
                     }
                     Text {
+                        // a long name is cut ("…"), it never makes the window wider
+                        min-width: 0px;
                         horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                         text: root.url;
                         font-size: 11px * Theme.font-scale;
@@ -2556,16 +2573,18 @@ export component DetailsDialog inherits ThemedWindow {
                     background: Theme.grid;
                 }
                 VerticalLayout {
-                    spacing: 3px;
+                    spacing: 2px;
                     HRow {
                         spacing: 6px;
                         Text {
                             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                             text: @tr("Status");
                             color: Theme.muted;
-                            width: 125px;
+                            width: 115px;
                         }
                         Text {
+                            // a long name is cut ("…"), it never makes the window wider
+                            min-width: 0px;
                             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                             text: root.status;
                             color: root.state == 4 ? Theme.err : Theme.text;
@@ -2579,9 +2598,11 @@ export component DetailsDialog inherits ThemedWindow {
                             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                             text: @tr("File size");
                             color: Theme.muted;
-                            width: 125px;
+                            width: 115px;
                         }
                         Text {
+                            // a long name is cut ("…"), it never makes the window wider
+                            min-width: 0px;
                             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                             text: root.size;
                             color: Theme.text;
@@ -2595,9 +2616,11 @@ export component DetailsDialog inherits ThemedWindow {
                             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                             text: @tr("Downloaded");
                             color: Theme.muted;
-                            width: 125px;
+                            width: 115px;
                         }
                         Text {
+                            // a long name is cut ("…"), it never makes the window wider
+                            min-width: 0px;
                             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                             text: root.downloaded;
                             color: Theme.text;
@@ -2611,9 +2634,11 @@ export component DetailsDialog inherits ThemedWindow {
                             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                             text: @tr("Transfer rate");
                             color: Theme.muted;
-                            width: 125px;
+                            width: 115px;
                         }
                         Text {
+                            // a long name is cut ("…"), it never makes the window wider
+                            min-width: 0px;
                             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                             text: root.speed;
                             color: Theme.text;
@@ -2627,9 +2652,11 @@ export component DetailsDialog inherits ThemedWindow {
                             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                             text: @tr("Time left");
                             color: Theme.muted;
-                            width: 125px;
+                            width: 115px;
                         }
                         Text {
+                            // a long name is cut ("…"), it never makes the window wider
+                            min-width: 0px;
                             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                             text: root.eta;
                             color: Theme.text;
@@ -2643,9 +2670,11 @@ export component DetailsDialog inherits ThemedWindow {
                             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                             text: @tr("Resume capability");
                             color: Theme.muted;
-                            width: 125px;
+                            width: 115px;
                         }
                         Text {
+                            // a long name is cut ("…"), it never makes the window wider
+                            min-width: 0px;
                             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                             text: root.resumable;
                             color: root.resumable-ok ? Theme.ok : Theme.err;
@@ -3014,6 +3043,8 @@ export component CompleteDialog inherits ThemedWindow {
                         color: Theme.muted;
                     }
                     Text {
+                        // a long name is cut ("…"), it never makes the window wider
+                        min-width: 0px;
                         col: Theme.rtl ? 0 : 1;
                         row: 0;
                         horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;

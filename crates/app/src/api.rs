@@ -108,6 +108,17 @@ pub enum ApiEvent {
     Show,
     /// "Download all" on a playlist page: open the playlist window with it
     Playlist(String),
+    /// a .torrent file / magnet link opened from Windows (double click):
+    /// the torrent window with it
+    OpenTorrent(String),
+}
+
+/// What Windows may hand over to open: a magnet link or a .torrent file
+/// that is there. Anything else is refused.
+pub fn torrent_source_ok(s: &str) -> bool {
+    let s = s.trim();
+    swiftget_engine::torrent::is_magnet(s)
+        || (s.to_ascii_lowercase().ends_with(".torrent") && std::path::Path::new(s).is_file())
 }
 
 /// What the extension needs to know from Options (file types to take,
@@ -121,6 +132,7 @@ pub fn config_json(s: &swiftget_engine::Settings) -> String {
         "skipAddresses": s.skip_addresses,
         "skipKey": s.skip_key,
         "forceKey": s.force_key,
+        "mp3Kbps": s.mp3_kbps,
         "panel": {
             "enabled": s.panel_enabled,
             "skipSites": split(&s.panel_skip_sites),
@@ -133,6 +145,25 @@ pub fn config_json(s: &swiftget_engine::Settings) -> String {
 
 pub fn bind(port: u16) -> Result<Server, String> {
     Server::http(("127.0.0.1", port)).map_err(|e| e.to_string())
+}
+
+/// Another Ezoo Download is already running: hand it the torrent to open.
+pub fn notify_open_torrent(port: u16, source: &str) -> bool {
+    let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(800)) else {
+        return false;
+    };
+    let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
+    let body = serde_json::json!({ "source": source }).to_string();
+    let req = format!(
+        "POST /open-torrent HTTP/1.1\r\nHost: 127.0.0.1\r\nX-SwiftGet: 1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    if s.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = String::new();
+    let _ = s.read_to_string(&mut buf);
+    buf.starts_with("HTTP/1.1 200")
 }
 
 /// Another SwiftGet is already running on this port: ask it to show itself.
@@ -260,6 +291,19 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
             }
             let keep = serde_json::from_str::<BrowserQuery>(&body).map(|q| take_for_browser(&q.urls)).unwrap_or(false);
             reply(req, 200, if keep { r#"{"browser":true}"# } else { r#"{"browser":false}"# })
+        }
+        (Method::Post, "/open-torrent") => {
+            let mut body = String::new();
+            if req.as_reader().take(1 << 16).read_to_string(&mut body).is_err() {
+                return reply(req, 400, r#"{"error":"bad body"}"#);
+            }
+            match serde_json::from_str::<serde_json::Value>(&body).ok().and_then(|v| v["source"].as_str().map(String::from)) {
+                Some(s) if torrent_source_ok(&s) => {
+                    on_event(ApiEvent::OpenTorrent(s.trim().to_string()));
+                    reply(req, 200, r#"{"ok":true}"#)
+                }
+                _ => reply(req, 400, r#"{"error":"invalid request"}"#),
+            }
         }
         (Method::Post, "/show") => {
             on_event(ApiEvent::Show);

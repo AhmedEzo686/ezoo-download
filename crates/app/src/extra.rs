@@ -260,7 +260,11 @@ fn save_properties(ui: &Ui) {
         d.set_message(format!("{e:#}").into());
         return;
     }
-    let target = PathBuf::from(d.get_save_to().trim());
+    let mut target = PathBuf::from(d.get_save_to().trim());
+    // a name typed without its extension keeps the file's own
+    if let Some(n) = target.file_name().map(|n| crate::with_extension_of(&n.to_string_lossy(), &v.file_name)) {
+        target.set_file_name(n);
+    }
     if !target.as_os_str().is_empty() && target != v.save_path {
         let result = if v.status == Status::Completed {
             // on its own thread: a move to another disk is a copy
@@ -357,22 +361,18 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 15] = [
-    "Arabic: every window now reads from right to left (the program restarts once when the direction changes).",
-    "The program has its own small FFmpeg inside: video and sound are joined, MP3 files are made and live streams are saved, with nothing extra to download.",
-    "Live streams are saved as MP4 files.",
-    "MP3 files keep the title of the audio file.",
-    "Much less memory and processor work, also with many downloads at once.",
-    "No more freezes when a file is deleted or moved during its download, and message windows no longer hide behind the main window.",
-    "Downloads are taken from the browser before its own Save As window opens.",
-    "The browser button finds more videos, also streams in several qualities, and on more sites.",
-    "AV1 qualities are offered when a video has them.",
-    "The window of a download gets smaller when its details are hidden.",
-    "The video button in the browser has five looks to choose from (in the add-in's window).",
-    "A clear message when the download folder is on a drive locked by BitLocker.",
-    "Fixed videos that could not be downloaded on some computers because of the Windows temporary folder.",
-    "The Grabber also finds links written as plain text, and the menu next to the clock is in the program's language.",
-    "The speed limit stays smooth with many connections, and the clipboard also catches the file types you added.",
+const WHATS_NEW: [&str; 11] = [
+    "A click on a file link in the browser goes straight to Ezoo Download: the browser's own Save As window no longer opens (Brave too).",
+    "Changing the folder or the name in \"Download File Info\" no longer gives a small broken file, and a name typed without its extension keeps it.",
+    "Big files keep going by themselves when the server has trouble: Ezoo Download tries again later on its own.",
+    "Torrents: a .torrent link in the browser opens the torrent window at once, .torrent files and magnet links open with Ezoo Download, and a .torrent file can be dropped on the window.",
+    "Removing downloads can delete their files from the disk too (if you tick it), and the question can be turned off.",
+    "Ctrl+A, Ctrl+N and the other shortcuts work with the Arabic keyboard too, and files are selected with the mouse in both directions.",
+    "The download window is smaller, never gets wider for a long name, and its title bar is like the main window's.",
+    "The video button in the browser hides in full screen (or not: the add-in's window), stays closed when you close it, and streams show their quality first.",
+    "Firefox: the add-in is signed again and updates by itself.",
+    "Playlists have 240p and 144p, the MP3 quality can be chosen, and the subtitles of videos can be downloaded too (Options > Downloads).",
+    "The toolbar grows with bigger text, so the names are never cut.",
 ];
 
 thread_local! {

@@ -879,8 +879,8 @@ export component ToolBtn inherits Rectangle {
     in property <bool> small;
     callback clicked();
     // small buttons: every one fits a 960 px wide window
-    width: root.small ? 34px : 56px;
-    height: root.small ? 34px : 56px;
+    width: root.small ? 34px : max(56px, 56px * Theme.font-scale);
+    height: root.small ? 34px : max(56px, 30px + 26px * Theme.font-scale);
     // a name that is still too long never covers the next button
     clip: true;
     border-radius: 3px;
@@ -1085,6 +1085,8 @@ export component TreeItem inherits Rectangle {
             }
         }
         Text {
+            // a long name is cut ("…"), it never makes the window wider
+            min-width: 0px;
             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.text;
             vertical-alignment: center;
@@ -1202,6 +1204,8 @@ export component HeaderCell inherits Rectangle {
 }
 
 export component Cell inherits Text {
+    // cut with "…" in its column, never wider than the column
+    min-width: 0px;
     vertical-alignment: center;
     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
     font-size: 12px * Theme.font-scale;
@@ -1243,6 +1247,8 @@ export component MenuEntry inherits Rectangle {
             }
         }
         Text {
+            // a long name is cut ("…"), it never makes the window wider
+            min-width: 0px;
             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.text;
             color: Theme.text;

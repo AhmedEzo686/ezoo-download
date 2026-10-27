@@ -773,6 +773,8 @@ export component DuplicateDialog inherits ThemedWindow {
             text: @tr("This address is already in the download list:");
         }
         Text {
+            // a long name is cut ("…"), it never makes the window wider
+            min-width: 0px;
             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.file-name + "  (" + root.existing-status + ")";
             font-weight: 600;
@@ -839,6 +841,10 @@ export component ConfirmDialog inherits ThemedWindow {
     in property <bool> front;
     in property <string> heading;
     in property <string> text;
+    // removing downloads: "delete the files too" and "don't ask again"
+    in property <bool> removing;
+    in-out property <bool> delete-files;
+    in-out property <bool> dont-ask;
     callback answered(bool);
     forward-focus: keys;
     keys := FocusScope {
@@ -859,6 +865,17 @@ export component ConfirmDialog inherits ThemedWindow {
             Label {
                 text: root.text;
                 wrap: word-wrap;
+            }
+            if root.removing: VerticalLayout {
+                spacing: 6px;
+                CheckBox {
+                    text: @tr("Delete the downloaded files from the disk too (be careful)");
+                    checked <=> root.delete-files;
+                }
+                CheckBox {
+                    text: @tr("Don't show this question again");
+                    checked <=> root.dont-ask;
+                }
             }
             HRow {
                 alignment: end;
@@ -1516,6 +1533,8 @@ export component GrabberDialog inherits ThemedWindow {
                     }
                 }
                 Text {
+                    // a long name is cut ("…"), it never makes the window wider
+                    min-width: 0px;
                     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.progress-text;
                     font-size: 11px * Theme.font-scale;
@@ -1836,6 +1855,8 @@ export component RefreshDialog inherits ThemedWindow {
         padding: 16px;
         spacing: 10px;
         Text {
+            // a long name is cut ("…"), it never makes the window wider
+            min-width: 0px;
             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.file-name;
             font-weight: 700;
@@ -1849,6 +1870,8 @@ export component RefreshDialog inherits ThemedWindow {
         if root.page != "": HRow {
             spacing: 8px;
             Text {
+                // a long name is cut ("…"), it never makes the window wider
+                min-width: 0px;
                 horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 text: root.page;
                 color: Theme.muted;
@@ -1978,6 +2001,11 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <bool> show-start-dialog;
     in-out property <bool> start-while-info;
     in-out property <bool> complete-dialog;
+    in-out property <bool> ask-remove: true;
+    // 0 128k, 1 192k, 2 256k, 3 320k
+    in-out property <int> mp3-index: 1;
+    in-out property <bool> subtitles;
+    in-out property <string> subtitle-langs;
     in-out property <int> progress-mode;
     in-out property <int> duplicate-action;
     in-out property <bool> set-file-date;
@@ -2475,6 +2503,40 @@ export component SettingsDialog inherits ThemedWindow {
                     CheckBox {
                         text: @tr("Show the \"Download complete\" window");
                         checked <=> root.complete-dialog;
+                    }
+                    CheckBox {
+                        text: @tr("Ask before removing downloads from the list");
+                        checked <=> root.ask-remove;
+                    }
+                    HRow {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Quality of MP3 files");
+                        }
+                        ComboBox {
+                            width: 160px;
+                            model: ["128 kbps", "192 kbps", "256 kbps", "320 kbps"];
+                            current-index <=> root.mp3-index;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HRow {
+                        spacing: 8px;
+                        CheckBox {
+                            text: @tr("Download the subtitles of videos too, in these languages:");
+                            checked <=> root.subtitles;
+                        }
+                        LineEdit {
+                            width: 120px;
+                            enabled: root.subtitles;
+                            text <=> root.subtitle-langs;
+                            placeholder-text: "ar en";
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
                     }
                     HRow {
                         spacing: 8px;
@@ -3077,6 +3139,8 @@ export component TorrentDialog inherits ThemedWindow {
             VerticalLayout {
                 alignment: center;
                 Text {
+                    // a long name is cut ("…"), it never makes the window wider
+                    min-width: 0px;
                     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.name;
                     font-size: 14px * Theme.font-scale;
@@ -3085,6 +3149,8 @@ export component TorrentDialog inherits ThemedWindow {
                     overflow: elide;
                 }
                 Text {
+                    // a long name is cut ("…"), it never makes the window wider
+                    min-width: 0px;
                     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.info;
                     font-size: 11px * Theme.font-scale;
@@ -3236,6 +3302,8 @@ export component TorrentDialog inherits ThemedWindow {
                 checked <=> root.start-now;
             }
             Text {
+                // a long name is cut ("…"), it never makes the window wider
+                min-width: 0px;
                 text: root.message != "" ? root.message : root.checked-text;
                 color: root.message != "" ? Theme.err : Theme.muted;
                 vertical-alignment: center;
@@ -3315,6 +3383,8 @@ export component PlaylistDialog inherits ThemedWindow {
             }
         }
         Text {
+            // a long name is cut ("…"), it never makes the window wider
+            min-width: 0px;
             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.status;
             font-size: 11px * Theme.font-scale;
@@ -3322,6 +3392,8 @@ export component PlaylistDialog inherits ThemedWindow {
             overflow: elide;
         }
         if root.playlist-title != "": Text {
+            // a long name is cut ("…"), it never makes the window wider
+            min-width: 0px;
             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.playlist-title;
             font-size: 14px * Theme.font-scale;
@@ -3450,7 +3522,7 @@ export component PlaylistDialog inherits ThemedWindow {
                 spacing: 8px;
                 ComboBox {
                     width: 240px;
-                    model: [@tr("Best quality (MP4)"), @tr("2160p 4K"), @tr("1440p 2K"), @tr("1080p Full HD"), @tr("720p HD"), @tr("480p SD"), @tr("360p SD"), @tr("Audio only (M4A)"), @tr("Audio MP3")];
+                    model: [@tr("Best quality (MP4)"), @tr("2160p 4K"), @tr("1440p 2K"), @tr("1080p Full HD"), @tr("720p HD"), @tr("480p SD"), @tr("360p SD"), "240p", "144p", @tr("Audio only (M4A)"), @tr("Audio MP3")];
                     current-index <=> root.quality;
                 }
                 Label {
@@ -3665,6 +3737,8 @@ export component BrowserDialog inherits ThemedWindow {
         HRow {
             spacing: 8px;
             Text {
+                // a long name is cut ("…"), it never makes the window wider
+                min-width: 0px;
                 horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 text: root.folder;
                 font-size: 11px * Theme.font-scale;

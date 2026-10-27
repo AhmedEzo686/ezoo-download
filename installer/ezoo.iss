@@ -55,6 +55,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
 Name: "autostart"; Description: "Start Ezoo Download when Windows starts (recommended)"; GroupDescription: "Startup:"
+Name: "torrents"; Description: "Open .torrent files and magnet links with Ezoo Download"; GroupDescription: "Torrents:"
 
 [Files]
 Source: "{#Stage}\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion
@@ -92,6 +93,18 @@ Root: HKCU; Subkey: "Software\Classes\ezoo-download"; ValueType: string; ValueNa
 Root: HKCU; Subkey: "Software\Classes\ezoo-download"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\ezoo-download\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExe},0"
 Root: HKCU; Subkey: "Software\Classes\ezoo-download\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExe}"" --from-browser"
+
+; .torrent files and magnet: links (only when chosen while installing).
+; Windows may still ask once which program to use.
+Root: HKCU; Subkey: "Software\Classes\.torrent\OpenWithProgids"; ValueType: string; ValueName: "EzooDownload.torrent"; ValueData: ""; Flags: uninsdeletevalue; Tasks: torrents
+Root: HKCU; Subkey: "Software\Classes\.torrent"; ValueType: string; ValueName: ""; ValueData: "EzooDownload.torrent"; Flags: uninsdeletevalue; Tasks: torrents
+Root: HKCU; Subkey: "Software\Classes\EzooDownload.torrent"; ValueType: string; ValueName: ""; ValueData: "Torrent file"; Flags: uninsdeletekey; Tasks: torrents
+Root: HKCU; Subkey: "Software\Classes\EzooDownload.torrent\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExe},0"; Tasks: torrents
+Root: HKCU; Subkey: "Software\Classes\EzooDownload.torrent\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExe}"" ""%1"""; Tasks: torrents
+Root: HKCU; Subkey: "Software\Classes\magnet"; ValueType: string; ValueName: ""; ValueData: "URL:Magnet link"; Flags: uninsdeletekey; Tasks: torrents
+Root: HKCU; Subkey: "Software\Classes\magnet"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Tasks: torrents
+Root: HKCU; Subkey: "Software\Classes\magnet\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExe},0"; Tasks: torrents
+Root: HKCU; Subkey: "Software\Classes\magnet\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExe}"" ""%1"""; Tasks: torrents
 
 [Run]
 Filename: "{app}\{#MyAppExe}"; Description: "Open Ezoo Download now"; Flags: nowait postinstall skipifsilent

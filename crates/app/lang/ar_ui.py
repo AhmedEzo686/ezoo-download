@@ -497,4 +497,9 @@ AR = {
     "Support with InstaPay": "ادعم عبر InstaPay",
     "InstaPay: a7medek@instapay (scan the code with your bank's app)": "امسح الكود بتطبيق البنك أو InstaPay — a7medek@instapay",
     "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal or InstaPay. Thank you!": "برنامج Ezoo Download مجاني تمامًا وبدون إعلانات. لو البرنامج بيفيدك وحابب تدعم تطويره، تقدر تبعت دعمك عن طريق PayPal أو InstaPay. شكرًا لك!",
+    "Ask before removing downloads from the list": "السؤال قبل إزالة التحميلات من القائمة",
+    "Delete the downloaded files from the disk too (be careful)": "حذف الملفات المحمَّلة من القرص أيضًا (انتبه)",
+    "Don't show this question again": "عدم إظهار هذا السؤال مرة أخرى",
+    "Download the subtitles of videos too, in these languages:": "تحميل ترجمة الفيديوهات أيضًا، بهذه اللغات:",
+    "Quality of MP3 files": "جودة ملفات MP3",
 }

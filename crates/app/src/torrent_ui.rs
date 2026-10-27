@@ -19,6 +19,31 @@ pub(crate) fn open_source(source: &str) {
     }
 }
 
+/// A web address of a .torrent file (by its name), not something to save as it is.
+pub(crate) fn looks_like_torrent(url: &str, file_name: Option<&str>) -> bool {
+    let path = url::Url::parse(url).map(|u| u.path().to_ascii_lowercase()).unwrap_or_default();
+    (url.starts_with("http://") || url.starts_with("https://"))
+        && (path.ends_with(".torrent") || file_name.is_some_and(|n| n.trim().to_ascii_lowercase().ends_with(".torrent")))
+}
+
+/// A .torrent link clicked in the browser: the file is fetched at once and
+/// the torrent window shows what it shares (no extra step). If it can't be
+/// read as a torrent, it goes the ordinary way ("Download File Info").
+pub(crate) fn fetch_and_open(ctx: &Ctx, url: String, headers: RequestHeaders, file_name: Option<String>) {
+    let mgr = ctx.mgr.clone();
+    ctx.rt.spawn(async move {
+        let result = mgr.fetch_torrent_file(&url, &headers).await;
+        let _ = slint::invoke_from_event_loop(move || match result {
+            Ok(path) => open_source(&path.display().to_string()),
+            Err(_) => {
+                if let Some(ui) = OPENER.with(|o| o.borrow().clone()) {
+                    open_add_dialog(&ui.ctx, url, headers, file_name, VideoExtra::default());
+                }
+            }
+        });
+    });
+}
+
 pub(crate) fn open(ui: &Ui, source: Option<&str>) {
     let Some(d) = ui.torrent.upgrade() else { return };
     match source {

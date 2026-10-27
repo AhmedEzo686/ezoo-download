@@ -245,5 +245,18 @@
  "A clear message when the download folder is on a drive locked by BitLocker.": "İndirme klasörü BitLocker ile kilitli bir sürücüdeyse açık bir ileti gösterilir.",
  "Fixed videos that could not be downloaded on some computers because of the Windows temporary folder.": "Bazı bilgisayarlarda Windows geçici klasörü yüzünden indirilemeyen videolar düzeltildi.",
  "The Grabber also finds links written as plain text, and the menu next to the clock is in the program's language.": "Toplayıcı düz metin olarak yazılmış bağlantıları da buluyor; saatin yanındaki menü de programın dilinde.",
- "The speed limit stays smooth with many connections, and the clipboard also catches the file types you added.": "Hız sınırı çok sayıda bağlantıda da düzgün kalıyor; pano da eklediğiniz dosya türlerini yakalıyor."
+ "The speed limit stays smooth with many connections, and the clipboard also catches the file types you added.": "Hız sınırı çok sayıda bağlantıda da düzgün kalıyor; pano da eklediğiniz dosya türlerini yakalıyor.",
+ "Remove these {} downloads from the download list?": "Bu {} indirme listeden kaldırılsın mı?",
+ "Remove “{}” from the download list?": "“{}” indirme listesinden kaldırılsın mı?",
+ "A click on a file link in the browser goes straight to Ezoo Download: the browser's own Save As window no longer opens (Brave too).": "Tarayıcıda bir dosya bağlantısına tıklamak doğrudan Ezoo Download'a gider: tarayıcının \"Farklı kaydet\" penceresi artık açılmaz (Brave'de de).",
+ "Changing the folder or the name in \"Download File Info\" no longer gives a small broken file, and a name typed without its extension keeps it.": "\"Dosya Bilgisi\"nde klasörü ya da adı değiştirmek artık küçük bozuk bir dosya vermiyor; uzantısız yazılan ad uzantısını koruyor.",
+ "Big files keep going by themselves when the server has trouble: Ezoo Download tries again later on its own.": "Sunucu sorun çıkardığında büyük dosyalar kendiliğinden devam eder: Ezoo Download daha sonra kendisi yeniden dener.",
+ "Torrents: a .torrent link in the browser opens the torrent window at once, .torrent files and magnet links open with Ezoo Download, and a .torrent file can be dropped on the window.": "Torrent: tarayıcıdaki bir .torrent bağlantısı torrent penceresini hemen açar, .torrent dosyaları ve magnet bağlantıları Ezoo Download ile açılır, bir .torrent dosyası pencereye bırakılabilir.",
+ "Removing downloads can delete their files from the disk too (if you tick it), and the question can be turned off.": "İndirmeleri kaldırmak dosyalarını da diskten silebilir (işaretlerseniz), soru da kapatılabilir.",
+ "Ctrl+A, Ctrl+N and the other shortcuts work with the Arabic keyboard too, and files are selected with the mouse in both directions.": "Ctrl+A, Ctrl+N ve diğer kısayollar Arapça klavyeyle de çalışır; dosyalar fareyle iki yönde de seçilir.",
+ "The download window is smaller, never gets wider for a long name, and its title bar is like the main window's.": "İndirme penceresi daha küçük, uzun adla genişlemiyor ve başlık çubuğu ana pencereninki gibi.",
+ "The video button in the browser hides in full screen (or not: the add-in's window), stays closed when you close it, and streams show their quality first.": "Tarayıcıdaki video düğmesi tam ekranda gizlenir (ya da gizlenmez: eklenti penceresi), kapatınca kapalı kalır ve yayınlar önce kalitesini gösterir.",
+ "Firefox: the add-in is signed again and updates by itself.": "Firefox: eklenti yeniden imzalı ve kendiliğinden güncelleniyor.",
+ "Playlists have 240p and 144p, the MP3 quality can be chosen, and the subtitles of videos can be downloaded too (Options > Downloads).": "Oynatma listelerinde 240p ve 144p var, MP3 kalitesi seçilebilir ve video altyazıları da indirilebilir (Seçenekler > İndirmeler).",
+ "The toolbar grows with bigger text, so the names are never cut.": "Araç çubuğu büyük yazıyla birlikte büyür, adlar kesilmez."
 }

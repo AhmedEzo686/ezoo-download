@@ -283,6 +283,8 @@ async function shouldTake(item) {
   if (!url || !/^https?:/i.test(url)) return false; // blob:, data:, file: stay in the browser
   if (!isNewDownload(item)) return false;
   if (await takeBypass(url)) return false;
+  // already handed to the app by the click on its link: the browser's copy goes
+  if ((await justTaken(item.url)) || (await justTaken(url))) return true;
   if (opts.minSizeKB > 0 && item.totalBytes > 0 && item.totalBytes < opts.minSizeKB * 1024) return false;
   if (!(await appAlive())) return false; // app not running: let the browser handle it
   const cfg = await getConfig();
@@ -311,6 +313,32 @@ async function takeOver(item) {
     await addBypass(url);
     chrome.downloads.download({ url });
   }
+}
+
+/** A file link the page caught a click on: to the app, or back to the page. */
+async function takeLink(url, referrer) {
+  if (!/^https?:/i.test(url || "")) throw new Error("not a web address");
+  const opts = await getOpts();
+  if (!opts.enabled || !opts.intercept) throw new Error("sending is off");
+  if (!(await appAlive())) throw new Error("Ezoo Download is not running");
+  if (await appSaysBrowser([url])) throw new Error("the browser keeps it");
+  // the same link clicked twice in a row: once is enough
+  if (!(await sentRecently(url))) await sendToApp({ url, referrer });
+  // the browser may still start it (a second handler of the page): not again
+  await addBypassTaken(url);
+  return true;
+}
+
+// links just handed over from a click: if the browser starts them anyway, they are dropped
+const TAKEN_KEY = "takenLinks";
+async function addBypassTaken(url) {
+  const list = (await chrome.storage.session.get(TAKEN_KEY))[TAKEN_KEY] || [];
+  list.push({ url, at: Date.now() });
+  await chrome.storage.session.set({ [TAKEN_KEY]: list.slice(-50) });
+}
+async function justTaken(url) {
+  const list = (await chrome.storage.session.get(TAKEN_KEY))[TAKEN_KEY] || [];
+  return list.some((l) => l.url === url && Date.now() - l.at < 15000);
 }
 
 // Chrome, Edge, Brave, Opera: decided before the browser asks where to
@@ -392,7 +420,7 @@ async function itemsForTab(tabId) {
       items.push(...optionItems(yt.resolved, `https://www.youtube.com/watch?v=${yt.videoId}`));
     } else {
       // fallback: streams captured from the player itself
-      for (const o of buildOptions(yt.streams)) items.push({ label: o.label, sub: o.sub, yt: o });
+      for (const o of buildOptions(yt.streams, appConfig && appConfig.mp3Kbps)) items.push({ label: o.label, sub: o.sub, yt: o });
       if (!items.length) {
         if (yt.resolving) {
           items.push({ label: "Getting video qualities…", sub: "This takes a few seconds", disabled: true });
@@ -409,6 +437,7 @@ async function itemsForTab(tabId) {
     }
   }
   const resolvedFound = items.some((i) => i.yt);
+  let hlsAsked = false;
   for (const m of media) {
     // when the app already found the real qualities, raw streams are noise
     if (resolvedFound && /HLS|DASH|video/i.test(m.type)) continue;
@@ -417,14 +446,36 @@ async function itemsForTab(tabId) {
       items.push({ label: "Video stream (DASH) · choose a quality", sub: m.url, resolve: m.url, ext: "mp4" });
       continue;
     }
+    if (m.type === "HLS stream") {
+      // saved as an MP4 file; the quality first when the address tells it
+      items.push({ label: `${qualityOf(m.url) || "Video"} · MP4 · stream`, sub: m.url, url: m.url, ext: "ts" });
+      if (!hlsAsked) {
+        hlsAsked = true;
+        items.push({ label: "Other qualities of this stream…", sub: m.url, resolve: m.url, ext: "mp4" });
+      }
+      continue;
+    }
+    const q = qualityOf(m.url);
     items.push({
-      label: `${m.type}${m.size ? " · " + fmtSize(m.size) : ""}`,
+      label: `${q ? q + " · " : ""}${(m.ext || "").toUpperCase() || m.type}${m.size ? " · " + fmtSize(m.size) : ""}`,
       sub: m.url,
       url: m.url,
       ext: m.ext,
     });
   }
   return items;
+}
+
+/** "720p" when a stream's address says which quality it is. */
+function qualityOf(url) {
+  let path = "";
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    return "";
+  }
+  const m = /(?:^|[^0-9])(4320|2160|1440|1080|720|576|540|480|360|240|144)p?(?=[^0-9]|$)/i.exec(path);
+  return m ? `${m[1]}p` : "";
 }
 
 async function pushToTab(tabId) {
@@ -842,6 +893,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // one of several videos on the page: its own file, or its own link
       resolveOneVideo(msg, sender.tab).then(sendResponse);
       return true;
+    case "swiftget-link-rules":
+      // what a click on a file link in the page should do (decided in the
+      // page at once, so the browser never starts its own download)
+      Promise.all([getOpts(), getConfig()]).then(([o, cfg]) => {
+        if (!o.enabled || !o.intercept || !cfg) return sendResponse(null);
+        sendResponse({
+          exts: cfg.captureExts || [],
+          skipSites: cfg.skipSites || [],
+          skipAddresses: cfg.skipAddresses || [],
+          skipKey: cfg.skipKey || "none",
+          forceKey: cfg.forceKey || "none",
+        });
+      });
+      return true;
+    case "swiftget-link":
+      // a file link clicked in a page: straight to the app
+      return reply(takeLink(msg.url, sender.tab ? sender.tab.url : ""), sendResponse);
     case "swiftget-magnet":
       // a torrent's magnet link clicked on a page
       return reply(

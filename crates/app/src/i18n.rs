@@ -569,6 +569,19 @@ const AR: &[(&str, &str)] = &[
     ("Fixed videos that could not be downloaded on some computers because of the Windows temporary folder.", "تم إصلاح فيديوهات كانت لا تُحمَّل على بعض الأجهزة بسبب مجلد الملفات المؤقتة في ويندوز."),
     ("The Grabber also finds links written as plain text, and the menu next to the clock is in the program's language.", "الجامع يجد أيضًا الروابط المكتوبة كنص عادي، وقائمة الأيقونة بجوار الساعة أصبحت بلغة البرنامج."),
     ("The speed limit stays smooth with many connections, and the clipboard also catches the file types you added.", "تحديد السرعة يبقى سلسًا مع الاتصالات الكثيرة، ومراقبة الحافظة تلتقط أيضًا أنواع الملفات التي أضفتها."),
+    ("Remove these {} downloads from the download list?", "إزالة هذه التحميلات ({}) من قائمة التحميل؟"),
+    ("Remove “{}” from the download list?", "إزالة “{}” من قائمة التحميل؟"),
+    ("A click on a file link in the browser goes straight to Ezoo Download: the browser's own Save As window no longer opens (Brave too).", "الضغط على رابط ملف في المتصفح يذهب مباشرة إلى Ezoo Download: نافذة \"حفظ باسم\" الخاصة بالمتصفح لم تعد تظهر (وفي Brave أيضًا)."),
+    ("Changing the folder or the name in \"Download File Info\" no longer gives a small broken file, and a name typed without its extension keeps it.", "تغيير المجلد أو الاسم في نافذة \"معلومات الملف\" لم يعد ينتج ملفًا صغيرًا تالفًا، والاسم المكتوب بدون امتداد يحتفظ بامتداده."),
+    ("Big files keep going by themselves when the server has trouble: Ezoo Download tries again later on its own.", "الملفات الكبيرة تكمل وحدها عندما يواجه السيرفر مشكلة: Ezoo Download يحاول مرة أخرى لاحقًا من نفسه."),
+    ("Torrents: a .torrent link in the browser opens the torrent window at once, .torrent files and magnet links open with Ezoo Download, and a .torrent file can be dropped on the window.", "التورنت: رابط ملف تورنت في المتصفح يفتح نافذة التورنت مباشرة، وملفات التورنت وروابط magnet تُفتح ببرنامج Ezoo Download، ويمكن سحب ملف تورنت وإفلاته على النافذة."),
+    ("Removing downloads can delete their files from the disk too (if you tick it), and the question can be turned off.", "إزالة التحميلات يمكنها حذف ملفاتها من القرص أيضًا (إذا اخترت ذلك)، ويمكن إيقاف ظهور السؤال."),
+    ("Ctrl+A, Ctrl+N and the other shortcuts work with the Arabic keyboard too, and files are selected with the mouse in both directions.", "اختصارات Ctrl+A وCtrl+N وغيرها تعمل مع لوحة المفاتيح العربية أيضًا، وتحديد الملفات بالماوس يعمل في الاتجاهين."),
+    ("The download window is smaller, never gets wider for a long name, and its title bar is like the main window's.", "نافذة التحميل أصبحت أصغر، ولا تتسع مع الاسم الطويل، وشريط عنوانها مثل النافذة الرئيسية."),
+    ("The video button in the browser hides in full screen (or not: the add-in's window), stays closed when you close it, and streams show their quality first.", "زر الفيديو في المتصفح يختفي في وضع ملء الشاشة (أو لا: من نافذة الإضافة)، ويبقى مغلقًا عند إغلاقه، والبث يُظهر جودته أولًا."),
+    ("Firefox: the add-in is signed again and updates by itself.", "فايرفوكس: الإضافة موقّعة من جديد وتتحدث وحدها."),
+    ("Playlists have 240p and 144p, the MP3 quality can be chosen, and the subtitles of videos can be downloaded too (Options > Downloads).", "قوائم التشغيل فيها جودة 240p و144p، ويمكن اختيار جودة MP3، وتحميل ترجمة الفيديوهات أيضًا (الخيارات > التحميلات)."),
+    ("The toolbar grows with bigger text, so the names are never cut.", "شريط الأدوات يكبر مع تكبير الخط، فلا تُقص أسماء الأزرار."),
 ];
 
 #[cfg(test)]

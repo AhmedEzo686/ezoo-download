@@ -237,6 +237,16 @@ pub struct Settings {
     pub user_agent: String,
     pub clipboard_monitor: bool,
     pub show_complete_dialog: bool,
+    /// Removing downloads from the list asks first (unticked in that question:
+    /// "Don't show this again"; Options > Downloads turns it back on)
+    pub ask_before_remove: bool,
+    /// ...and "Delete the downloaded files from the disk too" was ticked last time
+    pub remove_deletes_files: bool,
+    /// "Audio · MP3": the quality of the MP3 files made (kbps)
+    pub mp3_kbps: u32,
+    /// videos of sites (YouTube…): their subtitles too, in these languages
+    pub subtitles: bool,
+    pub subtitle_langs: String,
     pub browser_port: u16,
     /// A connection only splits a part when both halves are at least this big
     pub min_split_kb: u64,
@@ -377,6 +387,11 @@ impl Default for Settings {
             user_agent: DEFAULT_USER_AGENT.into(),
             clipboard_monitor: true,
             show_complete_dialog: true,
+            ask_before_remove: true,
+            remove_deletes_files: false,
+            mp3_kbps: 192,
+            subtitles: false,
+            subtitle_langs: "ar en".into(),
             browser_port: DEFAULT_PORT,
             min_split_kb: 256,
             schedule: Schedule::default(),
