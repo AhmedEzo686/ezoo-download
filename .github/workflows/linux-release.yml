@@ -1,0 +1,145 @@
+name: Linux release (deb / AppImage / rpm + extensions)
+
+# Linux packages and browser extensions, built directly after every source
+# update — no manual packaging step. The Windows setup keeps its own
+# workflow (build.yml); this file is Linux + extensions only.
+#
+# Triggers:
+#   - push to main or linux-support: build, upload artifacts (no release)
+#   - push of a tag v*: build, then create a GitHub Release with every
+#     asset + SHA256SUMS.txt (the tag MUST match Cargo.toml's version)
+#   - workflow_dispatch: manual run, artifacts only
+#
+# Secrets (all optional; the build never fails for a missing one, it just
+# skips the signed artifact and says so):
+#   - CRX_PRIVATE_KEY: the PEM private key that owns the Chrome extension
+#     id bilpkcfhiogfelpdfpgmnjkpblgmcbkd. With it, a signed .crx is
+#     produced; without it, only the unsigned .zip is shipped.
+#   - AMO_JWT_ISSUER / AMO_JWT_SECRET: addons.mozilla.org API keys. On tag
+#     releases only, the Firefox add-on is signed by Mozilla (permanent
+#     install); otherwise the unsigned .xpi ships, as documented in
+#     README-Linux.md.
+
+on:
+  push:
+    branches: [main, linux-support]
+    tags: ["v*"]
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      # actions pinned to exact commits (a moved tag can't change the build),
+      # same pins as the Windows workflow (build.yml)
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -q
+          # Build tools + the -dev counterparts of the .deb's runtime
+          # Depends (debian/control) + dpkg/rpm packaging tools. Slint's
+          # Linux backends need fontconfig, freetype, xkbcommon, X11 and
+          # xcb headers; the first CI run confirms the exact set.
+          sudo apt-get install -y -q build-essential pkg-config libssl-dev \
+            libfontconfig-dev libfreetype-dev libxkbcommon-dev libx11-dev \
+            libxcb1-dev zlib1g-dev dpkg-dev rpm curl xz-utils zip file
+
+      - name: Check the version (tag must match Cargo.toml)
+        run: |
+          VERSION="$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+            [ "$TAG" = "v$VERSION" ] || { echo "::error::Tag $TAG does not match version $VERSION in Cargo.toml"; exit 1; }
+          fi
+          echo "Building Ezoo Download $VERSION for Linux"
+
+      - name: Run extension tests
+        run: |
+          node extension/test/yt-core.test.js
+          node extension/test/background.sim.js
+
+      - name: Build (release, locked)
+        run: cargo build --release --locked
+
+      - name: Run engine tests (failures warn, they never block packaging)
+        run: |
+          cargo test -p swiftget-engine --no-fail-fast 2>&1 | tee tests.txt || true
+          if grep -Eq '^error(\[|:)|panicked at|^test .* FAILED$' tests.txt; then
+            echo "::warning::engine tests failed (see the log above)"
+          fi
+
+      - name: Package deb + AppImage + rpm (ffmpeg bundled inside)
+        env:
+          SKIP_CARGO_BUILD: "1"
+        run: ./packaging/linux/build-linux.sh all
+
+      - name: Package browser extensions (.zip, .xpi, .crx when keyed)
+        env:
+          CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
+        run: ./packaging/linux/build-extensions.sh dist
+
+      # Firefox keeps only add-ons signed by Mozilla; a version can be
+      # signed once, so this runs for a tag release only, like build.yml.
+      - name: Sign the Firefox add-on (tag releases, when AMO keys exist)
+        if: github.ref_type == 'tag' && secrets.AMO_JWT_ISSUER != '' && secrets.AMO_JWT_SECRET != ''
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          EXT_VERSION="$(python3 -c "import json;print(json.load(open('extension/manifest.firefox.json'))['version'])")"
+          SIGNED="extension-signed/ezoo-download-firefox-$EXT_VERSION.xpi"
+          if [ -f "$SIGNED" ]; then
+            echo "Add-on $EXT_VERSION already signed, reusing $SIGNED"
+            cp "$SIGNED" "dist/ezoo-download-firefox-$EXT_VERSION.xpi"
+          else
+            rm -rf fx-stage && mkdir fx-stage
+            cp -r extension/. fx-stage/
+            rm -rf fx-stage/test
+            mv fx-stage/manifest.firefox.json fx-stage/manifest.json
+            npx --yes web-ext@8.10.0 sign --channel=unlisted --source-dir fx-stage \
+              --artifacts-dir xpi-out --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET" \
+              --approval-timeout 900000
+            XPI="$(ls xpi-out/*.xpi 2>/dev/null | head -1 || true)"
+            [ -n "$XPI" ] || { echo "::warning::the Firefox add-on was not signed"; exit 0; }
+            cp "$XPI" "dist/ezoo-download-firefox-$EXT_VERSION.xpi"
+          fi
+          printf '{\n  "addons": {\n    "ezoo-download@ezoo-tech.com": {\n      "updates": [\n        { "version": "%s", "update_link": "https://github.com/%s/releases/download/v%s/ezoo-download-firefox.xpi" }\n      ]\n    }\n  }\n}\n' \
+            "$EXT_VERSION" "${{ github.repository }}" "$VERSION" > dist/firefox-updates.json
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: EzooDownload-linux-${{ env.VERSION }}
+          path: dist/*
+          retention-days: 30
+
+      - name: Publish release (tags only)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "v$VERSION" --repo "${{ github.repository }}" >/dev/null 2>&1 \
+            && { echo "v$VERSION is already released"; exit 0; }
+          gh release create "v$VERSION" dist/* --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" --title "Ezoo Download $VERSION (Linux)" \
+            --notes "Ezoo Download $VERSION for Linux: .deb, AppImage and .rpm (ffmpeg bundled inside), plus the Chrome (.crx/.zip) and Firefox (.xpi) extensions."
