@@ -86,12 +86,12 @@ jobs:
       - name: Package deb + AppImage + rpm (ffmpeg bundled inside)
         env:
           SKIP_CARGO_BUILD: "1"
-        run: ./packaging/linux/build-linux.sh all
+        run: bash ./packaging/linux/build-linux.sh all
 
       - name: Package browser extensions (.zip, .xpi, .crx when keyed)
         env:
           CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
-        run: ./packaging/linux/build-extensions.sh dist
+        run: bash ./packaging/linux/build-extensions.sh dist
 
       # Firefox keeps only add-ons signed by Mozilla; a version can be
       # signed once, so this runs for a tag release only, like build.yml.
