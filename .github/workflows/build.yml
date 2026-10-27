@@ -44,7 +44,7 @@ jobs:
           curl -sSfL -o lame.tar.gz "$LAME_URL"
           echo "$LAME_SHA256  lame.tar.gz" | sha256sum -c -
           tar xzf lame.tar.gz
-          CC=x86_64-w64-mingw32-gcc tools/ffmpeg/build.sh ffmpeg-src lame-3.100 ffmpeg-out
+          CC=x86_64-w64-mingw32-gcc bash tools/ffmpeg/build.sh ffmpeg-src lame-3.100 ffmpeg-out
           echo "$FFMPEG_TAG ($FFMPEG_COMMIT), LAME 3.100" > ffmpeg-out/ffmpeg-version.txt
       - name: Test files for our ffmpeg (made with the system's full ffmpeg)
         run: |
