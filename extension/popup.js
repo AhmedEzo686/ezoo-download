@@ -32,6 +32,10 @@ async function init() {
     showOn(on.checked);
   });
 
+  const look = document.getElementById("look");
+  chrome.storage.local.get({ bubbleStyle: "blue" }, (o) => (look.value = o.bubbleStyle || "blue"));
+  look.addEventListener("change", () => chrome.storage.local.set({ bubbleStyle: look.value }));
+
   // size of the "Download this video" button on pages (also in the settings page)
   const scale = document.getElementById("scale");
   const scaleText = document.getElementById("scaleText");
@@ -102,6 +106,34 @@ async function init() {
       btn.textContent = "Download";
       btn.disabled = !!m.disabled;
       btn.addEventListener("click", () => {
+        if (m.resolve) {
+          // a stream: its qualities come from the app, shown in its place
+          btn.textContent = "…";
+          btn.disabled = true;
+          chrome.runtime.sendMessage({ type: "swiftget-resolve-video", resolve: m.resolve }, (res) => {
+            if (!res || res.error || !res.items) {
+              btn.textContent = (res && res.error) || "App not running";
+              return;
+            }
+            const rows = res.items.map((it) => {
+              const r = document.createElement("div");
+              r.className = "media";
+              const inf = document.createElement("div");
+              inf.textContent = it.label;
+              const go = document.createElement("button");
+              go.textContent = "Download";
+              go.addEventListener("click", () =>
+                chrome.runtime.sendMessage({ type: "swiftget-download", item: it, title: tab.title, referrer: tab.url, fileName: `${title}.${it.ext || "mp4"}` }, (r2) => {
+                  go.textContent = r2 && r2.ok ? "Sent ✔" : "App not running";
+                })
+              );
+              r.append(inf, go);
+              return r;
+            });
+            row.replaceWith(...rows);
+          });
+          return;
+        }
         chrome.runtime.sendMessage(
           { type: "swiftget-download", item: m, title: tab.title, referrer: tab.url, fileName: `${title}.${m.ext || "mp4"}` },
           (res) => {

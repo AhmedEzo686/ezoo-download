@@ -9,6 +9,7 @@ mod autostart;
 mod browser;
 mod clipboard;
 mod extra;
+mod fonts;
 mod grab;
 mod i18n;
 mod options;
@@ -186,13 +187,27 @@ fn install_crash_log() {
 
 fn main() -> anyhow::Result<()> {
     install_crash_log();
+    // the fonts of the interface are inside the program: put them in place
+    // before the first window opens, while the font list is collected
+    fonts::install();
     // started by Windows at sign-in: stay next to the clock, no window
     let background = std::env::args().any(|a| a == "--background");
     let data_dir = default_data_dir();
     let port = Settings::load(&data_dir.join("settings.json")).browser_port;
 
+    // opened again by the program itself: the old one may still be closing
+    let mut first = api::bind(port);
+    if first.is_err() && std::env::args().any(|a| a == "--restarted") {
+        for _ in 0..60 {
+            std::thread::sleep(Duration::from_millis(250));
+            first = api::bind(port);
+            if first.is_ok() {
+                break;
+            }
+        }
+    }
     // One instance only: if the port is taken by us, bring that one to front.
-    let server = match api::bind(port) {
+    let server = match first {
         Ok(s) => Some(s),
         Err(_) => {
             if api::notify_existing(port) {
@@ -232,7 +247,9 @@ fn main() -> anyhow::Result<()> {
     let about_dlg = AboutDialog::new()?;
     {
         about_dlg.on_open_link(|u| {
-            let _ = open::that(u.as_str());
+            if u.starts_with("https://") {
+                let _ = open::that(u.as_str());
+            }
         });
         let w = about_dlg.as_weak();
         about_dlg.on_close_window(move || {
@@ -356,8 +373,18 @@ fn main() -> anyhow::Result<()> {
     {
         let enabled_mgr = mgr.clone();
         let ctx = ctx.clone();
+        let types_mgr = mgr.clone();
         clipboard::spawn(
             move || enabled_mgr.settings().clipboard_monitor,
+            move || {
+                types_mgr
+                    .settings()
+                    .capture_exts
+                    .split_whitespace()
+                    .map(|e| e.trim_start_matches('.').to_ascii_lowercase())
+                    .filter(|e| !e.is_empty() && !e.contains('*'))
+                    .collect()
+            },
             move |url| {
                 let ctx = ctx.clone();
                 let _ = slint::invoke_from_event_loop(move || {
@@ -382,14 +409,21 @@ fn main() -> anyhow::Result<()> {
     let fast_timer = Timer::default();
     {
         let ui = ui.clone();
+        let ticks = Cell::new(0u32);
         fast_timer.start(TimerMode::Repeated, Duration::from_millis(100), move || {
             if modal_open() {
                 return;
             }
-            update_progress_windows(&ui);
+            if !ui.progress.borrow().is_empty() {
+                update_progress_windows(&ui);
+            }
             grab::poll(&ui);
+            ticks.set(ticks.get().wrapping_add(1));
             if let Some(t) = &tray {
-                t.set_limiter(ui.ctx.mgr.settings().speed_limit_on);
+                // the check mark only needs to follow about once a second
+                if ticks.get().is_multiple_of(10) {
+                    t.set_limiter(ui.ctx.mgr.settings().speed_limit_on);
+                }
                 for action in t.poll() {
                     tray_action(&ui, action);
                 }
@@ -406,11 +440,18 @@ fn main() -> anyhow::Result<()> {
     let timer = Timer::default();
     {
         let ui = ui.clone();
+        let hidden_ticks = Cell::new(0u32);
         timer.start(TimerMode::Repeated, Duration::from_millis(250), move || {
             if modal_open() {
                 return;
             }
-            refresh(&ui);
+            // next to the clock (window hidden): the list is brought up to
+            // date only every few seconds, nobody looks at it
+            let shown = ui.ctx.main.upgrade().map(|m| m.window().is_visible() && !m.window().is_minimized()).unwrap_or(false);
+            hidden_ticks.set(if shown { 0 } else { hidden_ticks.get().wrapping_add(1) });
+            if shown || hidden_ticks.get() % 12 == 1 {
+                refresh(&ui);
+            }
             scheduler::poll(&ui);
 
             // the download behind an open "Download File Info" says nothing
@@ -503,6 +544,9 @@ fn main() -> anyhow::Result<()> {
     cancel_early(&ctx_exit);
     mgr.shutdown();
     rt.shutdown_timeout(Duration::from_secs(2));
+    if RESTART.load(std::sync::atomic::Ordering::SeqCst) {
+        restart_now();
+    }
     Ok(())
 }
 
@@ -586,17 +630,11 @@ fn wire_main(ui: &Ui) {
     {
         let ui = ui.clone();
         main.on_delete_completed(move || {
-            use rfd::{MessageButtons, MessageDialog, MessageDialogResult};
-            let _g = ModalGuard::new();
-            let ok = MessageDialog::new()
-                .set_title(APP)
-                .set_description(t("Remove every finished download from the list?\n(The files stay on the disk.)"))
-                .set_buttons(MessageButtons::OkCancel)
-                .show();
-            if matches!(ok, MessageDialogResult::Ok | MessageDialogResult::Yes) {
-                ui.ctx.mgr.remove_completed();
-                refresh(&ui);
-            }
+            let ui2 = ui.clone();
+            confirm(&ui.ctx, APP, &t("Remove every finished download from the list?\n(The files stay on the disk.)"), move || {
+                ui2.ctx.mgr.remove_completed();
+                refresh(&ui2);
+            });
         });
     }
     {
@@ -656,7 +694,7 @@ fn wire_main(ui: &Ui) {
             let mut s = ui.ctx.mgr.settings();
             s.language = lang.to_string();
             let _ = ui.ctx.mgr.set_settings(s);
-            set_language(&ui, &lang);
+            change_language(&ui, &lang);
         });
     }
     {
@@ -1248,7 +1286,7 @@ fn wire_add(ui: &Ui) {
         add.on_browse(move || {
             let Some(d) = w.upgrade() else { return };
             let current = PathBuf::from(d.get_save_as().as_str());
-            let mut dlg = rfd::FileDialog::new();
+            let mut dlg = crate::winfx::file_box();
             if let Some(dir) = current.parent().filter(|p| p.exists()) {
                 dlg = dlg.set_directory(dir);
             }
@@ -1328,7 +1366,7 @@ fn wire_batch(ui: &Ui) {
         let (w, mgr) = (batch.as_weak(), ui.ctx.mgr.clone());
         batch.on_browse(move || {
             let Some(d) = w.upgrade() else { return };
-            if let Some(dir) = rfd::FileDialog::new().set_directory(mgr.settings().download_dir).pick_folder() {
+            if let Some(dir) = crate::winfx::file_box().set_directory(mgr.settings().download_dir).pick_folder() {
                 d.set_folder(dir.display().to_string().into());
             }
         });
@@ -1540,14 +1578,14 @@ impl Drop for ModalGuard {
 
 pub(crate) fn message(text: &str) {
     let _g = ModalGuard::new();
-    rfd::MessageDialog::new().set_title(APP).set_description(text).show();
+    crate::winfx::msg_box().set_title(APP).set_description(text).show();
 }
 
 pub(crate) fn ask(text: &str) -> bool {
-    use rfd::{MessageButtons, MessageDialog, MessageDialogResult};
+    use rfd::{MessageButtons, MessageDialogResult};
     let _g = ModalGuard::new();
     matches!(
-        MessageDialog::new().set_title(APP).set_description(text).set_buttons(MessageButtons::YesNo).show(),
+        crate::winfx::msg_box().set_title(APP).set_description(text).set_buttons(MessageButtons::YesNo).show(),
         MessageDialogResult::Yes
     )
 }
@@ -1658,11 +1696,57 @@ pub(crate) fn set_language(ui: &Ui, lang: &str) {
     if let Some(m) = ui.ctx.main.upgrade() {
         m.set_language(lang.into());
     }
+    // every window reads from the side of the language
+    apply_look(ui, &Look::of(&ui.ctx.mgr.settings()));
     refresh(ui);
 }
 
+/// Set when the program should open again after it closes (the windows
+/// change their reading direction).
+static RESTART: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The language was changed by the user: when the windows now read from the
+/// other side, the program opens again so everything starts that way.
+pub(crate) fn change_language(ui: &Ui, lang: &str) {
+    let was_rtl = i18n::is_rtl();
+    set_language(ui, lang);
+    if was_rtl != i18n::is_rtl() {
+        // after the menu / Options window is gone
+        Timer::single_shot(Duration::from_millis(200), move || {
+            if ask(&t("Ezoo Download will restart now to show its windows in the direction of the new language. Downloads continue after it opens.\n\nRestart now?")) {
+                RESTART.store(true, std::sync::atomic::Ordering::SeqCst);
+                let _ = slint::quit_event_loop();
+            }
+        });
+    }
+}
+
+/// Open the program again (after it saved everything and closed).
+fn restart_now() {
+    let Ok(exe) = std::env::current_exe() else { return };
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg("--restarted");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // DETACHED_PROCESS: not tied to this one
+        cmd.creation_flags(0x0000_0008);
+    }
+    let _ = cmd.spawn();
+}
+
 /// Fonts of Options > Appearance > Font ("" = Windows' own).
-pub(crate) const FONTS: [&str; 7] = ["", "Tahoma", "Arial", "Calibri", "Verdana", "Times New Roman", "Courier New"];
+pub(crate) const FONTS: [&str; 8] = ["", "InstaArabi", "Tahoma", "Arial", "Calibri", "Verdana", "Times New Roman", "Courier New"];
+
+/// What an empty font choice means: Arabic in InstaArabi, everything else
+/// in Times New Roman (both come with the program, see `fonts`).
+pub(crate) fn default_family(lang: &str) -> &'static str {
+    if lang == "ar" {
+        "InstaArabi"
+    } else {
+        "Times New Roman"
+    }
+}
 
 /// Everything that decides how the windows look.
 #[derive(Clone, Debug, PartialEq)]
@@ -1682,7 +1766,11 @@ impl Look {
         Look {
             mode: s.theme.min(8) as i32,
             scale: s.font_scale.clamp(80, 150) as f32 / 100.0,
-            family: if FONTS.contains(&s.font_family.as_str()) { s.font_family.clone() } else { String::new() },
+            family: if FONTS.contains(&s.font_family.as_str()) {
+                s.font_family.clone()
+            } else {
+                default_family(i18n::effective(&s.language)).to_string()
+            },
             background: s.background_image.clone(),
             strength: s.background_strength.clamp(10, 80) as f32 / 100.0,
         }
@@ -1718,6 +1806,7 @@ pub(crate) fn apply_theme(ui: &Ui, mode: i32) {
 }
 
 fn set_theme_of(t: Theme<'_>, look: &Look) {
+    t.set_rtl(i18n::is_rtl());
     t.set_mode(look.mode);
     t.set_font_scale(look.scale);
     t.set_font_family(look.family.clone().into());
@@ -2263,14 +2352,19 @@ fn row_action(ui: &Ui, id: u64, action: &str) {
         }
         "move" => {
             if v.status == Status::Completed {
-                let mut dlg = rfd::FileDialog::new().set_file_name(&v.file_name);
+                let mut dlg = crate::winfx::file_box().set_file_name(&v.file_name);
                 if let Some(dir) = v.save_path.parent() {
                     dlg = dlg.set_directory(dir);
                 }
                 if let Some(to) = dlg.save_file() {
-                    if let Err(e) = ui.ctx.mgr.move_file(id, &to) {
-                        message(&tf("Could not move the file:\n\n{}", &[&format!("{e:#}")]));
-                    }
+                    // on its own thread: a move to another disk is a copy
+                    let mgr = ui.ctx.mgr.clone();
+                    std::thread::spawn(move || {
+                        if let Err(e) = mgr.move_file(id, &to) {
+                            let text = tf("Could not move the file:\n\n{}", &[&format!("{e:#}")]);
+                            let _ = slint::invoke_from_event_loop(move || message(&text));
+                        }
+                    });
                 }
             } else {
                 extra::open_properties(ui, id);
@@ -2335,65 +2429,105 @@ fn delete_downloads(ui: &Ui, ids: Vec<u64>) {
         0 => {}
         1 => delete_download(&ui.ctx, ids[0]),
         n => {
-            use rfd::{MessageButtons, MessageDialog, MessageDialogResult};
             // the list only: files on the disk are never deleted from here
-            let _g = ModalGuard::new();
-            let answer = MessageDialog::new()
-                .set_title(t("Delete downloads"))
-                .set_description(tf(
+            let ui2 = ui.clone();
+            confirm(
+                &ui.ctx,
+                &t("Delete downloads"),
+                &tf(
                     "Remove these {} downloads from the download list?\n\nOnly the list entries are removed: the downloaded files stay on your computer.\n(Parts of unfinished downloads are cleaned up.)",
                     &[&n],
-                ))
-                .set_buttons(MessageButtons::OkCancel)
-                .show();
-            if !matches!(answer, MessageDialogResult::Ok | MessageDialogResult::Yes) {
-                return;
-            }
-            ui.ctx.mgr.remove_many(&ids);
-            ui.sel.borrow_mut().ids.clear();
-            if let Some(w) = ui.ctx.main.upgrade() {
-                w.set_selected_id(-1);
-            }
+                ),
+                move || {
+                    ui2.ctx.mgr.remove_many(&ids);
+                    ui2.sel.borrow_mut().ids.clear();
+                    if let Some(w) = ui2.ctx.main.upgrade() {
+                        w.set_selected_id(-1);
+                    }
+                    refresh(&ui2);
+                },
+            );
         }
     }
 }
 
 fn delete_download(ctx: &Ctx, id: u64) {
     let Some(v) = ctx.mgr.get(id) else { return };
-    use rfd::{MessageButtons, MessageDialog, MessageDialogResult};
-    if v.status == Status::Completed {
+    let text = if v.status == Status::Completed {
         // the list only: the file stays on the disk
-        let _g = ModalGuard::new();
-        let answer = MessageDialog::new()
-            .set_title(t("Delete download"))
-            .set_description(tf(
-                "Remove “{}” from the download list?\n\nOnly the list entry is removed: the file stays on your computer.",
-                &[&v.file_name],
-            ))
-            .set_buttons(MessageButtons::OkCancel)
-            .show();
-        if matches!(answer, MessageDialogResult::Ok | MessageDialogResult::Yes) {
-            ctx.mgr.remove(id, false);
-        }
+        tf(
+            "Remove “{}” from the download list?\n\nOnly the list entry is removed: the file stays on your computer.",
+            &[&v.file_name],
+        )
     } else {
-        let _g = ModalGuard::new();
-        let answer = MessageDialog::new()
-            .set_title(t("Delete download"))
-            .set_description(tf(
-                "Delete the unfinished download “{}”?\nThe partly downloaded data will be removed.",
-                &[&v.file_name],
-            ))
-            .set_buttons(MessageButtons::OkCancel)
-            .show();
-        if matches!(answer, MessageDialogResult::Ok | MessageDialogResult::Yes) {
-            ctx.mgr.remove(id, false);
+        tf("Delete the unfinished download “{}”?\nThe partly downloaded data will be removed.", &[&v.file_name])
+    };
+    let ctx2 = ctx.clone();
+    confirm(ctx, &t("Delete download"), &text, move || {
+        // its progress window goes away with it
+        ctx2.mgr.remove(id, false);
+        if let Some(w) = ctx2.main.upgrade() {
+            if w.get_selected_id() == id as i32 {
+                w.set_selected_id(-1);
+            }
         }
-    }
-    if let Some(w) = ctx.main.upgrade() {
-        if w.get_selected_id() == id as i32 {
-            w.set_selected_id(-1);
+    });
+}
+
+thread_local! {
+    // the question windows that are open now
+    static CONFIRMS: RefCell<Vec<ConfirmDialog>> = const { RefCell::new(Vec::new()) };
+}
+
+/// What runs when a question is answered with OK.
+type OnOk = Box<dyn FnOnce()>;
+
+/// A yes / no question in a window of our own: it is shown in front of the
+/// download windows and the program goes on working while it waits (a
+/// Windows message box could end up behind them and seem to freeze it all).
+/// `on_ok` runs when OK is pressed.
+pub(crate) fn confirm(ctx: &Ctx, title: &str, text: &str, on_ok: impl FnOnce() + 'static) {
+    let Ok(d) = ConfirmDialog::new() else {
+        if ask(text) {
+            on_ok();
         }
+        return;
+    };
+    set_theme_of(d.global::<Theme>(), &Look::of(&ctx.mgr.settings()));
+    d.set_heading(title.into());
+    d.set_text(text.into());
+    let pending: Rc<RefCell<Option<OnOk>>> = Rc::new(RefCell::new(Some(Box::new(on_ok))));
+    let close = |d: &ConfirmDialog| {
+        let _ = d.hide();
+        // dropped after this event is over
+        Timer::single_shot(Duration::from_millis(1), || {
+            CONFIRMS.with(|c| c.borrow_mut().retain(|x| x.window().is_visible()));
+        });
+    };
+    {
+        let (w, pending) = (d.as_weak(), pending.clone());
+        d.on_answered(move |ok| {
+            let Some(d) = w.upgrade() else { return };
+            close(&d);
+            let f = pending.borrow_mut().take();
+            if ok {
+                if let Some(f) = f {
+                    f();
+                }
+            }
+        });
     }
+    {
+        let w = d.as_weak();
+        d.window().on_close_requested(move || {
+            if let Some(d) = w.upgrade() {
+                close(&d);
+            }
+            slint::CloseRequestResponse::HideWindow
+        });
+    }
+    open_window!(d);
+    CONFIRMS.with(|c| c.borrow_mut().push(d));
 }
 
 pub(crate) fn reveal_in_folder(v: &DownloadView) {
@@ -2494,6 +2628,8 @@ pub(crate) fn open_download(path: &std::path::Path) {
 pub(crate) fn err_text(e: &str) -> String {
     if e.contains("needs a login or an age check") {
         t("This video needs a login or an age check. Open it once in the browser where you are signed in (with the Ezoo Download extension), then try again.")
+    } else if e.contains("BitLocker") || e.contains("-2144272384") {
+        t("The drive of the download folder is locked by BitLocker. Unlock it in Windows, or choose another folder (right-click the download > Properties).")
     } else if e.contains("is already registered") {
         t("This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.")
     } else if e.contains("the link has expired or the file was removed") {
@@ -2818,6 +2954,27 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
             if let Some(d) = w.upgrade() {
                 winfx::drag_window(d.window());
             }
+        });
+    }
+    {
+        // "Hide details": the window gets small; "Show details": back to
+        // the height it had
+        let (w, tall) = (d.as_weak(), Rc::new(Cell::new(0f32)));
+        d.on_details_toggled(move || {
+            let (w, tall) = (w.clone(), tall.clone());
+            slint::Timer::single_shot(Duration::from_millis(1), move || {
+                let Some(d) = w.upgrade() else { return };
+                let scale = d.window().scale_factor();
+                let now = d.window().size().to_logical(scale);
+                let height = if d.get_show_details() {
+                    let before = tall.get();
+                    if before > 0.0 { before } else { now.height.max(d.get_content_height()) }
+                } else {
+                    tall.set(now.height);
+                    d.get_content_height()
+                };
+                d.window().set_size(slint::LogicalSize::new(now.width, height.max(120.0)));
+            });
         });
     }
     {

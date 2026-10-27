@@ -33,6 +33,7 @@
   body.off section, body.off .size { opacity: .45; pointer-events: none; }
   .size { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e6eaf0; font-size: 13px; color: #6b7686; }
   .size input[type=range] { flex: 1; accent-color: #1f6feb; }
+  .size select { margin-left: auto; padding: 2px 6px; border: 1px solid #d5dbe4; border-radius: 6px; font: inherit; }
   .size output { min-width: 40px; text-align: right; color: #1f2733; font-variant-numeric: tabular-nums; }
   .size .reset { background: none; color: #1f6feb; padding: 0 2px; font-size: 12px; }
   .size .reset:hover { background: none; text-decoration: underline; }
@@ -63,6 +64,16 @@
     <input type="range" id="scale" min="50" max="200" step="5" value="100" aria-label="Download button size">
     <output id="scaleText">100%</output>
     <button class="reset" id="scaleReset" title="Back to normal size">Reset</button>
+  </div>
+  <div class="size">
+    <span>Button style</span>
+    <select id="look" aria-label="Button style">
+      <option value="blue">Blue</option>
+      <option value="dark">Dark</option>
+      <option value="light">Light</option>
+      <option value="green">Green</option>
+      <option value="icon">Icon only</option>
+    </select>
   </div>
   <section>
     <h3>Media on this page</h3>

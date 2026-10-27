@@ -3,6 +3,7 @@
 //! * `segments`       – splitting a file between connections (dynamic segmentation)
 //! * `http_download`  – multi-connection downloader with resume and retries
 //! * `hls`            – .m3u8 video streams (AES-128 supported, DRM refused)
+//! * `mpd`            – DASH manifests (.mpd): video + audio tracks merged by the caller
 //! * `manager`        – queue, scheduler, speed meter, persistence
 //!
 //! The UI only needs [`Manager`].
@@ -20,6 +21,7 @@ pub mod limiter;
 pub mod m3u8;
 pub mod manager;
 pub mod model;
+pub mod mpd;
 pub mod mux;
 pub mod secret;
 pub mod segments;

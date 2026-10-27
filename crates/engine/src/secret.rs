@@ -89,15 +89,32 @@ mod os {
     }
 }
 
+/// Texts protected already in this run: the download list is saved every
+/// few seconds and each protection is a Windows call, so the same cookie
+/// text is protected once, not again and again. (Only in memory, where the
+/// plain text is anyway.)
+static SEALED: std::sync::Mutex<Option<std::collections::HashMap<String, String>>> = std::sync::Mutex::new(None);
+
 /// The text as it is kept on the disk.
 pub fn seal(plain: &str) -> String {
     if plain.is_empty() {
         return String::new();
     }
-    match os::protect(plain.as_bytes()) {
+    let mut cache = SEALED.lock().unwrap_or_else(|p| p.into_inner());
+    let map = cache.get_or_insert_with(Default::default);
+    if let Some(done) = map.get(plain) {
+        return done.clone();
+    }
+    let sealed = match os::protect(plain.as_bytes()) {
         Some(enc) => format!("{PREFIX}{}", to_hex(&enc)),
         None => plain.to_string(),
+    };
+    // a cookie text is a few KB: keep at most about a thousand of them
+    if map.len() > 1000 {
+        map.clear();
     }
+    map.insert(plain.to_string(), sealed.clone());
+    sealed
 }
 
 /// The text from the disk. A protected text that can't be opened (another

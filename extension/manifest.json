@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ezoo Download",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Ezoo Download extension.",
   "permissions": [
     "downloads",

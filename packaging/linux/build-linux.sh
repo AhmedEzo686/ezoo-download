@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
-# Ezoo Download — Linux build (deb + AppImage)
-# Usage:  ./packaging/linux/build-linux.sh [deb|appimage|all]
-# Result: dist/EzooDownload_1.0.6_amd64.deb  and  dist/EzooDownload-1.0.6-x86_64.AppImage
+# Ezoo Download — Linux build (deb + AppImage + rpm)
+# Usage:  ./packaging/linux/build-linux.sh [deb|appimage|rpm|all]
+# Result: dist/EzooDownload_1.0.7_amd64.deb
+#         dist/EzooDownload-1.0.7-x86_64.AppImage
+#         dist/ezoo-download-1.0.7-1.x86_64.rpm
+#
+# Environment:
+#   SKIP_CARGO_BUILD=1  reuse target/release/EzooDownload, do not rebuild
+#                       (CI builds it once first, with caching)
+#   SKIP_FFMPEG=1       package without the bundled ffmpeg (development
+#                       only: merges then need a system ffmpeg on PATH)
+#   CARGO_TARGET        cargo target dir (default: $ROOT/target)
+#
+# ffmpeg is BUNDLED inside every package (see fetch-ffmpeg.sh): the static
+# build is downloaded at packaging time, checksum-checked, and staged
+# into the package only — it never enters the source tree.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,15 +24,26 @@ DIST="$ROOT/dist"
 TARGET="${CARGO_TARGET:-$ROOT/target}"
 WHAT="${1:-all}"
 
-command -v cargo >/dev/null 2>&1 || { echo "cargo not found — install Rust: https://rustup.rs"; exit 1; }
-
-echo "==> Building EzooDownload $VERSION (release)…"
-(cd "$ROOT" && cargo build --release)
+if [ -z "${SKIP_CARGO_BUILD:-}" ]; then
+    command -v cargo >/dev/null 2>&1 || { echo "cargo not found — install Rust: https://rustup.rs"; exit 1; }
+    echo "==> Building EzooDownload $VERSION (release)…"
+    (cd "$ROOT" && cargo build --release)
+fi
 BIN="$TARGET/release/EzooDownload"
 [ -x "$BIN" ] || { echo "binary not found at $BIN"; exit 1; }
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
+
+# ---------------------------------------------------------------- ffmpeg stage
+# One download for all formats; each format stages from this directory.
+FFBIN=""
+if [ -z "${SKIP_FFMPEG:-}" ]; then
+    "$HERE/fetch-ffmpeg.sh" "$STAGE/ffmpeg-bin"
+    FFBIN="$STAGE/ffmpeg-bin/ffmpeg"
+else
+    echo "==> SKIP_FFMPEG=1: packaging WITHOUT the bundled ffmpeg" >&2
+fi
 
 # ---------------------------------------------------------------- shared tree
 mkdir -p "$STAGE/root/usr/bin" \
@@ -38,12 +62,26 @@ cp -r "$HERE/hicolor" "$STAGE/root/usr/share/icons/hicolor" 2>/dev/null || {
     mkdir -p "$STAGE/root/usr/share/icons"; cp -r "$HERE/hicolor" "$STAGE/root/usr/share/icons/hicolor"; }
 cp "$ROOT/README.md" "$STAGE/root/usr/share/doc/ezoo-download/"
 cp "$ROOT/THIRD-PARTY-NOTICES.txt" "$STAGE/root/usr/share/doc/ezoo-download/" 2>/dev/null || true
+mkdir -p "$STAGE/root/usr/share/metainfo"
+cp "$HERE/io.github.ahmedezo686.ezoo-download.metainfo.xml" "$STAGE/root/usr/share/metainfo/"
+
+# The bundled ffmpeg, for the .deb/.rpm layout: /usr/lib/ezoo-download.
+# The AppImage stages its own copy next to the program (see build_appimage).
+stage_ffmpeg_libdir() {
+    local dest="$1"
+    [ -n "$FFBIN" ] || return 0
+    mkdir -p "$dest/usr/lib/ezoo-download"
+    install -m 755 "$FFBIN" "$dest/usr/lib/ezoo-download/ffmpeg"
+    cp "$STAGE/ffmpeg-bin/ffmpeg-version.txt" "$dest/usr/lib/ezoo-download/ffmpeg-version.txt"
+    cp "$STAGE/ffmpeg-bin/ffmpeg-LICENSE.txt" "$dest/usr/share/doc/ezoo-download/ffmpeg-LICENSE.txt"
+}
 
 # ------------------------------------------------------------------------ deb
 build_deb() {
     echo "==> Building .deb…"
     local debdir="$STAGE/deb"
     cp -r "$STAGE/root" "$debdir"
+    stage_ffmpeg_libdir "$debdir"
     mkdir -p "$debdir/DEBIAN"
     sed "s/^Installed-Size: 1/Installed-Size: $(du -sk --exclude=DEBIAN "$debdir" | cut -f1)/" \
         "$HERE/debian/control" > "$debdir/DEBIAN/control"
@@ -53,12 +91,35 @@ build_deb() {
     echo "    $DIST/EzooDownload_${VERSION}_amd64.deb"
 }
 
+# ------------------------------------------------------------------------ rpm
+build_rpm() {
+    echo "==> Building .rpm…"
+    command -v rpmbuild >/dev/null 2>&1 || { echo "rpmbuild not found — install the 'rpm' package (Debian/Ubuntu: sudo apt-get install rpm)"; exit 1; }
+    local rpmdir="$STAGE/rpm" root="$STAGE/rpm-root"
+    cp -r "$STAGE/root" "$root"
+    stage_ffmpeg_libdir "$root"
+    mkdir -p "$rpmdir"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+    (cd "$root" && tar -czf "$rpmdir/SOURCES/root.tar.gz" .)
+    sed "s/^Version: .*/Version: $VERSION/" "$HERE/rpm/ezoo-download.spec" > "$rpmdir/SPECS/ezoo-download.spec"
+    rpmbuild --define "_topdir $rpmdir" --define "_rpmdir $rpmdir/RPMS" -bb "$rpmdir/SPECS/ezoo-download.spec" >"$STAGE/rpmbuild.log" 2>&1 \
+        || { echo "rpmbuild failed:" >&2; tail -30 "$STAGE/rpmbuild.log" >&2; exit 1; }
+    mkdir -p "$DIST"
+    cp "$rpmdir"/RPMS/x86_64/*.rpm "$DIST/"
+    echo "    $DIST/$(ls "$rpmdir/RPMS/x86_64")"
+}
+
 # ------------------------------------------------------------------- appimage
 build_appimage() {
     echo "==> Building .AppImage…"
     local appdir="$STAGE/EzooDownload.AppDir"
     mkdir -p "$appdir"
     cp -r "$STAGE/root/usr" "$appdir/usr"
+    # the bundled ffmpeg next to the program inside the AppImage
+    if [ -n "$FFBIN" ]; then
+        install -m 755 "$FFBIN" "$appdir/usr/bin/ffmpeg"
+        cp "$STAGE/ffmpeg-bin/ffmpeg-version.txt" "$appdir/usr/share/doc/ezoo-download/ffmpeg-version.txt"
+        cp "$STAGE/ffmpeg-bin/ffmpeg-LICENSE.txt" "$appdir/usr/share/doc/ezoo-download/ffmpeg-LICENSE.txt"
+    fi
     cp "$HERE/ezoo-download.desktop" "$appdir/"
     cp "$HERE/hicolor/512x512/apps/ezoo-download.png" "$appdir/ezoo-download.png"
     cp "$HERE/hicolor/scalable/apps/ezoo-download.svg" "$appdir/ezoo-download.svg"
@@ -104,7 +165,8 @@ EOF
 case "$WHAT" in
     deb)      build_deb ;;
     appimage) build_appimage ;;
-    all)      build_deb; build_appimage ;;
-    *)        echo "usage: $0 [deb|appimage|all]"; exit 1 ;;
+    rpm)      build_rpm ;;
+    all)      build_deb; build_appimage; build_rpm ;;
+    *)        echo "usage: $0 [deb|appimage|rpm|all]"; exit 1 ;;
 esac
 echo "==> Done."

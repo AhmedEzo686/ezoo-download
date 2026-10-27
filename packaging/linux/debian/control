@@ -1,10 +1,10 @@
 Package: ezoo-download
-Version: 1.0.6
+Version: 1.0.7
 Section: net
 Priority: optional
 Architecture: amd64
 Depends: libc6 (>= 2.34), libssl3 (>= 3.0.0), libfontconfig1, libfreetype6, libxkbcommon0, libx11-6, libxcb1, libgcc-s1, zlib1g
-Recommends: xdg-desktop-portal, ffmpeg, libayatana-appindicator3-1
+Recommends: xdg-desktop-portal, libayatana-appindicator3-1
 Installed-Size: 1
 Maintainer: Ahmed Ezzat <ezoo@ezoo-tech.com>
 Homepage: https://github.com/AhmedEzo686/ezoo-download
@@ -17,3 +17,5 @@ Description: Download manager with multi-connection segmented downloads
  This Linux edition adds a native StatusNotifierItem system tray
  (KDE / GNOME / XFCE), XDG autostart, freedesktop hicolor icons and a
  systemd power integration. Data is stored under the XDG directories.
+ A static ffmpeg build is bundled inside the package, so no system
+ ffmpeg is needed to merge video and audio.

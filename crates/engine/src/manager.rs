@@ -4,6 +4,7 @@
 use crate::config::{parse_hhmm, AfterDone, QueueDef, Settings, MAIN_QUEUE};
 use crate::filename;
 use crate::hls::{self, HlsJob};
+use crate::mpd;
 use crate::http::{self, build_client_with, Progress, ProxyConfig, Shared};
 use crate::http_download::{self, Cancelled, HttpJob, SegTable};
 use crate::limiter::SpeedLimiter;
@@ -262,6 +263,18 @@ impl Manager {
         } else {
             wanted
         };
+        // a DASH manifest is not the file the user wants: it becomes a video
+        let wanted = if !is_torrent
+            && req.url.to_ascii_lowercase().split('?').next().unwrap_or("").ends_with(".mpd")
+            && wanted.to_ascii_lowercase().ends_with(".mpd")
+        {
+            std::path::Path::new(&wanted)
+                .with_extension("mp4")
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            wanted
+        };
         let category = match torrent_info.as_ref().and_then(|i| i.files.iter().max_by_key(|f| f.size)) {
             Some(big) => settings.category_of(&big.path, ""),
             None => settings.category_of(&wanted, &req.url),
@@ -286,8 +299,12 @@ impl Manager {
             DownloadKind::Dash
         } else {
             probe.as_ref().map(|p| p.kind).unwrap_or_else(|| {
-            if req.url.to_ascii_lowercase().split('?').next().unwrap_or("").ends_with(".m3u8") {
+            let lower = req.url.to_ascii_lowercase();
+            let path = lower.split('?').next().unwrap_or("");
+            if path.ends_with(".m3u8") {
                 DownloadKind::Hls
+            } else if path.ends_with(".mpd") {
+                DownloadKind::Dash
             } else {
                 DownloadKind::Http
             }
@@ -550,12 +567,16 @@ impl Manager {
 
     /// Move / rename a finished file ("Save as" for downloads that are done).
     pub fn move_file(&self, id: DownloadId, new_path: &Path) -> anyhow::Result<()> {
-        let mut inner = self.inner.lock().unwrap();
-        let e = inner.entries.get_mut(&id).ok_or_else(|| anyhow!("download not found"))?;
-        if e.rec.status != Status::Completed {
-            anyhow::bail!("only finished downloads can be moved");
-        }
-        let from = e.rec.target_path();
+        // the list is not held while the file moves: a copy to another disk
+        // can take minutes and everything else must go on meanwhile
+        let from = {
+            let inner = self.inner.lock().unwrap();
+            let e = inner.entries.get(&id).ok_or_else(|| anyhow!("download not found"))?;
+            if e.rec.status != Status::Completed {
+                anyhow::bail!("only finished downloads can be moved");
+            }
+            e.rec.target_path()
+        };
         if let Some(dir) = new_path.parent() {
             std::fs::create_dir_all(dir)?;
         }
@@ -564,12 +585,14 @@ impl Manager {
             std::fs::copy(&from, new_path)?;
             std::fs::remove_file(&from)?;
         }
-        e.rec.save_dir = new_path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
-        e.rec.file_name = new_path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| e.rec.file_name.clone());
-        e.rec.category = self.settings.read().unwrap().category_of(&e.rec.file_name, &e.rec.url);
+        let mut inner = self.inner.lock().unwrap();
+        if let Some(e) = inner.entries.get_mut(&id) {
+            e.rec.save_dir = new_path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+            if let Some(n) = new_path.file_name() {
+                e.rec.file_name = n.to_string_lossy().into_owned();
+            }
+            e.rec.category = self.settings.read().unwrap().category_of(&e.rec.file_name, &e.rec.url);
+        }
         inner.dirty = true;
         Ok(())
     }
@@ -826,9 +849,11 @@ impl Manager {
 
     // ---------------------------------------------------------------- queries
 
+    /// Every download, for the list (without the part tables: the list does
+    /// not show them, and copying them several times a second costs).
     pub fn snapshot(&self) -> Vec<DownloadView> {
         let inner = self.inner.lock().unwrap();
-        inner.entries.values().map(make_view).collect()
+        inner.entries.values().map(|e| view_of(e, false)).collect()
     }
 
     /// One download (cheap: used many times a second by progress windows).
@@ -1309,8 +1334,24 @@ impl Manager {
             progress.assembling.store(true, Ordering::Relaxed);
             let (input, tmp) = (part.clone(), part.with_extension("mp3tmp"));
             let t2 = tmp.clone();
-            tokio::task::spawn_blocking(move || mux::to_mp3(&input, &t2, ytdlp::MP3_KBPS)).await??;
+            let title = song_title(&rec.file_name);
+            tokio::task::spawn_blocking(move || mux::to_mp3(&input, &t2, ytdlp::MP3_KBPS, Some(&title))).await??;
             std::fs::rename(&tmp, &part)?;
+        }
+        if rec.kind == DownloadKind::Hls && filename::extension(&rec.file_name) == "ts" && mux::find_ffmpeg().is_some() {
+            // a joined stream: an ordinary MP4 plays everywhere and can be
+            // wound forward; if that fails the .ts file stays as it is
+            progress.assembling.store(true, Ordering::Relaxed);
+            let (input, tmp) = (part.clone(), part.with_extension("mp4tmp"));
+            let t2 = tmp.clone();
+            let made = tokio::task::spawn_blocking(move || mux::ts_to_mp4(&input, &t2)).await.map(|r| r.is_ok()).unwrap_or(false);
+            if made && std::fs::rename(&tmp, &part).is_ok() {
+                let (stem, _) = filename::split_ext(&rec.file_name);
+                let name = filename::unique_name(&rec.save_dir, &format!("{stem}.mp4"));
+                self.update(id, move |x| x.file_name = name);
+            } else {
+                let _ = std::fs::remove_file(&tmp);
+            }
         }
         self.finish_file(id, &rec)
     }
@@ -1576,6 +1617,18 @@ impl Manager {
         cancel: CancellationToken,
         settings: &Settings,
     ) -> anyhow::Result<()> {
+        // a DASH manifest (.mpd): its tracks are downloaded here and merged
+        // at the end, the same way as the two-stream downloads below
+        if rec
+            .request_url()
+            .to_ascii_lowercase()
+            .split('?')
+            .next()
+            .unwrap_or("")
+            .ends_with(".mpd")
+        {
+            return self.run_mpd_manifest(id, rec, progress, limiter, cancel, settings).await;
+        }
         let audio_url = rec
             .audio_url
             .clone()
@@ -1685,6 +1738,59 @@ impl Manager {
         self.finish_file(id, &rec)
     }
 
+    /// A DASH manifest (.mpd): the manifest decides which tracks exist, we
+    /// download the best video and best audio, then merge them like the
+    /// YouTube style downloads above (a manifest without audio is renamed
+    /// as it is, it is already a playable file).
+    async fn run_mpd_manifest(
+        self: &Arc<Self>,
+        id: DownloadId,
+        rec: DownloadRecord,
+        progress: Arc<Progress>,
+        limiter: Arc<SpeedLimiter>,
+        cancel: CancellationToken,
+        settings: &Settings,
+    ) -> anyhow::Result<()> {
+        std::fs::create_dir_all(rec.work_dir())?;
+        self.update(id, |x| {
+            if x.status == Status::Connecting {
+                x.status = Status::Downloading;
+            }
+        });
+        let job = mpd::MpdJob {
+            url: rec.request_url().to_string(),
+            headers: rec.headers.clone(),
+            user_agent: settings.user_agent.clone(),
+            video_out: rec.video_part_path(),
+            audio_out: Some(rec.audio_part_path()),
+            temp_dir: rec.hls_temp_dir().join("dash"),
+            connections: rec.connections,
+            retries: settings.retries,
+            limiter,
+        };
+        let has_audio = tokio::select! {
+            r = mpd::run(self.shared.clone(), job, progress.clone(), cancel.clone()) => r?,
+            _ = cancel.cancelled() => return Err(Cancelled.into()),
+        };
+        // merge, exactly like the two-stream downloads
+        progress.assembling.store(true, Ordering::Relaxed);
+        let (video, audio, output, name) = (
+            rec.video_part_path(),
+            rec.audio_part_path(),
+            rec.part_path(),
+            rec.file_name.clone(),
+        );
+        if has_audio {
+            tokio::task::spawn_blocking(move || mux::merge(&video, &audio, &output, &name)).await??;
+            let _ = std::fs::remove_file(rec.video_part_path());
+            let _ = std::fs::remove_file(rec.audio_part_path());
+        } else {
+            // video only: the joined file is the result, no merging needed
+            std::fs::rename(&video, &output)?;
+        }
+        self.finish_file(id, &rec)
+    }
+
     fn tick(self: &Arc<Self>) {
         let to_save = {
             let mut inner = self.inner.lock().unwrap();
@@ -1722,8 +1828,11 @@ impl Manager {
                 }
             }
             self.track_quota(&mut inner, now, fresh_bytes);
-            let due = now.duration_since(inner.last_save) > Duration::from_secs(3);
-            if due && (inner.dirty || any_running) {
+            // changes to the list: after 3 s; only progress of running
+            // downloads: every 10 s (resume works from there anyway)
+            let since = now.duration_since(inner.last_save);
+            let due = (inner.dirty && since > Duration::from_secs(3)) || (any_running && since > Duration::from_secs(10));
+            if due {
                 inner.dirty = false;
                 inner.last_save = now;
                 Some(collect_records(&inner))
@@ -1890,8 +1999,16 @@ impl Manager {
     }
 }
 
-/// Delete every temporary file of a download. Returns false if something
-/// could not be removed (still open), so the caller can retry.
+/// The name an MP3 file shows: its file name without the quality part.
+fn song_title(file_name: &str) -> String {
+    let (stem, _) = filename::split_ext(file_name);
+    let t = stem.trim();
+    match t.rfind(" [") {
+        Some(i) if t.ends_with(']') => t[..i].trim().to_string(),
+        _ => t.to_string(),
+    }
+}
+
 /// Bytes from the start of a file with no gap.
 fn ready_from_start(segs: &[segments::Segment]) -> u64 {
     let mut ready = 0u64;
@@ -1945,6 +2062,8 @@ fn remove_torrent_data(rec: &DownloadRecord) -> bool {
     ok
 }
 
+/// Delete every temporary file of a download. Returns false if something
+/// could not be removed (still open), so the caller can retry.
 fn remove_temp_files(rec: &DownloadRecord) -> bool {
     let mut ok = true;
     if rec.kind == DownloadKind::Torrent && rec.status != Status::Completed {
@@ -1962,6 +2081,10 @@ fn remove_temp_files(rec: &DownloadRecord) -> bool {
 }
 
 fn make_view(e: &Entry) -> DownloadView {
+    view_of(e, true)
+}
+
+fn view_of(e: &Entry, with_parts: bool) -> DownloadView {
     let bytes = e.progress.bytes.load(Ordering::Relaxed);
     let mut status = e.rec.status;
     if status == Status::Downloading && e.progress.assembling.load(Ordering::Relaxed) {
@@ -1977,7 +2100,7 @@ fn make_view(e: &Entry) -> DownloadView {
         Some(t) if speed > 1.0 => Some((t.saturating_sub(downloaded) as f64 / speed) as u64),
         _ => None,
     };
-    let segments = if status == Status::Completed {
+    let segments = if status == Status::Completed || !with_parts {
         Vec::new()
     } else {
         e.segs.lock().unwrap().iter().map(|s| (s.start, s.pos, s.end, s.active)).collect()
@@ -2106,7 +2229,13 @@ mod name_tests {
 
 #[cfg(test)]
 mod inside_tests {
-    use super::inside;
+    use super::{inside, song_title};
+    #[test]
+    fn mp3_titles() {
+        assert_eq!(song_title("My Song [mp3].mp3"), "My Song");
+        assert_eq!(song_title("Live [2024] mix.mp3"), "Live [2024] mix");
+        assert_eq!(song_title("plain.mp3"), "plain");
+    }
     use std::path::Path;
     #[test]
     fn nothing_outside_the_folder() {

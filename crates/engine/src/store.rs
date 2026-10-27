@@ -21,6 +21,13 @@ pub fn load_downloads(path: &Path) -> Vec<DownloadRecord> {
         .unwrap_or_default()
 }
 
+/// The download list: saved often, so without spaces (smaller, faster).
 pub fn save_downloads(path: &Path, list: &[DownloadRecord]) -> anyhow::Result<()> {
-    write_json_atomic(path, &list)
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec(&list)?)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
 }

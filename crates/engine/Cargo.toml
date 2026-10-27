@@ -11,8 +11,10 @@ serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 tokio-util = "0.7"
-# default features = native TLS (SChannel on Windows), HTTP/2, charset, system proxy
-reqwest = { version = "0.12" }
+# TLS is per-OS: Windows keeps the system store (SChannel) like before, other
+# systems use rustls with the native certificate store, so no OpenSSL headers
+# are needed to build and the binary carries its own TLS stack.
+reqwest = { version = "0.12", default-features = false, features = ["charset", "http2"] }
 chrono = { version = "0.4", features = ["serde"] }
 directories = "5"
 url = "2"
@@ -26,6 +28,7 @@ sha2 = "0.10"
 ring = "0.17"
 
 [target.'cfg(windows)'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["native-tls"] }
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_System_IO",
@@ -35,8 +38,8 @@ windows-sys = { version = "0.59", features = [
     "Win32_Security_Cryptography",
 ] }
 
-# Linux: free disk space and file-system detection (statvfs / statfs)
-[target.'cfg(target_os = "linux")'.dependencies]
+[target.'cfg(not(windows))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots"] }
 libc = "0.2"
 
 [dev-dependencies]

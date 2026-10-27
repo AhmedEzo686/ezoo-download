@@ -77,6 +77,9 @@ struct ResolveRequest {
     /// the site's cookies, used only if it asks for a login
     #[serde(default)]
     cookie_list: Vec<swiftget_engine::ytdlp::BrowserCookie>,
+    /// a stream found on a page: that page
+    #[serde(default)]
+    referer: Option<String>,
 }
 
 /// "Download all links with Ezoo Download" from the browser's right click menu.
@@ -205,7 +208,7 @@ fn origin_allowed(origin: Option<&str>) -> bool {
 
 /// Video look-ups running now (each one is a yt-dlp process).
 static RESOLVING: AtomicUsize = AtomicUsize::new(0);
-const MAX_RESOLVING: usize = 4;
+const MAX_RESOLVING: usize = 3;
 
 fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(ApiEvent)) {
     // never answer CORS preflights: web pages must not reach this API
@@ -317,7 +320,8 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
                 }
                 let _done = Done;
                 let cookies = (!r.cookie_list.is_empty()).then_some(r.cookie_list.as_slice());
-                let body = match swiftget_engine::ytdlp::resolve(&r.url, cookies) {
+                let referer = r.referer.as_deref().filter(|u| is_http(u));
+                let body = match swiftget_engine::ytdlp::resolve_for(&r.url, cookies, referer) {
                     Ok(info) => serde_json::json!({
                         "ok": true, "title": info.title, "site": info.site, "options": info.options
                     }),

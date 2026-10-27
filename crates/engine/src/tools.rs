@@ -1,6 +1,6 @@
 //! The helper programs that come with Ezoo Download: yt-dlp (finds the video
-//! links), ffmpeg (joins video + audio) and aria2 (torrents), all from their
-//! GitHub releases. They live in the "tools" folder
+//! links) and aria2 (torrents) from their GitHub releases, and our own small
+//! ffmpeg build (joins video + audio, MP3; built by tools/ffmpeg/build.sh). They live in the "tools" folder
 //! of the install folder. Once a day, silently, Ezoo Download checks for new
 //! versions and updates them, and puts them back if one went missing.
 
@@ -9,72 +9,17 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
+const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+/// the SHA-256 of every file of that release, published by yt-dlp
 const YTDLP_SUMS_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
-/// the SHA-256 of every build, published with the ffmpeg builds
-const FFMPEG_SUMS_NAME: &str = "checksums.sha256";
+const YTDLP_LINUX_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux";
 /// none of the helpers is anywhere near this big
 const MAX_TOOL_BYTES: u64 = 400 << 20;
-/// ffmpeg builds published on GitHub (rolling release "latest")
-const FFMPEG_RELEASE_API: &str = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest";
 /// aria2 for torrents: one fixed, known build (it changes rarely), checked
 /// against this SHA-256 before use
 pub const ARIA2_URL: &str = "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip";
 pub const ARIA2_ZIP_SHA256: &str = "67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288";
 pub const ARIA2_EXE_SHA256: &str = "be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2";
-
-#[derive(serde::Deserialize)]
-struct GhAsset {
-    name: String,
-    browser_download_url: String,
-    #[serde(default)]
-    updated_at: String,
-}
-
-#[derive(serde::Deserialize)]
-struct GhRelease {
-    assets: Vec<GhAsset>,
-}
-
-/// The newest stable build of the running platform: "ffmpeg-n7.1-latest-win64-
-/// gpl-7.1.zip" on Windows, "ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz" on
-/// Linux (the highest n<version>), else the master build.
-fn pick_ffmpeg(assets: &[GhAsset]) -> Option<&GhAsset> {
-    let (re_src, master) = if cfg!(windows) {
-        (r"^ffmpeg-n([0-9.]+)-latest-win64-gpl-[0-9.]+\.zip$", "ffmpeg-master-latest-win64-gpl.zip")
-    } else {
-        (r"^ffmpeg-n([0-9.]+)-latest-linux64-gpl-[0-9.]+\.tar\.xz$", "ffmpeg-master-latest-linux64-gpl.tar.xz")
-    };
-    let re = regex::Regex::new(re_src).ok()?;
-    let key = |v: &str| v.split('.').map(|p| p.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
-    assets
-        .iter()
-        .filter_map(|a| re.captures(&a.name).map(|c| (key(&c[1]), a)))
-        .max_by(|x, y| x.0.cmp(&y.0))
-        .map(|(_, a)| a)
-        .or_else(|| assets.iter().find(|a| a.name == master))
-}
-
-/// The yt-dlp release asset for the running platform (yt-dlp's checksum list
-/// is keyed by the asset name).
-fn ytdlp_asset() -> &'static str {
-    if cfg!(windows) {
-        "yt-dlp.exe"
-    } else {
-        match std::env::consts::ARCH {
-            "aarch64" => "yt-dlp_linux_aarch64",
-            _ => "yt-dlp_linux",
-        }
-    }
-}
-
-#[cfg(unix)]
-fn make_executable(path: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
-}
-
-#[cfg(not(unix))]
-fn make_executable(_path: &Path) {}
 
 fn exe(name: &str) -> String {
     if cfg!(windows) {
@@ -89,12 +34,28 @@ pub fn tool_dirs() -> Vec<PathBuf> {
     let mut v = Vec::new();
     if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
         v.push(dir.join("tools"));
-        v.push(dir);
+        v.push(dir.clone());
+        // Linux packages: the .deb/.rpm install the bundled ffmpeg in
+        // /usr/lib/ezoo-download while the program itself is /usr/bin/EzooDownload,
+        // so it sits one level up from the program's folder. The AppImage
+        // keeps ffmpeg next to the program, already covered above.
+        // Windows keeps the single tools folder; nothing changes there.
+        #[cfg(target_os = "linux")]
+        if let Some(parent) = dir.parent() {
+            v.push(parent.join("lib").join("ezoo-download"));
+        }
     }
     if let Some(p) = directories::ProjectDirs::from("com", "Ezoo", "EzooDownload") {
         v.push(p.data_dir().join("tools"));
     }
     v
+}
+
+/// A folder of ours for the helpers' temporary files.
+pub fn work_dir() -> Option<PathBuf> {
+    let dir = directories::ProjectDirs::from("com", "Ezoo", "EzooDownload")?.data_dir().join("tmp");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
 }
 
 /// A tool shipped with the app (not one somewhere on PATH).
@@ -209,14 +170,21 @@ fn replace(new: &Path, target: &Path) -> anyhow::Result<()> {
 /// yt-dlp missing: get it. Present: `yt-dlp -U` (at most once a day).
 async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
     if bundled("yt-dlp").is_none() {
-        if let Some(dir) = writable_dir("yt-dlp") {
-            if let Ok(sums) = get_text(client, YTDLP_SUMS_URL).await {
-                let asset = ytdlp_asset();
-                if let Some(sum) = sum_for(&sums, asset) {
-                    let url = format!("https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset}");
-                    let dest = dir.join(exe("yt-dlp"));
-                    if download(client, &url, &dest, &sum).await.is_ok() {
-                        make_executable(&dest);
+        if cfg!(windows) {
+            if let Some(dir) = writable_dir("yt-dlp") {
+                if let Ok(sums) = get_text(client, YTDLP_SUMS_URL).await {
+                    if let Some(sum) = sum_for(&sums, "yt-dlp.exe") {
+                        let _ = download(client, YTDLP_URL, &dir.join(exe("yt-dlp")), &sum).await;
+                    }
+                }
+            }
+        } else {
+            // Linux: the same release page carries the standalone build,
+            // checked against the published sums like the Windows one.
+            if let Some(dir) = writable_dir("yt-dlp") {
+                if let Ok(sums) = get_text(client, YTDLP_SUMS_URL).await {
+                    if let Some(sum) = sum_for(&sums, "yt-dlp_linux") {
+                        let _ = download(client, YTDLP_LINUX_URL, &dir.join(exe("yt-dlp")), &sum).await;
                     }
                 }
             }
@@ -230,6 +198,9 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
     let Some(tool) = bundled("yt-dlp") else { return };
     let ok = tokio::task::spawn_blocking(move || {
         let mut cmd = Command::new(&tool);
+        if let Some(dir) = work_dir() {
+            cmd.env("TEMP", &dir).env("TMP", &dir).current_dir(&dir);
+        }
         cmd.args(["--ignore-config", "-U"]);
         hide_window(&mut cmd);
         cmd.output().map(|o| o.status.success()).unwrap_or(false)
@@ -241,91 +212,37 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
     }
 }
 
-/// ffmpeg: compare with the newest release build and replace it when
-/// there's a newer one (or when it's missing).
-async fn ffmpeg(client: &reqwest::Client, data_dir: &Path) -> anyhow::Result<()> {
-    let present = bundled("ffmpeg");
-    let stamp = data_dir.join("ffmpeg-checked");
-    if present.is_some() && !due(&stamp, Duration::from_secs(20 * 3600)) {
-        return Ok(());
+/// ffmpeg comes with the install (our own small build on Windows, the
+/// bundled static build on Linux) and is updated with the program. Copies
+/// of the big public build that older versions downloaded by themselves
+/// are removed, so ours is the one used.
+fn ours_ffmpeg() -> Option<PathBuf> {
+    let dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf))?;
+    let tools = dir.join("tools").join(exe("ffmpeg"));
+    if tools.exists() {
+        return Some(tools);
     }
-    let text = client
-        .get(FFMPEG_RELEASE_API)
-        .header(reqwest::header::USER_AGENT, crate::config::DEFAULT_USER_AGENT)
-        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-        .send()
-        .await?
-        .error_for_status()?
-        .text()
-        .await?;
-    let release: GhRelease = serde_json::from_str(&text)?;
-    let Some(asset) = pick_ffmpeg(&release.assets) else {
-        anyhow::bail!("no ffmpeg build in the release");
-    };
-    // name + date: changes whenever a new build is published
-    let latest = format!("{} {}", asset.name, asset.updated_at);
-    let zip_url = asset.browser_download_url.clone();
-    if !zip_url.starts_with("https://github.com/") {
-        anyhow::bail!("unexpected ffmpeg download address");
-    }
-    let sums_url = release
-        .assets
-        .iter()
-        .find(|a| a.name == FFMPEG_SUMS_NAME)
-        .map(|a| a.browser_download_url.clone())
-        .filter(|u| u.starts_with("https://github.com/"))
-        .ok_or_else(|| anyhow::anyhow!("the ffmpeg release has no checksum list"))?;
-    let Some(dir) = writable_dir("ffmpeg") else { return Ok(()) };
-    let version_file = dir.join("ffmpeg-version.txt");
-    let current = std::fs::read_to_string(&version_file).unwrap_or_default();
-    if present.is_some() && current.trim() == latest {
-        let _ = std::fs::write(&stamp, b"ok");
-        return Ok(());
-    }
-    // download the archive, unpack it with the system's tar, take ffmpeg
-    let work = std::env::temp_dir().join(format!("ezoo-ffmpeg-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&work);
-    std::fs::create_dir_all(&work)?;
-    let archive = work.join(&asset.name);
-    let sum = sum_for(&get_text(client, &sums_url).await?, &asset.name)
-        .ok_or_else(|| anyhow::anyhow!("no checksum for {}", asset.name))?;
-    download(client, &zip_url, &archive, &sum).await?;
-    let (arch, work2) = (archive.clone(), work.clone());
-    let unpacked = tokio::task::spawn_blocking(move || {
-        // Windows' own tar and GNU tar both pick the format from the file;
-        // GNU tar needs -J asked for in some builds, so pass it for .xz
-        let xz = arch.to_string_lossy().ends_with(".tar.xz");
-        let mut cmd = if cfg!(windows) {
-            Command::new(crate::system::windows_tool("tar.exe"))
-        } else {
-            Command::new("tar")
-        };
-        if xz {
-            cmd.arg("-xJf");
-        } else {
-            cmd.arg("-xf");
+    // Linux .deb/.rpm layout: /usr/lib/ezoo-download/ffmpeg next to /usr/bin.
+    #[cfg(target_os = "linux")]
+    if let Some(parent) = dir.parent() {
+        let lib = parent.join("lib").join("ezoo-download").join(exe("ffmpeg"));
+        if lib.exists() {
+            return Some(lib);
         }
-        cmd.arg(&arch).arg("-C").arg(&work2);
-        hide_window(&mut cmd);
-        cmd.output().map(|o| o.status.success()).unwrap_or(false)
-    })
-    .await
-    .unwrap_or(false);
-    let found = unpacked.then(|| find_file(&work, &exe("ffmpeg"))).flatten();
-    let result = match found {
-        Some(f) => {
-            let staged = dir.join("ffmpeg.new");
-            std::fs::copy(&f, &staged)?;
-            replace(&staged, &dir.join(exe("ffmpeg")))?;
-            make_executable(&dir.join(exe("ffmpeg")));
-            std::fs::write(&version_file, &latest)?;
-            let _ = std::fs::write(&stamp, b"ok");
-            Ok(())
+    }
+    None
+}
+
+fn ffmpeg_cleanup() {
+    if ours_ffmpeg().is_none() {
+        return;
+    }
+    if let Some(p) = directories::ProjectDirs::from("com", "Ezoo", "EzooDownload") {
+        let dir = p.data_dir().join("tools");
+        for f in [exe("ffmpeg"), "ffmpeg-version.txt".into(), "ffmpeg-LICENSE.txt".into()] {
+            let _ = std::fs::remove_file(dir.join(f));
         }
-        None => Err(anyhow::anyhow!("ffmpeg was not found in the download")),
-    };
-    let _ = std::fs::remove_dir_all(&work);
-    result
+    }
 }
 
 /// aria2c missing (an older install): get the known build.
@@ -386,7 +303,7 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
 /// missing). Never shows anything; errors just mean "try again later".
 pub async fn update_all(client: reqwest::Client, data_dir: PathBuf) {
     yt_dlp(&client, &data_dir).await;
-    let _ = ffmpeg(&client, &data_dir).await;
+    ffmpeg_cleanup();
     let _ = aria2(&client).await;
     // leftovers of earlier updates
     for dir in tool_dirs() {
@@ -411,37 +328,6 @@ pub fn spawn_updater(rt: &tokio::runtime::Handle, client: reqwest::Client, data_
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn picks_stable_ffmpeg() {
-        let a = |n: &str| GhAsset { name: n.into(), browser_download_url: String::new(), updated_at: String::new() };
-        let list = vec![
-            a("ffmpeg-master-latest-win64-gpl.zip"),
-            a("ffmpeg-n7.1-latest-win64-gpl-7.1.zip"),
-            a("ffmpeg-n7.0-latest-win64-gpl-7.0.zip"),
-            a("ffmpeg-n7.1-latest-win64-gpl-shared-7.1.zip"),
-            a("ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz"),
-        ];
-        let picked = pick_ffmpeg(&list).unwrap().name.clone();
-        if cfg!(windows) {
-            assert_eq!(picked, "ffmpeg-n7.1-latest-win64-gpl-7.1.zip");
-            assert_eq!(pick_ffmpeg(&list[..1]).unwrap().name, "ffmpeg-master-latest-win64-gpl.zip");
-        } else {
-            assert_eq!(picked, "ffmpeg-n7.1-latest-linux64-gpl-7.1.tar.xz");
-        }
-    }
-
-    #[test]
-    fn ytdlp_asset_matches_platform() {
-        let asset = ytdlp_asset();
-        if cfg!(windows) {
-            assert_eq!(asset, "yt-dlp.exe");
-        } else if std::env::consts::ARCH == "aarch64" {
-            assert_eq!(asset, "yt-dlp_linux_aarch64");
-        } else {
-            assert_eq!(asset, "yt-dlp_linux");
-        }
-    }
-
     #[test]
     fn replace_and_find() {
         let dir = std::env::temp_dir().join(format!("ezoo-tools-test-{}", std::process::id()));

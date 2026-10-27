@@ -841,6 +841,9 @@ msgstr "https://example.com/gallery/"
 msgid "Start exploring"
 msgstr "Começar a explorar"
 
+msgid "Some pages make their links only in the browser (with scripts, or as plain text). For them: open the page in the browser, right-click it and choose \"Download all links with Ezoo Download\": every link you see there is collected."
+msgstr "Algumas páginas criam seus links só no navegador (com scripts ou como texto simples). Para elas: abra a página no navegador, clique com o botão direito e escolha \"Download all links with Ezoo Download\": todo link que você vê é coletado."
+
 msgid "Get"
 msgstr "Obter"
 
@@ -1405,11 +1408,17 @@ msgstr "Gosta do Ezoo Download? Você pode apoiar o desenvolvimento:"
 msgid "Support with PayPal"
 msgstr "Apoiar com PayPal"
 
+msgid "Support with InstaPay"
+msgstr "Apoiar com InstaPay"
+
+msgid "InstaPay: a7medek@instapay (scan the code with your bank's app)"
+msgstr "InstaPay: a7medek@instapay (escaneie o código com o app do seu banco)"
+
 msgid "What's new in Ezoo Download"
 msgstr "Novidades do Ezoo Download"
 
-msgid "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal. Thank you!"
-msgstr "O Ezoo Download é gratuito e sem anúncios. Se ele te ajuda e você quer apoiar o desenvolvimento, pode enviar uma contribuição pelo PayPal. Obrigado!"
+msgid "Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal or InstaPay. Thank you!"
+msgstr "O Ezoo Download é gratuito e sem anúncios. Se ele te ajuda e você quer apoiar o desenvolvimento, pode enviar um presente pelo PayPal ou InstaPay. Obrigado!"
 
 msgid "Hide"
 msgstr "Ocultar"

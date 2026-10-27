@@ -226,6 +226,17 @@ fn looks_like_hls(url: &str, content_type: Option<&str>) -> bool {
         .unwrap_or(false)
 }
 
+/// DASH manifests: a .mpd URL, or the MIME type every DASH player sends.
+fn looks_like_dash(url: &str, content_type: Option<&str>) -> bool {
+    let ct = content_type.unwrap_or("").to_ascii_lowercase();
+    if ct.contains("dash+xml") {
+        return true;
+    }
+    url::Url::parse(url)
+        .map(|u| u.path().to_ascii_lowercase().ends_with(".mpd"))
+        .unwrap_or(false)
+}
+
 /// Ways to ask again when a server refuses the request as the browser sent
 /// it: some sites refuse a byte range, or cookies / a referrer that belong to
 /// the browser's own session. (with range?, headers)
@@ -325,6 +336,8 @@ pub async fn probe(
         .unwrap_or_else(|| "download".into());
     let kind = if looks_like_hls(&final_url, content_type.as_deref()) {
         DownloadKind::Hls
+    } else if looks_like_dash(&final_url, content_type.as_deref()) {
+        DownloadKind::Dash
     } else {
         DownloadKind::Http
     };
@@ -337,6 +350,11 @@ pub async fn probe(
         }
     } else {
         file_name = filename::ensure_extension(file_name, content_type.as_deref());
+        if kind == DownloadKind::Dash && filename::extension(&file_name) == "mpd" {
+            // the manifest becomes a video: the tracks are merged into one .mp4
+            let (stem, _) = filename::split_ext(&file_name);
+            file_name = format!("{stem}.mp4");
+        }
     }
     drop(resp);
 
@@ -346,7 +364,11 @@ pub async fn probe(
         headers_used,
         final_url,
         file_name,
-        total_size: if kind == DownloadKind::Hls { None } else { total_size },
+        total_size: if matches!(kind, DownloadKind::Hls | DownloadKind::Dash) {
+            None
+        } else {
+            total_size
+        },
         resumable: kind == DownloadKind::Http && resumable,
         content_type,
         kind,

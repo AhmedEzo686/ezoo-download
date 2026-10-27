@@ -1,6 +1,6 @@
 // Ezoo Download – shared look: data types, themes, icons and small widgets.
 
-import { Button, LineEdit, SpinBox, CheckBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
+import { Button, LineEdit, SpinBox, CheckBox as StdCheckBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
 
 export struct DownloadRow {
     id: int,
@@ -108,6 +108,8 @@ export global Theme {
     in-out property <string> font-family: "";
     // a picture behind the main window: how much of it shows through (0..0.8)
     in-out property <float> glass: 0;
+    // Arabic: every window reads from right to left
+    in-out property <bool> rtl: false;
     out property <color> window: window-base;
     out property <color> panel: panel-base.transparentize(glass);
     out property <color> toolbar-top: toolbar-top-base.transparentize(glass);
@@ -136,6 +138,87 @@ export global Theme {
     out property <color> err: dark ? #ff6b62 : #d23b32;
     out property <color> bar-bg: dark ? #34373c : #e6e6e6;
     out property <color> input-bg: dark ? #2b2d31 : #ffffff;
+}
+
+// A row that runs from right to left for Arabic (Theme.rtl), otherwise
+// like HorizontalLayout.
+export component HRow inherits FlexboxLayout {
+    flex-direction: Theme.rtl ? FlexboxLayoutDirection.row-reverse : FlexboxLayoutDirection.row;
+    flex-wrap: no-wrap;
+    alignment: stretch;
+}
+
+// The standard check box, with the box on the right for Arabic (Theme.rtl).
+export component CheckBox inherits VerticalLayout {
+    in property <string> text;
+    in property <bool> enabled: true;
+    in-out property <bool> checked;
+    callback toggled();
+    alignment: center;
+    if !Theme.rtl: StdCheckBox {
+        text: root.text;
+        enabled: root.enabled;
+        checked <=> root.checked;
+        toggled => {
+            root.toggled();
+        }
+    }
+    if Theme.rtl: Rectangle {
+        min-height: 20px;
+        accessible-role: checkbox;
+        accessible-checkable: true;
+        accessible-checked: root.checked;
+        accessible-label: root.text;
+        accessible-enabled: root.enabled;
+        accessible-action-default => {
+            if (root.enabled) {
+                root.checked = !root.checked;
+                root.toggled();
+            }
+        }
+        opacity: root.enabled ? 1.0 : 0.45;
+        rtl-touch := TouchArea {
+            enabled: root.enabled;
+            clicked => {
+                root.checked = !root.checked;
+                root.toggled();
+            }
+        }
+        HRow {
+            spacing: 12px;
+            alignment: start;
+            Rectangle {
+                width: 18px;
+                Rectangle {
+                    y: (parent.height - 18px) / 2;
+                    width: 18px;
+                    height: 18px;
+                    border-radius: 3px;
+                    border-width: root.checked ? 0px : 1px;
+                    border-color: Theme.muted;
+                    background: root.checked ? Theme.accent : rtl-touch.has-hover ? Theme.hover : Theme.input-bg;
+                    if root.checked: Path {
+                        x: 3px;
+                        y: 3px;
+                        width: 12px;
+                        height: 12px;
+                        viewbox-width: 12;
+                        viewbox-height: 12;
+                        stroke: white;
+                        stroke-width: 1.6px;
+                        fill: transparent;
+                        commands: "M 1.5 6.5 L 4.5 9.5 L 10.5 2.5";
+                    }
+                }
+            }
+            Text {
+                text: root.text;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                color: Theme.text;
+            }
+        }
+    }
 }
 
 // Applies the light/dark look to the standard widgets of every window.
@@ -758,7 +841,7 @@ export component BigTypeIcon inherits VerticalLayout {
     in property <string> ext;
     spacing: 4px;
     alignment: start;
-    HorizontalLayout {
+    HRow {
         alignment: center;
         TypeIcon {
             kind: root.kind;
@@ -859,7 +942,7 @@ export component ToolBtn inherits Rectangle {
         padding-left: 1px;
         padding-right: 1px;
         opacity: root.enabled ? 1.0 : 0.35;
-        HorizontalLayout {
+        HRow {
             alignment: center;
             Icon {
                 width: 26px;
@@ -937,9 +1020,9 @@ export component TreeItem inherits Rectangle {
             }
         }
     }
-    HorizontalLayout {
-        padding-left: 4px + root.indent * 16px;
-        padding-right: 6px;
+    HRow {
+        padding-left: Theme.rtl ? (6px) : (4px + root.indent * 16px);
+        padding-right: Theme.rtl ? (4px + root.indent * 16px) : (6px);
         spacing: 5px;
         Rectangle {
             width: 11px;
@@ -1002,6 +1085,7 @@ export component TreeItem inherits Rectangle {
             }
         }
         Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.text;
             vertical-alignment: center;
             horizontal-stretch: 1;
@@ -1011,6 +1095,7 @@ export component TreeItem inherits Rectangle {
             font-weight: root.bold ? 600 : 400;
         }
         Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.count;
             vertical-alignment: center;
             color: Theme.muted;
@@ -1071,20 +1156,21 @@ export component HeaderCell inherits Rectangle {
         width: parent.width - 12px;
         height: parent.height;
         text: root.text;
-        horizontal-alignment: root.align;
+        // Arabic: the sides of the columns are mirrored too
+        horizontal-alignment: !Theme.rtl ? root.align : root.align == TextHorizontalAlignment.left ? TextHorizontalAlignment.right : root.align == TextHorizontalAlignment.right ? TextHorizontalAlignment.left : root.align;
         vertical-alignment: center;
         font-size: 12px * Theme.font-scale;
         color: Theme.text;
         overflow: elide;
     }
     if root.key != "" && root.key == root.sort-by: Glyph {
-        x: root.align == TextHorizontalAlignment.right ? 2px : parent.width - 16px;
+        x: (root.align == TextHorizontalAlignment.right) != Theme.rtl ? 2px : parent.width - 16px;
         y: (parent.height - 16px) / 2;
         kind: root.sort-desc ? "caret-down" : "caret-up";
         tint: Theme.muted;
     }
     Rectangle {
-        x: parent.width - 1px;
+        x: Theme.rtl ? 0px : parent.width - 1px;
         y: 4px;
         width: 1px;
         height: parent.height - 8px;
@@ -1092,7 +1178,7 @@ export component HeaderCell inherits Rectangle {
     }
     // the edge to resize the column
     if root.adjustable: edge := TouchArea {
-        x: parent.width - 5px;
+        x: Theme.rtl ? -3px : parent.width - 5px;
         width: 8px;
         height: parent.height;
         mouse-cursor: MouseCursor.col-resize;
@@ -1108,7 +1194,8 @@ export component HeaderCell inherits Rectangle {
         moved => {
             if (self.pressed) {
                 // measured on the screen: the edge itself moves with the column
-                root.resized(max(36px, root.start-width + self.absolute-position.x + self.mouse-x - root.start-x));
+                // Arabic: the edge is on the left, pulling it left widens the column
+                root.resized(max(36px, root.start-width + (Theme.rtl ? -1 : 1) * (self.absolute-position.x + self.mouse-x - root.start-x)));
             }
         }
     }
@@ -1116,6 +1203,7 @@ export component HeaderCell inherits Rectangle {
 
 export component Cell inherits Text {
     vertical-alignment: center;
+    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
     font-size: 12px * Theme.font-scale;
     color: Theme.text;
     overflow: elide;
@@ -1141,9 +1229,9 @@ export component MenuEntry inherits Rectangle {
             root.clicked();
         }
     }
-    HorizontalLayout {
-        padding-left: root.indent ? 26px : 8px;
-        padding-right: 10px;
+    HRow {
+        padding-left: Theme.rtl ? (10px) : (root.indent ? 26px : 8px);
+        padding-right: Theme.rtl ? (root.indent ? 26px : 8px) : (10px);
         spacing: 8px;
         opacity: root.enabled ? 1.0 : 0.4;
         Rectangle {
@@ -1155,6 +1243,7 @@ export component MenuEntry inherits Rectangle {
             }
         }
         Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.text;
             color: Theme.text;
             vertical-alignment: center;
@@ -1181,7 +1270,9 @@ export component MenuLabel inherits Rectangle {
     in property <string> text;
     height: 22px;
     Text {
-        x: 34px;
+        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+        x: Theme.rtl ? 0px : 34px;
+        width: parent.width - 34px;
         text: root.text;
         font-size: 11px * Theme.font-scale;
         color: Theme.muted;

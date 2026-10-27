@@ -7,9 +7,14 @@
 //! "checking…", "this is the newest version", or the download of
 //! the new one with its progress, then its setup runs in front of the user.
 
-use crate::i18n::{t, tf};
+use crate::i18n::tf;
+#[cfg(windows)]
+use crate::i18n::t;
 use crate::message;
-use crate::{open_window, Ctx, Ui};
+use crate::{Ctx, Ui};
+#[cfg(windows)]
+use crate::open_window;
+#[cfg(windows)]
 use slint::ComponentHandle;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -45,35 +50,46 @@ fn apply_as(setup: PathBuf, sha256: String, visible: bool) {
 }
 
 pub fn spawn(ctx: &Ctx) {
-    // leftovers of an update that is installed now
-    if let Ok(rd) = std::fs::read_dir(update_dir()) {
-        for e in rd.flatten() {
-            let name = e.file_name().to_string_lossy().to_string();
-            if name.contains(&format!("-{}.", selfupdate::current())) || name.ends_with(".download") {
-                let _ = std::fs::remove_file(e.path());
-            }
-        }
+    #[cfg(not(windows))]
+    {
+        // Linux: the .deb updates with the package manager, the AppImage by
+        // downloading the new file from the GitHub Releases page (Help >
+        // Check for updates says so too). No silent self-installer here.
+        let _ = ctx;
+        return;
     }
-    if !selfupdate::installed() {
-        return; // a portable copy: there is no installation to update
-    }
-    let mgr = ctx.mgr.clone();
-    ctx.rt.spawn(async move {
-        // first check as soon as the program is open
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        let mut first = true;
-        loop {
-            if !BUSY.swap(true, Ordering::SeqCst) {
-                let started = round(&mgr, first).await;
-                BUSY.store(false, Ordering::SeqCst);
-                if started {
-                    return;
+    #[cfg(windows)]
+    {
+        // leftovers of an update that is installed now
+        if let Ok(rd) = std::fs::read_dir(update_dir()) {
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.contains(&format!("-{}.", selfupdate::current())) || name.ends_with(".download") {
+                    let _ = std::fs::remove_file(e.path());
                 }
             }
-            first = false;
-            tokio::time::sleep(Duration::from_secs(6 * 3600)).await;
         }
+        if !selfupdate::installed() {
+            return; // a portable copy: there is no installation to update
+        }
+        let mgr = ctx.mgr.clone();
+        ctx.rt.spawn(async move {
+            // first check as soon as the program is open
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            let mut first = true;
+            loop {
+                if !BUSY.swap(true, Ordering::SeqCst) {
+                    let started = round(&mgr, first).await;
+                    BUSY.store(false, Ordering::SeqCst);
+                    if started {
+                        return;
+                    }
+                }
+                first = false;
+                tokio::time::sleep(Duration::from_secs(6 * 3600)).await;
+            }
     });
+    }
 }
 
 /// One check. true = the installer was started.
@@ -122,6 +138,23 @@ fn size_text(n: u64) -> String {
 /// Help > Check for updates: look now instead of waiting for the next check,
 /// in the update window.
 pub fn check_now(ui: &Ui) {
+    #[cfg(not(windows))]
+    {
+        let _ = ui;
+        crate::message(&tf(
+            "New versions for Linux are published on the GitHub Releases page of the project:\n{}\n\nThe .deb updates with the package manager, the AppImage by downloading the new file.",
+            &[&format!("https://github.com/{}/releases", selfupdate::REPO)],
+        ));
+        return;
+    }
+    #[cfg(windows)]
+    {
+        check_now_windows(ui);
+    }
+}
+
+#[cfg(windows)]
+fn check_now_windows(ui: &Ui) {
     let Some(d) = ui.updater.upgrade() else { return };
     open_window!(d);
     let set = |state: i32, heading: String, detail: String| {

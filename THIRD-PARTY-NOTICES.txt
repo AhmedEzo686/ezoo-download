@@ -7,10 +7,25 @@ yt-dlp - https://github.com/yt-dlp/yt-dlp
   The Unlicense (public domain).
 
 FFmpeg - https://github.com/FFmpeg/FFmpeg
-  The FFmpeg program in the "tools" folder is an unmodified build from
-  https://github.com/BtbN/FFmpeg-Builds licensed under the GNU General Public
-  License version 3 (see ffmpeg-LICENSE.txt in the "tools" folder).
-  Its source code is available at https://github.com/FFmpeg/FFmpeg.
+  The ffmpeg program in the "tools" folder of the Windows install is Ezoo
+  Download's own small build of the unmodified FFmpeg sources (version in
+  ffmpeg-version.txt), made with tools/ffmpeg/build.sh from the Ezoo
+  Download sources. It is licensed under the GNU Lesser General Public
+  License version 3 or later (see ffmpeg-LICENSE.txt in the "tools" folder).
+
+  The Linux packages (.deb, .rpm, AppImage) instead bundle a static
+  ffmpeg build by johnvansickle.com (https://johnvansickle.com/ffmpeg/),
+  fetched at packaging time by packaging/linux/fetch-ffmpeg.sh and
+  checksum-checked before it is staged. That build is licensed under
+  the GNU General Public License version 3 (it includes GPL components
+  such as libx264/libx265 and libmp3lame); its licence text ships in
+  the package as ffmpeg-LICENSE.txt and its exact build is recorded in
+  ffmpeg-version.txt next to the binary. A later version may switch the
+  Linux packages to the user's system ffmpeg install instead.
+
+LAME - https://lame.sourceforge.io
+  Built into that ffmpeg program to make MP3 files. GNU Lesser General Public
+  License (see lame-COPYING.txt in the "tools" folder).
 
 aria2 - https://github.com/aria2/aria2
   The aria2c program in the "tools" folder (used for torrents) is an

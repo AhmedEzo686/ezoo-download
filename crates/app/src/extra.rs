@@ -263,7 +263,15 @@ fn save_properties(ui: &Ui) {
     let target = PathBuf::from(d.get_save_to().trim());
     if !target.as_os_str().is_empty() && target != v.save_path {
         let result = if v.status == Status::Completed {
-            ui.ctx.mgr.move_file(id, &target)
+            // on its own thread: a move to another disk is a copy
+            let mgr = ui.ctx.mgr.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = mgr.move_file(id, &target) {
+                    let text = format!("{e:#}");
+                    let _ = slint::invoke_from_event_loop(move || crate::message(&text));
+                }
+            });
+            Ok(())
         } else {
             let dir = target.parent().map(Path::to_path_buf).unwrap_or_default();
             let name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -350,21 +358,21 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 
 /// What the newest version brings (shown once after an automatic update).
 const WHATS_NEW: [&str; 15] = [
-    "Torrents: open a .torrent file or a magnet link and choose which of its files to download.",
-    "A dropped internet connection no longer stops a download: it waits and goes on by itself from where it was.",
-    "An expired link or a removed file is explained in plain words, with what to do about it.",
-    "Watch a video or listen to a song while it is still downloading (right-click > Play while downloading).",
-    "YouTube videos can be saved as MP3 files.",
-    "Qualities are shown in plain words too: SD, HD, Full HD, 2K, 4K.",
-    "The video button in the browser lists every quality with its format, length and size, has a size slider, and works on videos in frames, in full screen and in more players.",
-    "Videos that need a login or an age check use your browser's sign-in, also in playlists.",
-    "Toolbar buttons explain what they do when the mouse rests on them.",
-    "A download's window can be hidden next to the clock.",
-    "The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.",
-    "File icons are easier to tell apart.",
-    "Menus show one clear mark on the chosen option.",
-    "The window of a finished download no longer offers \"Open with…\", so a file can't be changed by mistake.",
-    "Fixed a crash around the Tips window.",
+    "Arabic: every window now reads from right to left (the program restarts once when the direction changes).",
+    "The program has its own small FFmpeg inside: video and sound are joined, MP3 files are made and live streams are saved, with nothing extra to download.",
+    "Live streams are saved as MP4 files.",
+    "MP3 files keep the title of the audio file.",
+    "Much less memory and processor work, also with many downloads at once.",
+    "No more freezes when a file is deleted or moved during its download, and message windows no longer hide behind the main window.",
+    "Downloads are taken from the browser before its own Save As window opens.",
+    "The browser button finds more videos, also streams in several qualities, and on more sites.",
+    "AV1 qualities are offered when a video has them.",
+    "The window of a download gets smaller when its details are hidden.",
+    "The video button in the browser has five looks to choose from (in the add-in's window).",
+    "A clear message when the download folder is on a drive locked by BitLocker.",
+    "Fixed videos that could not be downloaded on some computers because of the Windows temporary folder.",
+    "The Grabber also finds links written as plain text, and the menu next to the clock is in the program's language.",
+    "The speed limit stays smooth with many connections, and the clipboard also catches the file types you added.",
 ];
 
 thread_local! {
@@ -470,7 +478,7 @@ pub(crate) fn refresh_received(ui: &Ui, id: u64, url: &str, headers: RequestHead
 
 pub(crate) fn export_list(mgr: &Arc<Manager>, kind: &str) {
     let ef2 = kind == "ef2";
-    let Some(path) = rfd::FileDialog::new()
+    let Some(path) = crate::winfx::file_box()
         .set_file_name(if ef2 { "ezoo-download-list.ef2" } else { "ezoo-download-links.txt" })
         .add_filter(if ef2 { "Download list" } else { "Text file" }, &[if ef2 { "ef2" } else { "txt" }])
         .save_file()
@@ -501,7 +509,7 @@ pub(crate) fn export_list(mgr: &Arc<Manager>, kind: &str) {
 
 pub(crate) fn import_list(ui: &Ui, kind: &str) {
     let ef2 = kind == "ef2";
-    let Some(path) = rfd::FileDialog::new()
+    let Some(path) = crate::winfx::file_box()
         .add_filter(if ef2 { "Download list" } else { "Text file" }, &[if ef2 { "ef2" } else { "txt" }])
         .pick_file()
     else {
@@ -581,7 +589,7 @@ pub(crate) fn wire(ui: &Ui) {
             let w = d.as_weak();
             d.on_browse(move || {
                 let Some(d) = w.upgrade() else { return };
-                if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                if let Some(dir) = crate::winfx::file_box().pick_folder() {
                     d.set_folder(dir.display().to_string().into());
                 }
             });
@@ -619,7 +627,7 @@ pub(crate) fn wire(ui: &Ui) {
             d.on_browse(move || {
                 let Some(d) = w.upgrade() else { return };
                 let current = PathBuf::from(d.get_save_to().as_str());
-                let mut dlg = rfd::FileDialog::new();
+                let mut dlg = crate::winfx::file_box();
                 if let Some(dir) = current.parent().filter(|p| p.exists()) {
                     dlg = dlg.set_directory(dir);
                 }

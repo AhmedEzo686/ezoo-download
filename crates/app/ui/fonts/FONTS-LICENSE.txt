@@ -1,0 +1,11 @@
+InstaArabi-Regular.ttf — provided with the project by the user.
+
+TimesNewRoman-Regular.ttf / TimesNewRoman-Bold.ttf — metric-compatible
+renditions of Times New Roman built from Liberation Serif
+Copyright (c) 2012 Red Hat, Inc.
+Licensed under the SIL Open Font License 1.1
+https://github.com/liberationfonts/liberation-fonts
+The family name is set to “Times New Roman” so applications can
+resolve that family on systems where Microsoft's own font file is
+absent. The original copyright and license notices are kept inside
+the font files.

@@ -137,7 +137,7 @@ pub(crate) fn wire(ui: &Ui) {
         let w = d.as_weak();
         d.on_browse(move || {
             let Some(d) = w.upgrade() else { return };
-            if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+            if let Some(dir) = crate::winfx::file_box().pick_folder() {
                 d.set_folder(dir.display().to_string().into());
             }
         });
