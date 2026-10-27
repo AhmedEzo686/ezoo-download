@@ -96,7 +96,7 @@ jobs:
       # Firefox keeps only add-ons signed by Mozilla; a version can be
       # signed once, so this runs for a tag release only, like build.yml.
       - name: Sign the Firefox add-on (tag releases, when AMO keys exist)
-        if: github.ref_type == 'tag' && secrets.AMO_JWT_ISSUER != '' && secrets.AMO_JWT_SECRET != ''
+        if: github.ref_type == 'tag'
         env:
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
           AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
@@ -106,6 +106,9 @@ jobs:
           if [ -f "$SIGNED" ]; then
             echo "Add-on $EXT_VERSION already signed, reusing $SIGNED"
             cp "$SIGNED" "dist/ezoo-download-firefox-$EXT_VERSION.xpi"
+          elif [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
+            echo "::warning::AMO_JWT_ISSUER / AMO_JWT_SECRET are not set: the Firefox add-on is not signed"
+            exit 0
           else
             rm -rf fx-stage && mkdir fx-stage
             cp -r extension/. fx-stage/
