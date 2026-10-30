@@ -84,6 +84,47 @@ component DownloadItem inherits Rectangle {
     property <bool> done: root.data.state == 3;
     property <bool> can-resume: root.data.state == 2 || root.data.state == 4;
     property <bool> can-stop: root.data.state == 0 || root.data.state == 1;
+    property <length> queue-pop-y;
+    queue-pop := PopupWindow {
+        // beside where the menu was (Arabic: to its left)
+        x: Theme.rtl ? max(0px, root.menu-x - 260px - 224px) : root.menu-x + 256px;
+        y: root.queue-pop-y;
+        width: 228px;
+        height: queue-list.preferred-height;
+        Rectangle {
+            width: parent.width;
+            height: queue-list.preferred-height;
+            background: Theme.panel;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: 4px;
+            drop-shadow-blur: 10px;
+            drop-shadow-color: #00000055;
+            drop-shadow-offset-y: 3px;
+            queue-list := VerticalLayout {
+                padding: 4px;
+                spacing: 0px;
+                MenuLabel {
+                    text: @tr("Move to queue");
+                }
+                for q in root.queues: MenuEntry {
+                    text: q.name;
+                    glyph: root.data.queue == q.id ? "check" : "";
+                    clicked => {
+                        root.move-to-queue(q.id);
+                    }
+                }
+                MenuSep { }
+                MenuEntry {
+                    text: @tr("Delete from queue");
+                    enabled: root.data.queue != "";
+                    clicked => {
+                        root.move-to-queue(-1);
+                    }
+                }
+            }
+        }
+    }
     menu := PopupWindow {
         // Arabic: the menu opens to the left of the mouse
         x: Theme.rtl ? max(0px, root.menu-x - 260px) : root.menu-x;
@@ -179,23 +220,14 @@ component DownloadItem inherits Rectangle {
                     }
                 }
                 MenuSep { }
-                MenuLabel {
-                    text: @tr("Move to queue");
-                }
-                for q in root.queues: MenuEntry {
-                    text: q.name;
-                    glyph: root.data.queue == q.id ? "check" : "";
-                    indent: true;
-                    clicked => {
-                        root.move-to-queue(q.id);
-                    }
-                }
+                // the queues open in a list of their own beside this menu
+                // (many queues made the menu longer than the screen)
                 MenuEntry {
-                    text: @tr("Delete from queue");
-                    indent: true;
-                    enabled: root.data.queue != "";
+                    text: @tr("Move to queue") + (Theme.rtl ? "   ◂" : "   ▸");
+                    glyph: "queue";
                     clicked => {
-                        root.move-to-queue(-1);
+                        root.queue-pop-y = root.menu-y + self.y;
+                        queue-pop.show();
                     }
                 }
                 MenuSep { }
@@ -1691,12 +1723,50 @@ export component MainWindow inherits ThemedWindow {
                         font-size: 11px * Theme.font-scale;
                         color: Theme.muted;
                     }
-                    Text {
-                        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
-                        text: root.limiter-text;
-                        vertical-alignment: center;
-                        font-size: 11px * Theme.font-scale;
-                        color: root.limiter-on ? Theme.warn : Theme.muted;
+                    // the speed limiter: on / off with one click
+                    lim := Rectangle {
+                        width: lim-row.preferred-width;
+                        border-radius: 3px;
+                        background: lim-ta.pressed ? Theme.line : lim-ta.has-hover ? Theme.hover : transparent;
+                        lim-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.toggle-limiter();
+                            }
+                        }
+                        lim-row := HRow {
+                            padding-left: 6px;
+                            padding-right: 6px;
+                            spacing: 6px;
+                            Rectangle {
+                                width: 24px;
+                                Rectangle {
+                                    y: (parent.height - 12px) / 2;
+                                    width: 24px;
+                                    height: 12px;
+                                    border-radius: 6px;
+                                    background: root.limiter-on ? Theme.warn : Theme.line;
+                                    Rectangle {
+                                        x: (root.limiter-on != Theme.rtl) ? 14px : 2px;
+                                        y: 2px;
+                                        width: 8px;
+                                        height: 8px;
+                                        border-radius: 4px;
+                                        background: white;
+                                        animate x {
+                                            duration: 120ms;
+                                        }
+                                    }
+                                }
+                            }
+                            Text {
+                                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                                text: root.limiter-text;
+                                vertical-alignment: center;
+                                font-size: 11px * Theme.font-scale;
+                                color: root.limiter-on ? Theme.warn : Theme.muted;
+                            }
+                        }
                     }
                 }
             }
@@ -2374,8 +2444,8 @@ export component DetailsDialog inherits ThemedWindow {
     title: root.percent + " " + root.name;
     preferred-width: 500px;
     min-width: 440px;
-    // its own title bar (with "hide next to the clock" beside minimize)
-    no-frame: true;
+    // the Windows title bar: a window drawn without it answered the mouse
+    // in the wrong place on some Windows 10 / 11 computers
 
     in property <string> name;
     in property <string> percent;
@@ -2392,7 +2462,7 @@ export component DetailsDialog inherits ThemedWindow {
     in property <float> progress;
     in property <int> state;
     in property <[SegView]> segs;
-    in-out property <bool> show-details: true;
+    in-out property <bool> show-details: false;
     in-out property <int> tab: 0;
     // speed limiter tab
     in-out property <bool> limit-on;
@@ -2409,107 +2479,13 @@ export component DetailsDialog inherits ThemedWindow {
     callback hide-to-tray();
     callback limit-changed();
     callback completion-changed();
-    // title bar: move the window / minimize / the X
-    callback start-drag();
-    callback minimize();
-    callback close-clicked();
-    callback start-resize();
     // "Hide details" / "Show details": the window takes the size it needs
     out property <length> content-height: outer.preferred-height;
     callback details-toggled();
 
-    property <bool> tray-tip;
-    tip-timer := Timer {
-        interval: 600ms;
-        running: tray-btn.hovered && !root.tray-tip;
-        triggered => {
-            root.tray-tip = true;
-        }
-    }
-
-    Rectangle {
-        border-width: 1px;
-        border-color: Theme.line;
-    }
     outer := VerticalLayout {
-      padding: 1px;
+      padding: 0px;
       spacing: 0px;
-      Rectangle {
-        height: 30px;
-        background: Theme.panel;
-        // the title bar is laid out like the Windows one (buttons on the
-        // right) in every language, like the main window
-        HorizontalLayout {
-            spacing: 0px;
-            Rectangle {
-                horizontal-stretch: 1;
-                drag := TouchArea {
-                    pointer-event(ev) => {
-                        if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
-                            root.start-drag();
-                        }
-                    }
-                }
-                HorizontalLayout {
-                    padding-left: 8px;
-                    padding-right: 8px;
-                    spacing: 7px;
-                    Rectangle {
-                        width: 16px;
-                        Image {
-                            source: @image-url("icon-window.png");
-                            width: 16px;
-                            height: 16px;
-                            y: 7px;
-                        }
-                    }
-                    // a long (Arabic) name is cut at its own place: never over
-                    // the icon, never making the window wider
-                    Rectangle {
-                        min-width: 0px;
-                        horizontal-stretch: 1;
-                        clip: true;
-                        Text {
-                            width: parent.width;
-                            height: parent.height;
-                            // Arabic names start on the right (next to the buttons)
-                            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
-                            text: root.title;
-                            vertical-alignment: center;
-                            overflow: elide;
-                            color: Theme.text;
-                        }
-                    }
-                }
-            }
-            tray-btn := CaptionButton {
-                kind: "tray";
-                visible: root.state != 3;
-                width: root.state != 3 ? 44px : 0px;
-                changed hovered => {
-                    if (!self.hovered) {
-                        root.tray-tip = false;
-                    }
-                }
-                clicked => {
-                    root.tray-tip = false;
-                    root.hide-to-tray();
-                }
-            }
-            CaptionButton {
-                kind: "min";
-                clicked => {
-                    root.minimize();
-                }
-            }
-            CaptionButton {
-                kind: "close";
-                clicked => {
-                    root.close-clicked();
-                }
-            }
-        }
-      }
       VerticalLayout {
         padding: 10px;
         spacing: 0px;
@@ -2836,6 +2812,13 @@ export component DetailsDialog inherits ThemedWindow {
             Rectangle {
                 horizontal-stretch: 1;
             }
+            // the window goes, a small icon with the progress stays next to the clock
+            if root.state != 3: Button {
+                text: @tr("Next to the clock");
+                clicked => {
+                    root.hide-to-tray();
+                }
+            }
             if root.state == 0 || root.state == 1: Button {
                 text: @tr("Pause");
                 clicked => {
@@ -2946,46 +2929,6 @@ export component DetailsDialog inherits ThemedWindow {
             }
         }
     }
-    }
-    // the hint of the tray button
-    if root.tray-tip: Rectangle {
-        x: max(4px, root.width - 89px - tip-text.preferred-width - 16px);
-        y: 32px;
-        width: tip-text.preferred-width + 16px;
-        height: tip-text.preferred-height + 10px;
-        background: Theme.input-bg;
-        border-width: 1px;
-        border-color: Theme.line;
-        border-radius: 3px;
-        drop-shadow-blur: 6px;
-        drop-shadow-color: #00000044;
-        tip-text := Text {
-            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
-            text: @tr("Hide next to the clock");
-            color: Theme.text;
-        }
-    }
-    // a corner to make the window bigger
-    Rectangle {
-        x: root.width - 14px;
-        y: root.height - 14px;
-        width: 14px;
-        height: 14px;
-        TouchArea {
-            mouse-cursor: nwse-resize;
-            pointer-event(ev) => {
-                if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
-                    root.start-resize();
-                }
-            }
-        }
-        Path {
-            viewbox-width: 10;
-            viewbox-height: 10;
-            stroke: Theme.muted;
-            stroke-width: 1px;
-            commands: "M 9 3 L 3 9 M 9 6 L 6 9";
-        }
     }
 }
 

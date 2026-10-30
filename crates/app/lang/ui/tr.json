@@ -483,5 +483,7 @@
  "Delete the downloaded files from the disk too (be careful)": "İndirilen dosyaları diskten de sil (dikkat)",
  "Don't show this question again": "Bu soruyu bir daha gösterme",
  "Download the subtitles of videos too, in these languages:": "Videoların altyazılarını da bu dillerde indir:",
- "Quality of MP3 files": "MP3 dosyalarının kalitesi"
+ "Quality of MP3 files": "MP3 dosyalarının kalitesi",
+ "Next to the clock": "Saatin yanına",
+ "Draw the windows with the graphics card (uses more memory; after a restart)": "Pencereleri ekran kartıyla çiz (daha çok bellek; yeniden başlatınca)"
 }

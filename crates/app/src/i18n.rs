@@ -582,6 +582,14 @@ const AR: &[(&str, &str)] = &[
     ("Firefox: the add-in is signed again and updates by itself.", "فايرفوكس: الإضافة موقّعة من جديد وتتحدث وحدها."),
     ("Playlists have 240p and 144p, the MP3 quality can be chosen, and the subtitles of videos can be downloaded too (Options > Downloads).", "قوائم التشغيل فيها جودة 240p و144p، ويمكن اختيار جودة MP3، وتحميل ترجمة الفيديوهات أيضًا (الخيارات > التحميلات)."),
     ("The toolbar grows with bigger text, so the names are never cut.", "شريط الأدوات يكبر مع تكبير الخط، فلا تُقص أسماء الأزرار."),
+    ("The download window has the Windows title bar again, so every button answers the mouse where it is (Windows 10 and 11); its details stay hidden until you show them, and the windows keep the size you gave them.", "نافذة التحميل رجع لها شريط عنوان ويندوز، فكل زر يستجيب للماوس في مكانه (ويندوز 10 و11)؛ والتفاصيل مخفية حتى تُظهرها، والنوافذ تحتفظ بالمقاس الذي اخترته."),
+    ("The windows are drawn without the graphics card: much less memory, and the program no longer closes by itself at start on some computers (Options > General switches it back).", "النوافذ تُرسم بدون كارت الشاشة: استهلاك ذاكرة أقل بكثير، والبرنامج لم يعد يُغلق وحده عند الفتح على بعض الأجهزة (يمكن إرجاعه من الخيارات > عام)."),
+    ("A link that stops working (expired) is renewed by itself and checked first, then the download goes on from where it was.", "الرابط الذي يتوقف عن العمل (انتهت صلاحيته) يتجدد وحده ويُفحص أولًا، ثم يكمل التحميل من حيث توقف."),
+    ("The number of connections changes at once, even while a file downloads, and a connection much slower than the others is made again, so the speed stays steady.", "عدد الاتصالات يتغير فورًا حتى أثناء تحميل الملف، والاتصال الأبطأ بكثير من الباقي يُعاد فتحه، فتبقى السرعة ثابتة."),
+    ("The speed limiter goes on and off with a click in the status bar, and \"Move to queue\" opens in a list of its own.", "محدد السرعة يعمل ويتوقف بضغطة في شريط الحالة، و\"نقل إلى قائمة الانتظار\" تُفتح في قائمة خاصة بها."),
+    ("The video button: a small style (arrow and ✕) with a see-through slider, Facebook videos in the feed, and the qualities of streams on more sites.", "زر الفيديو: شكل صغير (سهم و✕) مع شريط للشفافية، وفيديوهات فيسبوك في الصفحة الرئيسية، وجودات البث في مواقع أكثر."),
+    ("The link stopped working. A new one is fetched in {} s and checked before the download goes on.", "الرابط توقف عن العمل. سيتم جلب رابط جديد خلال {} ثانية وفحصه قبل أن يكمل التحميل."),
+    ("The new link gives another file, so nothing more was written. Right-click the download and use \"Refresh download address\".", "الرابط الجديد يعطي ملفًا مختلفًا، لذلك لم يُكتب أي شيء إضافي. اضغط بزر الفأرة الأيمن على التحميل واختر \"تحديث عنوان التحميل\"."),
 ];
 
 #[cfg(test)]

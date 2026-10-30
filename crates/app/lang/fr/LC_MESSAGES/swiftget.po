@@ -49,6 +49,12 @@ msgstr "Télécharger toutes les vidéos d'une playlist, ou une partie."
 msgid "Download a .torrent file or a magnet link."
 msgstr "Télécharger un fichier .torrent ou un lien magnet."
 
+msgid "Move to queue"
+msgstr "Déplacer vers la file"
+
+msgid "Delete from queue"
+msgstr "Retirer de la file"
+
 msgid "{} downloads selected"
 msgstr "{} téléchargements sélectionnés"
 
@@ -81,12 +87,6 @@ msgstr "Actualiser l'adresse de téléchargement…"
 
 msgid "Move / Rename…"
 msgstr "Déplacer / Renommer…"
-
-msgid "Move to queue"
-msgstr "Déplacer vers la file"
-
-msgid "Delete from queue"
-msgstr "Retirer de la file"
 
 msgid "Copy address"
 msgstr "Copier l'adresse"
@@ -598,6 +598,9 @@ msgstr "<< Masquer les détails"
 msgid "Show details >>"
 msgstr "Afficher les détails >>"
 
+msgid "Next to the clock"
+msgstr "Près de l'horloge"
+
 msgid "Pause"
 msgstr "Pause"
 
@@ -612,9 +615,6 @@ msgstr "N°"
 
 msgid "Info"
 msgstr "Infos"
-
-msgid "Hide next to the clock"
-msgstr "Masquer près de l'horloge"
 
 msgid "Download complete"
 msgstr "Téléchargement terminé"
@@ -1041,6 +1041,9 @@ msgstr "Surveiller le presse-papiers pour les liens de téléchargement"
 
 msgid "Automatically start downloading links placed in the clipboard"
 msgstr "Démarrer automatiquement les liens copiés dans le presse-papiers"
+
+msgid "Draw the windows with the graphics card (uses more memory; after a restart)"
+msgstr "Dessiner les fenêtres avec la carte graphique (plus de mémoire ; après un redémarrage)"
 
 msgid "Show \"Tip of the day\" at startup"
 msgstr "Afficher \"l'Astuce du jour\" au démarrage"

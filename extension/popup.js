@@ -33,8 +33,21 @@ async function init() {
   });
 
   const look = document.getElementById("look");
-  chrome.storage.local.get({ bubbleStyle: "blue" }, (o) => (look.value = o.bubbleStyle || "blue"));
+  chrome.storage.local.get({ bubbleStyle: "compact" }, (o) => (look.value = o.bubbleStyle || "compact"));
   look.addEventListener("change", () => chrome.storage.local.set({ bubbleStyle: look.value }));
+
+  // how solid the button is on the video (the mouse on it: always solid)
+  const solid = document.getElementById("solid");
+  const solidText = document.getElementById("solidText");
+  const showSolid = (v) => {
+    solid.value = String(v);
+    solidText.textContent = `${v}%`;
+  };
+  chrome.storage.local.get({ bubbleOpacity: 0.9 }, (o) => showSolid(Math.round((Number(o.bubbleOpacity) || 0.9) * 100)));
+  solid.addEventListener("input", () => {
+    showSolid(Number(solid.value));
+    chrome.storage.local.set({ bubbleOpacity: Number(solid.value) / 100 });
+  });
 
   // full screen: the button stays out of the way unless the user wants it
   const fullscreen = document.getElementById("fullscreen");

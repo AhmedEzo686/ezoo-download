@@ -411,7 +411,14 @@ async function itemsForTab(tabId) {
     } else if (res.resolving) {
       items.push({ label: "Getting video qualities…", sub: "This takes a few seconds", disabled: true });
     } else if (res.resolveError && !media.length) {
-      items.push({ label: "Can't get this video", sub: res.resolveError, disabled: true });
+      // the page itself is no video page the app knows: the streams the
+      // player opens show up here as soon as it plays
+      const unknown = /unsupported url|no video formats|unable to extract/i.test(res.resolveError);
+      items.push(
+        unknown
+          ? { label: "Play the video for a moment", sub: "Its qualities appear here as soon as it plays", disabled: true }
+          : { label: "Can't get this video", sub: res.resolveError, disabled: true }
+      );
     }
   }
   if (yt) {
@@ -447,9 +454,28 @@ async function itemsForTab(tabId) {
       continue;
     }
     if (m.type === "HLS stream") {
+      // a quality list of a stream whose qualities are listed already
+      if (m.child) continue;
+      if (m.master && !m.master.separateAudio) {
+        // every quality of the stream, read from its playlist
+        for (const v of m.master.variants) {
+          items.push({ label: `${hlsLabel(v)} · MP4 · stream`, sub: v.url, url: v.url, ext: "ts" });
+        }
+        continue;
+      }
+      if (m.master) {
+        // picture and sound come in separate lists: the app puts them together
+        items.push({
+          label: `${m.master.variants.map(hlsLabel).slice(0, 4).join(" / ")} · choose a quality`,
+          sub: m.url,
+          resolve: m.url,
+          ext: "mp4",
+        });
+        continue;
+      }
       // saved as an MP4 file; the quality first when the address tells it
       items.push({ label: `${qualityOf(m.url) || "Video"} · MP4 · stream`, sub: m.url, url: m.url, ext: "ts" });
-      if (!hlsAsked) {
+      if (!hlsAsked && !m.media) {
         hlsAsked = true;
         items.push({ label: "Other qualities of this stream…", sub: m.url, resolve: m.url, ext: "mp4" });
       }
@@ -520,6 +546,88 @@ async function addMedia(tabId, item) {
   while (current.length > 15) current.shift();
   await chrome.storage.session.set({ [key]: current });
   pushToTab(tabId);
+  if (item.type === "HLS stream") readHls(tabId, item.url).catch(() => {});
+}
+
+/**
+ * An HLS stream: its playlist says which qualities it has (a "master" list
+ * of one list per quality). Read once, so the button shows "1080p", "720p"...
+ * instead of anonymous streams.
+ */
+function parseHlsMaster(text, base) {
+  if (!/#EXT-X-STREAM-INF/i.test(text)) return null;
+  const lines = text.split(/\r?\n/).map((l) => l.trim());
+  const variants = [];
+  // separate sound lists: a quality list alone would be without sound
+  const separateAudio = lines.some((l) => /^#EXT-X-MEDIA:.*TYPE=AUDIO.*URI=/i.test(l));
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^#EXT-X-STREAM-INF:/i.test(lines[i])) continue;
+    let uri = "";
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j] && !lines[j].startsWith("#")) {
+        uri = lines[j];
+        break;
+      }
+    }
+    if (!uri) continue;
+    let url = "";
+    try {
+      url = new URL(uri, base).toString();
+    } catch {
+      continue;
+    }
+    const res = /RESOLUTION=(\d+)x(\d+)/i.exec(lines[i]);
+    const bw = /[^-]BANDWIDTH=(\d+)/i.exec("," + lines[i]);
+    variants.push({ url, height: res ? Number(res[2]) : 0, width: res ? Number(res[1]) : 0, bw: bw ? Number(bw[1]) : 0 });
+  }
+  if (!variants.length) return null;
+  // one entry per quality, the best first
+  variants.sort((a, b) => b.height - a.height || b.bw - a.bw);
+  const seen = new Set();
+  const unique = variants.filter((v) => {
+    const k = v.height ? `h${v.height}` : `b${v.bw}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return { variants: unique, separateAudio };
+}
+
+async function readHls(tabId, url) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  let text = "";
+  try {
+    const r = await fetch(url, { credentials: "include", signal: ctl.signal });
+    if (!r.ok) return;
+    text = (await r.text()).slice(0, 512 * 1024);
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!/^\s*#EXTM3U/.test(text)) return;
+  const master = parseHlsMaster(text, url);
+  const key = `media_${tabId}`;
+  const current = (await chrome.storage.session.get(key))[key] || [];
+  const me = current.find((m) => m.url === url);
+  if (!me) return;
+  if (master) {
+    me.master = master;
+    // the quality lists the player opened by itself: shown under the master
+    const inside = new Set(master.variants.map((v) => v.url));
+    for (const m of current) if (m !== me && inside.has(m.url)) m.child = true;
+  } else {
+    me.media = true;
+    if (current.some((m) => m.master && m.master.variants.some((v) => v.url === url))) me.child = true;
+  }
+  await chrome.storage.session.set({ [key]: current });
+  pushToTab(tabId);
+}
+
+/** "1080p" (or the bit rate when the list does not say the size). */
+function hlsLabel(v) {
+  if (v.height) return `${v.height}p`;
+  if (v.bw) return `${Math.round(v.bw / 1000)} kbps`;
+  return "Video";
 }
 
 chrome.webRequest.onHeadersReceived.addListener(
@@ -749,20 +857,35 @@ async function resolveOneVideo(msg, tab) {
     if (found.length) return { items: found };
   }
   const items = [];
+  if (msg.feed && !msg.page) {
+    // Facebook feed and no link next to this video: the page's own streams,
+    // else how to get the video's own page
+    const found = tab ? (await itemsForTab(tab.id)).filter((i) => !i.disabled && !i.yt) : [];
+    if (found.length) return { items: found };
+    return { error: "Open the video first (click the time next to the name above the video), then press the button again." };
+  }
   if (msg.src && /^https?:/i.test(msg.src)) {
     items.push({ label: "Video file", sub: msg.src, url: msg.src, ext: (/\.(\w{2,4})(\?|$)/.exec(msg.src) || [])[1] || "mp4" });
   }
   const page = msg.page || (msg.src && !msg.frame ? "" : tab && tab.url);
+  let problem = "";
   if (page && /^https?:/i.test(page)) {
     try {
       const r = await askApp(page);
       if (r.resolved && r.resolved.options.length) items.unshift(...optionItems(r.resolved, page));
-      else if (!items.length) return { error: r.resolveError || "Can't get this video" };
+      else problem = r.resolveError || "Can't get this video";
     } catch (e) {
-      if (!items.length) return { error: (await appAlive()) ? String((e && e.message) || e) : "Ezoo Download is not running" };
+      if (!(await appAlive())) return { error: "Ezoo Download is not running" };
+      problem = String((e && e.message) || e);
     }
   }
-  return items.length ? { items } : { error: "Can't get this video" };
+  if (items.length) return { items };
+  // the page is nothing the app knows (a player of its own): the streams the
+  // player opened are this video
+  const found = tab ? (await itemsForTab(tab.id)).filter((i) => !i.disabled && !i.yt) : [];
+  if (found.length) return { items: found };
+  if (/unsupported url/i.test(problem)) return { error: "Play the video for a moment, then press the button again." };
+  return { error: problem || "Can't get this video" };
 }
 
 // ---------------------------------------------------------------- tab lifecycle
@@ -886,7 +1009,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       getOpts().then((o) => {
         if (!o.enabled) return;
         if (isYoutube(sender.tab.url)) resolveYoutube(sender.tab.id, sender.tab.url);
-        else resolvePage(sender.tab.id, msg.page || sender.tab.url, !!msg.frame);
+        // a Facebook feed: its address is no video (the video's own post
+        // link is looked up when its button is clicked)
+        else if (!msg.feed) resolvePage(sender.tab.id, msg.page || sender.tab.url, !!msg.frame);
       });
       return false;
     case "swiftget-resolve-video":

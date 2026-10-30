@@ -502,4 +502,6 @@ AR = {
     "Don't show this question again": "عدم إظهار هذا السؤال مرة أخرى",
     "Download the subtitles of videos too, in these languages:": "تحميل ترجمة الفيديوهات أيضًا، بهذه اللغات:",
     "Quality of MP3 files": "جودة ملفات MP3",
+    "Next to the clock": "بجوار الساعة",
+    "Draw the windows with the graphics card (uses more memory; after a restart)": "رسم النوافذ بكارت الشاشة (يستهلك ذاكرة أكثر؛ بعد إعادة التشغيل)",
 }

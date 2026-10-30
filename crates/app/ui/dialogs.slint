@@ -1977,6 +1977,7 @@ export component SettingsDialog inherits ThemedWindow {
     callback preview-look();
     in-out property <bool> start-with-windows;
     in-out property <bool> close-to-tray;
+    in-out property <bool> gpu-drawing;
     in-out property <bool> clipboard;
     in-out property <bool> auto-clipboard;
     in-out property <int> double-click;
@@ -2258,6 +2259,10 @@ export component SettingsDialog inherits ThemedWindow {
                         text: @tr("Automatically start downloading links placed in the clipboard");
                         checked <=> root.auto-clipboard;
                         enabled: root.clipboard;
+                    }
+                    CheckBox {
+                        text: @tr("Draw the windows with the graphics card (uses more memory; after a restart)");
+                        checked <=> root.gpu-drawing;
                     }
                     CheckBox {
                         text: @tr("Show \"Tip of the day\" at startup");

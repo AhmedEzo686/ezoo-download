@@ -49,6 +49,12 @@ msgstr "Скачать все или некоторые видео плейли�
 msgid "Download a .torrent file or a magnet link."
 msgstr "Скачать файл .torrent или magnet-ссылку."
 
+msgid "Move to queue"
+msgstr "Переместить в очередь"
+
+msgid "Delete from queue"
+msgstr "Убрать из очереди"
+
 msgid "{} downloads selected"
 msgstr "Выбрано загрузок: {}"
 
@@ -81,12 +87,6 @@ msgstr "Обновить адрес загрузки…"
 
 msgid "Move / Rename…"
 msgstr "Переместить / Переименовать…"
-
-msgid "Move to queue"
-msgstr "Переместить в очередь"
-
-msgid "Delete from queue"
-msgstr "Убрать из очереди"
 
 msgid "Copy address"
 msgstr "Копировать адрес"
@@ -598,6 +598,9 @@ msgstr "<< Скрыть подробности"
 msgid "Show details >>"
 msgstr "Подробнее >>"
 
+msgid "Next to the clock"
+msgstr "К часам"
+
 msgid "Pause"
 msgstr "Пауза"
 
@@ -612,9 +615,6 @@ msgstr "№"
 
 msgid "Info"
 msgstr "Инфо"
-
-msgid "Hide next to the clock"
-msgstr "Спрятать к часам"
 
 msgid "Download complete"
 msgstr "Загрузка завершена"
@@ -1041,6 +1041,9 @@ msgstr "Следить за буфером обмена на ссылки для
 
 msgid "Automatically start downloading links placed in the clipboard"
 msgstr "Автоматически скачивать ссылки, попавшие в буфер обмена"
+
+msgid "Draw the windows with the graphics card (uses more memory; after a restart)"
+msgstr "Рисовать окна видеокартой (больше памяти; после перезапуска)"
 
 msgid "Show \"Tip of the day\" at startup"
 msgstr "Показывать \"Совет дня\" при запуске"

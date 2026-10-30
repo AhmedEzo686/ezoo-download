@@ -151,6 +151,23 @@ pub(crate) struct Ui {
     browser_list: Rc<RefCell<Vec<browser::Browser>>>,
 }
 
+/// One line in a small log next to the downloads list (data\events.log):
+/// when the program started, closed, updated itself, could not start...
+/// what someone asking for help can send.
+pub(crate) fn note(what: &str) {
+    let dir = default_data_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("events.log");
+    if std::fs::metadata(&path).map(|m| m.len() > 128 * 1024).unwrap_or(false) {
+        let _ = std::fs::rename(&path, path.with_extension("old.log"));
+    }
+    let line = format!("{} {} {}\n", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"), env!("CARGO_PKG_VERSION"), what);
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
 /// A crash leaves a note (what and where, no personal data) in crash.log in
 /// the program's data folder, so it can be found and fixed.
 fn install_crash_log() {
@@ -184,12 +201,67 @@ fn install_crash_log() {
     }));
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() {
     install_crash_log();
+    let data_dir = default_data_dir();
+    let gpu = Settings::load(&data_dir.join("settings.json")).gpu_drawing;
+    // The windows are drawn by the processor unless the user chose the
+    // graphics card: drawing with it needs a working OpenGL driver (without
+    // one the program closed by itself), takes hundreds of MB on some cards,
+    // and the progress window answered the mouse in the wrong place on some
+    // Windows 10 computers.
+    if std::env::var_os("SLINT_BACKEND").is_none() && !gpu {
+        std::env::set_var("SLINT_BACKEND", "winit-software");
+    }
+    if let Err(e) = run() {
+        let text = format!("{e:#}");
+        note(&format!("could not start: {text}"));
+        if gpu {
+            // the graphics card could not draw: the next start uses the processor
+            let path = data_dir.join("settings.json");
+            let mut s = Settings::load(&path);
+            s.gpu_drawing = false;
+            let _ = s.save(&path);
+        }
+        let _ = rfd::MessageDialog::new()
+            .set_title("Ezoo Download")
+            .set_level(rfd::MessageLevel::Error)
+            .set_description(format!(
+                "Ezoo Download could not start:\n\n{text}\n\nتعذّر تشغيل Ezoo Download. أعد تشغيل الجهاز ثم جرّب مرة أخرى."
+            ))
+            .show();
+        std::process::exit(1);
+    }
+}
+
+/// End a copy of this program that hangs (only ever one of ours: the id
+/// came from its own answer on our port, and the name is checked too).
+fn end_process(pid: u32) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let exe = std::env::current_exe().ok().and_then(|e| e.file_name().map(|n| n.to_string_lossy().to_string()));
+        let exe = exe.unwrap_or_else(|| "EzooDownload.exe".into());
+        let _ = std::process::Command::new(swiftget_engine::system::windows_tool("taskkill.exe"))
+            .args(["/F", "/PID", &pid.to_string(), "/FI", &format!("IMAGENAME eq {exe}")])
+            .creation_flags(0x0800_0000) // no console window
+            .status();
+    }
+    #[cfg(not(windows))]
+    let _ = pid;
+}
+
+fn run() -> anyhow::Result<()> {
     // started by Windows at sign-in: stay next to the clock, no window
     let background = std::env::args().any(|a| a == "--background");
     let data_dir = default_data_dir();
     let port = Settings::load(&data_dir.join("settings.json")).browser_port;
+    if std::env::args().any(|a| a == "--quit") {
+        // run by the setup: the open copy closes (saving everything), this one too
+        api::notify_quit(port);
+        return Ok(());
+    }
+    note(&format!("start{}", if background { " (with Windows)" } else { "" }));
 
     // opened again by the program itself: the old one may still be closing
     let mut first = api::bind(port);
@@ -213,10 +285,42 @@ fn main() -> anyhow::Result<()> {
                     return Ok(());
                 }
             }
-            if api::notify_existing(port) {
-                return Ok(());
+            match api::notify_existing(port) {
+                api::Existing::Shown => {
+                    note("already open: brought to the front");
+                    return Ok(());
+                }
+                api::Existing::Hangs(pid) => {
+                    note(&format!("already open but not answering (process {pid})"));
+                    let yes = matches!(
+                        rfd::MessageDialog::new()
+                            .set_title(APP)
+                            .set_level(rfd::MessageLevel::Warning)
+                            .set_description(
+                                "Ezoo Download is already open but does not answer.\nClose it and open it again?\n\n\
+                                 Ezoo Download مفتوح بالفعل لكنه لا يستجيب.\nهل تريد إغلاقه وفتحه من جديد؟",
+                            )
+                            .set_buttons(rfd::MessageButtons::YesNo)
+                            .show(),
+                        rfd::MessageDialogResult::Yes
+                    );
+                    if !yes || pid == 0 || pid == std::process::id() {
+                        return Ok(());
+                    }
+                    end_process(pid);
+                    // its port is free a moment later
+                    let mut got = None;
+                    for _ in 0..40 {
+                        std::thread::sleep(Duration::from_millis(250));
+                        if let Ok(s) = api::bind(port) {
+                            got = Some(s);
+                            break;
+                        }
+                    }
+                    got
+                }
+                api::Existing::None => None,
             }
-            None
         }
     };
 
@@ -251,7 +355,7 @@ fn main() -> anyhow::Result<()> {
     {
         about_dlg.on_open_link(|u| {
             if u.starts_with("https://") {
-                let _ = open::that(u.as_str());
+                let _ = open::that_detached(u.as_str());
             }
         });
         let w = about_dlg.as_weak();
@@ -445,6 +549,8 @@ fn main() -> anyhow::Result<()> {
         let ui = ui.clone();
         let hidden_ticks = Cell::new(0u32);
         timer.start(TimerMode::Repeated, Duration::from_millis(250), move || {
+            // the windows are alive (a second copy started by the user asks)
+            api::UI_ALIVE.store(api::now_secs(), std::sync::atomic::Ordering::Relaxed);
             if modal_open() {
                 return;
             }
@@ -481,6 +587,7 @@ fn main() -> anyhow::Result<()> {
         let ui = ui.clone();
         power_timer.start(TimerMode::Repeated, Duration::from_secs(1), move || {
             extra::tick_countdown(&ui);
+            follow_sizes(&ui);
             // the window may have been shown again from the icon next to the clock
             if let Some(m) = ui.ctx.main.upgrade() {
                 if m.window().is_visible() {
@@ -518,10 +625,23 @@ fn main() -> anyhow::Result<()> {
             }
         }
     }
+    // the size the user gave the main window last time
+    if let Some((w, h)) = saved_size(&mgr, "main") {
+        main.window().set_size(slint::LogicalSize::new(w, h));
+    }
+    let was_maximized = mgr.settings().main_maximized;
     if !(background && has_tray) {
         main.show()?;
         // the main window: in the middle of the screen, and it can be maximized
         winfx::place(main.as_weak(), true);
+        if was_maximized {
+            let w = main.as_weak();
+            Timer::single_shot(Duration::from_millis(60), move || {
+                if let Some(m) = w.upgrade() {
+                    m.window().set_maximized(true);
+                }
+            });
+        }
         winfx::set_opacity(main.window(), mgr.settings().opacity);
         let mut s = mgr.settings();
         if !s.extension_prompted {
@@ -549,7 +669,17 @@ fn main() -> anyhow::Result<()> {
         });
     }
     slint::run_event_loop_until_quit()?;
+    note("closed");
     preview::clean_all();
+    {
+        // opens maximized next time when it was maximized now
+        let max = main.window().is_maximized();
+        let mut s = mgr.settings();
+        if s.main_maximized != max {
+            s.main_maximized = max;
+            let _ = mgr.set_settings(s);
+        }
+    }
 
     // save everything and stop downloads cleanly (they resume next time)
     drop(timer);
@@ -893,7 +1023,7 @@ fn wire_main(ui: &Ui) {
         main.on_open_download_folder(move || {
             let dir = mgr.settings().download_dir;
             let _ = std::fs::create_dir_all(&dir);
-            let _ = open::that(&dir);
+            let _ = open::that_detached(&dir);
         });
     }
     {
@@ -1184,6 +1314,10 @@ thread_local! {
 fn handle_api(ui: &Ui, event: api::ApiEvent) {
     match event {
         api::ApiEvent::Show => bring_to_front(&ui.ctx),
+        api::ApiEvent::Quit => {
+            note("closed for the setup");
+            let _ = slint::quit_event_loop();
+        }
         api::ApiEvent::OpenTorrent(s) => torrent_ui::open_source(&s),
         api::ApiEvent::Playlist(url) => playlist::open_url(ui, &url),
         api::ApiEvent::Links(l) => grab::open_links(ui, l),
@@ -1341,7 +1475,7 @@ fn wire_add(ui: &Ui) {
             let _ = d.hide();
             if url.starts_with("http://") || url.starts_with("https://") {
                 api::leave_to_browser(&url);
-                let _ = open::that(&url);
+                let _ = open::that_detached(&url);
             }
             open_next(&ctx);
         });
@@ -1593,6 +1727,7 @@ pub(crate) struct ModalGuard(bool);
 
 impl ModalGuard {
     pub(crate) fn new() -> ModalGuard {
+        api::UI_WAITS.store(true, std::sync::atomic::Ordering::Relaxed);
         ModalGuard(MODAL.with(|m| m.replace(true)))
     }
 }
@@ -1601,6 +1736,9 @@ impl Drop for ModalGuard {
     fn drop(&mut self) {
         let before = self.0;
         MODAL.with(|m| m.set(before));
+        api::UI_WAITS.store(before, std::sync::atomic::Ordering::Relaxed);
+        // waiting for the box was no hang
+        api::UI_ALIVE.store(api::now_secs(), std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -1715,6 +1853,64 @@ pub(crate) fn bring_to_front(ctx: &Ctx) {
             winfx::place(w.as_weak(), true);
         }
         to_front!(w);
+    }
+}
+
+// ------------------------------------------------------------ window sizes
+// The size the user gave a window is kept (Options don't have it: it is
+// dragged), and the window opens with it next time.
+
+thread_local! {
+    // the size each window had at the last look (saved once it stays the same)
+    static SEEN_SIZE: RefCell<HashMap<String, (f32, f32)>> = RefCell::new(HashMap::new());
+}
+
+/// The size a window had when the program was used last.
+pub(crate) fn saved_size(mgr: &Manager, key: &str) -> Option<(f32, f32)> {
+    mgr.settings()
+        .window_sizes
+        .get(key)
+        .copied()
+        .filter(|&(w, h)| (200.0..10000.0).contains(&w) && (80.0..10000.0).contains(&h))
+}
+
+/// The size of `w` now, in the units the windows are made with.
+fn size_now(w: &slint::Window) -> Option<(f32, f32)> {
+    if !w.is_visible() || w.is_minimized() || w.is_maximized() {
+        return None;
+    }
+    let s = w.size().to_logical(w.scale_factor());
+    Some((s.width.round(), s.height.round()))
+}
+
+/// Called about once a second: a size that stayed the same since the last
+/// look and is new is saved (not while the edge is still being dragged).
+pub(crate) fn follow_size(mgr: &Arc<Manager>, key: &str, size: Option<(f32, f32)>) {
+    let Some(size) = size else { return };
+    let steady = SEEN_SIZE.with(|m| m.borrow_mut().insert(key.to_string(), size) == Some(size));
+    if steady && mgr.settings().window_sizes.get(key) != Some(&size) {
+        let mut s = mgr.settings();
+        s.window_sizes.insert(key.to_string(), size);
+        let _ = mgr.set_settings(s);
+    }
+}
+
+/// The sizes of the main window and the progress windows, once a second.
+fn follow_sizes(ui: &Ui) {
+    if let Some(m) = ui.ctx.main.upgrade() {
+        follow_size(&ui.ctx.mgr, "main", size_now(m.window()));
+    }
+    for (d, _) in ui.progress.borrow().values() {
+        // the height counts only with the details shown (without them the
+        // window is as small as it can be)
+        if let Some((w, h)) = size_now(d.window()) {
+            let h = if d.get_show_details() {
+                h
+            } else {
+                saved_size(&ui.ctx.mgr, "progress").map(|s| s.1).unwrap_or(0.0)
+            };
+            follow_size(&ui.ctx.mgr, "progress", Some((w, h)));
+        }
     }
 }
 
@@ -2450,17 +2646,33 @@ fn sha256_of(path: &Path) -> std::io::Result<String> {
     Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
+/// "Open with…": Windows' own list of programs for the file. On a thread
+/// of its own: the windows never wait for it.
 pub(crate) fn open_with(path: &Path) {
+    let path = path.to_path_buf();
     #[cfg(windows)]
-    {
-        let _ = std::process::Command::new(swiftget_engine::system::windows_tool("rundll32.exe"))
-            .arg("shell32.dll,OpenAs_RunDLL")
-            .arg(path)
-            .spawn();
-    }
+    std::thread::spawn(move || {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::UI::Shell::{SHOpenWithDialog, OAIF_ALLOW_REGISTRATION, OAIF_EXEC, OPENASINFO};
+        let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        let info = OPENASINFO {
+            pcszFile: wide.as_ptr(),
+            pcszClass: std::ptr::null(),
+            oaifInFlags: OAIF_ALLOW_REGISTRATION | OAIF_EXEC,
+        };
+        // SAFETY: `wide` is a NUL-terminated path that outlives the call
+        let hr = unsafe { SHOpenWithDialog(std::ptr::null_mut(), &info) };
+        if hr < 0 {
+            // an older Windows: the classic way
+            let _ = std::process::Command::new(swiftget_engine::system::windows_tool("rundll32.exe"))
+                .arg("shell32.dll,OpenAs_RunDLL")
+                .arg(&path)
+                .spawn();
+        }
+    });
     #[cfg(not(windows))]
     {
-        let _ = open::that(path);
+        let _ = open::that_detached(path);
     }
 }
 
@@ -2610,7 +2822,7 @@ pub(crate) fn reveal_in_folder(v: &DownloadView) {
         }
     }
     let _ = std::fs::create_dir_all(&dir);
-    let _ = open::that(&dir);
+    let _ = open::that_detached(&dir);
 }
 
 pub(crate) fn state_of(s: Status) -> i32 {
@@ -2687,7 +2899,9 @@ pub(crate) fn open_download(path: &std::path::Path) {
     if path.extension().map(|e| e.eq_ignore_ascii_case("torrent")).unwrap_or(false) && path.is_file() {
         torrent_ui::open_source(&path.display().to_string());
     } else {
-        let _ = open::that(path);
+        // the program that opens it may take its time (or Windows asks which
+        // one to use): the windows don't wait for it
+        let _ = open::that_detached(path);
     }
 }
 
@@ -2699,6 +2913,11 @@ pub(crate) fn err_text(e: &str) -> String {
         t("The drive of the download folder is locked by BitLocker. Unlock it in Windows, or choose another folder (right-click the download > Properties).")
     } else if e.contains("is already registered") {
         t("This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.")
+    } else if let Some(rest) = e.split("the link stopped working - getting a new one in ").nth(1) {
+        let secs = rest.split(' ').next().unwrap_or("?");
+        tf("The link stopped working. A new one is fetched in {} s and checked before the download goes on.", &[&secs])
+    } else if e.contains("the new link is not the same file") {
+        t("The new link gives another file, so nothing more was written. Right-click the download and use \"Refresh download address\".")
     } else if e.contains("the link has expired or the file was removed") {
         t("The link has expired or the file was removed. Right-click the download and use \"Refresh download address\".")
     } else {
@@ -2950,6 +3169,16 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
     let Ok(d) = DetailsDialog::new() else { return };
     let settings = ui.ctx.mgr.settings();
     set_theme_of(d.global::<Theme>(), &Look::of(&settings));
+    // the details (connections) only when the user chose to see them; the
+    // window opens as wide / tall as it was last time
+    d.set_show_details(settings.progress_details);
+    {
+        let saved = saved_size(&ui.ctx.mgr, "progress");
+        let width = saved.map(|s| s.0).unwrap_or(500.0).max(440.0);
+        let small = d.get_content_height();
+        let height = if settings.progress_details { saved.map(|s| s.1).unwrap_or(0.0).max(small) } else { small };
+        d.window().set_size(slint::LogicalSize::new(width, height.max(120.0)));
+    }
     // the tabs' controls are set once, so typing in them isn't overwritten
     d.set_limit_on(v.speed_limit_kb.is_some());
     d.set_limit_kb(v.speed_limit_kb.unwrap_or(500).min(1_000_000) as i32);
@@ -3016,55 +3245,31 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
         });
     }
     {
-        let w = d.as_weak();
-        d.on_start_drag(move || {
-            if let Some(d) = w.upgrade() {
-                winfx::drag_window(d.window());
-            }
-        });
-    }
-    {
         // "Hide details": the window gets small; "Show details": back to
         // the height it had
-        let (w, tall) = (d.as_weak(), Rc::new(Cell::new(0f32)));
+        // the choice is kept for the next windows
+        let (w, mgr) = (d.as_weak(), ui.ctx.mgr.clone());
         d.on_details_toggled(move || {
-            let (w, tall) = (w.clone(), tall.clone());
+            let (w, mgr) = (w.clone(), mgr.clone());
+            let mut st = mgr.settings();
+            if let Some(d) = w.upgrade() {
+                if st.progress_details != d.get_show_details() {
+                    st.progress_details = d.get_show_details();
+                    let _ = mgr.set_settings(st);
+                }
+            }
             slint::Timer::single_shot(Duration::from_millis(1), move || {
                 let Some(d) = w.upgrade() else { return };
                 let scale = d.window().scale_factor();
                 let now = d.window().size().to_logical(scale);
                 let height = if d.get_show_details() {
-                    let before = tall.get();
-                    if before > 0.0 { before } else { now.height.max(d.get_content_height()) }
+                    let before = saved_size(&mgr, "progress").map(|s| s.1).unwrap_or(0.0);
+                    before.max(d.get_content_height())
                 } else {
-                    tall.set(now.height);
                     d.get_content_height()
                 };
                 d.window().set_size(slint::LogicalSize::new(now.width, height.max(120.0)));
             });
-        });
-    }
-    {
-        let w = d.as_weak();
-        d.on_start_resize(move || {
-            if let Some(d) = w.upgrade() {
-                winfx::drag_resize_window(d.window());
-            }
-        });
-    }
-    {
-        let w = d.as_weak();
-        d.on_minimize(move || {
-            if let Some(d) = w.upgrade() {
-                d.window().set_minimized(true);
-            }
-        });
-    }
-    {
-        // its own X (title bar) does what the Windows X did: stop and close
-        let (map, mgr) = (ui.progress.clone(), ui.ctx.mgr.clone());
-        d.on_close_clicked(move || {
-            stop_and_close(&map, &mgr, id);
         });
     }
     {

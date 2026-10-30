@@ -25,6 +25,9 @@ pub struct Progress {
     pub waiting: AtomicBool,
     /// woken when data flows again, so every waiting part retries at once
     pub back_online: tokio::sync::Notify,
+    /// connections the user wants now (0 = as many as the download began
+    /// with): changed while it runs, it gets more / fewer at once
+    pub want_connections: AtomicU32,
 }
 
 impl Progress {
@@ -120,6 +123,31 @@ pub fn is_passing_error(e: &anyhow::Error) -> bool {
     ["closed early", "ended before", "timed out", "reset", "broken pipe", "unexpected eof", "connection"]
         .iter()
         .any(|w| text.contains(w))
+}
+
+/// The server stopped taking the link (401 / 403 / 410, an expired link):
+/// a new link is fetched the way the first one was (the address the
+/// download came from, or the video's page), checked, and the download goes
+/// on with it from where it was.
+pub fn is_link_gone(e: &anyhow::Error) -> bool {
+    if matches!(http_status_of(e), Some(401 | 403 | 410)) {
+        return true;
+    }
+    let text = format!("{e:#}").to_ascii_lowercase();
+    text.contains("link has expired") || text.contains("not the same file")
+}
+
+/// How long to wait before the next try to get a working link: 3 s, 10 s,
+/// 30 s, 1 min, 2 min, 5 min.
+pub fn relink_delay(n: u32) -> Duration {
+    Duration::from_secs(match n {
+        0 | 1 => 3,
+        2 => 10,
+        3 => 30,
+        4 => 60,
+        5 => 120,
+        _ => 300,
+    })
 }
 
 /// How long to wait before the next try after a passing failure:

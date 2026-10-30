@@ -27,12 +27,21 @@ const ytCalls = []; const browserDl = []; const cancelled = []; const suggested 
 const fetch = async (url, opts = {}) => {
   if (url.endsWith("/ping") && pingExt) return { ok: true, status: 200, json: async () => ({ ext: pingExt }) };
   if (url.endsWith("/add")) { if (appDown) throw new TypeError("Failed to fetch"); sent.push(JSON.parse(opts.body)); }
+  if (url.endsWith("/resolve") && JSON.parse(opts.body).url.includes("unsupported.example")) {
+    return { ok: true, status: 200, json: async () => ({ ok: false, error: "Unsupported URL: https://unsupported.example/watch" }) };
+  }
   if (url.endsWith("/resolve")) {
     ytCalls.push(JSON.parse(opts.body));
     await new Promise((r) => setTimeout(r, 30)); // yt-dlp takes a moment
     return { ok: true, status: 200, json: async () => ({ ok: true, title: "Real: Title", options: [
       { key: "1080p|MP4", label: "1080p · MP4", sub: "94 MB", quality: "1080p", videoUrl: "https://gv/137", audioUrl: "https://gv/140", ext: "mp4", size: 94e6, headers: [["User-Agent", "YtDlpUA"]] },
       { key: "audio|M4A", label: "Audio only · M4A 130k", sub: "4 MB", quality: "audio", videoUrl: "https://gv/140", audioUrl: null, ext: "m4a", size: 4e6, headers: [] } ] }) };
+  }
+  if (url.includes("/pl/master")) {
+    return { ok: true, status: 200, text: async () => "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\n360/index.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080\n1080/index.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720\nhttps://cdn2.example/720/index.m3u8\n" };
+  }
+  if (url.includes("/pl/") && url.endsWith("index.m3u8")) {
+    return { ok: true, status: 200, text: async () => "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\na.ts\n" };
   }
   return { ok: true, status: 200 };
 };
@@ -196,6 +205,25 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
     assert.strictEqual(ytCalls[n].url, dash.resolve);
     assert.strictEqual(ytCalls[n].referer, "https://site.example/watch/1", "the page goes along as referrer");
     console.log("DASH stream: offered, qualities from the app with the page as referrer");
+  }
+  // an HLS stream with several qualities: each one by its name (from the
+  // playlist), the lists the player opened itself are not repeated
+  {
+    const hdr = [{ name: "Content-Type", value: "application/vnd.apple.mpegurl" }];
+    listeners.headers({ tabId: 41, url: "https://cdn.example/pl/master", statusCode: 200, responseHeaders: hdr });
+    await tick(); await tick(); await tick();
+    listeners.headers({ tabId: 41, url: "https://cdn.example/pl/1080/index.m3u8", statusCode: 200, responseHeaders: hdr });
+    for (let i = 0; i < 6; i++) await tick();
+    const items = await new Promise((r) => listeners.msg({ type: "swiftget-get-media", tabId: 41 }, {}, r));
+    const labels = items.map((i) => i.label);
+    assert.strictEqual(JSON.stringify(labels), JSON.stringify(["1080p · MP4 · stream", "720p · MP4 · stream", "360p · MP4 · stream"]));
+    assert.strictEqual(items[0].url, "https://cdn.example/pl/1080/index.m3u8");
+    assert.strictEqual(items[1].url, "https://cdn2.example/720/index.m3u8");
+    // the button of that player: the page is nothing the app knows -> its streams
+    const res = await new Promise((r) =>
+      listeners.msg({ type: "swiftget-resolve-video", page: "", src: "", frame: false }, { tab: { id: 41, url: "https://unsupported.example/watch" } }, r));
+    assert(res.items && res.items.length === 3, "the streams instead of an error: " + JSON.stringify(res));
+    console.log("HLS qualities:", labels.join(" | "));
   }
   console.log("background simulation: all checks passed");
 })().catch((e) => { console.error(e); process.exit(1); });

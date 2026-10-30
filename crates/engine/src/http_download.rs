@@ -21,7 +21,33 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 /// How long we wait for the next chunk before treating the connection as dead.
-const STALL_TIMEOUT: Duration = Duration::from_secs(30);
+const STALL_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// A connection much slower than the others is dropped and made again (the
+/// server often gives a new one full speed): checked over this long...
+const SLOW_WINDOW: Duration = Duration::from_secs(8);
+/// ...when it brings less than this...
+const SLOW_BYTES_PER_SEC: u64 = 48 * 1024;
+/// ...and less than this part of what one connection brings on average.
+const SLOW_SHARE: u64 = 6;
+
+/// This connection is more than the user wants now: it stops (its part is
+/// left to the others).
+#[derive(Debug)]
+struct Leave;
+impl std::fmt::Display for Leave {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("connection not needed")
+    }
+}
+impl std::error::Error for Leave {}
+
+/// How many connections run and how many were asked to stop.
+#[derive(Default)]
+struct Crew {
+    running: u32,
+    leaving: u32,
+}
 
 #[derive(Clone)]
 pub struct HttpJob {
@@ -112,9 +138,22 @@ pub async fn run(
 
     let file = Arc::new(file);
     let child = cancel.child_token();
-    let workers = if segmented { job.connections.max(1) } else { 1 };
+    let crew = Arc::new(Mutex::new(Crew::default()));
+    let wanted = {
+        let (progress, job_conns) = (progress.clone(), job.connections.max(1));
+        move || {
+            if !segmented {
+                return 1;
+            }
+            match progress.want_connections.load(Ordering::Relaxed) {
+                0 => job_conns,
+                n => n.clamp(1, 32),
+            }
+        }
+    };
     let mut set = JoinSet::new();
-    for _ in 0..workers {
+    let spawn = |set: &mut JoinSet<anyhow::Result<()>>| {
+        crew.lock().unwrap().running += 1;
         let ctx = Worker {
             shared: shared.clone(),
             job: job.clone(),
@@ -123,18 +162,58 @@ pub async fn run(
             file: file.clone(),
             cancel: child.clone(),
             segmented,
+            crew: crew.clone(),
+            wanted: Arc::new(wanted.clone()),
         };
         set.spawn(ctx.run());
+    };
+    for _ in 0..wanted() {
+        spawn(&mut set);
     }
 
     let mut first_error: Option<anyhow::Error> = None;
-    while let Some(res) = set.join_next().await {
-        let res = res.map_err(|e| anyhow!("worker crashed: {e}")).and_then(|r| r);
-        if let Err(e) = res {
-            if first_error.is_none() && !cancel.is_cancelled() {
-                first_error = Some(e);
+    let mut look = tokio::time::interval(Duration::from_millis(500));
+    look.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            res = set.join_next() => {
+                let Some(res) = res else {
+                    // every connection is done: more work left (fewer were
+                    // wanted for a moment, then more again)? then on
+                    if first_error.is_none() && !cancel.is_cancelled() && segmented && wanted() > 0 {
+                        let more = !segments::all_finished(&segs.lock().unwrap());
+                        if more {
+                            spawn(&mut set);
+                            continue;
+                        }
+                    }
+                    break;
+                };
+                let res = res.map_err(|e| anyhow!("worker crashed: {e}")).and_then(|r| r);
+                if let Err(e) = res {
+                    if first_error.is_none() && !cancel.is_cancelled() {
+                        first_error = Some(e);
+                    }
+                    child.cancel();
+                }
             }
-            child.cancel();
+            _ = look.tick() => {
+                // more connections wanted (Options): as many more as there are
+                // parts worth sharing
+                if first_error.is_none() && segmented && !child.is_cancelled() {
+                    let (running, leaving) = {
+                        let c = crew.lock().unwrap();
+                        (c.running, c.leaving)
+                    };
+                    let missing = wanted().saturating_sub(running.saturating_sub(leaving));
+                    for _ in 0..missing {
+                        if !has_work(&segs, job.min_split) {
+                            break;
+                        }
+                        spawn(&mut set);
+                    }
+                }
+            }
         }
     }
     file.sync_all().ok();
@@ -152,6 +231,14 @@ pub async fn run(
     Ok(())
 }
 
+/// A part could be taken by one more connection: one nobody works on, or
+/// one big enough to be shared.
+fn has_work(segs: &SegTable, min_split: u64) -> bool {
+    let t = segs.lock().unwrap();
+    let min = min_split.max(1) * 2;
+    t.iter().any(|s| !s.is_finished() && (!s.active || s.remaining() >= min))
+}
+
 struct Worker {
     shared: Arc<Shared>,
     job: HttpJob,
@@ -160,11 +247,53 @@ struct Worker {
     file: Arc<File>,
     cancel: CancellationToken,
     segmented: bool,
+    crew: Arc<Mutex<Crew>>,
+    wanted: Arc<dyn Fn() -> u32 + Send + Sync>,
+}
+
+/// Counts the connection out when it ends, however it ends.
+struct OutOfCrew(Arc<Mutex<Crew>>, bool);
+impl Drop for OutOfCrew {
+    fn drop(&mut self) {
+        let mut c = self.0.lock().unwrap();
+        c.running = c.running.saturating_sub(1);
+        if self.1 {
+            c.leaving = c.leaving.saturating_sub(1);
+        }
+    }
 }
 
 impl Worker {
+    /// More connections run than wanted now: this one stops (counted at once,
+    /// so only as many stop as needed).
+    fn should_leave(&self) -> bool {
+        let want = (self.wanted)();
+        let mut c = self.crew.lock().unwrap();
+        if c.running.saturating_sub(c.leaving) > want {
+            c.leaving += 1;
+            true
+        } else {
+            false
+        }
+    }
+
     async fn run(self) -> anyhow::Result<()> {
+        let mut out = OutOfCrew(self.crew.clone(), false);
+        let r = self.work().await;
+        match r {
+            Err(e) if e.is::<Leave>() => {
+                out.1 = true;
+                Ok(())
+            }
+            other => other,
+        }
+    }
+
+    async fn work(&self) -> anyhow::Result<()> {
         loop {
+            if self.segmented && self.should_leave() {
+                return Err(Leave.into());
+            }
             let idx = {
                 let mut table = self.segs.lock().unwrap();
                 if self.segmented {
@@ -212,6 +341,7 @@ impl Worker {
                     }
                     attempt = 0; // one request done, ask for the next piece
                 }
+                Err(e) if e.is::<Leave>() => return Err(e),
                 Err(e) => {
                     let after = self.segs.lock().unwrap()[idx].pos;
                     if after > before {
@@ -293,6 +423,10 @@ impl Worker {
             return Err(HttpStatus(status.as_u16()).into());
         }
         let _guard = ConnGuard::new(&self.progress);
+        // how fast this connection is compared with the whole download
+        let mut window = std::time::Instant::now();
+        let (mut mine, mut all_before) = (0u64, self.progress.bytes.load(Ordering::Relaxed));
+        let mut slow_windows = 0u32;
 
         loop {
             let chunk = match tokio::time::timeout(STALL_TIMEOUT, resp.chunk()).await {
@@ -300,6 +434,32 @@ impl Worker {
                 Err(_) => return Err(NetDrop("connection timed out").into()),
             };
             let Some(chunk) = chunk else { break };
+            if self.segmented && self.should_leave() {
+                // fewer connections wanted: this one goes, its part stays for the others
+                return Err(Leave.into());
+            }
+            mine += chunk.len() as u64;
+            let spent = window.elapsed();
+            if self.segmented && spent >= SLOW_WINDOW {
+                let all_now = self.progress.bytes.load(Ordering::Relaxed);
+                let conns = self.progress.connections.load(Ordering::Relaxed).max(1) as u64;
+                let secs = spent.as_secs().max(1);
+                let my_rate = mine / secs;
+                let average = all_now.saturating_sub(all_before) / secs / conns;
+                // much slower than the others (and the limiter is not the reason)
+                let limited = self.shared.limiter.rate() > 0 || self.job.limiter.rate() > 0;
+                if !limited && conns >= 2 && my_rate < SLOW_BYTES_PER_SEC && my_rate * SLOW_SHARE < average {
+                    slow_windows += 1;
+                } else {
+                    slow_windows = 0;
+                }
+                if slow_windows >= 2 {
+                    return Err(NetDrop("slow connection, made again").into());
+                }
+                window = std::time::Instant::now();
+                mine = 0;
+                all_before = all_now;
+            }
             self.shared.limiter.acquire(chunk.len()).await;
             self.job.limiter.acquire(chunk.len()).await;
             let finished = {

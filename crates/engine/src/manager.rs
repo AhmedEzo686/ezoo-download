@@ -90,6 +90,9 @@ pub struct Manager {
     data_dir: PathBuf,
     /// the hidden torrent program (started when the first torrent runs)
     torrents: Arc<torrent::Aria2>,
+    /// downloads whose link stopped working: the next start gets a new link
+    /// and goes on only when it is the same file (size, ranges)
+    relink: Mutex<HashSet<DownloadId>>,
 }
 
 /// Default place for settings.json and downloads.json
@@ -110,6 +113,19 @@ pub fn default_data_dir() -> PathBuf {
         }
     }
     dir
+}
+
+/// The new link of a download whose old link stopped working gives the same
+/// file: as big as before, a web page it is not, and it takes part requests.
+fn same_file(p: &ProbeResult, size: Option<u64>) -> anyhow::Result<()> {
+    if p.is_web_page() || !p.resumable || size.is_none() || p.total_size != size {
+        anyhow::bail!(
+            "the new link is not the same file ({} instead of {}) - nothing was written; use \"Refresh download address\"",
+            p.total_size.map(|n| n.to_string()).unwrap_or_else(|| "unknown size".into()),
+            size.map(|n| n.to_string()).unwrap_or_else(|| "unknown".into())
+        );
+    }
+    Ok(())
 }
 
 impl Manager {
@@ -180,6 +196,7 @@ impl Manager {
             rt: rt.clone(),
             torrents: Arc::new(torrent::Aria2::new(&data_dir.join("torrents"))),
             data_dir,
+            relink: Mutex::new(HashSet::new()),
         });
 
         for q in startup_queues {
@@ -203,6 +220,21 @@ impl Manager {
     }
 
     pub fn set_settings(self: &Arc<Self>, s: Settings) -> anyhow::Result<()> {
+        let before = self.settings.read().unwrap().connections();
+        if s.connections() != before {
+            // Options > connections: every download that is not finished takes
+            // the new number, a running one at once (no restart)
+            let mut inner = self.inner.lock().unwrap();
+            for e in inner.entries.values_mut() {
+                if e.rec.status == Status::Completed || e.rec.kind == DownloadKind::Torrent {
+                    continue;
+                }
+                let n = s.connections_for(&e.rec.url, s.connections());
+                e.rec.connections = n;
+                e.progress.want_connections.store(n, Ordering::Relaxed);
+            }
+            inner.dirty = true;
+        }
         self.shared.limiter.set_rate(s.effective_limit());
         ytdlp::set_mp3_kbps(s.mp3_kbps);
         let proxy = ProxyConfig::from_settings(&s);
@@ -1116,6 +1148,8 @@ impl Manager {
         let mut tries = 0u32;
         // server trouble: tries without anything new downloaded in between
         let mut stuck = 0u32;
+        // new links fetched because the old one stopped working
+        let mut relinks = 0u32;
         let mut last_bytes = progress.as_ref().map(|p| p.bytes.load(Ordering::Relaxed)).unwrap_or(0);
         let result = loop {
             let r = self.run_download(id, cancel.clone()).await;
@@ -1133,6 +1167,25 @@ impl Manager {
                 // a busy server, a transfer that broke off (big files): it
                 // goes on by itself later, from where it was. Given up only
                 // when many tries in a row brought nothing new (hours).
+                // the link stopped working (expired): a new one, checked before
+                // anything more is written; given up after 6 tries
+                // (a download that got nothing yet: 2 tries, it may never have worked)
+                (Err(e), Some(p))
+                    if !cancel.is_cancelled()
+                        && !e.is::<Cancelled>()
+                        && http::is_link_gone(e)
+                        && relinks < if p.bytes.load(Ordering::Relaxed) > 0 { 6 } else { 2 } =>
+                {
+                    relinks += 1;
+                    self.relink.lock().unwrap().insert(id);
+                    let wait = http::relink_delay(relinks);
+                    let note = format!("the link stopped working - getting a new one in {} s (try {relinks})", wait.as_secs());
+                    self.update(id, move |x| x.error = Some(note));
+                    tokio::select! {
+                        _ = tokio::time::sleep(wait) => {}
+                        _ = cancel.cancelled() => break Err(Cancelled.into()),
+                    }
+                }
                 (Err(e), Some(p)) if !cancel.is_cancelled() && !e.is::<Cancelled>() && http::is_passing_error(e) && self.resumable(id) => {
                     let now = p.bytes.load(Ordering::Relaxed);
                     stuck = if now > last_bytes { 1 } else { stuck + 1 };
@@ -1154,6 +1207,7 @@ impl Manager {
         if let Some(p) = &progress {
             p.waiting.store(false, Ordering::Relaxed);
         }
+        self.relink.lock().unwrap().remove(&id);
         {
             let mut inner = self.inner.lock().unwrap();
             let mut finished = false;
@@ -1294,6 +1348,12 @@ impl Manager {
             anyhow::bail!(
                 "the address opens a web page, not a file (the link may have expired - use \"Refresh download address\")"
             );
+        }
+        // a new link after the old one stopped working: only the same file
+        // (same size, parts can be asked for) goes on from where it was
+        if self.relink.lock().unwrap().contains(&id) && !segs.lock().unwrap().is_empty() {
+            same_file(&p, rec.total_size)?;
+            self.relink.lock().unwrap().remove(&id);
         }
         {
             let mut table = segs.lock().unwrap();
@@ -1718,6 +1778,15 @@ impl Manager {
                 _ = cancel.cancelled() => return Err(Cancelled.into()),
             };
             let old_audio = rec.total_size.zip(rec.video_size).map(|(t, v)| t.saturating_sub(v));
+            if self.relink.lock().unwrap().contains(&id) {
+                if !segs.lock().unwrap().is_empty() {
+                    same_file(&vp, rec.video_size)?;
+                }
+                if !audio_segs.lock().unwrap().is_empty() {
+                    same_file(&ap, old_audio)?;
+                }
+                self.relink.lock().unwrap().remove(&id);
+            }
             if vp.total_size != rec.video_size || !vp.resumable {
                 segs.lock().unwrap().clear();
             }

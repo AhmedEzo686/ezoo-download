@@ -483,5 +483,7 @@
  "Delete the downloaded files from the disk too (be careful)": "Удалить и скачанные файлы с диска (осторожно)",
  "Don't show this question again": "Больше не задавать этот вопрос",
  "Download the subtitles of videos too, in these languages:": "Скачивать и субтитры видео на этих языках:",
- "Quality of MP3 files": "Качество файлов MP3"
+ "Quality of MP3 files": "Качество файлов MP3",
+ "Next to the clock": "К часам",
+ "Draw the windows with the graphics card (uses more memory; after a restart)": "Рисовать окна видеокартой (больше памяти; после перезапуска)"
 }

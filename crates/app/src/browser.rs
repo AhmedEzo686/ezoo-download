@@ -101,11 +101,62 @@ fn detect() -> Vec<Browser> {
     ]
 }
 
-/// The extension's folder next to the program (Firefox has its own copy).
+/// The extension as it came with this program: when a file of its folder is
+/// missing or was changed (an antivirus, a half-finished copy...), the
+/// browser says "files missing or unreadable" and won't load it, so the
+/// folder is put back in order from this copy first.
+const EXTENSION_FILES: &[(&str, &[u8])] = &[
+    ("background.js", include_bytes!("../../../extension/background.js")),
+    ("content.js", include_bytes!("../../../extension/content.js")),
+    ("yt-core.js", include_bytes!("../../../extension/yt-core.js")),
+    ("popup.html", include_bytes!("../../../extension/popup.html")),
+    ("popup.js", include_bytes!("../../../extension/popup.js")),
+    ("options.html", include_bytes!("../../../extension/options.html")),
+    ("options.js", include_bytes!("../../../extension/options.js")),
+    ("icons/icon16.png", include_bytes!("../../../extension/icons/icon16.png")),
+    ("icons/icon32.png", include_bytes!("../../../extension/icons/icon32.png")),
+    ("icons/icon48.png", include_bytes!("../../../extension/icons/icon48.png")),
+    ("icons/icon128.png", include_bytes!("../../../extension/icons/icon128.png")),
+];
+const MANIFEST: &[u8] = include_bytes!("../../../extension/manifest.json");
+const MANIFEST_FIREFOX: &[u8] = include_bytes!("../../../extension/manifest.firefox.json");
+
+/// Every file of the extension in `dir`, as it came with the program (only
+/// what differs is written). false = it could not be written there.
+pub(crate) fn put_extension(dir: &Path, firefox: bool) -> bool {
+    let manifest = if firefox { MANIFEST_FIREFOX } else { MANIFEST };
+    let all = EXTENSION_FILES.iter().copied().chain(std::iter::once(("manifest.json", manifest)));
+    let mut ok = true;
+    for (name, data) in all {
+        let path = dir.join(name);
+        if std::fs::read(&path).map(|have| have == data).unwrap_or(false) {
+            continue;
+        }
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        // through a new file, so the browser never reads a half one
+        let tmp = path.with_extension("ezoo-new");
+        if std::fs::write(&tmp, data).and_then(|_| std::fs::rename(&tmp, &path)).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+            ok = false;
+        }
+    }
+    ok
+}
+
+/// The extension's folder next to the program (Firefox has its own copy),
+/// complete. Where the program's folder can't be written, a copy in the
+/// program's data folder is used.
 fn extension_dir(firefox: bool) -> Option<PathBuf> {
-    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
     let name = if firefox { "extension-firefox" } else { "extension" };
-    [dir.join(name), dir.join("..").join(name)].into_iter().find(|p| p.exists())
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let next_to = dir.join(name);
+    if put_extension(&next_to, firefox) {
+        return Some(next_to);
+    }
+    let own = swiftget_engine::default_data_dir().join(name);
+    put_extension(&own, firefox).then_some(own)
 }
 
 /// The signed Firefox add-on next to the program, when the release has one.
@@ -199,7 +250,7 @@ pub(crate) fn wire(ui: &Ui) {
             if let Some(d) = w.upgrade() {
                 let f = d.get_folder().to_string();
                 if !f.is_empty() {
-                    let _ = open::that(f);
+                    let _ = open::that_detached(f);
                 }
             }
         });

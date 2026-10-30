@@ -49,6 +49,12 @@ msgstr "تحميل كل فيديوهات قائمة تشغيل أو بعضها."
 msgid "Download a .torrent file or a magnet link."
 msgstr "تحميل ملف تورنت أو رابط magnet."
 
+msgid "Move to queue"
+msgstr "نقل إلى قائمة الانتظار"
+
+msgid "Delete from queue"
+msgstr "حذف من قائمة الانتظار"
+
 msgid "{} downloads selected"
 msgstr "تم تحديد {} تحميلات"
 
@@ -81,12 +87,6 @@ msgstr "تحديث رابط التحميل…"
 
 msgid "Move / Rename…"
 msgstr "نقل / إعادة تسمية…"
-
-msgid "Move to queue"
-msgstr "نقل إلى قائمة الانتظار"
-
-msgid "Delete from queue"
-msgstr "حذف من قائمة الانتظار"
 
 msgid "Copy address"
 msgstr "نسخ الرابط"
@@ -598,6 +598,9 @@ msgstr "<< إخفاء التفاصيل"
 msgid "Show details >>"
 msgstr "إظهار التفاصيل >>"
 
+msgid "Next to the clock"
+msgstr "بجوار الساعة"
+
 msgid "Pause"
 msgstr "إيقاف مؤقت"
 
@@ -612,9 +615,6 @@ msgstr "رقم"
 
 msgid "Info"
 msgstr "معلومات"
-
-msgid "Hide next to the clock"
-msgstr "إخفاء بجوار الساعة"
 
 msgid "Download complete"
 msgstr "اكتمل التحميل"
@@ -1041,6 +1041,9 @@ msgstr "مراقبة الحافظة لروابط التحميل"
 
 msgid "Automatically start downloading links placed in the clipboard"
 msgstr "بدء تحميل الروابط المنسوخة للحافظة تلقائياً"
+
+msgid "Draw the windows with the graphics card (uses more memory; after a restart)"
+msgstr "رسم النوافذ بكارت الشاشة (يستهلك ذاكرة أكثر؛ بعد إعادة التشغيل)"
 
 msgid "Show \"Tip of the day\" at startup"
 msgstr "إظهار \"نصيحة اليوم\" عند البدء"

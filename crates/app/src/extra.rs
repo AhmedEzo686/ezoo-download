@@ -361,14 +361,19 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 11] = [
+const WHATS_NEW: [&str; 16] = [
     "A click on a file link in the browser goes straight to Ezoo Download: the browser's own Save As window no longer opens (Brave too).",
     "Changing the folder or the name in \"Download File Info\" no longer gives a small broken file, and a name typed without its extension keeps it.",
     "Big files keep going by themselves when the server has trouble: Ezoo Download tries again later on its own.",
     "Torrents: a .torrent link in the browser opens the torrent window at once, .torrent files and magnet links open with Ezoo Download, and a .torrent file can be dropped on the window.",
     "Removing downloads can delete their files from the disk too (if you tick it), and the question can be turned off.",
     "Ctrl+A, Ctrl+N and the other shortcuts work with the Arabic keyboard too, and files are selected with the mouse in both directions.",
-    "The download window is smaller, never gets wider for a long name, and its title bar is like the main window's.",
+    "The download window has the Windows title bar again, so every button answers the mouse where it is (Windows 10 and 11); its details stay hidden until you show them, and the windows keep the size you gave them.",
+    "The windows are drawn without the graphics card: much less memory, and the program no longer closes by itself at start on some computers (Options > General switches it back).",
+    "A link that stops working (expired) is renewed by itself and checked first, then the download goes on from where it was.",
+    "The number of connections changes at once, even while a file downloads, and a connection much slower than the others is made again, so the speed stays steady.",
+    "The speed limiter goes on and off with a click in the status bar, and \"Move to queue\" opens in a list of its own.",
+    "The video button: a small style (arrow and ✕) with a see-through slider, Facebook videos in the feed, and the qualities of streams on more sites.",
     "The video button in the browser hides in full screen (or not: the add-in's window), stays closed when you close it, and streams show their quality first.",
     "Firefox: the add-in is signed again and updates by itself.",
     "Playlists have 240p and 144p, the MP3 quality can be chosen, and the subtitles of videos can be downloaded too (Options > Downloads).",
@@ -390,7 +395,7 @@ pub(crate) fn whats_new(ui: &Ui) {
     d.set_items(ModelRc::new(VecModel::from(items)));
     d.on_open_link(|u| {
         if u.starts_with("https://") {
-            let _ = open::that(u.as_str());
+            let _ = open::that_detached(u.as_str());
         }
     });
     let w = d.as_weak();
@@ -741,7 +746,7 @@ pub(crate) fn wire(ui: &Ui) {
                     // only a web page: the address came from the browser or
                     // a list file and must never start a program
                     if is_web_address(&page) {
-                        let _ = open::that(page.trim());
+                        let _ = open::that_detached(page.trim());
                     }
                 }
             });

@@ -49,6 +49,12 @@ msgstr "Alle oder einige Videos einer Playlist herunterladen."
 msgid "Download a .torrent file or a magnet link."
 msgstr "Eine .torrent-Datei oder einen Magnet-Link herunterladen."
 
+msgid "Move to queue"
+msgstr "In Warteschlange verschieben"
+
+msgid "Delete from queue"
+msgstr "Aus Warteschlange entfernen"
+
 msgid "{} downloads selected"
 msgstr "{} Downloads ausgewählt"
 
@@ -81,12 +87,6 @@ msgstr "Download-Adresse aktualisieren…"
 
 msgid "Move / Rename…"
 msgstr "Verschieben / Umbenennen…"
-
-msgid "Move to queue"
-msgstr "In Warteschlange verschieben"
-
-msgid "Delete from queue"
-msgstr "Aus Warteschlange entfernen"
 
 msgid "Copy address"
 msgstr "Adresse kopieren"
@@ -598,6 +598,9 @@ msgstr "<< Details ausblenden"
 msgid "Show details >>"
 msgstr "Details anzeigen >>"
 
+msgid "Next to the clock"
+msgstr "Neben die Uhr"
+
 msgid "Pause"
 msgstr "Pause"
 
@@ -612,9 +615,6 @@ msgstr "Nr."
 
 msgid "Info"
 msgstr "Info"
-
-msgid "Hide next to the clock"
-msgstr "Neben der Uhr ausblenden"
 
 msgid "Download complete"
 msgstr "Download abgeschlossen"
@@ -1041,6 +1041,9 @@ msgstr "Zwischenablage auf Download-Links überwachen"
 
 msgid "Automatically start downloading links placed in the clipboard"
 msgstr "Links aus der Zwischenablage automatisch herunterladen"
+
+msgid "Draw the windows with the graphics card (uses more memory; after a restart)"
+msgstr "Fenster mit der Grafikkarte zeichnen (mehr Speicher; nach einem Neustart)"
 
 msgid "Show \"Tip of the day\" at startup"
 msgstr "\"Tipp des Tages\" beim Start anzeigen"

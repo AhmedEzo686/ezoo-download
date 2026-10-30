@@ -49,6 +49,12 @@ msgstr "Bir oynatma listesinin videolarının hepsini ya da bir kısmını indir
 msgid "Download a .torrent file or a magnet link."
 msgstr "Bir .torrent dosyası ya da magnet bağlantısı indirin."
 
+msgid "Move to queue"
+msgstr "Kuyruğa taşı"
+
+msgid "Delete from queue"
+msgstr "Kuyruktan çıkar"
+
 msgid "{} downloads selected"
 msgstr "{} indirme seçildi"
 
@@ -81,12 +87,6 @@ msgstr "İndirme adresini yenile…"
 
 msgid "Move / Rename…"
 msgstr "Taşı / Yeniden adlandır…"
-
-msgid "Move to queue"
-msgstr "Kuyruğa taşı"
-
-msgid "Delete from queue"
-msgstr "Kuyruktan çıkar"
 
 msgid "Copy address"
 msgstr "Adresi kopyala"
@@ -598,6 +598,9 @@ msgstr "<< Ayrıntıları gizle"
 msgid "Show details >>"
 msgstr "Ayrıntıları göster >>"
 
+msgid "Next to the clock"
+msgstr "Saatin yanına"
+
 msgid "Pause"
 msgstr "Duraklat"
 
@@ -612,9 +615,6 @@ msgstr "No."
 
 msgid "Info"
 msgstr "Bilgi"
-
-msgid "Hide next to the clock"
-msgstr "Saatin yanına gizle"
 
 msgid "Download complete"
 msgstr "İndirme tamamlandı"
@@ -1041,6 +1041,9 @@ msgstr "Panoyu indirme bağlantıları için izle"
 
 msgid "Automatically start downloading links placed in the clipboard"
 msgstr "Panoya konan bağlantıları otomatik indirmeye başla"
+
+msgid "Draw the windows with the graphics card (uses more memory; after a restart)"
+msgstr "Pencereleri ekran kartıyla çiz (daha çok bellek; yeniden başlatınca)"
 
 msgid "Show \"Tip of the day\" at startup"
 msgstr "Başlangıçta \"Günün ipucu\"nu göster"

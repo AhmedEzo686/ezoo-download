@@ -86,10 +86,8 @@ fn place_winit(win: &slint::winit_030::winit::window::Window, maximizable: bool)
     use slint::winit_030::winit;
     use winit::window::WindowButtons;
     if !win.is_decorated() {
-        // a window drawn without the Windows frame (the progress window):
-        // changing its buttons gives it back a hidden Windows title bar on
-        // Windows 10, and everything drawn then answers the mouse about one
-        // title bar higher than it shows. Only its place is set.
+        // a window drawn without the Windows frame: its buttons are not
+        // touched (that gives it back a hidden Windows title bar)
     } else if maximizable {
         // the main window: its maximize button (full screen)
         win.set_resizable(true);
@@ -301,31 +299,6 @@ pub(crate) fn on_files_dropped(w: &slint::Window, f: impl Fn(std::path::PathBuf)
 
 #[cfg(not(windows))]
 pub(crate) fn on_files_dropped(_w: &slint::Window, _f: impl Fn(std::path::PathBuf) + 'static) {}
-
-/// Windows drawn without the Windows frame (their own title bar): move the
-/// window while the mouse button is held on the title.
-#[cfg(windows)]
-pub(crate) fn drag_window(w: &slint::Window) {
-    use slint::winit_030::{winit, WinitWindowAccessor};
-    w.with_winit_window(|win: &winit::window::Window| {
-        let _ = win.drag_window();
-    });
-}
-
-/// ...and make it bigger / smaller from its bottom right corner.
-#[cfg(windows)]
-pub(crate) fn drag_resize_window(w: &slint::Window) {
-    use slint::winit_030::{winit, WinitWindowAccessor};
-    w.with_winit_window(|win: &winit::window::Window| {
-        let _ = win.drag_resize_window(winit::window::ResizeDirection::SouthEast);
-    });
-}
-
-#[cfg(not(windows))]
-pub(crate) fn drag_window(_w: &slint::Window) {}
-
-#[cfg(not(windows))]
-pub(crate) fn drag_resize_window(_w: &slint::Window) {}
 
 /// A file / folder picker that belongs to `w`: it stays on top of it and
 /// `w` waits for it.

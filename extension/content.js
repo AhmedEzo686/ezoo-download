@@ -117,26 +117,56 @@
     /linkedin\.com\/(posts|feed\/update)\//i,
   ];
   const isVideoPage = (u) => VIDEO_PAGE.some((r) => r.test(u));
+  // Facebook feeds: the post a video is in is also a link the app can read
+  // (the feed's own address - facebook.com/ - is not)
+  const FB_POST = [
+    /facebook\.com\/[^/?#]+\/posts\//i,
+    /facebook\.com\/permalink\.php\?[^#]*story_fbid=/i,
+    /facebook\.com\/story\.php\?[^#]*story_fbid=/i,
+    /facebook\.com\/groups\/[^/]+\/(permalink|posts)\//i,
+    /facebook\.com\/photo(\.php)?\/?\?[^#]*fbid=/i,
+  ];
+  const onFacebook = /(^|\.)facebook\.com$/i.test(location.hostname);
+  const isPostLink = (u) => onFacebook && FB_POST.some((r) => r.test(u));
+  // a Facebook feed (home, a page's wall, groups...): many videos, and its
+  // own address is none of them
+  const inFeed = () => onFacebook && !isVideoPage(location.href) && !isPostLink(location.href);
+  // what is left of a Facebook link once its tracking part is cut off
+  function cleanLink(u) {
+    try {
+      const x = new URL(u);
+      for (const k of [...x.searchParams.keys()]) if (/^(__cft__|__tn__|_fb_noscript|ref|rdid|mibextid)/i.test(k)) x.searchParams.delete(k);
+      x.hash = "";
+      return x.toString();
+    } catch {
+      return u.split("#")[0];
+    }
+  }
 
   // In feeds (Facebook, Instagram, X...) the page shows many videos: look for
   // the post / reel link around the video being watched.
   function linkFor(video) {
-    if (isVideoPage(location.href)) return location.href;
-    return ownLink(video) || location.href;
+    if (isVideoPage(location.href) || isPostLink(location.href)) return cleanLink(location.href);
+    // a Facebook feed / home page is no video: nothing rather than the feed
+    return ownLink(video) || (onFacebook ? "" : location.href);
   }
 
   // the post / video link next to this very video ("" = none found)
   function ownLink(video) {
     let el = video;
+    let post = "";
     for (let depth = 0; el && depth < 25; depth++) {
       const links = el.querySelectorAll ? el.querySelectorAll("a[href]") : [];
       for (const a of links) {
-        if (isVideoPage(a.href)) return a.href.split("#")[0];
+        if (isVideoPage(a.href)) return cleanLink(a.href);
+        if (!post && isPostLink(a.href)) post = cleanLink(a.href);
       }
-      if (el.tagName === "ARTICLE") break;
+      // the end of this post (Facebook marks its posts, it has no <article>)
+      if (el.tagName === "ARTICLE" || (el.getAttribute && el.getAttribute("role") === "article")) break;
       // out of a shadow root: on to the element that holds it
       el = el.parentElement || (el.parentNode && el.parentNode.host) || null;
     }
+    if (post) return post;
     // an embedded player: the frame's own address is the video
     if (!TOP && isVideoPage(location.href)) return location.href;
     return "";
@@ -155,7 +185,7 @@
     if (page !== lastPage || (!TOP && !lastPage)) {
       if (!TOP && lastPage === "frame:" + page) return;
       lastPage = TOP ? page : "frame:" + page;
-      chrome.runtime.sendMessage({ type: "swiftget-video-seen", page, frame: !TOP }).catch?.(() => {});
+      chrome.runtime.sendMessage({ type: "swiftget-video-seen", page, frame: !TOP, feed: TOP && !page && inFeed() }).catch?.(() => {});
     }
   }
 
@@ -172,8 +202,8 @@
   // size of the button: the slider in the add-in's menu (50% - 200%)
   const OLD_SIZES = { small: 0.85, normal: 1, large: 1.25 };
   // its look: the add-in's menu > "Button style"
-  const STYLES = ["blue", "dark", "light", "green", "icon"];
-  let look = "blue";
+  const STYLES = ["compact", "blue", "dark", "light", "green", "icon"];
+  let look = "compact";
   const applyLook = () => {
     for (const b of bubbles.values()) {
       const w = b.root.querySelector(".wrap");
@@ -183,9 +213,13 @@
   };
   const clampZoom = (z) => Math.min(2, Math.max(0.5, Number(z) || 1));
   let zoom = 1;
+  // how solid the button is while the mouse is not on it (the menu: 20% - 100%)
+  const clampSolid = (o) => Math.min(1, Math.max(0.2, Number(o) || 0.9));
+  let solid = 0.9;
   const applyZoom = () => {
     for (const b of bubbles.values()) {
       b.host.style.setProperty("--z", String(zoom));
+      b.host.style.setProperty("--o", String(solid));
       placeOne(b);
     }
   };
@@ -211,19 +245,21 @@
         bubbles.forEach((b) => placeOne(b));
       }
     });
-    chrome.storage.local.get({ bubbleScale: null, bubbleSize: "normal", bubbleStyle: "blue" }, (o) => {
+    chrome.storage.local.get({ bubbleScale: null, bubbleSize: "normal", bubbleStyle: "compact", bubbleOpacity: 0.9 }, (o) => {
       zoom = clampZoom(o && o.bubbleScale != null ? o.bubbleScale : OLD_SIZES[o && o.bubbleSize]);
-      look = STYLES.includes(o && o.bubbleStyle) ? o.bubbleStyle : "blue";
+      solid = clampSolid(o && o.bubbleOpacity);
+      look = STYLES.includes(o && o.bubbleStyle) ? o.bubbleStyle : "compact";
       applyZoom();
       applyLook();
     });
     chrome.storage.onChanged.addListener((ch) => {
       if (ch.bubbleStyle) {
-        look = STYLES.includes(ch.bubbleStyle.newValue) ? ch.bubbleStyle.newValue : "blue";
+        look = STYLES.includes(ch.bubbleStyle.newValue) ? ch.bubbleStyle.newValue : "compact";
         applyLook();
         return;
       }
-      if (ch.bubbleScale) zoom = clampZoom(ch.bubbleScale.newValue);
+      if (ch.bubbleOpacity) solid = clampSolid(ch.bubbleOpacity.newValue);
+      else if (ch.bubbleScale) zoom = clampZoom(ch.bubbleScale.newValue);
       else if (ch.bubbleSize) zoom = clampZoom(OLD_SIZES[ch.bubbleSize.newValue]);
       else return;
       applyZoom();
@@ -237,7 +273,7 @@
     .btn { display: inline-flex; align-items: stretch; color: #fff; border: 1px solid #0f4fb5;
            background: linear-gradient(#3f8cf5, #1d63d6); border-radius: 3px;
            box-shadow: 0 1px 6px rgba(0,0,0,.35); font: inherit; font-weight: 600;
-           opacity: .9; transition: opacity .15s; user-select: none; white-space: nowrap; }
+           opacity: var(--o, .9); transition: opacity .15s; user-select: none; white-space: nowrap; }
     .btn:hover, .btn.open { opacity: 1; }
     .btn.drag { opacity: 1; }
     .part { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; cursor: grab; }
@@ -286,6 +322,14 @@
     .green .btn { background: linear-gradient(#35b36b, #1f8a4c); border-color: #176b3a; }
     .green .btn:hover, .green .btn.open { background: linear-gradient(#3cc276, #1d8048); }
     .green .ico path { fill: #1f8a4c; }
+    .compact .btn { border-radius: 7px; background: linear-gradient(#2f72dc, #1e56b9); border-color: #163f8a; }
+    .compact .btn:hover, .compact .btn.open { background: linear-gradient(#3a7deb, #1f5cc6); }
+    .compact #label, .compact .caret, .compact #help { display: none; }
+    .compact .part { padding: 4px 7px; }
+    .compact .ico { width: 18px; height: 18px; }
+    .compact .ico circle { fill: #e4e6ea; }
+    .compact .ico path { fill: #1e56b9; }
+    .compact #close { padding: 4px 8px; font-size: 13px; border-left-color: rgba(255,255,255,.3); }
     .icon .btn { border-radius: 50%; }
     .icon .part { padding: 5px; }
     .icon #label, .icon .caret, .icon .side { display: none; }
@@ -323,6 +367,7 @@
     host.style.position = "fixed";
     host.style.zIndex = "2147483647";
     host.style.setProperty("--z", String(zoom));
+    host.style.setProperty("--o", String(solid));
     const root = host.attachShadow({ mode: "closed" });
     const svgNs = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(svgNs, "svg");
@@ -413,7 +458,8 @@
         type: "swiftget-resolve-video",
         resolve: stream || "",
         // in a frame that is only a player: the add-in uses the page around it
-        page: ownLink(b.video) || (directSrc(b.video) || !TOP ? "" : location.href),
+        page: ownLink(b.video) || (directSrc(b.video) || !TOP || inFeed() ? "" : location.href),
+        feed: TOP && inFeed(),
         src: directSrc(b.video),
         frame: !TOP,
       },

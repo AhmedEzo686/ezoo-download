@@ -483,5 +483,7 @@
  "Delete the downloaded files from the disk too (be careful)": "Borrar también los archivos descargados del disco (cuidado)",
  "Don't show this question again": "No volver a mostrar esta pregunta",
  "Download the subtitles of videos too, in these languages:": "Descargar también los subtítulos de los vídeos, en estos idiomas:",
- "Quality of MP3 files": "Calidad de los archivos MP3"
+ "Quality of MP3 files": "Calidad de los archivos MP3",
+ "Next to the clock": "Junto al reloj",
+ "Draw the windows with the graphics card (uses more memory; after a restart)": "Dibujar las ventanas con la tarjeta gráfica (más memoria; tras reiniciar)"
 }

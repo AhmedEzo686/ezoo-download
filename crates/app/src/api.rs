@@ -111,6 +111,25 @@ pub enum ApiEvent {
     /// a .torrent file / magnet link opened from Windows (double click):
     /// the torrent window with it
     OpenTorrent(String),
+    /// the setup of a new version wants the program closed (it saves
+    /// everything first; the downloads go on after the update)
+    Quit,
+}
+
+/// Ask the copy of the program that is open to close (for the setup).
+/// true = it said it will.
+pub fn notify_quit(port: u16) -> bool {
+    let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(800)) else {
+        return false;
+    };
+    let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
+    let req = "POST /quit HTTP/1.1\r\nHost: 127.0.0.1\r\nX-SwiftGet: 1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    if s.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = String::new();
+    let _ = s.read_to_string(&mut buf);
+    buf.contains("Ezoo")
 }
 
 /// What Windows may hand over to open: a magnet link or a .torrent file
@@ -167,18 +186,52 @@ pub fn notify_open_torrent(port: u16, source: &str) -> bool {
 }
 
 /// Another SwiftGet is already running on this port: ask it to show itself.
-pub fn notify_existing(port: u16) -> bool {
+/// Seconds (since 1970) when the window side of the program last moved; the
+/// main timer sets it a few times a second. Far behind = the windows hang.
+pub static UI_ALIVE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// a message box / file picker of ours is open (the windows wait for it)
+pub static UI_WAITS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+fn ui_hangs() -> bool {
+    use std::sync::atomic::Ordering;
+    let last = UI_ALIVE.load(Ordering::Relaxed);
+    last != 0 && !UI_WAITS.load(Ordering::Relaxed) && now_secs().saturating_sub(last) > 15
+}
+
+/// What the copy of the program that is open already said.
+#[derive(Debug, PartialEq)]
+pub enum Existing {
+    /// nobody (or something else) answers on the port
+    None,
+    /// it brings its window to the front
+    Shown,
+    /// it answers, but its windows hang (this is its process id)
+    Hangs(u32),
+}
+
+pub fn notify_existing(port: u16) -> Existing {
     let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(800)) else {
-        return false;
+        return Existing::None;
     };
     let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
     let req = "POST /show HTTP/1.1\r\nHost: 127.0.0.1\r\nX-SwiftGet: 1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     if s.write_all(req.as_bytes()).is_err() {
-        return false;
+        return Existing::None;
     }
     let mut buf = String::new();
     let _ = s.read_to_string(&mut buf);
-    buf.contains("Ezoo") || buf.starts_with("HTTP/1.1 200")
+    if !(buf.contains("Ezoo") || buf.starts_with("HTTP/1.1 200")) {
+        return Existing::None;
+    }
+    let body = buf.split("\r\n\r\n").nth(1).unwrap_or_default();
+    match serde_json::from_str::<serde_json::Value>(body) {
+        Ok(v) if v["hangs"].as_bool() == Some(true) => Existing::Hangs(v["pid"].as_u64().unwrap_or(0) as u32),
+        _ => Existing::Shown,
+    }
 }
 
 pub fn serve(
@@ -305,7 +358,15 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
                 _ => reply(req, 400, r#"{"error":"invalid request"}"#),
             }
         }
+        (Method::Post, "/quit") => {
+            on_event(ApiEvent::Quit);
+            reply(req, 200, r#"{"ok":true,"app":"Ezoo"}"#)
+        }
         (Method::Post, "/show") => {
+            if ui_hangs() {
+                let body = format!(r#"{{"ok":true,"app":"Ezoo","hangs":true,"pid":{}}}"#, std::process::id());
+                return reply(req, 200, &body);
+            }
             on_event(ApiEvent::Show);
             reply(req, 200, r#"{"ok":true,"app":"Ezoo"}"#)
         }

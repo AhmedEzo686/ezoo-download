@@ -59,6 +59,7 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_bg_strength(s.background_strength.clamp(10, 80) as f32);
     d.set_start_with_windows(autostart::is_enabled());
     d.set_close_to_tray(s.close_to_tray);
+    d.set_gpu_drawing(s.gpu_drawing);
     d.set_clipboard(s.clipboard_monitor);
     d.set_auto_clipboard(s.auto_start_clipboard);
     d.set_double_click(s.double_click.min(1) as i32);
@@ -155,6 +156,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.background_image = d.get_bg_image().to_string();
     s.background_strength = (d.get_bg_strength().round() as u32).clamp(10, 80);
     s.close_to_tray = d.get_close_to_tray();
+    s.gpu_drawing = d.get_gpu_drawing();
     s.clipboard_monitor = d.get_clipboard();
     s.auto_start_clipboard = d.get_auto_clipboard();
     s.double_click = d.get_double_click().clamp(0, 1) as u32;

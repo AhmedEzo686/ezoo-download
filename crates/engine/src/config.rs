@@ -369,6 +369,16 @@ pub struct Settings {
     pub start_while_info: bool,
     /// "en", "ar", or "" = the language of Windows
     pub language: String,
+    /// size of each window the user made bigger / smaller (logical pixels):
+    /// "main", "progress"...
+    pub window_sizes: std::collections::BTreeMap<String, (f32, f32)>,
+    /// the main window was maximized when the program closed
+    pub main_maximized: bool,
+    /// the progress window shows its details (connections list)
+    pub progress_details: bool,
+    /// draw the windows with the graphics card (more memory; off = the
+    /// processor draws them, works on every computer)
+    pub gpu_drawing: bool,
 }
 
 impl Default for Settings {
@@ -462,6 +472,10 @@ impl Default for Settings {
             extension_prompted: false,
             start_while_info: true,
             language: String::new(),
+            window_sizes: Default::default(),
+            main_maximized: false,
+            progress_details: false,
+            gpu_drawing: false,
         }
     }
 }

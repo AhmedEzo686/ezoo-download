@@ -71,12 +71,18 @@
   <div class="size">
     <span>Button style</span>
     <select id="look" aria-label="Button style">
+      <option value="compact">Small (arrow + ✕)</option>
       <option value="blue">Blue</option>
       <option value="dark">Dark</option>
       <option value="light">Light</option>
       <option value="green">Green</option>
       <option value="icon">Icon only</option>
     </select>
+  </div>
+  <div class="size">
+    <span>Button see-through</span>
+    <input type="range" id="solid" min="20" max="100" step="5" value="90" aria-label="How solid the download button is">
+    <output id="solidText">90%</output>
   </div>
   <label class="check">
     <input type="checkbox" id="fullscreen" />
