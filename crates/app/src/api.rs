@@ -199,7 +199,7 @@ pub fn now_secs() -> u64 {
 fn ui_hangs() -> bool {
     use std::sync::atomic::Ordering;
     let last = UI_ALIVE.load(Ordering::Relaxed);
-    last != 0 && !UI_WAITS.load(Ordering::Relaxed) && now_secs().saturating_sub(last) > 15
+    last != 0 && !UI_WAITS.load(Ordering::Relaxed) && now_secs().saturating_sub(last) > 30
 }
 
 /// What the copy of the program that is open already said.

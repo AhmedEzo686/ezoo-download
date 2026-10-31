@@ -234,6 +234,17 @@ fn main() {
     }
 }
 
+/// Opened "as administrator" (for the log: the program never needs it).
+fn elevated() -> bool {
+    #[cfg(windows)]
+    {
+        // SAFETY: no arguments; it only reads the token of this process
+        unsafe { windows_sys::Win32::UI::Shell::IsUserAnAdmin() != 0 }
+    }
+    #[cfg(not(windows))]
+    false
+}
+
 /// End a copy of this program that hangs (only ever one of ours: the id
 /// came from its own answer on our port, and the name is checked too).
 fn end_process(pid: u32) {
@@ -261,7 +272,11 @@ fn run() -> anyhow::Result<()> {
         api::notify_quit(port);
         return Ok(());
     }
-    note(&format!("start{}", if background { " (with Windows)" } else { "" }));
+    note(&format!(
+        "start{}{}",
+        if background { " (with Windows)" } else { "" },
+        if elevated() { " (as administrator)" } else { "" }
+    ));
 
     // opened again by the program itself: the old one may still be closing
     let mut first = api::bind(port);
@@ -554,6 +569,8 @@ fn run() -> anyhow::Result<()> {
             if modal_open() {
                 return;
             }
+            // a file picker that was open is closed again
+            api::UI_WAITS.store(false, std::sync::atomic::Ordering::Relaxed);
             // next to the clock (window hidden): the list is brought up to
             // date only every few seconds, nobody looks at it
             let shown = ui.ctx.main.upgrade().map(|m| m.window().is_visible() && !m.window().is_minimized()).unwrap_or(false);
@@ -2597,7 +2614,8 @@ fn row_action(ui: &Ui, id: u64, action: &str) {
                     // on its own thread: a move to another disk is a copy
                     let mgr = ui.ctx.mgr.clone();
                     std::thread::spawn(move || {
-                        if let Err(e) = mgr.move_file(id, &to) {
+                        // the save window asked already before a file was replaced
+                        if let Err(e) = mgr.move_file(id, &to, true) {
                             let text = tf("Could not move the file:\n\n{}", &[&format!("{e:#}")]);
                             let _ = slint::invoke_from_event_loop(move || message(&text));
                         }
@@ -2916,6 +2934,8 @@ pub(crate) fn err_text(e: &str) -> String {
     } else if let Some(rest) = e.split("the link stopped working - getting a new one in ").nth(1) {
         let secs = rest.split(' ').next().unwrap_or("?");
         tf("The link stopped working. A new one is fetched in {} s and checked before the download goes on.", &[&secs])
+    } else if e.contains("ffmpeg.exe is missing") {
+        t("ffmpeg.exe (it joins the video and the sound) is missing and could not be downloaded again. Allow it in your antivirus or install Ezoo Download again, then click Resume: nothing downloaded is lost.")
     } else if e.contains("the new link is not the same file") {
         t("The new link gives another file, so nothing more was written. Right-click the download and use \"Refresh download address\".")
     } else if e.contains("the link has expired or the file was removed") {

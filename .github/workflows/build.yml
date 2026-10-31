@@ -128,7 +128,13 @@ jobs:
           # fails on published vulnerabilities; "unmaintained" notices only warn
           cargo audit
       - name: Build release
-        run: cargo build --release
+        shell: pwsh
+        run: |
+          # the program can fetch this very ffmpeg.exe again when it goes
+          # missing (an antivirus...), and uses it only with this SHA-256
+          $env:EZOO_FFMPEG_SHA256 = (Get-FileHash ffmpeg-out/ffmpeg.exe -Algorithm SHA256).Hash.ToLower()
+          cargo build --release
+          if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
       - name: Package
         shell: pwsh
         env:
@@ -238,7 +244,8 @@ jobs:
         run: |
           gh release view "v$env:VERSION" --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) { Write-Host "v$env:VERSION is already released"; exit 0 }
-          $files = @("dist/EzooDownload-Setup.exe", "dist/version.json")
+          Copy-Item ffmpeg-out/ffmpeg.exe dist/ffmpeg.exe
+          $files = @("dist/EzooDownload-Setup.exe", "dist/version.json", "dist/ffmpeg.exe")
           if (Test-Path dist/ezoo-download-firefox.xpi) { $files += "dist/ezoo-download-firefox.xpi", "dist/firefox-updates.json" }
           gh release create "v$env:VERSION" @files --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Ezoo Download $env:VERSION" --notes "Ezoo Download $env:VERSION" --latest
           if ($LASTEXITCODE -ne 0) { throw "could not create the release" }

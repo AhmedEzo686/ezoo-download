@@ -612,7 +612,8 @@ impl Manager {
     }
 
     /// Move / rename a finished file ("Save as" for downloads that are done).
-    pub fn move_file(&self, id: DownloadId, new_path: &Path) -> anyhow::Result<()> {
+    /// `replace`: the user agreed to replace a file of that name there.
+    pub fn move_file(&self, id: DownloadId, new_path: &Path, replace: bool) -> anyhow::Result<()> {
         // the list is not held while the file moves: a copy to another disk
         // can take minutes and everything else must go on meanwhile
         let from = {
@@ -623,13 +624,44 @@ impl Manager {
             }
             e.rec.target_path()
         };
+        if from == new_path {
+            return Ok(());
+        }
+        // a file of that name there already is replaced only when the user said so
+        if new_path.exists() && !replace {
+            anyhow::bail!("a file with this name is already in that folder: {}", new_path.display());
+        }
         if let Some(dir) = new_path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        if std::fs::rename(&from, new_path).is_err() {
-            // another drive: copy, then delete the old one
-            std::fs::copy(&from, new_path)?;
-            std::fs::remove_file(&from)?;
+        if let Err(e) = std::fs::rename(&from, new_path) {
+            if !from.exists() {
+                return Err(e.into());
+            }
+            // another drive: a copy under a passing name first, then the real
+            // name, and only then the old file goes
+            let tmp = new_path.with_file_name(format!(
+                ".{}.ezoo-move",
+                new_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+            ));
+            let copied = std::fs::copy(&from, &tmp).and_then(|n| {
+                let same = std::fs::metadata(&from).map(|m| m.len() == n).unwrap_or(false);
+                if same {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::other("the copy is not complete"))
+                }
+            });
+            if let Err(e) = copied.and_then(|_| {
+                if new_path.exists() && !replace {
+                    return Err(std::io::Error::other("a file with this name appeared in that folder"));
+                }
+                std::fs::rename(&tmp, new_path)
+            }) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(anyhow!("the file could not be moved: {e}"));
+            }
+            let _ = std::fs::remove_file(&from);
         }
         let mut inner = self.inner.lock().unwrap();
         if let Some(e) = inner.entries.get_mut(&id) {
@@ -771,7 +803,7 @@ impl Manager {
             let target = dir.join(filename::sanitize(name));
             let current = self.get(id).map(|v| v.save_path).unwrap_or_default();
             if target != current {
-                self.move_file(id, &target)?;
+                self.move_file(id, &target, false)?;
             }
         }
         Ok(())
@@ -1465,6 +1497,8 @@ impl Manager {
             let t2 = tmp.clone();
             let title = song_title(&rec.file_name);
             let kbps = ytdlp::mp3_kbps();
+            // ffmpeg missing: fetched again first
+            crate::tools::restore_ffmpeg(&self.client()).await;
             tokio::task::spawn_blocking(move || mux::to_mp3(&input, &t2, kbps, Some(&title))).await??;
             std::fs::rename(&tmp, &part)?;
         }
@@ -1474,6 +1508,8 @@ impl Manager {
             progress.assembling.store(true, Ordering::Relaxed);
             let (input, tmp) = (part.clone(), part.with_extension("mp4tmp"));
             let t2 = tmp.clone();
+            // ffmpeg missing: fetched again first
+            crate::tools::restore_ffmpeg(&self.client()).await;
             let made = tokio::task::spawn_blocking(move || mux::ts_to_mp4(&input, &t2)).await.map(|r| r.is_ok()).unwrap_or(false);
             if made && std::fs::rename(&tmp, &part).is_ok() {
                 let (stem, _) = filename::split_ext(&rec.file_name);
@@ -1859,6 +1895,8 @@ impl Manager {
             rec.part_path(),
             rec.file_name.clone(),
         );
+        // ffmpeg missing: fetched again first
+        crate::tools::restore_ffmpeg(&self.client()).await;
         tokio::task::spawn_blocking(move || mux::merge(&video, &audio, &output, &name)).await??;
         let _ = std::fs::remove_file(rec.video_part_path());
         let _ = std::fs::remove_file(rec.audio_part_path());

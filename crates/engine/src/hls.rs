@@ -44,19 +44,44 @@ fn decrypt(key: &[u8], iv: &[u8; 16], data: &mut Vec<u8>) -> anyhow::Result<()> 
     Ok(())
 }
 
-async fn fetch_bytes(shared: &Shared, job: &HlsJob, url: &str) -> anyhow::Result<Vec<u8>> {
-    let resp = request(&shared.client(), url, &job.headers, &job.user_agent)
-        .send()
-        .await?;
-    if !resp.status().is_success() {
-        bail!("HTTP {} for {}", resp.status().as_u16(), url);
+/// One address of the stream (a list, a key, a part), or only `range`
+/// (offset, length) of it. Also gives the address it came from in the end
+/// (after redirects): what the list's own addresses are relative to.
+async fn fetch_full(shared: &Shared, job: &HlsJob, url: &str, range: Option<(u64, u64)>) -> anyhow::Result<(Vec<u8>, String)> {
+    let mut rb = request(&shared.client(), url, &job.headers, &job.user_agent);
+    if let Some((off, len)) = range {
+        rb = rb.header(reqwest::header::RANGE, format!("bytes={}-{}", off, off + len.max(1) - 1));
     }
-    Ok(resp.bytes().await?.to_vec())
+    let resp = rb.send().await?;
+    if !resp.status().is_success() {
+        return Err(crate::http::HttpStatus(resp.status().as_u16()).into());
+    }
+    let partial = resp.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+    let final_url = resp.url().to_string();
+    let mut data = resp.bytes().await?.to_vec();
+    if let Some((off, len)) = range {
+        if !partial {
+            // the server sent all of it: cut the part out ourselves
+            let (a, b) = (off as usize, (off + len) as usize);
+            if data.len() < b {
+                bail!("a part of the stream is shorter than its list says");
+            }
+            data = data[a..b].to_vec();
+        } else if data.len() as u64 != len {
+            return Err(crate::http::NetDrop("a part of the stream came incomplete").into());
+        }
+    }
+    Ok((data, final_url))
 }
 
-async fn fetch_text(shared: &Shared, job: &HlsJob, url: &str) -> anyhow::Result<String> {
-    let b = fetch_bytes(shared, job, url).await?;
-    Ok(String::from_utf8_lossy(&b).into_owned())
+async fn fetch_bytes(shared: &Shared, job: &HlsJob, url: &str) -> anyhow::Result<Vec<u8>> {
+    Ok(fetch_full(shared, job, url, None).await?.0)
+}
+
+/// A playlist, and the address it really came from.
+async fn fetch_text(shared: &Shared, job: &HlsJob, url: &str) -> anyhow::Result<(String, String)> {
+    let (b, at) = fetch_full(shared, job, url, None).await?;
+    Ok((String::from_utf8_lossy(&b).into_owned(), at))
 }
 
 fn part_file(dir: &Path, i: usize) -> PathBuf {
@@ -71,14 +96,14 @@ pub async fn run(
 ) -> anyhow::Result<()> {
     let job = Arc::new(job);
     // 1. playlist (follow a master playlist to its best quality)
-    let mut url = job.url.clone();
-    let mut text = fetch_text(&shared, &job, &url).await.context("could not load playlist")?;
+    // the addresses in a list are relative to where it came from in the end
+    let (mut text, mut url) = fetch_text(&shared, &job, &job.url).await.context("could not load playlist")?;
     if !text.trim_start().starts_with("#EXTM3U") {
         bail!("not a valid HLS playlist");
     }
     if text.contains("#EXT-X-STREAM-INF") {
-        url = best_variant(&url, &text)?.ok_or_else(|| anyhow!("no video variant found"))?;
-        text = fetch_text(&shared, &job, &url).await?;
+        let variant = best_variant(&url, &text)?.ok_or_else(|| anyhow!("no video variant found"))?;
+        (text, url) = fetch_text(&shared, &job, &variant).await?;
     }
     let playlist = parse_media(&url, &text)?;
     if !playlist.ended {
@@ -143,7 +168,7 @@ pub async fn run(
                 loop {
                     let fut = async {
                         let _g = ConnGuard::new(&progress);
-                        let mut data = fetch_bytes(&shared, &job, &parts[i].url).await?;
+                        let mut data = fetch_full(&shared, &job, &parts[i].url, parts[i].range).await?.0;
                         shared.limiter.acquire(data.len()).await;
                         job.limiter.acquire(data.len()).await;
                         if let Some(k) = &parts[i].key {
@@ -200,7 +225,7 @@ pub async fn run(
     // 4. join everything into one file
     progress.assembling.store(true, Ordering::Relaxed);
     let init = match &playlist.init_url {
-        Some(u) => Some(fetch_bytes(&shared, &job, u).await?),
+        Some(u) => Some(fetch_full(&shared, &job, u, playlist.init_range).await?.0),
         None => None,
     };
     let temp_dir = job.temp_dir.clone();

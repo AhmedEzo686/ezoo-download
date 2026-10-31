@@ -360,6 +360,9 @@ pub(crate) fn msg_box() -> rfd::MessageDialog {
 
 /// The same for file / folder pickers.
 pub(crate) fn file_box() -> rfd::FileDialog {
+    // the windows wait for the picker: no "does not answer" meanwhile (the
+    // main timer clears this once the windows move again)
+    crate::api::UI_WAITS.store(true, std::sync::atomic::Ordering::Relaxed);
     let d = rfd::FileDialog::new();
     #[cfg(windows)]
     if let Some(h) = own_front_window() {

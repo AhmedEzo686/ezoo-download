@@ -222,6 +222,10 @@ impl ProxyConfig {
     }
 }
 
+/// How long a server may take to answer a request (or to send the next
+/// piece of data) before the request is given up and made again.
+pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(30);
+
 pub fn build_client() -> anyhow::Result<Client> {
     build_client_with(&ProxyConfig { mode: 1, ..Default::default() })
 }
@@ -233,6 +237,10 @@ pub fn build_client_with(proxy: &ProxyConfig) -> anyhow::Result<Client> {
         .http1_only()
         .tcp_nodelay(true)
         .connect_timeout(Duration::from_secs(20))
+        // a server that takes the connection and then says nothing (no
+        // answer, or the data stops): the request ends instead of waiting
+        // for ever, and the download tries again by itself
+        .read_timeout(ANSWER_TIMEOUT)
         .pool_max_idle_per_host(64)
         .redirect(reqwest::redirect::Policy::limited(15));
     match proxy.mode {
@@ -330,7 +338,10 @@ pub async fn probe(
         if with_range {
             rb = rb.header(RANGE, "bytes=0-0");
         }
-        let resp = rb.send().await.context("could not connect to server")?;
+        let resp = match tokio::time::timeout(ANSWER_TIMEOUT, rb.send()).await {
+            Ok(r) => r.context("could not connect to server")?,
+            Err(_) => return Err(NetDrop("the server did not answer (timed out)").into()),
+        };
         let status = resp.status();
         if status == StatusCode::UNAUTHORIZED {
             bail!("the server asks for a user name and password (HTTP 401) - use \"Use authorization\" or Options > Site Logins");

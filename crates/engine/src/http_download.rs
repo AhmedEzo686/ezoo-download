@@ -23,6 +23,9 @@ use tokio_util::sync::CancellationToken;
 /// How long we wait for the next chunk before treating the connection as dead.
 const STALL_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// How long a request waits for the server's answer before it is made again.
+const HEADERS_TIMEOUT: Duration = Duration::from_secs(20);
+
 /// A connection much slower than the others is dropped and made again (the
 /// server often gives a new one full speed): checked over this long...
 const SLOW_WINDOW: Duration = Duration::from_secs(8);
@@ -410,7 +413,12 @@ impl Worker {
         if self.segmented {
             rb = rb.header(RANGE, format!("bytes={}-{}", pos, req_end - 1));
         }
-        let mut resp = rb.send().await?;
+        // the answer (its headers) must come: a server that keeps quiet does
+        // not hold this connection for ever
+        let mut resp = match tokio::time::timeout(HEADERS_TIMEOUT, rb.send()).await {
+            Ok(r) => r?,
+            Err(_) => return Err(NetDrop("the server did not answer (timed out)").into()),
+        };
         let status = resp.status();
         if self.segmented {
             if status != StatusCode::PARTIAL_CONTENT {
@@ -418,6 +426,23 @@ impl Worker {
                     return Err(HttpStatus(status.as_u16()).into());
                 }
                 bail!("server did not accept the byte range (HTTP {})", status.as_u16());
+            }
+            // the part must be the one asked for (and of the same file):
+            // anything else is never written
+            if let Some((start, total)) = resp
+                .headers()
+                .get(reqwest::header::CONTENT_RANGE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(parse_content_range)
+            {
+                if start != pos {
+                    return Err(NetDrop("the server sent another part of the file").into());
+                }
+                if let (Some(total), Some(known)) = (total, self.job.total_size) {
+                    if total != known {
+                        bail!("the link now gives another file: not the same file ({total} bytes instead of {known})");
+                    }
+                }
             }
         } else if !status.is_success() {
             return Err(HttpStatus(status.as_u16()).into());
@@ -494,5 +519,28 @@ impl Worker {
         } else {
             Err(NetDrop("connection closed early").into())
         }
+    }
+}
+
+/// "bytes 100-199/1000" -> (100, Some(1000)); "bytes 100-199/*" -> (100, None)
+fn parse_content_range(v: &str) -> Option<(u64, Option<u64>)> {
+    let rest = v.trim().strip_prefix("bytes")?.trim_start();
+    let (range, total) = rest.split_once('/')?;
+    let start = range.split_once('-')?.0.trim().parse().ok()?;
+    let total = total.trim().parse().ok();
+    Some((start, total))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_content_range;
+
+    #[test]
+    fn content_range() {
+        assert_eq!(parse_content_range("bytes 100-199/1000"), Some((100, Some(1000))));
+        assert_eq!(parse_content_range("bytes 0-0/*"), Some((0, None)));
+        assert_eq!(parse_content_range(" bytes  5-9/10 "), Some((5, Some(10))));
+        assert_eq!(parse_content_range("bytes */1000"), None);
+        assert_eq!(parse_content_range("items 1-2/3"), None);
     }
 }

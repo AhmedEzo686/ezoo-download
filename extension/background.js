@@ -39,10 +39,56 @@ async function fetchWithTimeout(url, opts = {}, ms = 1500) {
 // The add-in is loaded from the program's own folder. When the program
 // updates itself it brings newer add-in files along; the browser only reads
 // them after a reload, so the add-in reloads itself once per new version.
+//
+// The version alone is not enough (a new setup of the same version brings
+// changed files too): the files on the disk are compared with the files the
+// browser loaded, and when they differ the add-in reloads (once for them).
+const OWN_FILES = ["manifest.json", "background.js", "content.js", "yt-core.js", "popup.html", "popup.js", "options.html", "options.js"];
+
+async function filesStamp() {
+  let all = "";
+  for (const name of OWN_FILES) {
+    try {
+      const r = await fetch(chrome.runtime.getURL(name), { cache: "no-store" });
+      all += `${name}\n${await r.text()}\n`;
+    } catch {
+      all += `${name}\n-\n`;
+    }
+  }
+  const sum = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(all));
+  return [...new Uint8Array(sum)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// what the browser loaded: the files as they are when it (re)loads the add-in
+async function rememberLoadedFiles() {
+  try {
+    await chrome.storage.local.set({ loadedStamp: await filesStamp() });
+  } catch {
+    /* nothing to compare with: the version check still works */
+  }
+}
+chrome.runtime.onInstalled.addListener(rememberLoadedFiles);
+chrome.runtime.onStartup.addListener(rememberLoadedFiles);
+
+async function followOwnFiles() {
+  const { loadedStamp, reloadedForStamp } = await chrome.storage.local.get(["loadedStamp", "reloadedForStamp"]);
+  if (!loadedStamp) return false;
+  const now = await filesStamp();
+  if (now === loadedStamp || now === reloadedForStamp) return false;
+  await chrome.storage.local.set({ reloadedForStamp: now });
+  chrome.runtime.reload();
+  return true;
+}
+
 async function followAppVersion() {
   const last = (await chrome.storage.session.get("versionCheckAt")).versionCheckAt || 0;
   if (Date.now() - last < 60000) return;
   await chrome.storage.session.set({ versionCheckAt: Date.now() });
+  try {
+    if (await followOwnFiles()) return;
+  } catch {
+    /* fetch / crypto missing: the version check below */
+  }
   const { port } = await getOpts();
   try {
     const r = await fetchWithTimeout(apiUrl(port, "/ping"), { headers: { "X-SwiftGet": "1" } }, 800);

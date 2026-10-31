@@ -81,7 +81,7 @@ pub fn merge(video: &Path, audio: &Path, output: &Path, final_name: &str) -> any
 }
 
 /// What to say when our ffmpeg.exe is not there (it comes with the setup).
-const MISSING: &str = "ffmpeg.exe is missing from the \"tools\" folder of Ezoo Download: install Ezoo Download again to get it back";
+const MISSING: &str = "ffmpeg.exe is missing from the \"tools\" folder of Ezoo Download and could not be downloaded again (no internet, or an antivirus removes it): install Ezoo Download again, or allow ffmpeg.exe in the antivirus";
 
 /// A joined stream (HLS, a .ts file) into an ordinary MP4 file: plays in
 /// every player, with seeking. Nothing is re-encoded.

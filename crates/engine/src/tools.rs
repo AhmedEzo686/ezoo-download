@@ -264,10 +264,42 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
     None
 }
 
+/// The SHA-256 of the ffmpeg.exe that GitHub built together with this very
+/// version (written into the program by the build; none in a home build).
+const FFMPEG_SHA256: Option<&str> = option_env!("EZOO_FFMPEG_SHA256");
+
+/// ffmpeg went missing (an antivirus, a broken setup...): the copy of this
+/// release is fetched again, and used only when its SHA-256 is the one this
+/// program was built with. true = ffmpeg is there now.
+pub async fn restore_ffmpeg(client: &reqwest::Client) -> bool {
+    if bundled("ffmpeg").is_some() {
+        return true;
+    }
+    let Some(sum) = FFMPEG_SHA256.filter(|s| s.len() == 64) else {
+        return false;
+    };
+    if !cfg!(windows) {
+        return false;
+    }
+    let Some(dir) = writable_dir("ffmpeg") else { return false };
+    let repo = crate::selfupdate::REPO;
+    let urls = [
+        format!("https://github.com/{repo}/releases/download/v{}/ffmpeg.exe", env!("CARGO_PKG_VERSION")),
+        format!("https://github.com/{repo}/releases/latest/download/ffmpeg.exe"),
+    ];
+    for url in urls {
+        if download(client, &url, &dir.join(exe("ffmpeg")), sum).await.is_ok() {
+            return true;
+        }
+    }
+    false
+}
+
 /// Check both tools now (only does work when a day has passed or one is
 /// missing). Never shows anything; errors just mean "try again later".
 pub async fn update_all(client: reqwest::Client, data_dir: PathBuf) {
     yt_dlp(&client, &data_dir).await;
+    restore_ffmpeg(&client).await;
     ffmpeg_cleanup();
     let _ = aria2(&client).await;
     // leftovers of earlier updates

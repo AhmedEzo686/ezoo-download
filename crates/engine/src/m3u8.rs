@@ -14,11 +14,15 @@ pub struct Part {
     pub url: String,
     pub sequence: u64,
     pub key: Option<Key>,
+    /// only these bytes of the address (#EXT-X-BYTERANGE): (offset, length)
+    pub range: Option<(u64, u64)>,
 }
 
 #[derive(Debug, Default, PartialEq)]
 pub struct MediaPlaylist {
     pub init_url: Option<String>,
+    /// only these bytes of the init address: (offset, length)
+    pub init_range: Option<(u64, u64)>,
     pub parts: Vec<Part>,
     pub ended: bool,
 }
@@ -78,6 +82,15 @@ pub fn best_variant(base: &str, text: &str) -> anyhow::Result<Option<String>> {
     Ok(best.map(|(_, u)| u))
 }
 
+/// "1000@200" -> (1000, Some(200)); "1000" -> (1000, None)
+fn parse_byterange(s: &str) -> Option<(u64, Option<u64>)> {
+    let s = s.trim().trim_matches('"');
+    match s.split_once('@') {
+        Some((len, off)) => Some((len.trim().parse().ok()?, Some(off.trim().parse().ok()?))),
+        None => Some((s.parse().ok()?, None)),
+    }
+}
+
 fn parse_iv(s: &str) -> Option<[u8; 16]> {
     let hex = s.trim().trim_start_matches("0x").trim_start_matches("0X");
     if hex.len() != 32 || !hex.is_ascii() {
@@ -102,6 +115,10 @@ pub fn parse_media(base: &str, text: &str) -> anyhow::Result<MediaPlaylist> {
     let mut pl = MediaPlaylist::default();
     let mut seq: u64 = 0;
     let mut key: Option<Key> = None;
+    // #EXT-X-BYTERANGE for the next part, and where the last range of each
+    // address ended (a range without "@offset" goes on from there)
+    let mut next_range: Option<(u64, Option<u64>)> = None;
+    let mut range_end: HashMap<String, u64> = HashMap::new();
     for line in text.lines().map(str::trim) {
         if line.is_empty() {
             continue;
@@ -126,17 +143,27 @@ pub fn parse_media(base: &str, text: &str) -> anyhow::Result<MediaPlaylist> {
             let a = parse_attrs(attrs);
             if let Some(uri) = a.get("URI") {
                 pl.init_url = Some(resolve(base, uri)?);
+                pl.init_range = a.get("BYTERANGE").and_then(|r| parse_byterange(r)).map(|(len, off)| (off.unwrap_or(0), len));
             }
+        } else if let Some(v) = line.strip_prefix("#EXT-X-BYTERANGE:") {
+            next_range = Some(parse_byterange(v).ok_or_else(|| anyhow!("the stream's list has a broken byte range"))?);
         } else if line.starts_with("#EXT-X-ENDLIST") {
             pl.ended = true;
         } else if !line.starts_with('#') {
             if pl.parts.len() >= MAX_PARTS {
                 bail!("the stream has too many parts");
             }
+            let url = resolve(base, line)?;
+            let range = next_range.take().map(|(len, off)| {
+                let start = off.unwrap_or_else(|| range_end.get(&url).copied().unwrap_or(0));
+                range_end.insert(url.clone(), start + len);
+                (start, len)
+            });
             pl.parts.push(Part {
-                url: resolve(base, line)?,
+                url,
                 sequence: seq,
                 key: key.clone(),
+                range,
             });
             seq = seq.wrapping_add(1);
         }
@@ -157,6 +184,17 @@ mod tests {
         assert!(parse_media("https://x.example/a/list.m3u8", &huge).is_err());
         assert!(parse_media("https://x.example/a/list.m3u8", &"#".repeat(MAX_PLAYLIST_BYTES + 1)).is_err());
         assert!(parse_media("https://x.example/a/list.m3u8", "#EXTM3U\np1.ts\n").is_ok());
+    }
+
+    #[test]
+    fn byte_ranges() {
+        let t = "#EXTM3U\n#EXT-X-MAP:URI=\"all.mp4\",BYTERANGE=\"720@0\"\n#EXTINF:6,\n#EXT-X-BYTERANGE:1000@720\nall.mp4\n#EXTINF:6,\n#EXT-X-BYTERANGE:500\nall.mp4\n#EXTINF:6,\nother.ts\n#EXT-X-ENDLIST\n";
+        let p = parse_media("https://cdn.x/v/list.m3u8", t).unwrap();
+        assert_eq!(p.init_url.as_deref(), Some("https://cdn.x/v/all.mp4"));
+        assert_eq!(p.init_range, Some((0, 720)));
+        assert_eq!(p.parts[0].range, Some((720, 1000)));
+        assert_eq!(p.parts[1].range, Some((1720, 500)));
+        assert_eq!(p.parts[2].range, None);
     }
 
     #[test]
