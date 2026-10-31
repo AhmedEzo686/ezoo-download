@@ -36,41 +36,53 @@ async function plainFetch(url, opts = {}, ms = 1500) {
 }
 
 // ---------------------------------------------------------------- the program's key
-// Every request to the program carries its secret key, so no other program
-// on the computer can use it. Loaded from the program's folder, the add-in
-// finds the key there (token.json); otherwise (Firefox, another folder) it
-// asks for it once and the user says yes in a window of the program.
-let appKey = null;
-async function programKey() {
-  if (appKey) return appKey;
+// The program listens on two ports: the known one (Options, 9614) answers
+// only "are you there" and pairing; the real one is chosen at random on
+// this computer. Every request to it is signed with the program's secret
+// key (the key itself is never sent, and a signed request can't be sent
+// again). Loaded from the program's folder, the add-in finds the key and the
+// port there (token.json); otherwise (Firefox, another folder) it asks for
+// them once and the user says yes in a window of the program.
+let link = null; // { token, port }
+const FRONT_PATHS = new Set(["/ping", "/pair", "/show", "/quit"]);
+
+async function fromFolder() {
   try {
     const r = await fetch(chrome.runtime.getURL("token.json"), { cache: "no-store" });
-    if (r.ok) {
-      const t = (await r.json()).token;
-      if (t) return (appKey = t);
-    }
+    if (!r.ok) return { has: false };
+    const j = await r.json();
+    return { has: true, token: j.token || "", port: Number(j.port) || 0 };
   } catch {
-    /* not in this folder */
+    return { has: false };
   }
-  const { appToken } = await chrome.storage.local.get("appToken");
-  if (appToken) appKey = appToken;
-  return appKey;
+}
+
+/** The key and the real port, or null. */
+async function programLink(fresh) {
+  if (link && !fresh) return link;
+  const f = await fromFolder();
+  if (f.has && f.token && f.port) return (link = { token: f.token, port: f.port, folder: true });
+  const { appToken, appPort } = await chrome.storage.local.get(["appToken", "appPort"]);
+  if (appToken && appPort) return (link = { token: appToken, port: Number(appPort), folder: false });
+  link = null;
+  return null;
 }
 
 let pairing = null;
-async function askForKey(port) {
+async function askForKey(frontPort) {
   if (!pairing) {
     pairing = (async () => {
       try {
         // the user has up to two minutes to answer in the program
-        const r = await plainFetch(apiUrl(port, "/pair"), { method: "POST", headers: { "X-SwiftGet": "1" } }, 125000);
+        const r = await plainFetch(apiUrl(frontPort, "/pair"), { method: "POST", headers: { "X-SwiftGet": "1" } }, 125000);
         if (!r.ok) return null;
-        const t = (await r.json()).token;
-        if (t) {
-          await chrome.storage.local.set({ appToken: t });
-          appKey = t;
+        const j = await r.json();
+        if (j.token && j.port) {
+          await chrome.storage.local.set({ appToken: j.token, appPort: j.port });
+          link = { token: j.token, port: Number(j.port), folder: false };
+          return link;
         }
-        return t || null;
+        return null;
       } catch {
         return null;
       } finally {
@@ -81,26 +93,118 @@ async function askForKey(port) {
   return pairing;
 }
 
-/** A request; to the program it carries the key (asked for once if needed). */
-async function fetchWithTimeout(url, opts = {}, ms = 1500) {
-  const toApp = /^http:\/\/127\.0\.0\.1:\d+\//.test(url);
-  if (!toApp) return plainFetch(url, opts, ms);
-  const withKey = async () => {
-    const key = await programKey();
-    const headers = Object.assign({}, opts.headers || {}, key ? { "X-Ezoo-Token": key } : {});
-    return plainFetch(url, { ...opts, headers }, ms);
-  };
-  let r = await withKey();
-  if (r && r.status === 401) {
-    // a new key (the program was set up again) or none yet
-    appKey = null;
-    await chrome.storage.local.remove("appToken");
-    const port = Number(new URL(url).port);
-    if (!(await programKey()) && !(await askForKey(port))) return r;
-    r = await withKey();
+const enc = new TextEncoder();
+const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+async function signHeaders(token, method, path) {
+  const time = String(Date.now());
+  const nonce = hex(crypto.getRandomValues(new Uint8Array(16)));
+  const key = await crypto.subtle.importKey("raw", enc.encode(token), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = hex(await crypto.subtle.sign("HMAC", key, enc.encode(`${method}\n${path}\n${time}\n${nonce}`)));
+  return { "X-Ezoo-Time": time, "X-Ezoo-Nonce": nonce, "X-Ezoo-Sig": sig };
+}
+
+/** The real port moved (it was taken at the program's start): ask where. */
+async function whereNow(frontPort, l) {
+  try {
+    const r = await plainFetch(apiUrl(frontPort, "/where"), { headers: { "X-SwiftGet": "1", ...(await signHeaders(l.token, "GET", "/where")) } }, 1500);
+    if (!r.ok) return null;
+    const port = Number((await r.json()).port) || 0;
+    if (!port) return null;
+    if (!l.folder) await chrome.storage.local.set({ appPort: port });
+    return (link = { ...l, port });
+  } catch {
+    return null;
   }
+}
+
+// how the connection to the program is (for the add-in's window)
+let linkState = "unknown"; // "ok" | "nokey" | "down"
+
+/** A request; to the program it goes to the real port, signed. */
+async function fetchWithTimeout(url, opts = {}, ms = 1500) {
+  const m = /^http:\/\/127\.0\.0\.1:(\d+)(\/[^?#]*)/.exec(url);
+  if (!m) return plainFetch(url, opts, ms);
+  const frontPort = Number(m[1]);
+  const path = m[2];
+  if (FRONT_PATHS.has(path)) return plainFetch(url, opts, ms);
+  const method = (opts.method || "GET").toUpperCase();
+  const send = async (l) => {
+    const headers = Object.assign({}, opts.headers || {}, await signHeaders(l.token, method, path));
+    return plainFetch(`http://127.0.0.1:${l.port}${path}`, { ...opts, headers }, ms);
+  };
+  let l = await programLink();
+  if (!l) {
+    // from the program's folder, the key may only be a moment late
+    const f = await fromFolder();
+    if (f.has) {
+      await new Promise((r) => setTimeout(r, 1500));
+      l = await programLink(true);
+    }
+    if (!l && !f.has) l = await askForKey(frontPort);
+    if (!l) {
+      linkState = "nokey";
+      throw new TypeError("not connected to Ezoo Download");
+    }
+  }
+  let r;
+  try {
+    r = await send(l);
+  } catch (e) {
+    if (e && e.name === "AbortError") throw e;
+    // the real port did not answer: it may have moved
+    const again = (await programLink(true)) || l;
+    const moved = again.port !== l.port ? again : await whereNow(frontPort, again);
+    if (!moved) {
+      linkState = "down";
+      throw e;
+    }
+    r = await send(moved);
+  }
+  if (r.status === 401) {
+    // a new key (the program was set up again): read it again, else ask
+    const f = await fromFolder();
+    let again = await programLink(true);
+    if (!again || (again.token === l.token && !f.has)) {
+      await chrome.storage.local.remove(["appToken", "appPort"]);
+      again = f.has ? null : await askForKey(frontPort);
+    }
+    if (again && again.token !== l.token) r = await send(again);
+  }
+  linkState = r.status === 401 ? "nokey" : "ok";
   return r;
 }
+
+/** The add-in's window: "Connect again" (forget the key and the port, look again). */
+async function reconnect() {
+  link = null;
+  linkState = "unknown";
+  const f = await fromFolder();
+  if (!f.has) await chrome.storage.local.remove(["appToken", "appPort"]);
+  const { port } = await getOpts();
+  try {
+    const r = await fetchWithTimeout(apiUrl(port, "/config"), { headers: { "X-SwiftGet": "1" } }, 3000);
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------- a clean start
+// After every update (and every reload) the add-in forgets what the old
+// version kept: as if it was removed and added again. The user's choices
+// (button style, size...) and a key given by pairing stay.
+const OLD_KEYS = ["loadedStamp", "reloadedFor", "reloadedForStamp", "seenRepair"];
+chrome.runtime.onInstalled.addListener(async (d) => {
+  if (d.reason !== "install" && d.reason !== "update") return;
+  try {
+    await chrome.storage.session.clear();
+    await chrome.storage.local.remove(OLD_KEYS.filter((k) => k !== "seenRepair"));
+  } catch {
+    /* nothing kept */
+  }
+  link = null;
+  await rememberLoadedFiles();
+});
 
 // ---------------------------------------------------------------- self update
 // The add-in is loaded from the program's own folder. When the program
@@ -134,7 +238,6 @@ async function rememberLoadedFiles() {
     /* nothing to compare with: the version check still works */
   }
 }
-chrome.runtime.onInstalled.addListener(rememberLoadedFiles);
 chrome.runtime.onStartup.addListener(rememberLoadedFiles);
 
 async function followOwnFiles() {
@@ -160,7 +263,21 @@ async function followAppVersion() {
   try {
     const r = await fetchWithTimeout(apiUrl(port, "/ping"), { headers: { "X-SwiftGet": "1" } }, 800);
     if (!r.ok || typeof r.json !== "function") return;
-    const want = (await r.json()).ext;
+    const ping = await r.json();
+    // "Repair the browser add-in" in the program: start again, clean
+    const repair = Number(ping.repair) || 0;
+    if (repair) {
+      const { seenRepair } = await chrome.storage.local.get("seenRepair");
+      if (seenRepair !== repair) {
+        await chrome.storage.local.set({ seenRepair: repair });
+        if (seenRepair !== undefined) {
+          await chrome.storage.session.clear();
+          chrome.runtime.reload();
+          return;
+        }
+      }
+    }
+    const want = ping.ext;
     const have = chrome.runtime.getManifest().version;
     if (!want || want === have) return;
     // only once per version: if the files on disk did not change (the add-in
@@ -218,6 +335,25 @@ function isYoutube(url) {
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------- protected videos
+// A video protected by its site (DRM): no program can download it. The
+// message says so plainly, in the browser's language.
+const DRM_TEXTS = {
+  ar: "🔒 الفيديو ده محمي من صاحب الموقع (DRM) ومينفعش يتحمّل بأي برنامج تحميل. تقدر تتفرج عليه من الموقع بس.",
+  fr: "🔒 Cette vidéo est protégée par son site (DRM) : aucun programme ne peut la télécharger. Elle se regarde seulement sur le site.",
+  es: "🔒 Este vídeo está protegido por su sitio (DRM): ningún programa puede descargarlo. Solo se puede ver en el sitio.",
+  de: "🔒 Dieses Video ist von seiner Seite geschützt (DRM): Kein Programm kann es herunterladen. Es lässt sich nur auf der Seite ansehen.",
+  pt: "🔒 Este vídeo é protegido pelo site (DRM): nenhum programa consegue baixá-lo. Ele só pode ser assistido no site.",
+  tr: "🔒 Bu video sitesi tarafından korunuyor (DRM): hiçbir program indiremez. Yalnızca sitede izlenebilir.",
+  ru: "🔒 Это видео защищено сайтом (DRM): ни одна программа не может его скачать. Его можно смотреть только на сайте.",
+  en: "🔒 This video is protected by its site (DRM): no download program can save it. It can only be watched on the site.",
+};
+const isDrm = (text) => /\bDRM\b|drm protected|widevine|playready/i.test(text || "");
+function drmText() {
+  const lang = String((navigator.language || "en")).slice(0, 2).toLowerCase();
+  return DRM_TEXTS[lang] || DRM_TEXTS.en;
 }
 
 // ---------------------------------------------------------------- the browser's own request
@@ -590,9 +726,11 @@ async function itemsForTab(tabId) {
       // player opens show up here as soon as it plays
       const unknown = /unsupported url|no video formats|unable to extract/i.test(res.resolveError);
       items.push(
-        unknown
-          ? { label: "Play the video for a moment", sub: "Its qualities appear here as soon as it plays", disabled: true }
-          : { label: "Can't get this video", sub: res.resolveError, disabled: true }
+        isDrm(res.resolveError)
+          ? { label: drmText(), sub: "", disabled: true, drm: true }
+          : unknown
+            ? { label: "Play the video for a moment", sub: "Its qualities appear here as soon as it plays", disabled: true }
+            : { label: "Can't get this video", sub: res.resolveError, disabled: true }
       );
     }
   }
@@ -1060,6 +1198,7 @@ async function resolveOneVideo(msg, tab) {
   const found = tab ? (await itemsForTab(tab.id)).filter((i) => !i.disabled && !i.yt) : [];
   if (found.length) return { items: found };
   if (/unsupported url/i.test(problem)) return { error: "Play the video for a moment, then press the button again." };
+  if (isDrm(problem)) return { error: drmText(), drm: true };
   return { error: problem || "Can't get this video" };
 }
 
@@ -1223,7 +1362,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // "Download all" on a playlist page: the app's playlist window
       return reply(sendPlaylist(msg.url), sendResponse);
     case "swiftget-status":
-      appAlive().then((ok) => sendResponse({ ok }));
+      (async () => {
+        const ok = await appAlive();
+        if (!ok) return sendResponse({ ok: false, state: "down" });
+        // the program runs: is the add-in connected to it (its key)?
+        const { port } = await getOpts();
+        let linked = false;
+        try {
+          linked = (await fetchWithTimeout(apiUrl(port, "/config"), { headers: { "X-SwiftGet": "1" } }, 2500)).ok;
+        } catch {
+          linked = false;
+        }
+        sendResponse({ ok: linked, state: linked ? "ok" : "nokey" });
+      })();
+      return true;
+    case "swiftget-reconnect":
+      reconnect().then((ok) => sendResponse({ ok }));
       return true;
     case "swiftget-keys":
       lastKeys = { alt: !!msg.alt, ctrl: !!msg.ctrl, shift: !!msg.shift, at: Date.now() };

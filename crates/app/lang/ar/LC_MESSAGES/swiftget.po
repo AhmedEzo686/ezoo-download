@@ -1411,6 +1411,9 @@ msgstr "اضغط على متصفحك:"
 msgid "Almost done:"
 msgstr "خطوة أخيرة:"
 
+msgid "Repair the add-in"
+msgstr "إصلاح الإضافة"
+
 msgid "Copy folder path"
 msgstr "نسخ مسار المجلد"
 

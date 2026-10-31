@@ -3695,6 +3695,7 @@ export component BrowserDialog inherits ThemedWindow {
     callback add(int);
     callback open-folder();
     callback copy-folder();
+    callback repair();
     callback close-window();
     VerticalLayout {
         padding: 16px;
@@ -3751,6 +3752,14 @@ export component BrowserDialog inherits ThemedWindow {
                 overflow: elide;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
+            }
+            // the add-in shows nothing / does not answer: its files are put
+            // back and it starts again by itself
+            Button {
+                text: @tr("Repair the add-in");
+                clicked => {
+                    root.repair();
+                }
             }
             Button {
                 text: @tr("Copy folder path");

@@ -169,14 +169,15 @@ pub fn bind(port: u16) -> Result<Server, String> {
 }
 
 /// Another Ezoo Download is already running: hand it the torrent to open.
-pub fn notify_open_torrent(port: u16, token: &str, source: &str) -> bool {
+pub fn notify_open_torrent(port: u16, source: &str) -> bool {
     let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(800)) else {
         return false;
     };
     let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
     let body = serde_json::json!({ "source": source }).to_string();
     let req = format!(
-        "POST /open-torrent HTTP/1.1\r\nHost: 127.0.0.1\r\nX-SwiftGet: 1\r\nX-Ezoo-Token: {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "POST /open-torrent HTTP/1.1\r\nHost: 127.0.0.1\r\nX-SwiftGet: 1\r\n{}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        sign_headers("POST", "/open-torrent"),
         body.len()
     );
     if s.write_all(req.as_bytes()).is_err() {
@@ -236,19 +237,87 @@ pub fn notify_existing(port: u16) -> Existing {
     }
 }
 
+/// Which of the program's two ports a request came in on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Door {
+    /// the known port (Options, 9614): only "are you there", pairing, and
+    /// what this program and its setup ask ("show yourself", "close")
+    Front,
+    /// the port chosen at random on this computer: everything, signed
+    Main,
+}
+
+/// The random port the add-in talks to (0 = not open).
+pub static MAIN_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
+/// Changed by "Repair the browser add-in": the add-in sees it and starts again.
+pub static REPAIR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub fn serve(
     server: Server,
+    door: Door,
     config: impl Fn() -> String + Send + 'static,
     on_event: impl Fn(ApiEvent) + Send + 'static,
 ) {
     std::thread::Builder::new()
-        .name("ezoo-api".into())
+        .name(format!("ezoo-api-{door:?}"))
         .spawn(move || {
             for req in server.incoming_requests() {
-                handle(req, &config, &on_event);
+                handle(req, door, &config, &on_event);
             }
         })
         .expect("failed to start API thread");
+}
+
+/// The random port of this computer: the one used last time when it is free,
+/// else a new one. None = no port could be opened.
+pub fn bind_main(last: u16) -> Option<(Server, u16)> {
+    if last >= 1024 {
+        if let Ok(s) = bind(last) {
+            return Some((s, last));
+        }
+    }
+    for _ in 0..40 {
+        let p = 20000 + (u16::from_str_radix(&swiftget_engine::secret::random_nonce()[..4], 16).unwrap_or(1) % 40000);
+        if let Ok(s) = bind(p) {
+            return Some((s, p));
+        }
+    }
+    None
+}
+
+/// The request was signed with the program's key (see secret.rs), lately,
+/// and was not seen before.
+fn signed(req: &Request, path: &str) -> bool {
+    let Some(key) = TOKEN.get().filter(|k| !k.is_empty()) else { return false };
+    let (Some(time), Some(nonce), Some(sig)) = (header(req, "X-Ezoo-Time"), header(req, "X-Ezoo-Nonce"), header(req, "X-Ezoo-Sig")) else {
+        return false;
+    };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let Ok(at) = time.parse::<i64>() else { return false };
+    // made within the last minute (or a little ahead: the same clock)
+    if (now - at).abs() > 60_000 || nonce.len() < 16 || nonce.len() > 64 {
+        return false;
+    }
+    if !swiftget_engine::secret::signature_ok(key, req.method().as_str(), path, &time, &nonce, &sig) {
+        return false;
+    }
+    // each signed request only once
+    let mut seen = SEEN.lock().unwrap();
+    seen.retain(|_, t| t.elapsed() < Duration::from_secs(130));
+    seen.insert(nonce, std::time::Instant::now()).is_none()
+}
+
+static SEEN: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// Headers that sign a request of this program to itself (a second copy
+/// asking the open one to show a torrent).
+pub fn sign_headers(method: &str, path: &str) -> String {
+    let key = TOKEN.get().cloned().unwrap_or_default();
+    let time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0).to_string();
+    let nonce = swiftget_engine::secret::random_nonce();
+    let sig = swiftget_engine::secret::request_signature(&key, method, path, &time, &nonce);
+    format!("X-Ezoo-Time: {time}\r\nX-Ezoo-Nonce: {nonce}\r\nX-Ezoo-Sig: {sig}\r\n")
 }
 
 fn is_http(u: &str) -> bool {
@@ -295,18 +364,12 @@ fn origin_allowed(origin: Option<&str>) -> bool {
 /// The secret key of this program (Settings::api_token), set at start.
 pub static TOKEN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
-fn token_ok(given: Option<&str>) -> bool {
-    match (TOKEN.get(), given) {
-        (Some(want), Some(got)) if !want.is_empty() => {
-            // the same length and every byte compared (no early exit)
-            want.len() == got.len() && want.bytes().zip(got.bytes()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
-        }
-        _ => false,
-    }
-}
 
 /// A pairing is being asked about right now / the user said no (when).
 static PAIRING: std::sync::Mutex<(bool, Option<std::time::Instant>)> = std::sync::Mutex::new((false, None));
+
+/// After the user said no, pairing waits this long before it may ask again.
+const AFTER_NO: Duration = Duration::from_secs(120);
 
 /// An add-in without the key (Firefox, or one loaded from another folder)
 /// asks for it: the user is asked in a window of the program; yes = it gets
@@ -314,7 +377,7 @@ static PAIRING: std::sync::Mutex<(bool, Option<std::time::Instant>)> = std::sync
 fn pair(req: Request, on_event: &impl Fn(ApiEvent)) {
     {
         let mut p = PAIRING.lock().unwrap();
-        let refused_lately = p.1.map(|t| t.elapsed() < Duration::from_secs(600)).unwrap_or(false);
+        let refused_lately = p.1.map(|t| t.elapsed() < AFTER_NO).unwrap_or(false);
         if p.0 || refused_lately {
             return reply(req, 429, r#"{"error":"wait"}"#);
         }
@@ -324,16 +387,23 @@ fn pair(req: Request, on_event: &impl Fn(ApiEvent)) {
     on_event(ApiEvent::Pair(tx));
     // the answer waits for the user (on its own thread: other requests go on)
     std::thread::spawn(move || {
-        let yes = rx.recv_timeout(Duration::from_secs(120)).unwrap_or(false);
+        // yes / no (the window closed without yes) / no answer at all
+        let answer = rx.recv_timeout(Duration::from_secs(120));
+        let yes = matches!(answer, Ok(true));
         {
             let mut p = PAIRING.lock().unwrap();
             p.0 = false;
-            if !yes {
+            // only a real "no" waits before asking again; no answer does not
+            if !yes && !matches!(answer, Err(std::sync::mpsc::RecvTimeoutError::Timeout)) {
                 p.1 = Some(std::time::Instant::now());
             }
         }
         if yes {
-            let body = format!(r#"{{"ok":true,"token":"{}"}}"#, TOKEN.get().cloned().unwrap_or_default());
+            let body = format!(
+                r#"{{"ok":true,"token":"{}","port":{}}}"#,
+                TOKEN.get().cloned().unwrap_or_default(),
+                MAIN_PORT.load(std::sync::atomic::Ordering::Relaxed)
+            );
             reply(req, 200, &body)
         } else {
             reply(req, 403, r#"{"error":"refused"}"#)
@@ -345,7 +415,7 @@ fn pair(req: Request, on_event: &impl Fn(ApiEvent)) {
 static RESOLVING: AtomicUsize = AtomicUsize::new(0);
 const MAX_RESOLVING: usize = 3;
 
-fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(ApiEvent)) {
+fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: &impl Fn(ApiEvent)) {
     // never answer CORS preflights: web pages must not reach this API
     if *req.method() == Method::Options {
         return reply(req, 403, r#"{"error":"forbidden"}"#);
@@ -361,24 +431,39 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
     }
 
     let path = req.url().split('?').next().unwrap_or("").to_string();
-    // everything but "are you there" / "show yourself" / "close" (asked by
-    // this program itself and its setup) needs the secret key the add-in got
-    // from this program: another program on the computer can't use it
-    let open = matches!(path.as_str(), "/ping" | "/show" | "/quit" | "/pair");
-    if !open && !token_ok(header(&req, "X-Ezoo-Token").as_deref()) {
-        return reply(req, 401, r#"{"error":"pair","pair":true}"#);
+    // "are you there", pairing, "show yourself" / "close" (this program and
+    // its setup) are open on the known port; everything else is signed with
+    // the key the add-in got from this program (another program on the
+    // computer has no key), and only "where is the other port" and opening
+    // a torrent may come in on the known port
+    let open = matches!(path.as_str(), "/ping") || (door == Door::Front && matches!(path.as_str(), "/show" | "/quit" | "/pair"));
+    if !open {
+        let front_ok = matches!(path.as_str(), "/where" | "/open-torrent");
+        if door == Door::Front && !front_ok {
+            return reply(req, 404, r#"{"error":"not here","where":true}"#);
+        }
+        if !signed(&req, &path) {
+            return reply(req, 401, r#"{"error":"pair","pair":true}"#);
+        }
     }
     if path == "/pair" && *req.method() == Method::Post {
         return pair(req, on_event);
+    }
+    if path == "/where" {
+        let body = format!(r#"{{"ok":true,"port":{}}}"#, MAIN_PORT.load(std::sync::atomic::Ordering::Relaxed));
+        return reply(req, 200, &body);
     }
     match (req.method().clone(), path.as_str()) {
         (Method::Get, "/ping") => {
             // "ext": the add-in version that came with this program; an older
             // add-in loaded from the program's folder reloads itself
+            // "repair": "Repair the browser add-in" was used (the add-in
+            // starts again on a new number)
             let body = format!(
-                r#"{{"app":"EzooDownload","version":"{}","ext":"{}"}}"#,
+                r#"{{"app":"EzooDownload","version":"{}","ext":"{}","repair":{}}}"#,
                 env!("CARGO_PKG_VERSION"),
-                bundled_extension_version()
+                bundled_extension_version(),
+                REPAIR.load(std::sync::atomic::Ordering::Relaxed)
             );
             reply(req, 200, &body)
         }
@@ -504,13 +589,46 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
 mod tests {
 
     #[test]
-    fn the_key_is_needed() {
+    fn the_two_doors() {
+        use std::io::{Read, Write};
         let _ = TOKEN.set("a".repeat(64));
-        assert!(token_ok(Some(&"a".repeat(64))));
-        assert!(!token_ok(Some(&"b".repeat(64))));
-        assert!(!token_ok(Some("aaaa")));
-        assert!(!token_ok(Some("")));
-        assert!(!token_ok(None));
+        let front = bind(0).unwrap();
+        let fport = front.server_addr().to_ip().unwrap().port();
+        let main = bind(0).unwrap();
+        let mport = main.server_addr().to_ip().unwrap().port();
+        MAIN_PORT.store(mport, std::sync::atomic::Ordering::Relaxed);
+        serve(front, Door::Front, || "{}".to_string(), |_| {});
+        serve(main, Door::Main, || r#"{"ok":true}"#.to_string(), |_| {});
+        let ask = |port: u16, path: &str, signed: Option<String>| -> String {
+            let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            let sig = signed.unwrap_or_default();
+            let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nX-SwiftGet: 1\r\n{sig}Connection: close\r\n\r\n");
+            s.write_all(req.as_bytes()).unwrap();
+            let mut out = String::new();
+            let _ = s.read_to_string(&mut out);
+            out
+        };
+        // unsigned: refused on the real port; the known port has no /config
+        assert!(ask(mport, "/config", None).starts_with("HTTP/1.1 401"));
+        assert!(ask(fport, "/config", Some(sign_headers("GET", "/config"))).starts_with("HTTP/1.1 404"));
+        // signed: taken, once
+        let h = sign_headers("GET", "/config");
+        assert!(ask(mport, "/config", Some(h.clone())).starts_with("HTTP/1.1 200"));
+        assert!(ask(mport, "/config", Some(h)).starts_with("HTTP/1.1 401"), "a signed request is taken only once");
+        // signed for another path: refused
+        assert!(ask(mport, "/config", Some(sign_headers("GET", "/links"))).starts_with("HTTP/1.1 401"));
+        // where the real port is: only with a signature
+        assert!(ask(fport, "/where", None).starts_with("HTTP/1.1 401"));
+        assert!(ask(fport, "/where", Some(sign_headers("GET", "/where"))).contains(&format!("\"port\":{mport}")));
+        // "are you there" stays open on both
+        assert!(ask(fport, "/ping", None).starts_with("HTTP/1.1 200"));
+    }
+
+    #[test]
+    fn signed_requests_only_once() {
+        let _ = TOKEN.set("a".repeat(64));
+        let h = sign_headers("POST", "/add");
+        assert!(h.contains("X-Ezoo-Sig: ") && !h.contains(&"a".repeat(64)), "the key itself is never sent");
     }
 
     use super::*;

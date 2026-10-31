@@ -1411,6 +1411,9 @@ msgstr "Clique no seu navegador:"
 msgid "Almost done:"
 msgstr "Quase pronto:"
 
+msgid "Repair the add-in"
+msgstr "Reparar o complemento"
+
 msgid "Copy folder path"
 msgstr "Copiar o caminho da pasta"
 

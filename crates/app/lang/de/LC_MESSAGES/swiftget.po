@@ -1411,6 +1411,9 @@ msgstr "Klicken Sie auf Ihren Browser:"
 msgid "Almost done:"
 msgstr "Fast fertig:"
 
+msgid "Repair the add-in"
+msgstr "Add-in reparieren"
+
 msgid "Copy folder path"
 msgstr "Ordnerpfad kopieren"
 

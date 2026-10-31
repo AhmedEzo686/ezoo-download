@@ -366,16 +366,18 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 10] = [
+const WHATS_NEW: [&str; 12] = [
     "No more black windows: a window that Windows had cleared (shown again from next to the clock, after the screen slept...) is drawn whole again.",
     "Sites that let only the browser in (HTTP 403): Ezoo Download sends exactly what the browser sent, and if the site still refuses, the browser is asked for the file and hands it back with the site's sign-in.",
     "A PDF link goes straight to Ezoo Download: no second window asking where to save from the PDF viewer of Edge and Brave.",
+    "The browser add-in keeps working after an update: the setup puts it in again whole, it starts clean, and its window has \"Connect again\"; Options > Browsers has \"Repair the add-in\".",
+    "The video button stays where it is when its list opens (the list opens under it, or above it when there is no room), and a protected video (DRM) says so plainly with a lock.",
     "Torrents find many more people to download from (public trackers), the window says how many are connected, and it tells you when nobody shares the torrent.",
     "Direct links: the server is asked the way download managers usually ask, and a server that does not really resume gets one steady connection instead of failing again and again.",
     "A file that changed on the server while it was paused starts again, instead of mixing the old and the new file; a server that can't resume and has trouble makes the download start again by itself.",
     "The time left stays steady and still shows when the speed drops for a moment.",
     "Settings that need a new start (the drawing, the port) ask to restart the program.",
-    "Safer: only the Ezoo Download add-in can talk to the program (a secret key), and watching the clipboard is off until you turn it on.",
+    "Safer: the add-in talks to the program on a port chosen at random on this computer, every request is signed with a secret key (the key itself is never sent), and watching the clipboard is off until you turn it on.",
     "The mouse pointer stays normal on the video button.",
 ];
 

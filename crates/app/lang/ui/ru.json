@@ -485,5 +485,6 @@
  "Download the subtitles of videos too, in these languages:": "Скачивать и субтитры видео на этих языках:",
  "Quality of MP3 files": "Качество файлов MP3",
  "Next to the clock": "К часам",
- "Draw the windows with the graphics card (uses more memory; after a restart)": "Рисовать окна видеокартой (больше памяти; после перезапуска)"
+ "Draw the windows with the graphics card (uses more memory; after a restart)": "Рисовать окна видеокартой (больше памяти; после перезапуска)",
+ "Repair the add-in": "Восстановить дополнение"
 }

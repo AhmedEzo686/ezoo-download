@@ -1411,6 +1411,9 @@ msgstr "Cliquez sur votre navigateur :"
 msgid "Almost done:"
 msgstr "Presque terminé :"
 
+msgid "Repair the add-in"
+msgstr "Réparer le module"
+
 msgid "Copy folder path"
 msgstr "Copier le chemin du dossier"
 

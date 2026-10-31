@@ -383,6 +383,9 @@ pub struct Settings {
     /// first start; encrypted on the disk)
     #[serde(with = "crate::secret::string")]
     pub api_token: String,
+    /// the port the add-in really talks to (chosen at random on this
+    /// computer; `browser_port` only answers "are you there" and pairing)
+    pub api_port: u16,
 }
 
 impl Default for Settings {
@@ -481,6 +484,7 @@ impl Default for Settings {
             progress_details: false,
             gpu_drawing: false,
             api_token: String::new(),
+            api_port: 0,
         }
     }
 }

@@ -269,7 +269,7 @@
   }
   const STYLE = `
     :host { all: initial; }
-    .wrap { font: 11px/1.25 "Segoe UI", system-ui, sans-serif; color: #1f2733; display: inline-block; zoom: var(--z, 1); }
+    .wrap { font: 11px/1.25 "Segoe UI", system-ui, sans-serif; color: #1f2733; display: inline-block; zoom: var(--z, 1); position: relative; }
     .btn { display: inline-flex; align-items: stretch; color: #fff; border: 1px solid #0f4fb5;
            background: linear-gradient(#3f8cf5, #1d63d6); border-radius: 3px;
            box-shadow: 0 1px 6px rgba(0,0,0,.35); font: inherit; font-weight: 600;
@@ -286,8 +286,14 @@
     .spin { width: 9px; height: 9px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%;
             animation: r .8s linear infinite; flex: none; }
     @keyframes r { to { transform: rotate(360deg); } }
-    .list { width: 330px; margin-top: 4px; background: #fff; border-radius: 6px; box-shadow: 0 6px 22px rgba(0,0,0,.28);
-            overflow: hidden; max-height: 360px; overflow-y: auto; border: 1px solid #d5dbe4; }
+    /* the list floats under the button (the button never moves): to its
+       left when the button is on the right of the video, else to its right,
+       and above it when there is no room below */
+    .list { position: absolute; top: 100%; right: 0; width: 330px; margin-top: 4px; background: #fff; border-radius: 6px;
+            box-shadow: 0 6px 22px rgba(0,0,0,.28); overflow: hidden; max-height: 360px; overflow-y: auto; border: 1px solid #d5dbe4; }
+    .wrap.toright .list { right: auto; left: 0; }
+    .wrap.up .list { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 4px; }
+    .btn.locked { background: linear-gradient(#7b8794, #5b6573); border-color: #4a535f; }
     .head { padding: 7px 10px; background: #f4f6fa; border-bottom: 1px solid #e3e8ef; font-weight: 600; color: #334;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .item { padding: 6px 10px; cursor: default; border-bottom: 1px solid #eef1f5; display: flex; gap: 6px; }
@@ -566,7 +572,16 @@
     });
   }
 
+  // the list may open up or down: decided again after every change of it
   function renderOne(b, note, isError, action) {
+    renderBubble(b, note, isError, action);
+    // a protected (DRM) video: the button says so with a lock
+    const locked = /🔒/.test(note || "") || itemsOf(b).some((i) => i.drm);
+    b.root.getElementById("main").classList.toggle("locked", locked);
+    placeOne(b);
+  }
+
+  function renderBubble(b, note, isError, action) {
     const list = itemsOf(b);
     const usable = list.filter((i) => !i.disabled);
     const busy = b.loading || (!usable.length && list.some((i) => i.disabled && /Getting/.test(i.label)));
@@ -638,15 +653,27 @@
     b.host.style.display = onScreen ? "block" : "none";
     if (!onScreen) return;
     if (b.host.parentNode !== layer()) layer().appendChild(b.host);
-    // its real size (the user can make the button smaller or bigger)
-    const w = b.host.getBoundingClientRect().width || 170;
-    const h = b.root.getElementById("main").getBoundingClientRect().height || 22;
+    // the size of the button itself (the user can make it smaller or bigger);
+    // its list floats and never moves it
+    const mainRect = b.root.getElementById("main").getBoundingClientRect();
+    const w = mainRect.width || 62;
+    const h = mainRect.height || 22;
     let x = b.dx == null ? r.right - w - 8 : r.left + b.dx;
     let y = b.dy == null ? r.top + 8 : r.top + b.dy;
     x = Math.max(r.left, Math.min(x, r.right - 60));
     y = Math.max(r.top, Math.min(y, r.bottom - h));
-    b.host.style.left = `${Math.max(4, Math.min(x, innerWidth - w))}px`;
-    b.host.style.top = `${Math.max(4, Math.min(y, innerHeight - h - 4))}px`;
+    const left = Math.max(4, Math.min(x, innerWidth - w));
+    const top = Math.max(4, Math.min(y, innerHeight - h - 4));
+    b.host.style.left = `${left}px`;
+    b.host.style.top = `${top}px`;
+    // where the list opens: away from the near edge of the screen
+    const wrap = b.root.querySelector(".wrap");
+    if (wrap) {
+      const listW = 330 * zoom;
+      const listH = Math.min(380, (b.root.getElementById("list") || {}).scrollHeight || 380) * zoom;
+      wrap.classList.toggle("toright", left + w - listW < 4);
+      wrap.classList.toggle("up", top + h + listH > innerHeight - 4 && top - listH > 4);
+    }
   }
 
   function place() {

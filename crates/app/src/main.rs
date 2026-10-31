@@ -280,7 +280,6 @@ fn run() -> anyhow::Result<()> {
         (s.browser_port, s.api_token)
     };
     let _ = api::TOKEN.set(token.clone());
-    browser::prepare_extension_folders();
     if std::env::args().any(|a| a == "--quit") {
         // run by the setup: the open copy closes (saving everything), this one too
         api::notify_quit(port);
@@ -310,7 +309,7 @@ fn run() -> anyhow::Result<()> {
         Ok(s) => Some(s),
         Err(_) => {
             if let Some(src) = &open_torrent {
-                if api::notify_open_torrent(port, &token, src) {
+                if api::notify_open_torrent(port, src) {
                     return Ok(());
                 }
             }
@@ -352,6 +351,27 @@ fn run() -> anyhow::Result<()> {
             }
         }
     };
+    // the port the add-in really talks to: random on this computer (kept for
+    // the next start), and the add-in folders get it with the key before
+    // anything answers there (an add-in reloading right after an update
+    // finds both at once)
+    let main_server = if server.is_some() {
+        let path = data_dir.join("settings.json");
+        let mut s = Settings::load(&path);
+        let got = api::bind_main(s.api_port);
+        if let Some((_, p)) = &got {
+            api::MAIN_PORT.store(*p, std::sync::atomic::Ordering::Relaxed);
+            if s.api_port != *p {
+                s.api_port = *p;
+                let _ = s.save(&path);
+            }
+        }
+        browser::prepare_extension_folders();
+        got.map(|(srv, _)| srv)
+    } else {
+        None
+    };
+    let _ = &token;
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)
@@ -489,7 +509,14 @@ fn run() -> anyhow::Result<()> {
         // the API thread only sends; the UI thread owns the windows
         let (tx, rx) = std::sync::mpsc::channel::<api::ApiEvent>();
         let rx = Rc::new(rx);
-        api::serve(server, move || api::config_json(&cfg_mgr.settings()), move |event| {
+        if let Some(main_server) = main_server {
+            let (tx, cfg_mgr) = (tx.clone(), cfg_mgr.clone());
+            api::serve(main_server, api::Door::Main, move || api::config_json(&cfg_mgr.settings()), move |event| {
+                let _ = tx.send(event);
+                let _ = slint::invoke_from_event_loop(|| {});
+            });
+        }
+        api::serve(server, api::Door::Front, move || api::config_json(&cfg_mgr.settings()), move |event| {
             let _ = tx.send(event);
             let _ = slint::invoke_from_event_loop(|| {});
         });
@@ -3045,6 +3072,8 @@ pub(crate) fn err_text(e: &str) -> String {
         tf("The server had trouble and can't resume this file, so it starts again from the beginning in {} s.", &[&secs])
     } else if e.contains("server answered HTTP 403") || e.contains("server answered HTTP 401") {
         t("The server refused Ezoo Download (it lets only the browser in). The link was opened in the browser, which hands it back with the site's sign-in; if the site still refuses, the browser downloads it itself.")
+    } else if e.contains("DRM") {
+        t("This video is protected by its site (DRM): no download program can save it. It can only be watched on the site.")
     } else if e.contains("nobody shares this torrent right now") {
         t("Nobody shares this torrent right now. It keeps looking and starts by itself as soon as someone does. If it stays like this, the torrent has no sharers left, or your internet provider or firewall blocks torrents.")
     } else if e.contains("ffmpeg.exe is missing") {

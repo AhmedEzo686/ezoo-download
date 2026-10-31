@@ -1411,6 +1411,9 @@ msgstr "Tarayıcınıza tıklayın:"
 msgid "Almost done:"
 msgstr "Neredeyse bitti:"
 
+msgid "Repair the add-in"
+msgstr "Eklentiyi onar"
+
 msgid "Copy folder path"
 msgstr "Klasör yolunu kopyala"
 

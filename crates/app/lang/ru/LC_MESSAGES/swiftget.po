@@ -1411,6 +1411,9 @@ msgstr "Нажмите на свой браузер:"
 msgid "Almost done:"
 msgstr "Почти готово:"
 
+msgid "Repair the add-in"
+msgstr "Восстановить дополнение"
+
 msgid "Copy folder path"
 msgstr "Копировать путь к папке"
 

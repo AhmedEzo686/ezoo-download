@@ -75,14 +75,11 @@ Source: "..\build-cache\redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: dont
 ; older versions kept the helpers next to the program
 Type: files; Name: "{app}\yt-dlp.exe"
 Type: files; Name: "{app}\ffmpeg.exe"
-; files of older versions of the browser extension that are not part of it
-; any more (the folder itself stays: the browser keeps it loaded)
-Type: filesandordirs; Name: "{app}\extension\test"
-Type: files; Name: "{app}\extension\manifest.firefox.json"
-Type: filesandordirs; Name: "{app}\extension-firefox\test"
-Type: files; Name: "{app}\extension-firefox\manifest.firefox.json"
-Type: files; Name: "{app}\extension\*.ezoo-new"
-Type: files; Name: "{app}\extension-firefox\*.ezoo-new"
+; the browser add-in is put in again whole: nothing of an older version
+; stays behind to clash with the new one (the folder is the same, so the
+; browser keeps the add-in; the program writes its key in again at start)
+Type: filesandordirs; Name: "{app}\extension"
+Type: filesandordirs; Name: "{app}\extension-firefox"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"

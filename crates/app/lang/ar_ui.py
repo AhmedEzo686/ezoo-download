@@ -7,6 +7,7 @@ AR = {
     "Show download progress": "عرض تقدّم التحميل",
     "Open with…": "فتح باستخدام…",
     "Open folder": "فتح المجلد",
+    "Repair the add-in": "إصلاح الإضافة",
     "Resume download": "استئناف التحميل",
     "Stop download": "إيقاف التحميل",
     "Redownload": "إعادة التحميل",
