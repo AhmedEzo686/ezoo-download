@@ -194,6 +194,38 @@ pub fn retry_delay(n: u32) -> Duration {
     })
 }
 
+/// One "Content-Range" header of a 206 answer, e.g. "bytes 100-199/1000".
+/// `total` is `None` for the open-ended "bytes 100-199/*" form.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContentRange {
+    pub first: u64,
+    pub last: u64,
+    pub total: Option<u64>,
+}
+
+/// Parse a "Content-Range" value like "bytes 0-0/123456". `None` when the
+/// unit, the range or the total is missing: the "bytes */1000" shape of a
+/// 416 answer and free-form junk do not describe a range of bytes, and a
+/// response that carries one must never be treated as a range answer.
+pub fn parse_content_range(value: &str) -> Option<ContentRange> {
+    let (unit, rest) = value.trim().split_once(' ')?;
+    if !unit.eq_ignore_ascii_case("bytes") {
+        return None;
+    }
+    let (range, total) = rest.trim().split_once('/')?;
+    let (first, last) = range.trim().split_once('-')?;
+    let first = first.trim().parse::<u64>().ok()?;
+    let last = last.trim().parse::<u64>().ok()?;
+    if last < first {
+        return None;
+    }
+    let total = match total.trim() {
+        "*" => None,
+        n => Some(n.parse::<u64>().ok()?),
+    };
+    Some(ContentRange { first, last, total })
+}
+
 /// Counts an open connection for as long as it lives.
 pub struct ConnGuard(Arc<Progress>);
 impl ConnGuard {
@@ -920,11 +952,17 @@ async fn probe_at(
         .filter(|s| !s.is_empty() && !s.starts_with("W/"));
 
     let (total_size, resumable, from_zero) = if status == StatusCode::PARTIAL_CONTENT {
-        // "bytes 0-123455/123456"
-        let range = h.get(CONTENT_RANGE).and_then(|v| v.to_str().ok()).unwrap_or("");
-        let total = range.rsplit('/').next().and_then(|s| s.trim().parse::<u64>().ok());
-        let start = range.trim().strip_prefix("bytes").and_then(|r| r.trim().split('-').next()).and_then(|s| s.trim().parse::<u64>().ok());
-        (total, total.is_some(), start == Some(0))
+        // a real range answer echoes what we asked for: "bytes 0-0/123456".
+        // anything else (no header at all, or "bytes */12345") never proved
+        // that the server honors ranges
+        match h
+            .get(CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_content_range)
+        {
+            Some(cr) => (cr.total, cr.total.is_some(), cr.first == 0),
+            None => (None, false, false),
+        }
     } else {
         // the whole file came, not a part: whatever "Accept-Ranges" says,
         // this server did not take a byte range, so one connection and no
@@ -1180,6 +1218,99 @@ mod refused_tests {
         let p = probe(&client, &format!("http://{addr}/go"), &headers, "Mozilla/5.0 test").await.unwrap();
         assert_eq!(p.total_size, Some(5));
         assert!(p.final_url.ends_with("/real.zip"));
+    }
+
+    /// How the test server answers the probe's range request.
+    enum ProbeMode {
+        /// a well-formed 206 echo: "bytes 0-0/12345"
+        Valid206,
+        /// plain 200 that only advertises range support
+        Full200,
+        /// 206 whose "Content-Range: bytes */12345" names no range
+        Stars206,
+        /// 206 with a junk "Content-Range"
+        Garbage206,
+    }
+
+    /// Answers every request with the headers chosen by `mode`; the body is
+    /// always one piece so a 200 probe can still read a size.
+    async fn probe_server(mode: ProbeMode) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let head = match mode {
+            ProbeMode::Valid206 => (
+                "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/12345\r\nContent-Length: 1\r\n",
+                "h",
+            ),
+            ProbeMode::Full200 => (
+                "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nContent-Length: 5\r\n",
+                "hello",
+            ),
+            ProbeMode::Stars206 => (
+                "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes */12345\r\nContent-Length: 1\r\n",
+                "h",
+            ),
+            ProbeMode::Garbage206 => (
+                "HTTP/1.1 206 Partial Content\r\nContent-Range: not-a-range\r\nContent-Length: 1\r\n",
+                "h",
+            ),
+        };
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut s, _)) = listener.accept().await else { return };
+                let head = head;
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 8192];
+                    let _ = s.read(&mut buf).await.unwrap_or(0);
+                    let resp = format!(
+                        "{}Content-Type: application/octet-stream\r\nConnection: close\r\n\r\n{}",
+                        head.0, head.1
+                    );
+                    let _ = s.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+        format!("http://{addr}/tool.bin")
+    }
+
+    #[tokio::test]
+    async fn probe_resumable_on_valid_206() {
+        let url = probe_server(ProbeMode::Valid206).await;
+        let client = Client::builder().no_proxy().build().unwrap();
+        let p = probe(&client, &url, &RequestHeaders::default(), "UA").await.unwrap();
+        assert!(p.resumable, "a well-formed range echo proves range support");
+        assert_eq!(p.total_size, Some(12345));
+    }
+
+    #[tokio::test]
+    async fn probe_not_resumable_when_range_ignored() {
+        let url = probe_server(ProbeMode::Full200).await;
+        let client = Client::builder().no_proxy().build().unwrap();
+        let p = probe(&client, &url, &RequestHeaders::default(), "UA").await.unwrap();
+        assert!(!p.resumable, "the server ignored the range: one plain connection");
+        assert_eq!(p.total_size, Some(5), "the size is still known from Content-Length");
+    }
+
+    #[tokio::test]
+    async fn probe_not_resumable_on_malformed_206() {
+        let client = Client::builder().no_proxy().build().unwrap();
+        for mode in [ProbeMode::Stars206, ProbeMode::Garbage206] {
+            let url = probe_server(mode).await;
+            let p = probe(&client, &url, &RequestHeaders::default(), "UA").await.unwrap();
+            assert!(!p.resumable, "a 206 without a real range echo proves nothing");
+            assert_eq!(p.total_size, None, "no usable Content-Range: the size is unknown");
+        }
+    }
+
+    #[test]
+    fn content_range_parsing() {
+        let cr = parse_content_range("bytes 0-0/123456").unwrap();
+        assert_eq!(cr, ContentRange { first: 0, last: 0, total: Some(123456) });
+        let cr = parse_content_range("bytes 100-199/*").unwrap();
+        assert_eq!(cr.total, None, "the open-ended form has no total");
+        assert!(parse_content_range("bytes */1000").is_none(), "the 416 shape names no range");
+        assert!(parse_content_range("bytes 5-2/100").is_none(), "backwards range");
+        assert!(parse_content_range("not-a-range").is_none());
     }
 }
 
