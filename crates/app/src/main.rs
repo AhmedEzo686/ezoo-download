@@ -266,7 +266,21 @@ fn run() -> anyhow::Result<()> {
     // started by Windows at sign-in: stay next to the clock, no window
     let background = std::env::args().any(|a| a == "--background");
     let data_dir = default_data_dir();
-    let port = Settings::load(&data_dir.join("settings.json")).browser_port;
+    // the secret key of the browser add-in: made once, kept (encrypted) in
+    // the settings; another program on the computer can't talk to the port
+    // without it
+    let (port, token) = {
+        let path = data_dir.join("settings.json");
+        let mut s = Settings::load(&path);
+        if s.api_token.len() < 32 {
+            s.api_token = swiftget_engine::secret::random_token();
+            let _ = std::fs::create_dir_all(&data_dir);
+            let _ = s.save(&path);
+        }
+        (s.browser_port, s.api_token)
+    };
+    let _ = api::TOKEN.set(token.clone());
+    browser::prepare_extension_folders();
     if std::env::args().any(|a| a == "--quit") {
         // run by the setup: the open copy closes (saving everything), this one too
         api::notify_quit(port);
@@ -296,7 +310,7 @@ fn run() -> anyhow::Result<()> {
         Ok(s) => Some(s),
         Err(_) => {
             if let Some(src) = &open_torrent {
-                if api::notify_open_torrent(port, src) {
+                if api::notify_open_torrent(port, &token, src) {
                     return Ok(());
                 }
             }
@@ -679,7 +693,7 @@ fn run() -> anyhow::Result<()> {
     }
     {
         // a .torrent file dropped on the window
-        winfx::on_files_dropped(main.window(), |path| {
+        winfx::keep_drawn_with_drop(&main, |path| {
             if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("torrent")) && path.is_file() {
                 torrent_ui::open_source(&path.display().to_string());
             }
@@ -1303,6 +1317,13 @@ fn handle_events(ui: &Ui) {
     // a finished file: the preview names of it are not needed any more
     preview::clean_up();
     for ev in events {
+        // refused at once (the site lets only the browser in): the browser
+        // is asked for it, with the site's sign-in, and gives it back
+        if let Event::Failed(id) = ev {
+            if relay_refused(ui, id) {
+                continue;
+            }
+        }
         match ev {
             Event::Completed(id) | Event::Failed(id) if Some(id) == early => {}
             Event::Completed(_) if s.sounds_on => sound::play(&s.sound_complete),
@@ -1325,12 +1346,73 @@ fn handle_events(ui: &Ui) {
 
 thread_local! {
     static LAST_API_ADD: RefCell<Option<(String, std::time::Instant)>> = const { RefCell::new(None) };
+    // downloads the server refused (403 / 401) handed to the browser:
+    // address -> (download, when, times)
+    static RELAYED: RefCell<HashMap<String, (u64, std::time::Instant, u32)>> = RefCell::new(HashMap::new());
+}
+
+/// The server refused a download before its first byte (HTTP 403 / 401):
+/// many sites let only the browser in (its sign-in, its exact request).
+/// The first time, the address is opened in the browser: the add-in takes
+/// that download with everything the browser sent and it comes back to this
+/// same download. Refused again: the browser keeps it and downloads it
+/// itself. true = handled (no "failed" sound / message).
+fn relay_refused(ui: &Ui, id: u64) -> bool {
+    let Some(v) = ui.ctx.mgr.get(id) else { return false };
+    let err = v.error.clone().unwrap_or_default();
+    let refused = err.contains("HTTP 403") || err.contains("HTTP 401");
+    if v.kind != DownloadKind::Http || v.downloaded > 0 || !refused || !v.url.starts_with("http") {
+        return false;
+    }
+    let times = RELAYED.with(|r| {
+        let mut r = r.borrow_mut();
+        r.retain(|_, (_, at, _)| at.elapsed() < Duration::from_secs(1800));
+        let e = r.entry(v.url.clone()).or_insert((id, std::time::Instant::now(), 0));
+        e.0 = id;
+        e.1 = std::time::Instant::now();
+        e.2 += 1;
+        e.2
+    });
+    if times > 2 {
+        return false;
+    }
+    if times == 2 {
+        // refused with the browser's own request too: the browser downloads it
+        api::leave_to_browser(&v.url);
+        note(&format!("download {id}: refused again, left to the browser"));
+    } else {
+        note(&format!("download {id}: refused by the server, asking the browser"));
+    }
+    let _ = open::that_detached(&v.url);
+    true
+}
+
+/// The add-in sent a download we asked the browser for: it belongs to the
+/// refused one, which goes on with the browser's request.
+fn relayed_download(url: &str) -> Option<u64> {
+    RELAYED.with(|r| {
+        r.borrow()
+            .get(url)
+            .filter(|(_, at, times)| *times == 1 && at.elapsed() < Duration::from_secs(300))
+            .map(|(id, _, _)| *id)
+    })
 }
 
 /// A request from the browser extension.
 fn handle_api(ui: &Ui, event: api::ApiEvent) {
     match event {
         api::ApiEvent::Show => bring_to_front(&ui.ctx),
+        api::ApiEvent::Pair(answer) => {
+            bring_to_front(&ui.ctx);
+            confirm(
+                &ui.ctx,
+                &t("Connect a browser?"),
+                &t("A browser add-in asks to connect to Ezoo Download (to send it the downloads and videos of the browser).\n\nSay yes only if you just installed or updated the Ezoo Download add-in in your browser."),
+                move || {
+                    let _ = answer.send(true);
+                },
+            );
+        }
         api::ApiEvent::Quit => {
             note("closed for the setup");
             let _ = slint::quit_event_loop();
@@ -1369,6 +1451,14 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
             // a .torrent file's link: straight to the torrent window too
             if torrent_ui::looks_like_torrent(&req.url, req.file_name.as_deref()) {
                 torrent_ui::fetch_and_open(&ui.ctx, req.url, headers, req.file_name);
+                return;
+            }
+            // a refused download we asked the browser for: it goes on with the
+            // browser's own request (headers, sign-in)
+            if let Some(id) = relayed_download(&req.url).filter(|id| ui.ctx.mgr.get(*id).is_some()) {
+                ui.ctx.mgr.set_url(id, &req.url, Some(headers));
+                ui.ctx.mgr.start(id);
+                refresh(ui);
                 return;
             }
             // "Refresh download address": this is the new link we waited for
@@ -1835,6 +1925,11 @@ macro_rules! to_front {
     ($w:expr) => {{
         let w = &$w;
         w.window().set_minimized(false);
+        // drawn whole again: what Windows showed of it may be gone
+        {
+            use $crate::winfx::KeepDrawn as _;
+            w.keep_drawn();
+        }
         w.set_front(true);
         let weak = w.as_weak();
         slint::Timer::single_shot(std::time::Duration::from_millis(1800), move || {
@@ -1960,6 +2055,17 @@ pub(crate) fn change_language(ui: &Ui, lang: &str) {
             }
         });
     }
+}
+
+/// A setting needs a new start: asked (after the window that changed it
+/// is gone); yes = everything is saved, it closes and opens again.
+pub(crate) fn ask_restart(text: String) {
+    Timer::single_shot(Duration::from_millis(200), move || {
+        if ask(&text) {
+            RESTART.store(true, std::sync::atomic::Ordering::SeqCst);
+            let _ = slint::quit_event_loop();
+        }
+    });
 }
 
 /// Open the program again (after it saved everything and closed).
@@ -2934,6 +3040,13 @@ pub(crate) fn err_text(e: &str) -> String {
     } else if let Some(rest) = e.split("the link stopped working - getting a new one in ").nth(1) {
         let secs = rest.split(' ').next().unwrap_or("?");
         tf("The link stopped working. A new one is fetched in {} s and checked before the download goes on.", &[&secs])
+    } else if let Some(rest) = e.split("the server can't resume, starting again in ").nth(1) {
+        let secs = rest.split(' ').next().unwrap_or("?");
+        tf("The server had trouble and can't resume this file, so it starts again from the beginning in {} s.", &[&secs])
+    } else if e.contains("server answered HTTP 403") || e.contains("server answered HTTP 401") {
+        t("The server refused Ezoo Download (it lets only the browser in). The link was opened in the browser, which hands it back with the site's sign-in; if the site still refuses, the browser downloads it itself.")
+    } else if e.contains("nobody shares this torrent right now") {
+        t("Nobody shares this torrent right now. It keeps looking and starts by itself as soon as someone does. If it stays like this, the torrent has no sharers left, or your internet provider or firewall blocks torrents.")
     } else if e.contains("ffmpeg.exe is missing") {
         t("ffmpeg.exe (it joins the video and the sound) is missing and could not be downloaded again. Allow it in your antivirus or install Ezoo Download again, then click Resume: nothing downloaded is lost.")
     } else if e.contains("the new link is not the same file") {
@@ -3391,6 +3504,17 @@ fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) 
     d.set_url(v.url.clone().into());
     let status = match v.status {
         _ if v.waiting => t("No internet connection - it will continue by itself when it is back…"),
+        // a torrent: who it downloads from
+        Status::Downloading | Status::Connecting if v.kind == DownloadKind::Torrent => {
+            if v.active_connections == 0 {
+                t("Looking for people who share this torrent…")
+            } else {
+                tf(
+                    "Downloading from {} people ({} of them have the whole file)",
+                    &[&v.active_connections.to_string(), &v.seeders.to_string()],
+                )
+            }
+        }
         Status::Downloading => t("Receiving data…"),
         Status::Assembling => t("Joining the parts…"),
         Status::Failed => t("Error"),

@@ -5,7 +5,7 @@ use crate::limiter::SpeedLimiter;
 use crate::model::{DownloadKind, ProbeResult, RequestHeaders};
 use anyhow::{bail, Context};
 use reqwest::header::{
-    ACCEPT, ACCEPT_ENCODING, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_RANGE, CONTENT_TYPE,
+    ACCEPT, ACCEPT_ENCODING, CONTENT_DISPOSITION, CONTENT_RANGE, CONTENT_TYPE,
     COOKIE, RANGE, REFERER, USER_AGENT,
 };
 use reqwest::{Client, RequestBuilder, StatusCode};
@@ -18,6 +18,8 @@ use std::time::Duration;
 pub struct Progress {
     pub bytes: AtomicU64,
     pub connections: AtomicU32,
+    /// torrents: how many of the connected people have the whole file
+    pub seeders: AtomicU32,
     pub parts_total: AtomicU32,
     pub parts_done: AtomicU32,
     pub assembling: AtomicBool,
@@ -336,7 +338,10 @@ pub async fn probe(
     for (with_range, h) in fallbacks(headers) {
         let mut rb = request(client, url, &h, default_ua);
         if with_range {
-            rb = rb.header(RANGE, "bytes=0-0");
+            // from the start to the end, like a browser asking to resume:
+            // some servers refuse a tiny range ("bytes=0-0") but take this.
+            // Only the answer's headers are read, then the connection goes.
+            rb = rb.header(RANGE, "bytes=0-");
         }
         let resp = match tokio::time::timeout(ANSWER_TIMEOUT, rb.send()).await {
             Ok(r) => r.context("could not connect to server")?,
@@ -374,9 +379,15 @@ pub async fn probe(
         .and_then(|v| v.to_str().ok())
         .and_then(|s| chrono::DateTime::parse_from_rfc2822(s.trim()).ok())
         .map(|d| d.with_timezone(&chrono::Utc));
+    // a strong ETag only ("W/..." may stay the same for another file)
+    let etag = h
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && !s.starts_with("W/"));
 
     let (total_size, resumable) = if status == StatusCode::PARTIAL_CONTENT {
-        // "bytes 0-0/123456"
+        // "bytes 0-123455/123456"
         let total = h
             .get(CONTENT_RANGE)
             .and_then(|v| v.to_str().ok())
@@ -384,13 +395,10 @@ pub async fn probe(
             .and_then(|s| s.trim().parse::<u64>().ok());
         (total, total.is_some())
     } else {
-        let accepts = h
-            .get(ACCEPT_RANGES)
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.eq_ignore_ascii_case("bytes"))
-            .unwrap_or(false);
-        let len = resp.content_length();
-        (len, accepts && len.is_some())
+        // the whole file came, not a part: whatever "Accept-Ranges" says,
+        // this server did not take a byte range, so one connection and no
+        // resume (parts it would not honour were made again and again)
+        (resp.content_length(), false)
     };
 
     let name = h
@@ -428,6 +436,7 @@ pub async fn probe(
         content_type,
         kind,
         last_modified,
+        etag,
     })
 }
 

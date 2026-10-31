@@ -125,7 +125,14 @@ const MANIFEST_FIREFOX: &[u8] = include_bytes!("../../../extension/manifest.fire
 /// what differs is written). false = it could not be written there.
 pub(crate) fn put_extension(dir: &Path, firefox: bool) -> bool {
     let manifest = if firefox { MANIFEST_FIREFOX } else { MANIFEST };
-    let all = EXTENSION_FILES.iter().copied().chain(std::iter::once(("manifest.json", manifest)));
+    // the program's secret key: an add-in loaded from this folder reads it
+    // and shows it with every request (other programs don't get in)
+    let key = format!("{{\"token\":\"{}\"}}\n", crate::api::TOKEN.get().cloned().unwrap_or_default());
+    let mut all: Vec<(&str, &[u8])> = EXTENSION_FILES.to_vec();
+    all.push(("manifest.json", manifest));
+    if crate::api::TOKEN.get().is_some() {
+        all.push(("token.json", key.as_bytes()));
+    }
     let mut ok = true;
     for (name, data) in all {
         let path = dir.join(name);
@@ -143,6 +150,16 @@ pub(crate) fn put_extension(dir: &Path, firefox: bool) -> bool {
         }
     }
     ok
+}
+
+/// At start: the add-in folders next to the program are complete and carry
+/// the key (an add-in loaded from them before gets the key at once).
+pub(crate) fn prepare_extension_folders() {
+    std::thread::spawn(|| {
+        for firefox in [false, true] {
+            let _ = extension_dir(firefox);
+        }
+    });
 }
 
 /// The extension's folder next to the program (Firefox has its own copy),

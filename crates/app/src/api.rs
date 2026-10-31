@@ -111,6 +111,8 @@ pub enum ApiEvent {
     /// a .torrent file / magnet link opened from Windows (double click):
     /// the torrent window with it
     OpenTorrent(String),
+    /// a browser add-in without the key asks to connect: yes / no
+    Pair(std::sync::mpsc::Sender<bool>),
     /// the setup of a new version wants the program closed (it saves
     /// everything first; the downloads go on after the update)
     Quit,
@@ -167,14 +169,14 @@ pub fn bind(port: u16) -> Result<Server, String> {
 }
 
 /// Another Ezoo Download is already running: hand it the torrent to open.
-pub fn notify_open_torrent(port: u16, source: &str) -> bool {
+pub fn notify_open_torrent(port: u16, token: &str, source: &str) -> bool {
     let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(800)) else {
         return false;
     };
     let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
     let body = serde_json::json!({ "source": source }).to_string();
     let req = format!(
-        "POST /open-torrent HTTP/1.1\r\nHost: 127.0.0.1\r\nX-SwiftGet: 1\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "POST /open-torrent HTTP/1.1\r\nHost: 127.0.0.1\r\nX-SwiftGet: 1\r\nX-Ezoo-Token: {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
     if s.write_all(req.as_bytes()).is_err() {
@@ -290,6 +292,55 @@ fn origin_allowed(origin: Option<&str>) -> bool {
     }
 }
 
+/// The secret key of this program (Settings::api_token), set at start.
+pub static TOKEN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+fn token_ok(given: Option<&str>) -> bool {
+    match (TOKEN.get(), given) {
+        (Some(want), Some(got)) if !want.is_empty() => {
+            // the same length and every byte compared (no early exit)
+            want.len() == got.len() && want.bytes().zip(got.bytes()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
+        }
+        _ => false,
+    }
+}
+
+/// A pairing is being asked about right now / the user said no (when).
+static PAIRING: std::sync::Mutex<(bool, Option<std::time::Instant>)> = std::sync::Mutex::new((false, None));
+
+/// An add-in without the key (Firefox, or one loaded from another folder)
+/// asks for it: the user is asked in a window of the program; yes = it gets
+/// the key. Asked once at a time, and not again for 10 minutes after a no.
+fn pair(req: Request, on_event: &impl Fn(ApiEvent)) {
+    {
+        let mut p = PAIRING.lock().unwrap();
+        let refused_lately = p.1.map(|t| t.elapsed() < Duration::from_secs(600)).unwrap_or(false);
+        if p.0 || refused_lately {
+            return reply(req, 429, r#"{"error":"wait"}"#);
+        }
+        p.0 = true;
+    }
+    let (tx, rx) = std::sync::mpsc::channel::<bool>();
+    on_event(ApiEvent::Pair(tx));
+    // the answer waits for the user (on its own thread: other requests go on)
+    std::thread::spawn(move || {
+        let yes = rx.recv_timeout(Duration::from_secs(120)).unwrap_or(false);
+        {
+            let mut p = PAIRING.lock().unwrap();
+            p.0 = false;
+            if !yes {
+                p.1 = Some(std::time::Instant::now());
+            }
+        }
+        if yes {
+            let body = format!(r#"{{"ok":true,"token":"{}"}}"#, TOKEN.get().cloned().unwrap_or_default());
+            reply(req, 200, &body)
+        } else {
+            reply(req, 403, r#"{"error":"refused"}"#)
+        }
+    });
+}
+
 /// Video look-ups running now (each one is a yt-dlp process).
 static RESOLVING: AtomicUsize = AtomicUsize::new(0);
 const MAX_RESOLVING: usize = 3;
@@ -310,6 +361,16 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
     }
 
     let path = req.url().split('?').next().unwrap_or("").to_string();
+    // everything but "are you there" / "show yourself" / "close" (asked by
+    // this program itself and its setup) needs the secret key the add-in got
+    // from this program: another program on the computer can't use it
+    let open = matches!(path.as_str(), "/ping" | "/show" | "/quit" | "/pair");
+    if !open && !token_ok(header(&req, "X-Ezoo-Token").as_deref()) {
+        return reply(req, 401, r#"{"error":"pair","pair":true}"#);
+    }
+    if path == "/pair" && *req.method() == Method::Post {
+        return pair(req, on_event);
+    }
     match (req.method().clone(), path.as_str()) {
         (Method::Get, "/ping") => {
             // "ext": the add-in version that came with this program; an older
@@ -441,6 +502,17 @@ fn handle(mut req: Request, config: &impl Fn() -> String, on_event: &impl Fn(Api
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_key_is_needed() {
+        let _ = TOKEN.set("a".repeat(64));
+        assert!(token_ok(Some(&"a".repeat(64))));
+        assert!(!token_ok(Some(&"b".repeat(64))));
+        assert!(!token_ok(Some("aaaa")));
+        assert!(!token_ok(Some("")));
+        assert!(!token_ok(None));
+    }
+
     use super::*;
 
     #[test]

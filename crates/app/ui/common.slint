@@ -110,6 +110,9 @@ export global Theme {
     in-out property <float> glass: 0;
     // Arabic: every window reads from right to left
     in-out property <bool> rtl: false;
+    // changed by the program to draw a whole window again (Windows may lose
+    // what was drawn: shown from next to the clock, the screen woke up...)
+    in-out property <int> repaint: 0;
     out property <color> window: window-base;
     out property <color> panel: panel-base.transparentize(glass);
     out property <color> toolbar-top: toolbar-top-base.transparentize(glass);
@@ -231,6 +234,13 @@ export component ThemedWindow inherits Window {
         Palette.color-scheme = self.dark ? ColorScheme.dark : ColorScheme.light;
     }
     background: Theme.window;
+    // below everything (and never seen): when Theme.repaint changes, the whole
+    // window is drawn again, not only the parts that changed
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: Math.mod(Theme.repaint, 2) == 0 ? #00000000 : #00000001;
+    }
     // 12px is the size Windows gives Slint by default (the message font)
     default-font-size: 12px * Theme.font-scale;
     default-font-family: Theme.font-family;

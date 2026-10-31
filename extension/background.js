@@ -25,7 +25,7 @@ function apiUrl(port, path) {
   return `http://127.0.0.1:${port}${path}`;
 }
 
-async function fetchWithTimeout(url, opts = {}, ms = 1500) {
+async function plainFetch(url, opts = {}, ms = 1500) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -33,6 +33,73 @@ async function fetchWithTimeout(url, opts = {}, ms = 1500) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ---------------------------------------------------------------- the program's key
+// Every request to the program carries its secret key, so no other program
+// on the computer can use it. Loaded from the program's folder, the add-in
+// finds the key there (token.json); otherwise (Firefox, another folder) it
+// asks for it once and the user says yes in a window of the program.
+let appKey = null;
+async function programKey() {
+  if (appKey) return appKey;
+  try {
+    const r = await fetch(chrome.runtime.getURL("token.json"), { cache: "no-store" });
+    if (r.ok) {
+      const t = (await r.json()).token;
+      if (t) return (appKey = t);
+    }
+  } catch {
+    /* not in this folder */
+  }
+  const { appToken } = await chrome.storage.local.get("appToken");
+  if (appToken) appKey = appToken;
+  return appKey;
+}
+
+let pairing = null;
+async function askForKey(port) {
+  if (!pairing) {
+    pairing = (async () => {
+      try {
+        // the user has up to two minutes to answer in the program
+        const r = await plainFetch(apiUrl(port, "/pair"), { method: "POST", headers: { "X-SwiftGet": "1" } }, 125000);
+        if (!r.ok) return null;
+        const t = (await r.json()).token;
+        if (t) {
+          await chrome.storage.local.set({ appToken: t });
+          appKey = t;
+        }
+        return t || null;
+      } catch {
+        return null;
+      } finally {
+        setTimeout(() => (pairing = null), 1000);
+      }
+    })();
+  }
+  return pairing;
+}
+
+/** A request; to the program it carries the key (asked for once if needed). */
+async function fetchWithTimeout(url, opts = {}, ms = 1500) {
+  const toApp = /^http:\/\/127\.0\.0\.1:\d+\//.test(url);
+  if (!toApp) return plainFetch(url, opts, ms);
+  const withKey = async () => {
+    const key = await programKey();
+    const headers = Object.assign({}, opts.headers || {}, key ? { "X-Ezoo-Token": key } : {});
+    return plainFetch(url, { ...opts, headers }, ms);
+  };
+  let r = await withKey();
+  if (r && r.status === 401) {
+    // a new key (the program was set up again) or none yet
+    appKey = null;
+    await chrome.storage.local.remove("appToken");
+    const port = Number(new URL(url).port);
+    if (!(await programKey()) && !(await askForKey(port))) return r;
+    r = await withKey();
+  }
+  return r;
 }
 
 // ---------------------------------------------------------------- self update
@@ -153,17 +220,62 @@ function isYoutube(url) {
   }
 }
 
-async function sendToApp({ url, audioUrl, referrer, fileName, headers, sourcePage, sourceKey }) {
+// ---------------------------------------------------------------- the browser's own request
+// What the browser sent for a file a moment ago (some sites let only exactly
+// that request in: the right Accept-Language, Sec-Fetch-*, client hints...).
+// The download is handed over with the same headers. Kept in memory for two
+// minutes: the download starts right after its request.
+const SENT_HEADERS = new Map();
+const KEEP_HEADERS = /^(accept-language|sec-fetch-(site|mode|dest|user)|sec-ch-ua(-mobile|-platform)?|origin|referer|user-agent|cookie|x-requested-with)$/i;
+function rememberRequest(d) {
+  if (!d.requestHeaders || !/^https?:/i.test(d.url)) return;
+  const kept = d.requestHeaders.filter((h) => KEEP_HEADERS.test(h.name) && typeof h.value === "string");
+  if (!kept.length) return;
+  SENT_HEADERS.set(d.url, { at: Date.now(), headers: kept });
+  if (SENT_HEADERS.size > 300) {
+    const old = Date.now() - 120000;
+    for (const [k, v] of SENT_HEADERS) if (v.at < old || SENT_HEADERS.size > 300) SENT_HEADERS.delete(k);
+  }
+}
+try {
+  // Chrome / Edge / Brave need "extraHeaders" to show Cookie and Referer
+  const extra = chrome.webRequest.OnSendHeadersOptions && chrome.webRequest.OnSendHeadersOptions.EXTRA_HEADERS;
+  chrome.webRequest.onSendHeaders.addListener(
+    rememberRequest,
+    { urls: ["<all_urls>"], types: ["main_frame", "sub_frame", "media", "object", "other", "xmlhttprequest"] },
+    extra ? ["requestHeaders", extra] : ["requestHeaders"]
+  );
+} catch (_) {
+  /* no request headers here: the cookies and the page still go along */
+}
+
+/** What the browser sent for `url` (or the first of `urls` it knows). */
+function browserRequest(...urls) {
+  for (const u of urls) {
+    const r = u && SENT_HEADERS.get(u);
+    if (r && Date.now() - r.at < 120000) return r.headers;
+  }
+  return null;
+}
+
+async function sendToApp({ url, audioUrl, referrer, fileName, headers, sourcePage, sourceKey, alsoUrl }) {
   const { port } = await getOpts();
+  // the browser's own request for this file: its headers go along (the app
+  // keeps its own Accept / Range); its cookie is the one the site really got
+  const sent = headers ? null : browserRequest(url, alsoUrl);
+  const sentCookie = sent && sent.find((h) => /^cookie$/i.test(h.name));
+  const sentReferer = sent && sent.find((h) => /^referer$/i.test(h.name));
+  const sentUa = sent && sent.find((h) => /^user-agent$/i.test(h.name));
+  const passOn = sent ? sent.filter((h) => !/^(cookie|referer|user-agent)$/i.test(h.name)).map((h) => [h.name, h.value]) : null;
   const body = {
     url,
     audioUrl: audioUrl || null,
-    headers: headers || null,
+    headers: headers || (passOn && passOn.length ? passOn : null),
     sourcePage: sourcePage || null,
     sourceKey: sourceKey || null,
-    referrer: referrer || null,
-    cookies: await cookieHeader(url),
-    userAgent: navigator.userAgent,
+    referrer: referrer || (sentReferer && sentReferer.value) || null,
+    cookies: (sentCookie && sentCookie.value) || (await cookieHeader(url)),
+    userAgent: (sentUa && sentUa.value) || navigator.userAgent,
     fileName: fileName || null,
   };
   const r = await fetchWithTimeout(
@@ -329,6 +441,10 @@ async function shouldTake(item) {
   if (!url || !/^https?:/i.test(url)) return false; // blob:, data:, file: stay in the browser
   if (!isNewDownload(item)) return false;
   if (await takeBypass(url)) return false;
+  // the browser's PDF viewer saving the PDF it shows: the browser asks where
+  // to save it anyway (that window can't be stopped), so it keeps it rather
+  // than two windows asking at once
+  if (await shownInPdfViewer(item)) return false;
   // already handed to the app by the click on its link: the browser's copy goes
   if ((await justTaken(item.url)) || (await justTaken(url))) return true;
   if (opts.minSizeKB > 0 && item.totalBytes > 0 && item.totalBytes < opts.minSizeKB * 1024) return false;
@@ -337,6 +453,19 @@ async function shouldTake(item) {
   if (!wanted(cfg, url, baseName(item.filename), item.mime, currentKeys())) return false;
   if (await appSaysBrowser([item.url, url])) return false; // the user chose the browser for it
   return true;
+}
+
+/** A PDF that a tab shows in the browser's own viewer right now. */
+async function shownInPdfViewer(item) {
+  const pdf = /pdf/i.test(item.mime || "") || /\.pdf($|[?#])/i.test(item.finalUrl || item.url || "");
+  if (!pdf) return false;
+  try {
+    const tabs = await chrome.tabs.query({});
+    const same = (a, b) => !!a && !!b && a.split("#")[0] === b.split("#")[0];
+    return tabs.some((t) => same(t.url, item.url) || same(t.url, item.finalUrl));
+  } catch {
+    return false;
+  }
 }
 
 /** Take it from the browser and give it to the app. */
@@ -350,7 +479,7 @@ async function takeOver(item) {
   }
   if (await sentRecently(url)) return;
   try {
-    await sendToApp({ url, referrer: item.referrer, fileName: baseName(item.filename) });
+    await sendToApp({ url, alsoUrl: item.url, referrer: item.referrer, fileName: baseName(item.filename) });
   } catch (e) {
     // the app may have got it anyway (it was only slow to answer): never
     // hand it to the browser as well, that showed the file twice

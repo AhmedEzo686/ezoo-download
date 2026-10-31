@@ -285,20 +285,121 @@ pub(crate) fn drag_file_out(w: &slint::Window, path: &std::path::Path) {
     }
 }
 
-/// Files dropped on the window from Explorer.
+/// Draw all of `c` again at the next frame (not only what changed).
+pub(crate) fn repaint_all<C>(c: &C)
+where
+    C: ComponentHandle,
+    for<'a> crate::Theme<'a>: slint::Global<'a, C>,
+{
+    let t = c.global::<crate::Theme>();
+    t.set_repaint(t.get_repaint().wrapping_add(1));
+}
+
+/// The windows are drawn by the processor, and only the parts that changed
+/// are drawn again. When Windows throws away what a window showed (it was
+/// hidden next to the clock, the screen slept, the size or the scale
+/// changed...), the rest stayed black. So the whole window is drawn again
+/// whenever that can have happened, and at most once a second whenever
+/// Windows asks for a picture. `dropped`: files dropped on the window.
+pub(crate) fn keep_drawn<C>(c: &C)
+where
+    C: ComponentHandle + 'static,
+    for<'a> crate::Theme<'a>: slint::Global<'a, C>,
+{
+    repaint_all(c);
+    hook_window(c, None);
+}
+
+/// The same, with files dropped on the window from Explorer.
+pub(crate) fn keep_drawn_with_drop<C>(c: &C, dropped: impl Fn(std::path::PathBuf) + 'static)
+where
+    C: ComponentHandle + 'static,
+    for<'a> crate::Theme<'a>: slint::Global<'a, C>,
+{
+    repaint_all(c);
+    hook_window(c, Some(Box::new(dropped)));
+}
+
+/// `w.keep_drawn()` on any window (a reference to one too).
+pub(crate) trait KeepDrawn {
+    fn keep_drawn(&self);
+}
+
+impl<C> KeepDrawn for C
+where
+    C: ComponentHandle + 'static,
+    for<'a> crate::Theme<'a>: slint::Global<'a, C>,
+{
+    fn keep_drawn(&self) {
+        keep_drawn(self);
+    }
+}
+
+thread_local! {
+    // the window (by its address) whose handler also takes dropped files:
+    // it is not replaced by one without them
+    static WITH_DROP: Cell<usize> = const { Cell::new(0) };
+}
+
 #[cfg(windows)]
-pub(crate) fn on_files_dropped(w: &slint::Window, f: impl Fn(std::path::PathBuf) + 'static) {
+fn hook_window<C>(c: &C, dropped: Option<Box<dyn Fn(std::path::PathBuf)>>)
+where
+    C: ComponentHandle + 'static,
+    for<'a> crate::Theme<'a>: slint::Global<'a, C>,
+{
     use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
-    w.on_winit_window_event(move |_, ev| {
-        if let winit::event::WindowEvent::DroppedFile(p) = ev {
-            f(p.clone());
+    use winit::event::WindowEvent;
+    // one handler per window (a new one replaces the old): the one that
+    // also takes dropped files stays
+    let key = c.window() as *const slint::Window as usize;
+    if dropped.is_some() {
+        WITH_DROP.with(|w| w.set(key));
+    } else if WITH_DROP.with(|w| w.get()) == key {
+        return;
+    }
+    let weak = c.as_weak();
+    let last = Cell::new(std::time::Instant::now());
+    c.window().on_winit_window_event(move |_, ev| {
+        let all = |weak: &slint::Weak<C>| {
+            if let Some(c) = weak.upgrade() {
+                repaint_all(&c);
+            }
+        };
+        match ev {
+            WindowEvent::DroppedFile(p) => {
+                if let Some(f) = &dropped {
+                    f(p.clone());
+                }
+            }
+            WindowEvent::Resized(_)
+            | WindowEvent::Focused(true)
+            | WindowEvent::Occluded(false)
+            | WindowEvent::ScaleFactorChanged { .. }
+            | WindowEvent::ThemeChanged(_) => {
+                last.set(std::time::Instant::now());
+                all(&weak);
+            }
+            // Windows asks for a picture (or we did): the whole window now
+            // and then, so nothing stays black for long
+            WindowEvent::RedrawRequested if last.get().elapsed() > std::time::Duration::from_secs(1) => {
+                last.set(std::time::Instant::now());
+                all(&weak);
+            }
+            _ => {}
         }
         EventResult::Propagate
     });
 }
 
 #[cfg(not(windows))]
-pub(crate) fn on_files_dropped(_w: &slint::Window, _f: impl Fn(std::path::PathBuf) + 'static) {}
+fn hook_window<C>(c: &C, _dropped: Option<Box<dyn Fn(std::path::PathBuf)>>)
+where
+    C: ComponentHandle + 'static,
+    for<'a> crate::Theme<'a>: slint::Global<'a, C>,
+{
+    let _ = c;
+    let _ = &WITH_DROP;
+}
 
 /// A file / folder picker that belongs to `w`: it stays on top of it and
 /// `w` waits for it.

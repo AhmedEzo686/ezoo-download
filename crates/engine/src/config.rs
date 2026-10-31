@@ -195,7 +195,7 @@ pub struct SiteLogin {
 pub const MAIN_QUEUE: u64 = 1;
 
 /// Bump when defaults change in a way old settings files should pick up.
-const SETTINGS_VERSION: u32 = 4;
+const SETTINGS_VERSION: u32 = 5;
 
 /// Columns of the download list that can be shown or hidden (View > Columns).
 pub const ALL_COLUMNS: [&str; 11] =
@@ -379,6 +379,10 @@ pub struct Settings {
     /// draw the windows with the graphics card (more memory; off = the
     /// processor draws them, works on every computer)
     pub gpu_drawing: bool,
+    /// the key the browser add-in sends with every request (made at the
+    /// first start; encrypted on the disk)
+    #[serde(with = "crate::secret::string")]
+    pub api_token: String,
 }
 
 impl Default for Settings {
@@ -395,7 +399,7 @@ impl Default for Settings {
             speed_limit_kb: 0,
             retries: 10,
             user_agent: DEFAULT_USER_AGENT.into(),
-            clipboard_monitor: true,
+            clipboard_monitor: false,
             show_complete_dialog: true,
             ask_before_remove: true,
             remove_deletes_files: false,
@@ -476,6 +480,7 @@ impl Default for Settings {
             main_maximized: false,
             progress_details: false,
             gpu_drawing: false,
+            api_token: String::new(),
         }
     }
 }
@@ -522,6 +527,11 @@ impl Settings {
                 }
             }
             s.schedule.enabled = false;
+        }
+        if s.version < 5 {
+            // v5: watching the clipboard is off until the user turns it on
+            // (it reads everything that is copied)
+            s.clipboard_monitor = false;
         }
         s.version = SETTINGS_VERSION;
         if !s.queues.iter().any(|q| q.id == MAIN_QUEUE) {

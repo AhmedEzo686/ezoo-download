@@ -76,6 +76,8 @@ pub struct ProbeResult {
     pub kind: DownloadKind,
     /// the server's "Last-Modified" date
     pub last_modified: Option<DateTime<Utc>>,
+    /// the server's name for this version of the file ("ETag")
+    pub etag: Option<String>,
     /// the server refused the request as it was (HTTP 403 and the like) and
     /// took it with these headers instead: the download uses them too
     pub headers_used: Option<RequestHeaders>,
@@ -184,6 +186,10 @@ pub struct DownloadRecord {
     /// server's file date (Last-Modified)
     #[serde(default)]
     pub server_time: Option<DateTime<Utc>>,
+    /// the server's name for the version of the file being downloaded
+    /// ("ETag"): another one later = the file changed on the server
+    #[serde(default)]
+    pub etag: Option<String>,
     /// automatic retries done by its queue
     #[serde(default)]
     pub retry_count: u32,
@@ -300,6 +306,8 @@ pub struct DownloadView {
     pub speed: f64,
     pub eta_secs: Option<u64>,
     pub active_connections: u32,
+    /// torrents: connected people that have the whole file
+    pub seeders: u32,
     pub resumable: bool,
     pub parts_total: u32,
     pub parts_done: u32,

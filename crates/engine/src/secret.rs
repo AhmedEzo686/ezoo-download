@@ -15,6 +15,19 @@
 
 const PREFIX: &str = "dpapi:";
 
+/// A new random secret (64 hex characters), e.g. the key the browser add-in
+/// shows the program with every request.
+pub fn random_token() -> String {
+    use ring::rand::SecureRandom;
+    let mut b = [0u8; 32];
+    if ring::rand::SystemRandom::new().fill(&mut b).is_err() {
+        // never seen; still unique per start
+        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        b[..16].copy_from_slice(&(t ^ u128::from(std::process::id())).to_le_bytes());
+    }
+    to_hex(&b)
+}
+
 fn to_hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }

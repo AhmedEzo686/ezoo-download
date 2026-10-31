@@ -249,6 +249,22 @@ fn num(v: &Value) -> u64 {
     v.as_str().and_then(|s| s.parse().ok()).or_else(|| v.as_u64()).unwrap_or(0)
 }
 
+/// Public trackers added to every torrent (the torrent's own come first).
+/// Long-running, open ones that answer most torrents.
+const PUBLIC_TRACKERS: &[&str] = &[
+    "udp://tracker.opentrackr.org:1337/announce",
+    "udp://open.stealth.si:80/announce",
+    "udp://tracker.torrent.eu.org:451/announce",
+    "udp://exodus.desync.com:6969/announce",
+    "udp://explodie.org:6969/announce",
+    "udp://open.demonii.com:1337/announce",
+    "udp://tracker.dler.org:6969/announce",
+    "udp://tracker.tiny-vps.com:6969/announce",
+    "udp://tracker.openbittorrent.com:6969/announce",
+    "https://tracker.tamersunion.org:443/announce",
+    "http://tracker.opentrackr.org:1337/announce",
+];
+
 /// Options for one torrent.
 #[derive(Debug, Clone, Default)]
 pub struct AddOptions {
@@ -285,6 +301,12 @@ impl Aria2 {
         let secret = random_secret();
         let _ = std::fs::create_dir_all(&self.data_dir);
         let dht = self.data_dir.join("dht.dat");
+        // what aria2 says went wrong (a peer it can't reach, a full disk...),
+        // kept small: begun again when it gets big
+        let log = self.data_dir.join("aria2.log");
+        if std::fs::metadata(&log).map(|m| m.len() > 2 << 20).unwrap_or(false) {
+            let _ = std::fs::rename(&log, self.data_dir.join("aria2.old.log"));
+        }
         let mut cmd = std::process::Command::new(&tool);
         cmd.args([
             "--enable-rpc=true",
@@ -309,7 +331,14 @@ impl Aria2 {
             "--quiet=true",
             "--check-certificate=true",
             "--disk-cache=32M",
+            // many magnet links bring no working tracker (or none at all):
+            // well-known public trackers find the people who share it
+            "--bt-tracker-connect-timeout=10",
+            "--bt-tracker-timeout=20",
+            "--log-level=warn",
         ])
+        .arg(format!("--bt-tracker={}", PUBLIC_TRACKERS.join(",")))
+        .arg(format!("--log={}", log.display()))
         .arg(format!("--rpc-listen-port={port}"))
         .arg(format!("--rpc-secret={secret}"))
         .arg(format!("--stop-with-process={}", std::process::id()))

@@ -366,29 +366,17 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 22] = [
-    "A click on a file link in the browser goes straight to Ezoo Download: the browser's own Save As window no longer opens (Brave too).",
-    "Changing the folder or the name in \"Download File Info\" no longer gives a small broken file, and a name typed without its extension keeps it.",
-    "Downloads never wait for ever any more: when a server stops answering, Ezoo Download asks again by itself, so a video or a file no longer stays at 0 KB/s or never starts, and Pause / Resume is not needed.",
-    "Big files keep going by themselves when the server has trouble: Ezoo Download tries again later on its own.",
-    "A link that stops working (expired) is renewed by itself and checked first, then the download goes on from where it was.",
-    "The number of connections changes at once, even while a file downloads, and a connection much slower than the others is made again, so the speed stays steady.",
-    "The download window has the Windows title bar again, so every button answers the mouse where it is (Windows 10 and 11); its details stay hidden until you show them, and the windows keep the size you gave them.",
-    "The windows are drawn without the graphics card: much less memory, and the program no longer closes by itself at start on some computers (Options > General switches it back).",
-    "When Ezoo Download is open but does not answer, opening it again offers to close it and start it fresh; an update shows its small window and never closes the program again and again.",
-    "The speed limiter goes on and off with a click in the status bar, and \"Move to queue\" opens in a list of its own.",
-    "Torrents: a .torrent link in the browser opens the torrent window at once, .torrent files and magnet links open with Ezoo Download, and a .torrent file can be dropped on the window.",
-    "Removing downloads can delete their files from the disk too (if you tick it), and the question can be turned off.",
-    "Ctrl+A, Ctrl+N and the other shortcuts work with the Arabic keyboard too, and files are selected with the mouse in both directions.",
-    "The video button: a small style (arrow and ✕) with a see-through slider, videos in the Facebook feed, and the qualities of streams on many more sites instead of an error.",
-    "The video button in the browser hides in full screen (or not: the add-in's window), stays closed when you close it, and streams show their quality first.",
-    "The browser add-in reloads itself after an update, and Chrome / Edge get its files back when some went missing (\"files missing or unreadable\").",
-    "Firefox: the add-in is signed again and updates by itself.",
-    "Playlists have 240p and 144p, the MP3 quality can be chosen, and the subtitles of videos can be downloaded too (Options > Downloads).",
-    "ffmpeg.exe (it joins the picture and the sound) is downloaded again by itself when an antivirus removed it.",
-    "Safer files: every part is checked before it is written, a moved file never replaces another one, and streams made of one big file or sent elsewhere download correctly.",
-    "Opening a finished file or \"Open with\" never makes the program wait.",
-    "The toolbar grows with bigger text, so the names are never cut.",
+const WHATS_NEW: [&str; 10] = [
+    "No more black windows: a window that Windows had cleared (shown again from next to the clock, after the screen slept...) is drawn whole again.",
+    "Sites that let only the browser in (HTTP 403): Ezoo Download sends exactly what the browser sent, and if the site still refuses, the browser is asked for the file and hands it back with the site's sign-in.",
+    "A PDF link goes straight to Ezoo Download: no second window asking where to save from the PDF viewer of Edge and Brave.",
+    "Torrents find many more people to download from (public trackers), the window says how many are connected, and it tells you when nobody shares the torrent.",
+    "Direct links: the server is asked the way download managers usually ask, and a server that does not really resume gets one steady connection instead of failing again and again.",
+    "A file that changed on the server while it was paused starts again, instead of mixing the old and the new file; a server that can't resume and has trouble makes the download start again by itself.",
+    "The time left stays steady and still shows when the speed drops for a moment.",
+    "Settings that need a new start (the drawing, the port) ask to restart the program.",
+    "Safer: only the Ezoo Download add-in can talk to the program (a secret key), and watching the clipboard is off until you turn it on.",
+    "The mouse pointer stays normal on the video button.",
 ];
 
 thread_local! {

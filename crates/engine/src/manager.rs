@@ -57,6 +57,9 @@ struct SpeedMeter {
     /// (time, bytes) samples of the last ~2 seconds
     samples: std::collections::VecDeque<(Instant, u64)>,
     value: f64,
+    /// the speed over the last ~10 seconds: the time left follows it, so it
+    /// stays steady (and still shows when the speed drops for a moment)
+    steady: f64,
 }
 
 struct Inner {
@@ -413,6 +416,7 @@ impl Manager {
             queue_pos: id,
             last_try: None,
             server_time: probe.as_ref().and_then(|p| p.last_modified),
+            etag: probe.as_ref().and_then(|p| p.etag.clone()),
             retry_count: 0,
             pick_quality: req.pick_quality.clone(),
             work_stem: None,
@@ -1182,6 +1186,8 @@ impl Manager {
         let mut stuck = 0u32;
         // new links fetched because the old one stopped working
         let mut relinks = 0u32;
+        // a download without resume started again from the beginning
+        let mut restarts = 0u32;
         let mut last_bytes = progress.as_ref().map(|p| p.bytes.load(Ordering::Relaxed)).unwrap_or(0);
         let result = loop {
             let r = self.run_download(id, cancel.clone()).await;
@@ -1227,6 +1233,18 @@ impl Manager {
                     }
                     let wait = http::retry_delay(stuck);
                     let note = format!("{e:#} - trying again in {} s", wait.as_secs());
+                    self.update(id, move |x| x.error = Some(note));
+                    tokio::select! {
+                        _ = tokio::time::sleep(wait) => {}
+                        _ = cancel.cancelled() => break Err(Cancelled.into()),
+                    }
+                }
+                // a server that can't resume (no byte ranges) had trouble: it
+                // starts again from the beginning by itself, a few times
+                (Err(e), Some(_)) if !cancel.is_cancelled() && !e.is::<Cancelled>() && http::is_passing_error(e) && restarts < 3 => {
+                    restarts += 1;
+                    let wait = http::retry_delay(restarts);
+                    let note = format!("{e:#} - the server can't resume, starting again in {} s (try {restarts})", wait.as_secs());
                     self.update(id, move |x| x.error = Some(note));
                     tokio::select! {
                         _ = tokio::time::sleep(wait) => {}
@@ -1390,10 +1408,19 @@ impl Manager {
         {
             let mut table = segs.lock().unwrap();
             let changed = rec.total_size.is_some() && p.total_size != rec.total_size;
-            if changed || !p.resumable {
+            // the same address now gives another version of the file (its
+            // "ETag" or date changed): the parts already there are of the
+            // old one, so it starts again rather than mixing the two
+            let same_place = rec.final_url.as_deref() == Some(p.final_url.as_str());
+            let other_version = !table.is_empty()
+                && same_place
+                && ((rec.etag.is_some() && p.etag.is_some() && rec.etag != p.etag)
+                    || (rec.etag.is_none() && rec.server_time.is_some() && p.last_modified.is_some() && rec.server_time != p.last_modified));
+            if changed || other_version || !p.resumable {
                 table.clear();
             }
         }
+        rec.etag = p.etag.clone().or(rec.etag.take());
         // the server only took the request without the browser's cookies /
         // referrer: the download asks the same way
         if let Some(h) = &p.headers_used {
@@ -1441,6 +1468,7 @@ impl Manager {
                 }
                 x.auto_name = false;
                 x.server_time = r.server_time;
+                x.etag = r.etag;
                 if x.status == Status::Connecting {
                     x.status = Status::Downloading;
                 }
@@ -1557,6 +1585,9 @@ impl Manager {
         });
         let mut named = false;
         let mut listed = !rec.torrent_files.is_empty();
+        // since when nobody is connected (to say so after a while)
+        let mut alone_since = Some(Instant::now());
+        let mut said_alone = false;
         loop {
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(800)) => {}
@@ -1588,6 +1619,20 @@ impl Manager {
             };
             progress.bytes.store(done, Ordering::Relaxed);
             progress.connections.store(st.connections, Ordering::Relaxed);
+            progress.seeders.store(st.seeders, Ordering::Relaxed);
+            if st.connections > 0 {
+                alone_since = None;
+                if said_alone {
+                    said_alone = false;
+                    self.update(id, |x| x.error = None);
+                }
+            } else if done < total.max(1) {
+                let since = *alone_since.get_or_insert_with(Instant::now);
+                if !said_alone && since.elapsed() > Duration::from_secs(90) {
+                    said_alone = true;
+                    self.update(id, |x| x.error = Some("nobody shares this torrent right now".into()));
+                }
+            }
             if !listed && !chosen.is_empty() {
                 // the files it writes, to clean up exactly those later
                 let rel: Vec<String> = chosen
@@ -1919,6 +1964,7 @@ impl Manager {
                 if e.task.is_none() {
                     m.samples.clear();
                     m.value = 0.0;
+                    m.steady = 0.0;
                     continue;
                 }
                 any_running = true;
@@ -1936,6 +1982,7 @@ impl Manager {
                         let rate = (last.1 - first.1) as f64 / dt;
                         // light smoothing on top of the 2 s window
                         m.value = if m.value == 0.0 { rate } else { m.value * 0.5 + rate * 0.5 };
+                        m.steady = if m.steady == 0.0 { rate } else { m.steady * 0.98 + rate * 0.02 };
                     }
                 }
             }
@@ -2208,8 +2255,12 @@ fn view_of(e: &Entry, with_parts: bool) -> DownloadView {
         bytes
     };
     let speed = if status.is_running() { e.speed.value } else { 0.0 };
+    // the time left: from the steady speed (the speed of this very moment
+    // jumps, and a short stop made it disappear)
+    let steady = if status.is_running() { e.speed.steady } else { 0.0 };
+    let pace = if steady > 1.0 { steady } else { speed };
     let eta_secs = match e.rec.total_size {
-        Some(t) if speed > 1.0 => Some((t.saturating_sub(downloaded) as f64 / speed) as u64),
+        Some(t) if pace > 1.0 => Some((t.saturating_sub(downloaded) as f64 / pace) as u64),
         _ => None,
     };
     let segments = if status == Status::Completed || !with_parts {
@@ -2231,6 +2282,7 @@ fn view_of(e: &Entry, with_parts: bool) -> DownloadView {
         speed,
         eta_secs,
         active_connections: e.progress.connections.load(Ordering::Relaxed),
+        seeders: e.progress.seeders.load(Ordering::Relaxed),
         waiting: status.is_running()
             && e.progress.waiting.load(Ordering::Relaxed)
             && e.progress.connections.load(Ordering::Relaxed) == 0,

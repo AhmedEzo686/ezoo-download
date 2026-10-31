@@ -276,10 +276,10 @@
            opacity: var(--o, .9); transition: opacity .15s; user-select: none; white-space: nowrap; }
     .btn:hover, .btn.open { opacity: 1; }
     .btn.drag { opacity: 1; }
-    .part { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; cursor: grab; }
+    .part { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; cursor: default; }
     .part:hover { background: rgba(255,255,255,.12); }
     .btn.drag .part { cursor: grabbing; }
-    .side { padding: 3px 6px; cursor: pointer; border-left: 1px solid rgba(255,255,255,.28); display: inline-flex; align-items: center; }
+    .side { padding: 3px 6px; cursor: default; border-left: 1px solid rgba(255,255,255,.28); display: inline-flex; align-items: center; }
     .side:hover { background: rgba(255,255,255,.18); }
     .ico { width: 13px; height: 13px; flex: none; }
     .caret { font-size: 9px; opacity: .9; }
@@ -290,7 +290,7 @@
             overflow: hidden; max-height: 360px; overflow-y: auto; border: 1px solid #d5dbe4; }
     .head { padding: 7px 10px; background: #f4f6fa; border-bottom: 1px solid #e3e8ef; font-weight: 600; color: #334;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .item { padding: 6px 10px; cursor: pointer; border-bottom: 1px solid #eef1f5; display: flex; gap: 6px; }
+    .item { padding: 6px 10px; cursor: default; border-bottom: 1px solid #eef1f5; display: flex; gap: 6px; }
     .item:last-child { border-bottom: 0; }
     .item:hover { background: #e8f0fe; }
     .num { color: #6b7686; min-width: 16px; text-align: right; }
@@ -304,7 +304,7 @@
     .all { font-weight: 700; color: #1d63d6; }
     .msg { padding: 8px 10px; color: #1a9e5a; }
     .help { padding: 8px 10px; color: #334; background: #fffbe6; border-bottom: 1px solid #f0e2a8; }
-    .act { margin-top: 6px; display: inline-block; background: #1d63d6; color: #fff; border-radius: 4px; padding: 3px 9px; cursor: pointer; }
+    .act { margin-top: 6px; display: inline-block; background: #1d63d6; color: #fff; border-radius: 4px; padding: 3px 9px; cursor: default; }
     .act:hover { background: #1a56b8; }
     .off { cursor: default; opacity: .7; }
     .off:hover { background: #fff; }
@@ -726,7 +726,11 @@
   refreshLinkRules();
   setInterval(refreshLinkRules, 60000);
   // shown by the browser itself, not downloaded: never taken from a click
-  const VIEWED = /^(html?|xhtml|php\d?|aspx?|jsp|cgi|pl|cfm|do|action|json|xml|txt|css|js|jpe?g|png|gif|webp|svg|bmp|ico|avif|pdf)$/;
+  // pages and pictures open in the browser; a PDF too, unless PDF is one of
+  // the file types the app takes (then a click on its link goes to the app:
+  // once it is open in the browser's PDF viewer, the viewer's own download
+  // button always asks where to save, and that can't be stopped)
+  const VIEWED = /^(html?|xhtml|php\d?|aspx?|jsp|cgi|pl|cfm|do|action|json|xml|txt|css|js|jpe?g|png|gif|webp|svg|bmp|ico|avif)$/;
   const keyHeld = (e, k) => (k === "alt" ? e.altKey : k === "ctrl" ? e.ctrlKey : k === "shift" ? e.shiftKey : false);
   function wantedLink(e, href) {
     const r = linkRules;
@@ -749,6 +753,7 @@
     const dot = last.lastIndexOf(".");
     const ext = dot > 0 ? last.slice(dot + 1).toLowerCase() : "";
     if (!ext || VIEWED.test(ext)) return false;
+    if (ext === "pdf" && !(r.exts || []).some((x) => wildcard(x, ext))) return false;
     // a .torrent file opens in the program's torrent window
     if (forced || ext === "torrent") return true;
     return (r.exts || []).some((x) => wildcard(x, ext));
