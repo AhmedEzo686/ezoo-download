@@ -70,6 +70,9 @@ msgstr "فتح باستخدام…"
 msgid "Play while downloading"
 msgstr "تشغيل أثناء التحميل"
 
+msgid "Download a part of it…"
+msgstr "تحميل جزء منه…"
+
 msgid "Open folder"
 msgstr "فتح المجلد"
 
@@ -180,6 +183,9 @@ msgstr "تشغيل جامع المواقع…"
 
 msgid "Download a playlist…"
 msgstr "تحميل قائمة تشغيل…"
+
+msgid "Download a part of a video…"
+msgstr "تحميل جزء من فيديو…"
 
 msgid "Add a torrent / magnet link…"
 msgstr "إضافة تورنت / رابط magnet…"
@@ -1434,6 +1440,57 @@ msgstr "ادعم عبر InstaPay"
 
 msgid "InstaPay: a7medek@instapay (scan the code with your bank's app)"
 msgstr "امسح الكود بتطبيق البنك أو InstaPay — a7medek@instapay"
+
+msgid "Download a part of a video"
+msgstr "تحميل جزء من فيديو"
+
+msgid "Paste the address of the video (its page, or a link to the video or stream):"
+msgstr "الصق عنوان الفيديو (صفحته، أو رابط الفيديو أو البث):"
+
+msgid "Looking…"
+msgstr "جارٍ البحث…"
+
+msgid "Get the video"
+msgstr "جلب الفيديو"
+
+msgid "Quality:"
+msgstr "الجودة:"
+
+msgid "From:"
+msgstr "من:"
+
+msgid "To:"
+msgstr "إلى:"
+
+msgid "Length:"
+msgstr "المدة:"
+
+msgid "Cut:"
+msgstr "القص:"
+
+msgid "Quick cut (recommended)"
+msgstr "قص سريع (مستحسن)"
+
+msgid "Exact cut"
+msgstr "قص دقيق"
+
+msgid "Quick cut"
+msgstr "قص سريع"
+
+msgid "Takes seconds and keeps the quality exactly as it is (nothing is made again). A video can only start on a whole picture, so the part may start a second or two before the time you chose."
+msgstr "يستغرق ثوانيَ ويحافظ على الجودة كما هي تمامًا (لا يُعاد إنشاء أي شيء). لا يمكن للفيديو أن يبدأ إلا عند صورة كاملة، لذلك قد يبدأ الجزء قبل الوقت الذي اخترته بثانية أو ثانيتين."
+
+msgid "Starts and ends on the very second you chose. The picture of the part is made again, so it takes longer (about as long as the part plays, or less) and works the processor. Sound alone is always cut exactly."
+msgstr "يبدأ وينتهي في الثانية التي اخترتها بالضبط. تُعاد صناعة صورة الجزء، لذلك يستغرق وقتًا أطول (قرابة مدة الجزء أو أقل) ويُشغّل المعالج. الصوت وحده يُقص دائمًا بدقة."
+
+msgid "Preparing the preview…"
+msgstr "جارٍ تجهيز المعاينة…"
+
+msgid "Preview the part"
+msgstr "معاينة الجزء"
+
+msgid "Download the part"
+msgstr "تحميل الجزء"
 
 msgid "Support Ezoo Download"
 msgstr "ادعم Ezoo Download"

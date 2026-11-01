@@ -70,6 +70,9 @@ msgstr "Birlikte aç…"
 msgid "Play while downloading"
 msgstr "İnerken oynat"
 
+msgid "Download a part of it…"
+msgstr "Bir kısmını indir…"
+
 msgid "Open folder"
 msgstr "Klasörü aç"
 
@@ -180,6 +183,9 @@ msgstr "Site toplayıcıyı çalıştır…"
 
 msgid "Download a playlist…"
 msgstr "Oynatma listesi indir…"
+
+msgid "Download a part of a video…"
+msgstr "Bir videonun bir kısmını indir…"
 
 msgid "Add a torrent / magnet link…"
 msgstr "Torrent / magnet bağlantısı ekle…"
@@ -1434,6 +1440,57 @@ msgstr "InstaPay ile destekle"
 
 msgid "InstaPay: a7medek@instapay (scan the code with your bank's app)"
 msgstr "InstaPay: a7medek@instapay (kodu bankanızın uygulamasıyla tarayın)"
+
+msgid "Download a part of a video"
+msgstr "Bir videonun bir kısmını indir"
+
+msgid "Paste the address of the video (its page, or a link to the video or stream):"
+msgstr "Videonun adresini yapıştırın (sayfası ya da videonun veya yayının bağlantısı):"
+
+msgid "Looking…"
+msgstr "Bakılıyor…"
+
+msgid "Get the video"
+msgstr "Videoyu getir"
+
+msgid "Quality:"
+msgstr "Kalite:"
+
+msgid "From:"
+msgstr "Başlangıç:"
+
+msgid "To:"
+msgstr "Bitiş:"
+
+msgid "Length:"
+msgstr "Süre:"
+
+msgid "Cut:"
+msgstr "Kesim:"
+
+msgid "Quick cut (recommended)"
+msgstr "Hızlı kesim (önerilen)"
+
+msgid "Exact cut"
+msgstr "Tam kesim"
+
+msgid "Quick cut"
+msgstr "Hızlı kesim"
+
+msgid "Takes seconds and keeps the quality exactly as it is (nothing is made again). A video can only start on a whole picture, so the part may start a second or two before the time you chose."
+msgstr "Saniyeler sürer ve kaliteyi olduğu gibi korur (hiçbir şey yeniden yapılmaz). Bir video yalnızca tam bir karede başlayabilir; bu yüzden parça seçtiğiniz zamandan bir iki saniye önce başlayabilir."
+
+msgid "Starts and ends on the very second you chose. The picture of the part is made again, so it takes longer (about as long as the part plays, or less) and works the processor. Sound alone is always cut exactly."
+msgstr "Tam seçtiğiniz saniyede başlar ve biter. Parçanın görüntüsü yeniden yapılır; bu yüzden daha uzun sürer (yaklaşık parçanın süresi kadar ya da daha az) ve işlemciyi çalıştırır. Yalnızca ses her zaman tam kesilir."
+
+msgid "Preparing the preview…"
+msgstr "Önizleme hazırlanıyor…"
+
+msgid "Preview the part"
+msgstr "Parçayı önizle"
+
+msgid "Download the part"
+msgstr "Parçayı indir"
 
 msgid "Support Ezoo Download"
 msgstr "Ezoo Download'ı destekle"

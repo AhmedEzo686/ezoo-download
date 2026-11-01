@@ -70,6 +70,9 @@ msgstr "Открыть с помощью…"
 msgid "Play while downloading"
 msgstr "Воспроизвести во время загрузки"
 
+msgid "Download a part of it…"
+msgstr "Скачать часть…"
+
 msgid "Open folder"
 msgstr "Открыть папку"
 
@@ -180,6 +183,9 @@ msgstr "Запустить сборщик сайтов…"
 
 msgid "Download a playlist…"
 msgstr "Скачать плейлист…"
+
+msgid "Download a part of a video…"
+msgstr "Скачать часть видео…"
 
 msgid "Add a torrent / magnet link…"
 msgstr "Добавить торрент / magnet-ссылку…"
@@ -1434,6 +1440,57 @@ msgstr "Поддержать через InstaPay"
 
 msgid "InstaPay: a7medek@instapay (scan the code with your bank's app)"
 msgstr "InstaPay: a7medek@instapay (отсканируйте код приложением банка)"
+
+msgid "Download a part of a video"
+msgstr "Скачать часть видео"
+
+msgid "Paste the address of the video (its page, or a link to the video or stream):"
+msgstr "Вставьте адрес видео (его страницу или ссылку на видео или поток):"
+
+msgid "Looking…"
+msgstr "Поиск…"
+
+msgid "Get the video"
+msgstr "Получить видео"
+
+msgid "Quality:"
+msgstr "Качество:"
+
+msgid "From:"
+msgstr "С:"
+
+msgid "To:"
+msgstr "По:"
+
+msgid "Length:"
+msgstr "Длительность:"
+
+msgid "Cut:"
+msgstr "Обрезка:"
+
+msgid "Quick cut (recommended)"
+msgstr "Быстрая обрезка (рекомендуется)"
+
+msgid "Exact cut"
+msgstr "Точная обрезка"
+
+msgid "Quick cut"
+msgstr "Быстрая обрезка"
+
+msgid "Takes seconds and keeps the quality exactly as it is (nothing is made again). A video can only start on a whole picture, so the part may start a second or two before the time you chose."
+msgstr "Занимает секунды и сохраняет качество без изменений (ничего не пересоздаётся). Видео может начинаться только с полного кадра, поэтому часть может начаться на секунду-две раньше выбранного времени."
+
+msgid "Starts and ends on the very second you chose. The picture of the part is made again, so it takes longer (about as long as the part plays, or less) and works the processor. Sound alone is always cut exactly."
+msgstr "Начинается и заканчивается точно в выбранную секунду. Изображение части создаётся заново, поэтому это дольше (примерно как длится часть или меньше) и нагружает процессор. Звук отдельно всегда обрезается точно."
+
+msgid "Preparing the preview…"
+msgstr "Подготовка просмотра…"
+
+msgid "Preview the part"
+msgstr "Посмотреть часть"
+
+msgid "Download the part"
+msgstr "Скачать часть"
 
 msgid "Support Ezoo Download"
 msgstr "Поддержать Ezoo Download"

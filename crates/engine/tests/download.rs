@@ -919,6 +919,7 @@ async fn hls_byte_ranges_after_a_redirect() {
         connections: 3,
         retries: 2,
         limiter: Arc::new(SpeedLimiter::new(0)),
+        clip: None,
     };
     let shared = Arc::new(Shared::new(build_client().unwrap(), SpeedLimiter::new(0)));
     swiftget_engine::hls::run(shared, job, Arc::new(Progress::default()), CancellationToken::new()).await.unwrap();

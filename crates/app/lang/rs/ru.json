@@ -300,5 +300,20 @@
  "Safer: the add-in talks to the program on a port chosen at random on this computer, every request is signed with a secret key (the key itself is never sent), and watching the clipboard is off until you turn it on.": "Безопаснее: дополнение общается с программой через порт, выбранный случайно на этом компьютере, каждый запрос подписан секретным ключом (сам ключ никогда не отправляется), а слежение за буфером обмена выключено, пока вы его не включите.",
  "The browser add-in keeps working after an update: the setup puts it in again whole, it starts clean, and its window has \"Connect again\"; Options > Browsers has \"Repair the add-in\".": "Дополнение браузера продолжает работать после обновления: установка кладёт его заново целиком, оно начинает с чистого листа, в его окне есть «Connect again», а в окне браузеров — «Восстановить дополнение».",
  "The video button stays where it is when its list opens (the list opens under it, or above it when there is no room), and a protected video (DRM) says so plainly with a lock.": "Кнопка видео остаётся на месте, когда открывается её список (он открывается под ней или над ней, если внизу нет места), а защищённое видео (DRM) прямо говорит об этом с замком.",
- "Windows open in the middle of the screen without a white box first.": "Окна открываются в центре экрана без белого прямоугольника перед этим."
+ "Windows open in the middle of the screen without a white box first.": "Окна открываются в центре экрана без белого прямоугольника перед этим.",
+ "The start is after the end of the video.": "Начало находится после конца видео.",
+ "The end must come after the start.": "Конец должен быть после начала.",
+ "The part must be at least half a second long.": "Часть должна длиться не меньше полсекунды.",
+ "Paste the address of the video (https://…).": "Вставьте адрес видео (https://…).",
+ "Looking at the video… (a few seconds)": "Смотрим видео… (несколько секунд)",
+ "No video was found at this address.": "По этому адресу видео не найдено.",
+ "Length of the video: {}": "Длительность видео: {}",
+ "The length of this video is not known: type the times.": "Длительность этого видео неизвестна: введите время вручную.",
+ "Could not get the video: {}": "Не удалось получить видео: {}",
+ "No program on this computer plays this kind of file.": "На этом компьютере нет программы для этого типа файлов.",
+ "Could not prepare the preview: {}": "Не удалось подготовить просмотр: {}",
+ "The part {} was added to the list.": "Часть {} добавлена в список.",
+ "The part could not be cut. Try the quick cut, or another quality.": "Не удалось обрезать часть. Попробуйте быструю обрезку или другое качество.",
+ "The part you chose is after the end of the video.": "Выбранная часть находится после конца видео.",
+ "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.": "Скачать часть видео: выберите с / по (или «Now» во время просмотра), сначала посмотрите часть, и скачивается только она — с быстрой или точной обрезкой. В списке качеств дополнения и в меню Задачи > Скачать часть видео."
 }

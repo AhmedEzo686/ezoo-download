@@ -2,6 +2,7 @@
 //! speed measurement and persistence. The UI only talks to this type.
 
 use crate::config::{parse_hhmm, AfterDone, QueueDef, Settings, MAIN_QUEUE};
+use crate::{clip, clipserve};
 use crate::filename;
 use crate::hls::{self, HlsJob};
 use crate::http::{self, build_client_with, Progress, ProxyConfig, Shared};
@@ -360,6 +361,12 @@ impl Manager {
         })
         };
 
+        // a part of a video: its name says which part
+        let clip = req.clip.filter(|_| !is_torrent);
+        let wanted = match &clip {
+            Some(c) => DownloadRecord::clip_name(&wanted, c),
+            None => wanted,
+        };
         let mut inner = self.inner.lock().unwrap();
         // a torrent keeps its own name: that is the folder / file it makes
         let file_name = if is_torrent { wanted.clone() } else { free_name(&inner, &dir, &wanted) };
@@ -422,6 +429,7 @@ impl Manager {
             work_stem: None,
             torrent_select: req.torrent_select.clone().filter(|s| !s.trim().is_empty()),
             torrent_files: Vec::new(),
+            clip,
         };
         let mut rec = rec;
         if early {
@@ -1356,7 +1364,7 @@ impl Manager {
     /// It can go on from where it stopped (a later try keeps what it has).
     fn resumable(&self, id: DownloadId) -> bool {
         let inner = self.inner.lock().unwrap();
-        inner.entries.get(&id).map(|e| e.rec.resumable || e.rec.kind != DownloadKind::Http).unwrap_or(false)
+        inner.entries.get(&id).map(|e| e.rec.resumable || e.rec.kind != DownloadKind::Http || e.rec.clip.is_some()).unwrap_or(false)
     }
 
     fn update(&self, id: DownloadId, f: impl FnOnce(&mut DownloadRecord)) {
@@ -1379,6 +1387,9 @@ impl Manager {
         }
         rec.headers = with_login(&settings, &rec.url, &rec.headers);
         rec.connections = settings.connections_for(&rec.url, rec.connections);
+        if rec.clip.is_some() && rec.kind != DownloadKind::Torrent {
+            return self.run_clip(id, rec, progress, limiter, cancel, &settings).await;
+        }
         if rec.kind == DownloadKind::Dash {
             return self.run_dash(id, rec, segs, audio_segs, progress, limiter, cancel, &settings).await;
         }
@@ -1512,6 +1523,7 @@ impl Manager {
                     connections: rec.connections,
                     retries: settings.retries,
                     limiter: limiter.clone(),
+                    clip: None,
                 };
                 hls::run(self.shared.clone(), job, progress.clone(), cancel).await?;
             }
@@ -1547,6 +1559,60 @@ impl Manager {
                 let _ = std::fs::remove_file(&tmp);
             }
         }
+        self.finish_file(id, &rec)
+    }
+
+    /// "Download a part of a video": only the part is fetched (the parts of
+    /// a stream that play then, or what ffmpeg reads of the video through
+    /// our own address), then cut on the time asked.
+    async fn run_clip(
+        self: &Arc<Self>,
+        id: DownloadId,
+        mut rec: DownloadRecord,
+        progress: Arc<Progress>,
+        limiter: Arc<SpeedLimiter>,
+        cancel: CancellationToken,
+        settings: &Settings,
+    ) -> anyhow::Result<()> {
+        let c = rec.clip.ok_or_else(|| anyhow!("no part chosen"))?;
+        self.update(id, |x| {
+            if x.status == Status::Connecting {
+                x.status = Status::Downloading;
+            }
+        });
+        let mp3 = (rec.source_key.as_deref() == Some(ytdlp::MP3_KEY)).then(|| (ytdlp::mp3_kbps(), song_title(&rec.file_name)));
+        let out = clip::Output::for_name(&rec.file_name, mp3);
+        let part = rec.part_path();
+        let _ = std::fs::create_dir_all(rec.work_dir());
+        if rec.kind != DownloadKind::Hls {
+            // old links of a video page are asked for again
+            self.refresh_source(id, &mut rec, &cancel).await?;
+        }
+        let src = ClipSource {
+            url: rec.request_url().to_string(),
+            audio_url: rec.audio_url.clone(),
+            headers: rec.headers.clone(),
+            hls: rec.kind == DownloadKind::Hls,
+        };
+        let work = ClipWork {
+            joined: rec.video_part_path(),
+            parts: rec.hls_temp_dir(),
+            connections: rec.connections,
+            retries: settings.retries,
+            user_agent: settings.user_agent.clone(),
+        };
+        let result = cut_source(self.shared.clone(), &src, c, &out, &part, &work, limiter, progress.clone(), &cancel).await;
+        let done = result?;
+        if done == clip::Done::QuickInstead {
+            self.update(id, |x| {
+                let note = "The exact cut is not possible for this video's kind of picture: it was cut the quick way.";
+                x.description = Some(match x.description.take().filter(|d| !d.trim().is_empty()) {
+                    Some(d) => format!("{d}\n{note}"),
+                    None => note.to_string(),
+                });
+            });
+        }
+        progress.assembling.store(false, Ordering::Relaxed);
         self.finish_file(id, &rec)
     }
 
@@ -2300,6 +2366,157 @@ fn view_of(e: &Entry, with_parts: bool) -> DownloadView {
         headers: e.rec.headers.clone(),
         parent_page: e.rec.source_page.clone().or_else(|| e.rec.headers.referer.clone()),
         queue_pos: e.rec.queue_pos,
+    }
+}
+
+/// Where a part of a video comes from.
+#[derive(Debug, Clone)]
+pub struct ClipSource {
+    pub url: String,
+    /// the sound apart (video pages)
+    pub audio_url: Option<String>,
+    pub headers: RequestHeaders,
+    /// a stream (.m3u8): its parts are fetched, not read by ffmpeg
+    pub hls: bool,
+}
+
+/// Where the work of a cut goes (streams).
+struct ClipWork {
+    joined: PathBuf,
+    parts: PathBuf,
+    connections: u32,
+    retries: u32,
+    user_agent: String,
+}
+
+/// Only `c` of `src` into `output` (see `run_clip`).
+#[allow(clippy::too_many_arguments)]
+async fn cut_source(
+    shared: Arc<Shared>,
+    src: &ClipSource,
+    c: Clip,
+    out: &clip::Output,
+    output: &Path,
+    work: &ClipWork,
+    limiter: Arc<SpeedLimiter>,
+    progress: Arc<Progress>,
+    cancel: &CancellationToken,
+) -> anyhow::Result<clip::Done> {
+    // ffmpeg missing: fetched again first
+    crate::tools::restore_ffmpeg(&shared.client()).await;
+    let ffmpeg = mux::find_ffmpeg().ok_or_else(|| anyhow!("{}", mux::MISSING))?;
+    let mut tickets = Vec::new();
+    // a stream behind an address that does not say so (".m3u8")
+    let mut hls = src.hls;
+    if !hls && src.audio_url.is_none() {
+        let client = shared.client();
+        let p = tokio::select! {
+            r = http::probe(&client, &src.url, &src.headers, &work.user_agent) => r.ok(),
+            _ = cancel.cancelled() => return Err(Cancelled.into()),
+        };
+        hls = p.map(|p| p.kind == DownloadKind::Hls).unwrap_or(false);
+    }
+    let (inputs, from) = if hls {
+        let job = HlsJob {
+            url: src.url.clone(),
+            headers: src.headers.clone(),
+            user_agent: work.user_agent.clone(),
+            output: work.joined.clone(),
+            temp_dir: work.parts.clone(),
+            connections: work.connections,
+            retries: work.retries,
+            limiter,
+            clip: Some((c.start, c.end)),
+        };
+        let first_at = hls::run(shared.clone(), job, progress.clone(), cancel.clone()).await?;
+        progress.assembling.store(true, Ordering::Relaxed);
+        (vec![work.joined.to_string_lossy().into_owned()], (c.start - first_at).max(0.0))
+    } else {
+        let mut inputs = Vec::new();
+        for url in std::iter::once(src.url.clone()).chain(src.audio_url.clone()) {
+            let s = clipserve::Source { url, headers: src.headers.clone(), user_agent: work.user_agent.clone() };
+            let t = clipserve::open(shared.clone(), s, progress.clone()).await?;
+            inputs.push(t.url.clone());
+            tickets.push(t);
+        }
+        progress.parts_total.store(1000, Ordering::Relaxed);
+        progress.parts_done.store(0, Ordering::Relaxed);
+        progress.connections.store(inputs.len() as u32, Ordering::Relaxed);
+        (inputs, c.start)
+    };
+    let remote = !hls;
+    let p2 = progress.clone();
+    let result = clip::cut(
+        &ffmpeg,
+        &inputs,
+        from,
+        c.len(),
+        c.exact,
+        out,
+        output,
+        move |f| {
+            if remote {
+                p2.parts_done.store((f * 1000.0) as u32, Ordering::Relaxed);
+            }
+        },
+        cancel,
+    )
+    .await;
+    drop(tickets);
+    progress.connections.store(0, Ordering::Relaxed);
+    if hls && result.is_ok() {
+        let _ = std::fs::remove_file(&work.joined);
+    }
+    result
+}
+
+impl Manager {
+    /// "Preview" of a part before it is downloaded: the part, cut the quick
+    /// way into a file of its own (only the part is fetched), for a player.
+    /// `then` gets the file. The returned token stops it.
+    pub fn preview_part(
+        self: &Arc<Self>,
+        src: ClipSource,
+        c: Clip,
+        sound_only: bool,
+        then: impl FnOnce(Result<PathBuf, String>) + Send + 'static,
+    ) -> CancellationToken {
+        let cancel = CancellationToken::new();
+        let token = cancel.clone();
+        let me = self.clone();
+        self.rt.spawn(async move {
+            let dir = me.data_dir.join("preview");
+            // one preview at a time: the last ones go
+            let _ = std::fs::remove_dir_all(&dir);
+            let _ = std::fs::create_dir_all(&dir);
+            let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+            let (out, ext) = if sound_only { (clip::Output::Mp3(128, None), "mp3") } else { (clip::Output::Video, "mp4") };
+            let output = dir.join(format!("part-{n}.{ext}"));
+            let settings = me.settings();
+            let work = ClipWork {
+                joined: dir.join("joined.tmp"),
+                parts: dir.join("parts"),
+                connections: settings.connections().clamp(1, 8),
+                retries: settings.retries,
+                user_agent: settings.user_agent.clone(),
+            };
+            let quick = Clip { exact: false, ..c };
+            let r = cut_source(
+                me.shared.clone(),
+                &src,
+                quick,
+                &out,
+                &output,
+                &work,
+                Arc::new(SpeedLimiter::new(0)),
+                Arc::new(Progress::default()),
+                &cancel,
+            )
+            .await;
+            let _ = std::fs::remove_dir_all(dir.join("parts"));
+            then(r.map(|_| output).map_err(|e| format!("{e:#}")));
+        });
+        token
     }
 }
 

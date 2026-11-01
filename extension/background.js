@@ -394,7 +394,7 @@ function browserRequest(...urls) {
   return null;
 }
 
-async function sendToApp({ url, audioUrl, referrer, fileName, headers, sourcePage, sourceKey, alsoUrl }) {
+async function sendToApp({ url, audioUrl, referrer, fileName, headers, sourcePage, sourceKey, alsoUrl, clip }) {
   const { port } = await getOpts();
   // the browser's own request for this file: its headers go along (the app
   // keeps its own Accept / Range); its cookie is the one the site really got
@@ -413,6 +413,7 @@ async function sendToApp({ url, audioUrl, referrer, fileName, headers, sourcePag
     cookies: (sentCookie && sentCookie.value) || (await cookieHeader(url)),
     userAgent: (sentUa && sentUa.value) || navigator.userAgent,
     fileName: fileName || null,
+    clip: clip || null,
   };
   const r = await fetchWithTimeout(
     apiUrl(port, "/add"),
@@ -1028,7 +1029,7 @@ chrome.webRequest.onBeforeRequest.addListener(
   { urls: ["*://*.googlevideo.com/videoplayback*"] }
 );
 
-async function downloadVideo(option, pageTitle, pageUrl) {
+async function downloadVideo(option, pageTitle, pageUrl, clip) {
   const title = cleanYoutubeTitle(option.title || pageTitle);
   const name = option.quality === "mp3" ? `${title}.mp3` : `${title} [${option.quality}].${option.ext}`;
   await sendToApp({
@@ -1039,6 +1040,7 @@ async function downloadVideo(option, pageTitle, pageUrl) {
     headers: option.headers,
     sourcePage: option.source,
     sourceKey: option.key,
+    clip,
   });
 }
 
@@ -1306,8 +1308,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const item = msg.item || {};
       // a video inside a frame (embedded player): that frame's page
       const referrer = sender.frameId && msg.referrer ? msg.referrer : sender.tab ? sender.tab.url : msg.referrer;
-      if (item.yt) return reply(downloadVideo(item.yt, msg.title, referrer), sendResponse);
-      return reply(sendToApp({ url: item.url, referrer, fileName: msg.fileName }), sendResponse);
+      // "Download a part": only from / to (seconds)
+      const c = msg.clip;
+      const clip =
+        c && Number.isFinite(c.start) && Number.isFinite(c.end) && c.start >= 0 && c.end > c.start
+          ? { start: c.start, end: c.end, exact: !!c.exact }
+          : null;
+      if (item.yt) return reply(downloadVideo(item.yt, msg.title, referrer, clip), sendResponse);
+      return reply(sendToApp({ url: item.url, referrer, fileName: msg.fileName, clip }), sendResponse);
     }
     case "swiftget-get-media":
       itemsForTab(msg.tabId).then(sendResponse);

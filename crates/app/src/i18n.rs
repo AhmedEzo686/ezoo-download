@@ -624,6 +624,21 @@ const AR: &[(&str, &str)] = &[
     ("The browser add-in keeps working after an update: the setup puts it in again whole, it starts clean, and its window has \"Connect again\"; Options > Browsers has \"Repair the add-in\".", "إضافة المتصفح تظل تعمل بعد التحديث: برنامج الإعداد يضعها من جديد كاملة، وتبدأ على نظافة، ونافذتها فيها \"Connect again\"؛ وفي نافذة المتصفحات زر \"إصلاح الإضافة\"."),
     ("The video button stays where it is when its list opens (the list opens under it, or above it when there is no room), and a protected video (DRM) says so plainly with a lock.", "زر الفيديو يبقى في مكانه عند فتح قائمته (القائمة تُفتح تحته، أو فوقه إذا لم يكن هناك مكان)، والفيديو المحمي (DRM) يقول ذلك بوضوح مع قفل."),
     ("The new link gives another file, so nothing more was written. Right-click the download and use \"Refresh download address\".", "الرابط الجديد يعطي ملفًا مختلفًا، لذلك لم يُكتب أي شيء إضافي. اضغط بزر الفأرة الأيمن على التحميل واختر \"تحديث عنوان التحميل\"."),
+    ("The start is after the end of the video.", "البداية بعد نهاية الفيديو."),
+    ("The end must come after the start.", "يجب أن تأتي النهاية بعد البداية."),
+    ("The part must be at least half a second long.", "يجب ألا تقل مدة الجزء عن نصف ثانية."),
+    ("Paste the address of the video (https://…).", "الصق عنوان الفيديو (https://…)."),
+    ("Looking at the video… (a few seconds)", "جارٍ فحص الفيديو… (بضع ثوانٍ)"),
+    ("No video was found at this address.", "لم يُعثر على فيديو في هذا العنوان."),
+    ("Length of the video: {}", "مدة الفيديو: {}"),
+    ("The length of this video is not known: type the times.", "مدة هذا الفيديو غير معروفة: اكتب الأوقات بنفسك."),
+    ("Could not get the video: {}", "تعذّر جلب الفيديو: {}"),
+    ("No program on this computer plays this kind of file.", "لا يوجد برنامج على هذا الجهاز يشغّل هذا النوع من الملفات."),
+    ("Could not prepare the preview: {}", "تعذّر تجهيز المعاينة: {}"),
+    ("The part {} was added to the list.", "أُضيف الجزء {} إلى القائمة."),
+    ("The part could not be cut. Try the quick cut, or another quality.", "تعذّر قص الجزء. جرّب القص السريع، أو جودة أخرى."),
+    ("The part you chose is after the end of the video.", "الجزء الذي اخترته بعد نهاية الفيديو."),
+    ("Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.", "تحميل جزء من فيديو: اختر من / إلى (أو \"Now\" أثناء التشغيل)، وشاهد الجزء أولًا، ويُحمَّل هذا الجزء فقط، بقص سريع أو قص دقيق. في قائمة الجودات في الإضافة، وفي المهام > تحميل جزء من فيديو."),
 ];
 
 #[cfg(test)]

@@ -39,6 +39,22 @@
     const two = (n) => String(n).padStart(2, "0");
     return s >= 3600 ? `${Math.floor(s / 3600)}:${two(Math.floor(s / 60) % 60)}:${two(s % 60)}` : `${Math.floor(s / 60)}:${two(s % 60)}`;
   };
+  // "1:02:05", "02:05", "125", "2:05.5" -> seconds (null when not a time)
+  const parseClock = (text) => {
+    const t = String(text || "").trim().replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x660)).replace(",", ".");
+    const m = /^(?:(\d{1,2}):)?(?:(\d{1,3}):)?(\d{1,6})(?:\.(\d{1,3}))?$/.exec(t);
+    if (!m) return null;
+    const parts = t.split(".")[0].split(":").map(Number);
+    if (parts.slice(1).some((n) => n >= 60)) return null;
+    let secs = parts.reduce((a, n) => a * 60 + n, 0);
+    if (m[4]) secs += Number("0." + m[4]);
+    return secs;
+  };
+  const clock = (s) => {
+    s = Math.max(0, Math.floor(Number(s) || 0));
+    const two = (n) => String(n).padStart(2, "0");
+    return s >= 3600 ? `${Math.floor(s / 3600)}:${two(Math.floor(s / 60) % 60)}:${two(s % 60)}` : `${two(Math.floor(s / 60))}:${two(s % 60)}`;
+  };
   // the resolution in plain words (the app sends it; streams seen in the
   // player only have the height)
   const tagOf = (h) => (!h ? "" : h >= 4320 ? "8K" : h >= 2160 ? "4K" : h >= 1440 ? "2K" : h >= 1080 ? "Full HD" : h >= 720 ? "HD" : "SD");
@@ -315,6 +331,21 @@
     .off { cursor: default; opacity: .7; }
     .off:hover { background: #fff; }
     .err { color: #d1342f; }
+    /* "Download a part" */
+    .clip { padding: 8px 10px; border-bottom: 1px solid #e3e8ef; background: #fafbfd; }
+    .clip .row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .clip .row b { min-width: 34px; font-weight: 600; }
+    .clip input[type=text] { width: 76px; font: inherit; padding: 3px 5px; border: 1px solid #c9d1dc; border-radius: 4px; color: #1f2733; background: #fff; }
+    .clip input.bad { border-color: #d1342f; }
+    .clip .now, .clip .btn2 { background: #e8f0fe; color: #1d63d6; border-radius: 4px; padding: 3px 8px; cursor: default; white-space: nowrap; }
+    .clip .now:hover, .clip .btn2:hover { background: #d6e4fd; }
+    .clip .len { color: #334; margin-bottom: 6px; }
+    .clip label { display: flex; gap: 6px; align-items: flex-start; margin: 4px 0; cursor: default; }
+    .clip label input { margin: 2px 0 0; flex: none; }
+    .clip label small { display: block; color: #6b7686; font-size: 10.5px; }
+    .clip .acts { display: flex; gap: 6px; margin-top: 6px; }
+    .clip .pick { margin-top: 8px; font-weight: 600; color: #334; }
+    .cliprow .t { color: #1d63d6; }
     /* looks */
     .dark .btn { background: linear-gradient(#3a3f47, #23272e); border-color: #15181c; }
     .dark .btn:hover, .dark .btn.open { background: linear-gradient(#454b55, #2a2f37); }
@@ -616,14 +647,39 @@
     }
     const title = (list.find((m) => m.yt && m.yt.title) || {}).yt;
     box.appendChild(el("div", { class: "head", title: (title && title.title) || cleanTitle(), text: (title && title.title) || cleanTitle() }));
-    const all = downloadAllOf(b, usable);
-    if (all) {
-      const row = el("div", { class: "item" }, el("span", { class: "num", text: "⇊" }), el("div", { class: "body" }, el("div", { class: "t all", text: all.text })));
-      row.addEventListener("click", all.run);
-      box.appendChild(row);
+    const partOk = usable.some(canCut);
+    if (b.clipMode && partOk) {
+      box.appendChild(clipPanel(b));
+    } else {
+      const all = downloadAllOf(b, usable);
+      if (all) {
+        const row = el("div", { class: "item" }, el("span", { class: "num", text: "⇊" }), el("div", { class: "body" }, el("div", { class: "t all", text: all.text })));
+        row.addEventListener("click", all.run);
+        box.appendChild(row);
+      }
+      if (partOk) {
+        const row = el(
+          "div",
+          { class: "item cliprow" },
+          el("span", { class: "num", text: "✂" }),
+          el("div", { class: "body" }, el("div", { class: "t", text: "Download a part of this video…" }), el("div", { class: "s", text: "Only the part you choose is downloaded" }))
+        );
+        row.addEventListener("click", () => {
+          b.clipMode = true;
+          if (!b.clip) {
+            const v = b.video;
+            const at = Math.floor(v.currentTime || 0);
+            const dur = Number.isFinite(v.duration) ? v.duration : 0;
+            b.clip = { from: at, to: dur ? Math.min(dur, at + 30) : at + 30, exact: false };
+          }
+          renderOne(b);
+        });
+        box.appendChild(row);
+      }
     }
     let n = 0;
     list.forEach((m) => {
+      if (b.clipMode && partOk && !canCut(m)) return;
       const d = describe(m);
       const t = el("div", { class: "t" }, el("span", { text: d.main }));
       if (d.tag) t.append(el("span", { class: "tag " + d.tag.replace(/\s/g, "").replace(/^(\d)K$/, "K$1"), text: d.tag }));
@@ -635,9 +691,128 @@
         el("span", { class: "num", text: m.disabled ? "" : `${++n}.` }),
         el("div", { class: "body" }, t, el("div", { class: "s", text: sub }))
       );
-      if (!m.disabled) row.addEventListener("click", () => download(b, m));
+      if (!m.disabled) row.addEventListener("click", () => (b.clipMode && partOk ? downloadPart(b, m) : download(b, m)));
       box.appendChild(row);
     });
+  }
+
+  // a quality that can be cut: a video / sound the app downloads itself
+  function canCut(m) {
+    if (m.disabled || m.drm || m.resolve) return false;
+    if (m.yt) return true;
+    return !!m.url && /\.(mp4|m4v|webm|mkv|mov|m3u8|mp3|m4a)(\?|$)/i.test(m.url);
+  }
+
+  // keys typed in our boxes stay ours (not the player's shortcuts)
+  function keepKeys(input) {
+    for (const t of ["keydown", "keyup", "keypress"]) input.addEventListener(t, (e) => e.stopPropagation());
+  }
+
+  // From / To, the kind of cut, a look at the part on the page's own player
+  function clipPanel(b) {
+    const c = b.clip;
+    const v = b.video;
+    const dur = Number.isFinite(v.duration) ? v.duration : 0;
+    const len = el("div", { class: "len" });
+    const showLen = () => {
+      const ok = c.to > c.from && (!dur || c.from < dur);
+      len.textContent = ok ? `Length of the part: ${clock(c.to - c.from)}` : "The end must come after the start.";
+      len.classList.toggle("err", !ok);
+    };
+    const timeRow = (label, key) => {
+      const input = el("input", { type: "text", value: clock(c[key]), "aria-label": label });
+      keepKeys(input);
+      input.addEventListener("input", () => {
+        const t = parseClock(input.value);
+        input.classList.toggle("bad", t == null);
+        if (t != null) {
+          c[key] = dur ? Math.min(t, dur) : t;
+          showLen();
+        }
+      });
+      const now = el("span", { class: "now", title: "The time the video is at now", text: "⏱ Now" });
+      now.addEventListener("click", () => {
+        c[key] = Math.floor(v.currentTime || 0);
+        input.value = clock(c[key]);
+        input.classList.remove("bad");
+        showLen();
+      });
+      return el("div", { class: "row" }, el("b", { text: label }), input, now);
+    };
+    const kind = (exact, title, words) => {
+      const r = el("input", { type: "radio", name: "cut" });
+      r.checked = c.exact === exact;
+      r.addEventListener("change", () => (c.exact = exact));
+      return el("label", {}, r, el("span", {}, el("span", { text: title }), el("small", { text: words })));
+    };
+    const preview = el("span", { class: "btn2", text: "▶ Preview the part" });
+    preview.addEventListener("click", () => playPart(b));
+    const back = el("span", { class: "btn2", text: "← Back" });
+    back.addEventListener("click", () => {
+      b.clipMode = false;
+      stopPart(b);
+      renderOne(b);
+    });
+    const box = el(
+      "div",
+      { class: "clip" },
+      timeRow("From", "from"),
+      timeRow("To", "to"),
+      len,
+      kind(false, "Quick cut (recommended)", "Takes seconds, the quality stays as it is; the part may start a second or two before your time."),
+      kind(true, "Exact cut", "Starts on the very second you chose; the picture is made again, so it takes longer."),
+      el("div", { class: "acts" }, preview, back),
+      el("div", { class: "pick", text: "Choose the quality of the part:" })
+    );
+    showLen();
+    return box;
+  }
+
+  // the page's own player plays the part (nothing is downloaded)
+  function playPart(b) {
+    const v = b.video;
+    const c = b.clip;
+    if (!(c.to > c.from)) return;
+    stopPart(b);
+    const stop = () => {
+      if (v.currentTime >= c.to || v.currentTime < c.from - 1) {
+        v.pause();
+        stopPart(b);
+      }
+    };
+    b.partWatch = stop;
+    try {
+      v.currentTime = c.from;
+      v.addEventListener("timeupdate", stop);
+      const p = v.play();
+      if (p && p.catch) p.catch(() => {});
+    } catch (_) {
+      // a player that does not let us move it: nothing to show
+    }
+  }
+
+  function stopPart(b) {
+    if (b.partWatch) b.video.removeEventListener("timeupdate", b.partWatch);
+    b.partWatch = null;
+  }
+
+  function downloadPart(b, m) {
+    const c = b.clip;
+    const dur = Number.isFinite(b.video.duration) ? b.video.duration : 0;
+    if (!(c.to > c.from) || (dur && c.from >= dur)) return flashOne(b, "The end must come after the start.", true);
+    const clip = { start: c.from, end: dur ? Math.min(c.to, dur) : c.to, exact: !!c.exact };
+    const fileName = `${cleanTitle()}.${m.ext || "mp4"}`;
+    stopPart(b);
+    chrome.runtime.sendMessage(
+      { type: "swiftget-download", item: m, title: document.title, fileName, referrer: location.href, clip },
+      (res) => {
+        if (chrome.runtime.lastError || !res || !res.ok) notRunning(b, () => downloadPart(b, m));
+        else {
+          b.clipMode = false;
+          flashOne(b, `The part ${clock(clip.start)} → ${clock(clip.end)} was sent to Ezoo Download ✔`, false);
+        }
+      }
+    );
   }
 
   function placeOne(b) {

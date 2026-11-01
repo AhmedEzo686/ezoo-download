@@ -300,5 +300,20 @@
  "Safer: the add-in talks to the program on a port chosen at random on this computer, every request is signed with a secret key (the key itself is never sent), and watching the clipboard is off until you turn it on.": "Daha güvenli: eklenti programla bu bilgisayarda rastgele seçilen bir bağlantı noktasından konuşuyor, her istek gizli bir anahtarla imzalanıyor (anahtarın kendisi hiç gönderilmiyor) ve panoyu izleme siz açana kadar kapalı.",
  "The browser add-in keeps working after an update: the setup puts it in again whole, it starts clean, and its window has \"Connect again\"; Options > Browsers has \"Repair the add-in\".": "Tarayıcı eklentisi güncellemeden sonra da çalışıyor: kurulum onu baştan tam olarak koyuyor, temiz başlıyor, penceresinde \"Connect again\" var ve tarayıcılar penceresinde \"Eklentiyi onar\" var.",
  "The video button stays where it is when its list opens (the list opens under it, or above it when there is no room), and a protected video (DRM) says so plainly with a lock.": "Video düğmesi listesi açıldığında yerinde kalıyor (liste altında, yer yoksa üstünde açılıyor) ve korumalı bir video (DRM) bunu kilit işaretiyle açıkça söylüyor.",
- "Windows open in the middle of the screen without a white box first.": "Pencereler önce beyaz bir kutu göstermeden ekranın ortasında açılır."
+ "Windows open in the middle of the screen without a white box first.": "Pencereler önce beyaz bir kutu göstermeden ekranın ortasında açılır.",
+ "The start is after the end of the video.": "Başlangıç videonun sonundan sonra.",
+ "The end must come after the start.": "Bitiş, başlangıçtan sonra olmalı.",
+ "The part must be at least half a second long.": "Parça en az yarım saniye olmalı.",
+ "Paste the address of the video (https://…).": "Videonun adresini yapıştırın (https://…).",
+ "Looking at the video… (a few seconds)": "Videoya bakılıyor… (birkaç saniye)",
+ "No video was found at this address.": "Bu adreste video bulunamadı.",
+ "Length of the video: {}": "Videonun süresi: {}",
+ "The length of this video is not known: type the times.": "Bu videonun süresi bilinmiyor: zamanları yazın.",
+ "Could not get the video: {}": "Video getirilemedi: {}",
+ "No program on this computer plays this kind of file.": "Bu bilgisayarda bu tür dosyayı oynatan bir program yok.",
+ "Could not prepare the preview: {}": "Önizleme hazırlanamadı: {}",
+ "The part {} was added to the list.": "{} parçası listeye eklendi.",
+ "The part could not be cut. Try the quick cut, or another quality.": "Parça kesilemedi. Hızlı kesimi ya da başka bir kaliteyi deneyin.",
+ "The part you chose is after the end of the video.": "Seçtiğiniz parça videonun sonundan sonra.",
+ "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.": "Bir videonun bir kısmını indirin: başlangıç / bitiş seçin (ya da oynarken \"Now\"), önce parçaya bakın; yalnızca o parça indirilir, hızlı ya da tam kesimle. Eklentinin kalite listesinde ve Görevler > Bir videonun bir kısmını indir menüsünde."
 }

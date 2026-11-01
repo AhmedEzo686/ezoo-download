@@ -68,6 +68,17 @@ pub struct AddRequest {
     pub source_page: Option<String>,
     #[serde(default)]
     pub source_key: Option<String>,
+    /// "Download a part": only from / to (seconds)
+    #[serde(default)]
+    pub clip: Option<ClipAsk>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClipAsk {
+    pub start: f64,
+    pub end: f64,
+    #[serde(default)]
+    pub exact: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -622,6 +633,15 @@ mod tests {
         assert!(ask(fport, "/where", Some(sign_headers("GET", "/where"))).contains(&format!("\"port\":{mport}")));
         // "are you there" stays open on both
         assert!(ask(fport, "/ping", None).starts_with("HTTP/1.1 200"));
+    }
+
+    #[test]
+    fn a_part_of_a_video_from_the_add_in() {
+        let a: AddRequest = serde_json::from_str(r#"{"url":"https://x.test/v.mp4","clip":{"start":5,"end":9.5,"exact":true}}"#).unwrap();
+        let c = a.clip.unwrap();
+        assert_eq!((c.start, c.end, c.exact), (5.0, 9.5, true));
+        let b: AddRequest = serde_json::from_str(r#"{"url":"https://x.test/v.mp4","clip":null}"#).unwrap();
+        assert!(b.clip.is_none());
     }
 
     #[test]

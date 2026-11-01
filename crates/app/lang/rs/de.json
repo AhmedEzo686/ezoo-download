@@ -300,5 +300,20 @@
  "Safer: the add-in talks to the program on a port chosen at random on this computer, every request is signed with a secret key (the key itself is never sent), and watching the clipboard is off until you turn it on.": "Sicherer: Das Add-in spricht mit dem Programm über einen auf diesem Computer zufällig gewählten Port, jede Anfrage ist mit einem geheimen Schlüssel signiert (der Schlüssel selbst wird nie gesendet), und das Beobachten der Zwischenablage ist aus, bis du es einschaltest.",
  "The browser add-in keeps working after an update: the setup puts it in again whole, it starts clean, and its window has \"Connect again\"; Options > Browsers has \"Repair the add-in\".": "Das Browser-Add-in läuft nach einem Update weiter: Das Setup legt es ganz neu an, es startet sauber, sein Fenster hat „Connect again“, und das Browser-Fenster hat „Add-in reparieren“.",
  "The video button stays where it is when its list opens (the list opens under it, or above it when there is no room), and a protected video (DRM) says so plainly with a lock.": "Die Video-Schaltfläche bleibt an ihrem Platz, wenn sich ihre Liste öffnet (darunter, oder darüber, wenn kein Platz ist), und ein geschütztes Video (DRM) sagt das klar mit einem Schloss.",
- "Windows open in the middle of the screen without a white box first.": "Fenster öffnen sich in der Bildschirmmitte, ohne vorher weiß aufzublitzen."
+ "Windows open in the middle of the screen without a white box first.": "Fenster öffnen sich in der Bildschirmmitte, ohne vorher weiß aufzublitzen.",
+ "The start is after the end of the video.": "Der Anfang liegt nach dem Ende des Videos.",
+ "The end must come after the start.": "Das Ende muss nach dem Anfang kommen.",
+ "The part must be at least half a second long.": "Der Teil muss mindestens eine halbe Sekunde lang sein.",
+ "Paste the address of the video (https://…).": "Füge die Adresse des Videos ein (https://…).",
+ "Looking at the video… (a few seconds)": "Das Video wird angesehen… (ein paar Sekunden)",
+ "No video was found at this address.": "Unter dieser Adresse wurde kein Video gefunden.",
+ "Length of the video: {}": "Länge des Videos: {}",
+ "The length of this video is not known: type the times.": "Die Länge dieses Videos ist unbekannt: Gib die Zeiten ein.",
+ "Could not get the video: {}": "Das Video konnte nicht geholt werden: {}",
+ "No program on this computer plays this kind of file.": "Kein Programm auf diesem Computer spielt diese Art von Datei ab.",
+ "Could not prepare the preview: {}": "Die Vorschau konnte nicht vorbereitet werden: {}",
+ "The part {} was added to the list.": "Der Teil {} wurde zur Liste hinzugefügt.",
+ "The part could not be cut. Try the quick cut, or another quality.": "Der Teil konnte nicht geschnitten werden. Versuche den schnellen Schnitt oder eine andere Qualität.",
+ "The part you chose is after the end of the video.": "Der gewählte Teil liegt nach dem Ende des Videos.",
+ "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.": "Einen Teil eines Videos herunterladen: Von / Bis wählen (oder „Now“ während es läuft), den Teil zuerst ansehen, und nur dieser Teil wird heruntergeladen, mit schnellem oder genauem Schnitt. In der Qualitätsliste des Add-ins und unter Aufgaben > Einen Teil eines Videos herunterladen."
 }

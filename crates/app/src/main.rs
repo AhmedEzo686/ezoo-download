@@ -8,6 +8,7 @@ mod api;
 mod autostart;
 mod browser;
 mod clipboard;
+mod clipui;
 mod extra;
 mod grab;
 mod i18n;
@@ -1144,6 +1145,10 @@ fn wire_main(ui: &Ui) {
     }
     {
         let ui = ui.clone();
+        main.on_clip_part(move || clipui::open(&ui, None));
+    }
+    {
+        let ui = ui.clone();
         main.on_tips(move || extra::show_tip(&ui, true));
     }
     {
@@ -1507,6 +1512,27 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
                     extra::refresh_received(ui, id, &req.url, headers);
                     return;
                 }
+            }
+            // a part of a video (the add-in's "Download a part"): straight to the list
+            if let Some(c) = req.clip.as_ref().and_then(|c| swiftget_engine::Clip::new(c.start, c.end, c.exact)) {
+                let key = req.source_key.clone().unwrap_or_default();
+                let name = req.file_name.clone().unwrap_or_else(|| "video.mp4".into());
+                let (stem, ext) = filename::split_ext(&name);
+                clipui::add_part(
+                    ui,
+                    NewDownload {
+                        url: req.url,
+                        file_name: Some(clipui::part_name(stem, &ext.to_ascii_lowercase(), &key)),
+                        headers,
+                        audio_url: req.audio_url,
+                        source_page: req.source_page,
+                        source_key: req.source_key,
+                        clip: Some(c),
+                        start: true,
+                        ..Default::default()
+                    },
+                );
+                return;
             }
             let extra = VideoExtra {
                 audio_url: req.audio_url,
@@ -2602,6 +2628,7 @@ fn confirm_add(ui: &Ui, start: bool) {
             early: false,
             start,
             torrent_select: None,
+            clip: None,
         }
     };
     let _ = d.hide();
@@ -2737,6 +2764,8 @@ fn row_action(ui: &Ui, id: u64, action: &str) {
         "folder" => reveal_in_folder(&v),
         "openwith" => open_with(&v.save_path),
         "preview" => play_while_downloading(ui, id),
+        // the page of the video (its links expire), else its address
+        "clip" => clipui::open(ui, Some(v.parent_page.clone().filter(|p| p.starts_with("http")).unwrap_or_else(|| v.url.clone()))),
         "resume" => {
             ui.ctx.mgr.start(id);
             show_progress_for_start(ui, id);
@@ -3098,6 +3127,10 @@ pub(crate) fn err_text(e: &str) -> String {
         t("Nobody shares this torrent right now. It keeps looking and starts by itself as soon as someone does. If it stays like this, the torrent has no sharers left, or your internet provider or firewall blocks torrents.")
     } else if e.contains("ffmpeg.exe is missing") {
         t("ffmpeg.exe (it joins the video and the sound) is missing and could not be downloaded again. Allow it in your antivirus or install Ezoo Download again, then click Resume: nothing downloaded is lost.")
+    } else if e.contains("ffmpeg could not cut the part") {
+        t("The part could not be cut. Try the quick cut, or another quality.")
+    } else if e.contains("the part asked for is after the end of the video") {
+        t("The part you chose is after the end of the video.")
     } else if e.contains("the new link is not the same file") {
         t("The new link gives another file, so nothing more was written. Right-click the download and use \"Refresh download address\".")
     } else if e.contains("the link has expired or the file was removed") {

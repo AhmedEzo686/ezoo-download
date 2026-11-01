@@ -6,7 +6,7 @@ import { Button, LineEdit, SpinBox, ComboBox, ListView, TabWidget, TextEdit, Pal
 import { ToolTip, DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, CaptionButton, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph, HRow, CheckBox } from "common.slint";
 export { DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme }
 export { BrowserRow } from "dialogs.slint";
-export { ConfirmDialog, ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, TorrentDialog, BrowserDialog, AboutDialog, UpdateDialog, WhatsNewDialog, SupportDialog } from "dialogs.slint";
+export { ConfirmDialog, ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, TorrentDialog, BrowserDialog, AboutDialog, UpdateDialog, WhatsNewDialog, SupportDialog, ClipDialog } from "dialogs.slint";
 
 component DownloadItem inherits Rectangle {
     in property <DownloadRow> data;
@@ -169,6 +169,13 @@ component DownloadItem inherits Rectangle {
                     glyph-color: #d6631d;
                     clicked => {
                         root.action("preview");
+                    }
+                }
+                if (root.data.kind == "video" || root.data.kind == "audio") && root.sel-count <= 1: MenuEntry {
+                    text: @tr("Download a part of it…");
+                    glyph: "video";
+                    clicked => {
+                        root.action("clip");
                     }
                 }
                 MenuEntry {
@@ -618,6 +625,7 @@ export component MainWindow inherits ThemedWindow {
     callback find-next();
     callback grabber();
     callback playlist();
+    callback clip-part();
     callback torrent();
     callback browsers();
     callback tips();
@@ -655,6 +663,12 @@ export component MainWindow inherits ThemedWindow {
                 title: @tr("Download a playlist…");
                 activated => {
                     root.playlist();
+                }
+            }
+            MenuItem {
+                title: @tr("Download a part of a video…");
+                activated => {
+                    root.clip-part();
                 }
             }
             MenuItem {

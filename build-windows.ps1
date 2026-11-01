@@ -118,7 +118,7 @@ function Assert-Sha256($file, $sumsUrl, $name) {
 # the big public build of earlier versions is not used any more.
 $ours = Join-Path $PSScriptRoot "tools\ffmpeg\win64"
 if (Test-Path "$ours\ffmpeg.exe") {
-    foreach ($f in @("ffmpeg.exe", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "ffmpeg-version.txt")) {
+    foreach ($f in @("ffmpeg.exe", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "openh264-LICENSE.txt", "ffmpeg-version.txt")) {
         if (Test-Path "$ours\$f") { Copy-Item "$ours\$f" $cache -Force }
     }
 } elseif ((Test-Path "$cache\ffmpeg.exe") -and ((Get-Item "$cache\ffmpeg.exe").Length -gt 20MB)) {
@@ -184,7 +184,7 @@ if (Test-Path $signedXpi) {
         if ($newest) { Copy-Item $newest.FullName $xpiOut -Force }
     }
 }
-foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "aria2c.exe", "aria2-COPYING.txt")) {
+foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "openh264-LICENSE.txt", "aria2c.exe", "aria2-COPYING.txt")) {
     if (Test-Path "$cache\$f") { Copy-Item "$cache\$f" $tools -Force }
 }
 

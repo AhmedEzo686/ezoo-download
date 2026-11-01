@@ -70,6 +70,9 @@ msgstr "Abrir con…"
 msgid "Play while downloading"
 msgstr "Reproducir mientras se descarga"
 
+msgid "Download a part of it…"
+msgstr "Descargar una parte…"
+
 msgid "Open folder"
 msgstr "Abrir carpeta"
 
@@ -180,6 +183,9 @@ msgstr "Ejecutar el capturador de sitios…"
 
 msgid "Download a playlist…"
 msgstr "Descargar una lista de reproducción…"
+
+msgid "Download a part of a video…"
+msgstr "Descargar una parte de un vídeo…"
 
 msgid "Add a torrent / magnet link…"
 msgstr "Añadir un torrent / enlace magnet…"
@@ -1434,6 +1440,57 @@ msgstr "Apoyar con InstaPay"
 
 msgid "InstaPay: a7medek@instapay (scan the code with your bank's app)"
 msgstr "InstaPay: a7medek@instapay (escanea el código con la app de tu banco)"
+
+msgid "Download a part of a video"
+msgstr "Descargar una parte de un vídeo"
+
+msgid "Paste the address of the video (its page, or a link to the video or stream):"
+msgstr "Pega la dirección del vídeo (su página, o un enlace al vídeo o a la transmisión):"
+
+msgid "Looking…"
+msgstr "Buscando…"
+
+msgid "Get the video"
+msgstr "Obtener el vídeo"
+
+msgid "Quality:"
+msgstr "Calidad:"
+
+msgid "From:"
+msgstr "Desde:"
+
+msgid "To:"
+msgstr "Hasta:"
+
+msgid "Length:"
+msgstr "Duración:"
+
+msgid "Cut:"
+msgstr "Corte:"
+
+msgid "Quick cut (recommended)"
+msgstr "Corte rápido (recomendado)"
+
+msgid "Exact cut"
+msgstr "Corte exacto"
+
+msgid "Quick cut"
+msgstr "Corte rápido"
+
+msgid "Takes seconds and keeps the quality exactly as it is (nothing is made again). A video can only start on a whole picture, so the part may start a second or two before the time you chose."
+msgstr "Tarda segundos y mantiene la calidad tal cual (no se rehace nada). Un vídeo solo puede empezar en una imagen completa, así que la parte puede empezar uno o dos segundos antes del tiempo elegido."
+
+msgid "Starts and ends on the very second you chose. The picture of the part is made again, so it takes longer (about as long as the part plays, or less) and works the processor. Sound alone is always cut exactly."
+msgstr "Empieza y termina en el segundo exacto que elegiste. La imagen de la parte se vuelve a crear, así que tarda más (más o menos lo que dura la parte, o menos) y usa el procesador. El sonido solo siempre se corta exacto."
+
+msgid "Preparing the preview…"
+msgstr "Preparando la vista previa…"
+
+msgid "Preview the part"
+msgstr "Ver la parte"
+
+msgid "Download the part"
+msgstr "Descargar la parte"
 
 msgid "Support Ezoo Download"
 msgstr "Apoyar Ezoo Download"
