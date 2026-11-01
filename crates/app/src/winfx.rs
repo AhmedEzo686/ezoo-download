@@ -176,22 +176,28 @@ const FIRST_PICTURE: std::time::Duration = std::time::Duration::from_millis(70);
 /// A window was just opened (away from the screen): once it is drawn it
 /// comes to the middle of the screen and, except for the main window,
 /// loses its maximize button.
-pub(crate) fn place<C: ComponentHandle + 'static>(weak: slint::Weak<C>, maximizable: bool) {
+pub(crate) fn place<C>(weak: slint::Weak<C>, maximizable: bool)
+where
+    C: ComponentHandle + 'static,
+    for<'a> crate::Theme<'a>: slint::Global<'a, C>,
+{
     place_then(weak, maximizable, || {});
 }
 
 /// The same, and `then` once the window is on the screen.
-pub(crate) fn place_then<C: ComponentHandle + 'static>(weak: slint::Weak<C>, maximizable: bool, then: impl FnOnce() + 'static) {
+pub(crate) fn place_then<C>(weak: slint::Weak<C>, maximizable: bool, then: impl FnOnce() + 'static)
+where
+    C: ComponentHandle + 'static,
+    for<'a> crate::Theme<'a>: slint::Global<'a, C>,
+{
     wait_for_picture(weak, maximizable, Box::new(then), 0, false);
 }
 
-fn wait_for_picture<C: ComponentHandle + 'static>(
-    weak: slint::Weak<C>,
-    maximizable: bool,
-    then: Box<dyn FnOnce()>,
-    tries: u32,
-    seen: bool,
-) {
+fn wait_for_picture<C>(weak: slint::Weak<C>, maximizable: bool, then: Box<dyn FnOnce()>, tries: u32, seen: bool)
+where
+    C: ComponentHandle + 'static,
+    for<'a> crate::Theme<'a>: slint::Global<'a, C>,
+{
     // the system window is made a moment after show(): when it is there,
     // one more moment for its first picture
     let wait = if tries == 0 || seen { FIRST_PICTURE } else { std::time::Duration::from_millis(20) };
@@ -203,6 +209,11 @@ fn wait_for_picture<C: ComponentHandle + 'static>(
         let there = has_system_window(c.window());
         if there && (seen || tries == 0) {
             place_now(c.window(), maximizable);
+            // on the screen now: drawn whole (Windows kept nothing of what
+            // was drawn away from the screen; only changed parts were drawn
+            // again and the rest stayed white)
+            repaint_all(&c);
+            c.window().request_redraw();
             then();
         } else if there {
             wait_for_picture(weak, maximizable, then, tries + 1, true);
@@ -456,6 +467,17 @@ where
             WindowEvent::DroppedFile(p) => {
                 if let Some(f) = &dropped {
                     f(p.clone());
+                }
+            }
+            // a window comes onto the screen from where it waited (see
+            // `place`): Windows kept nothing of what was drawn there, and
+            // only the parts that changed were drawn again, so it stayed
+            // white around its buttons
+            WindowEvent::Moved(_) if last.get().elapsed() > std::time::Duration::from_millis(150) => {
+                last.set(std::time::Instant::now());
+                all(&weak);
+                if let Some(c) = weak.upgrade() {
+                    c.window().request_redraw();
                 }
             }
             WindowEvent::Resized(_)
