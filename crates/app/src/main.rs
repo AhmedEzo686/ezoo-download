@@ -83,8 +83,16 @@ pub(crate) struct Ctx {
     mgr: Arc<Manager>,
     rt: tokio::runtime::Handle,
     main: Weak<MainWindow>,
-    add: Weak<AddDialog>,
+    /// the "Download File Info" window: made the first time a download is
+    /// added (Arc+Mutex so every copy of Ctx sees it being made)
+    add: Arc<Mutex<Weak<AddDialog>>>,
     add_state: Arc<Mutex<AddState>>,
+}
+
+impl Ctx {
+    pub(crate) fn add(&self) -> Option<AddDialog> {
+        self.add.lock().unwrap_or_else(|p| p.into_inner()).upgrade()
+    }
 }
 
 /// A progress window and its connections list (updated in place, so it
@@ -158,6 +166,12 @@ pub(crate) struct Ui {
 /// owns, even the ones that were never shown; Slint creates the native window
 /// with the component, so making all dialogs at startup filled the window
 /// list with eighteen windows nobody opened.
+thread_local! {
+    /// The Ui, for the few calls that only have a Ctx (the clipboard hands
+    /// the link over from a thread, and the window is made on this one).
+    static UI: RefCell<Option<Ui>> = const { RefCell::new(None) };
+}
+
 pub(crate) struct Lazy<T: slint::StrongHandle + 'static> {
     cell: Rc<RefCell<Weak<T>>>,
 }
@@ -379,14 +393,13 @@ fn run() -> anyhow::Result<()> {
     swiftget_engine::tools::spawn_updater(rt.handle(), mgr.client(), data_dir.clone());
 
     let main = MainWindow::new()?;
-    let add = AddDialog::new()?;
     // every other window is made when it is first opened (see Lazy)
 
     let ctx = Ctx {
         mgr: mgr.clone(),
         rt: rt.handle().clone(),
         main: main.as_weak(),
-        add: add.as_weak(),
+        add: Arc::new(Mutex::new(Weak::default())),
         add_state: Arc::new(Mutex::new(AddState::default())),
     };
     let ctx_exit = ctx.clone();
@@ -455,10 +468,10 @@ fn run() -> anyhow::Result<()> {
         apply_view_settings(&ui, &s);
     }
 
+    UI.with(|u| *u.borrow_mut() = Some(ui.clone()));
     wire_main(&ui);
     // a new version of the program itself: from GitHub, installed silently
     update::spawn(&ui.ctx);
-    wire_add(&ui);
 
     // ------------------------------------------------------------ browser + clipboard
     if let Some(server) = server {
@@ -509,7 +522,7 @@ fn run() -> anyhow::Result<()> {
                         }
                         return;
                     }
-                    let busy = ctx.add.upgrade().map(|d| d.window().is_visible()).unwrap_or(true);
+                    let busy = ctx.add().map(|d| d.window().is_visible()).unwrap_or(true);
                     if !busy {
                         open_add_dialog(&ctx, url, RequestHeaders::default(), None, VideoExtra::default());
                     }
@@ -1389,11 +1402,11 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
 // ===================================================================== download file info
 
 fn wire_add(ui: &Ui) {
-    let Some(add) = ui.ctx.add.upgrade() else { return };
+    let Some(add) = ui.ctx.add() else { return };
     {
         let ctx = ui.ctx.clone();
         add.on_check_url(move || {
-            if let Some(d) = ctx.add.upgrade() {
+            if let Some(d) = ctx.add() {
                 let url = d.get_url().trim().to_string();
                 // another address: the download started for the old one stops
                 if url != ctx.add_state.lock().unwrap().origin_url {
@@ -1414,7 +1427,7 @@ fn wire_add(ui: &Ui) {
     {
         let ctx = ui.ctx.clone();
         add.on_category_changed(move |i| {
-            let Some(d) = ctx.add.upgrade() else { return };
+            let Some(d) = ctx.add() else { return };
             let cat = ctx
                 .add_state
                 .lock()
@@ -1466,7 +1479,7 @@ fn wire_add(ui: &Ui) {
         // the server refused us: give the address back to the browser
         let ctx = ui.ctx.clone();
         add.on_use_browser(move || {
-            let Some(d) = ctx.add.upgrade() else { return };
+            let Some(d) = ctx.add() else { return };
             let url = d.get_url().trim().to_string();
             ctx.add_state.lock().unwrap().probe_seq += 1;
             cancel_early(&ctx);
@@ -1487,7 +1500,7 @@ fn wire_add(ui: &Ui) {
         add.on_cancel(move || {
             ctx.add_state.lock().unwrap().probe_seq += 1; // ignore a check still running
             cancel_early(&ctx);
-            if let Some(d) = ctx.add.upgrade() {
+            if let Some(d) = ctx.add() {
                 let _ = d.hide();
             }
             open_next(&ctx);
@@ -1876,6 +1889,19 @@ ensure_dialog!(ensure_tips, tips, TipDialog, extra::wire);
 ensure_dialog!(ensure_refresh, refresh_dlg, RefreshDialog, extra::wire);
 ensure_dialog!(ensure_torrent, torrent, TorrentDialog, torrent_ui::wire);
 
+/// The "Download File Info" window (it is not in Ui: the clipboard and the
+/// browser port reach it through Ctx).
+fn ensure_add(ctx: &Ctx) -> Option<AddDialog> {
+    if let Some(d) = ctx.add() {
+        return Some(d);
+    }
+    let ui = UI.with(|u| u.borrow().clone())?;
+    let d = AddDialog::new().ok()?;
+    *ctx.add.lock().unwrap_or_else(|p| p.into_inner()) = d.as_weak();
+    wire_add(&ui);
+    Some(d)
+}
+
 fn ensure_updater(ui: &Ui) -> Option<UpdateDialog> {
     if let Some(d) = ui.updater.upgrade() {
         return Some(d);
@@ -2096,7 +2122,6 @@ pub(crate) fn apply_look(ui: &Ui, look: &Look) {
     }
     set!(
         ui.ctx.main,
-        ui.ctx.add,
         ui.batch,
         ui.settings_dlg,
         ui.complete,
@@ -2116,6 +2141,9 @@ pub(crate) fn apply_look(ui: &Ui, look: &Look) {
         ui.updater
     );
     if let Some(d) = ui.about.upgrade() {
+        set_theme_of(d.global::<Theme>(), look);
+    }
+    if let Some(d) = ui.ctx.add() {
         set_theme_of(d.global::<Theme>(), look);
     }
     for (d, _) in ui.progress.borrow().values() {
@@ -2247,7 +2275,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
         torrent_ui::open_source(&url);
         return;
     }
-    let Some(d) = ctx.add.upgrade() else { return };
+    let Some(d) = ensure_add(ctx) else { return };
     let s = ctx.mgr.settings();
     if d.window().is_visible() {
         let mut st = ctx.add_state.lock().unwrap();
@@ -2361,7 +2389,7 @@ pub(crate) fn early_download(ctx: &Ctx) -> Option<u64> {
 
 /// Ask the server about the file in the background, then show the result.
 fn start_probe(ctx: &Ctx, url: String) {
-    let Some(d) = ctx.add.upgrade() else { return };
+    let Some(d) = ctx.add() else { return };
     let (seq, mut headers) = {
         let mut st = ctx.add_state.lock().unwrap();
         st.probe_seq += 1;
@@ -2377,7 +2405,7 @@ fn start_probe(ctx: &Ctx, url: String) {
     ctx.rt.spawn(async move {
         let result = ctx2.mgr.probe(&url, &headers).await;
         let _ = slint::invoke_from_event_loop(move || {
-            let Some(d) = ctx2.add.upgrade() else { return };
+            let Some(d) = ctx2.add() else { return };
             let mut st = ctx2.add_state.lock().unwrap();
             if st.probe_seq != seq {
                 return; // the window was reused for something else meanwhile
@@ -2429,7 +2457,7 @@ fn start_probe(ctx: &Ctx, url: String) {
 /// Add the download from the "Download File Info" window.
 fn confirm_add(ui: &Ui, start: bool) {
     let ctx = &ui.ctx;
-    let Some(d) = ctx.add.upgrade() else { return };
+    let Some(d) = ctx.add() else { return };
     let url = d.get_url().trim().to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) || url::Url::parse(&url).is_err() {
         d.set_info(t("Please enter a valid http:// or https:// address").into());
