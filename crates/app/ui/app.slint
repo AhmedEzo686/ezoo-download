@@ -1821,7 +1821,8 @@ export component AddDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: @tr("Download File Info");
     preferred-width: 640px;
-    min-width: 540px;
+    // the window is opened as small as its layout allows; that was too small
+    min-width: 640px;
 
     in-out property <string> url;
     // full path: folder + file name
@@ -2158,6 +2159,9 @@ export component BatchDialog inherits ThemedWindow {
     title: @tr("Add batch download");
     preferred-width: 640px;
     preferred-height: 520px;
+    // the window is opened as small as its layout allows (too small here)
+    min-width: 640px;
+    min-height: 460px;
 
     // 0: list of links, 1: address with a * pattern
     in-out property <int> mode: 0;
@@ -2938,6 +2942,8 @@ export component CompleteDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: @tr("Download complete");
     preferred-width: 540px;
+    // the window is opened as small as its layout allows
+    min-width: 540px;
 
     in property <string> name;
     in property <string> size;

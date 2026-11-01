@@ -285,8 +285,9 @@ pub(crate) fn drag_file_out(w: &slint::Window, path: &std::path::Path) {
     }
 }
 
-/// Files dropped on the window from Explorer.
-#[cfg(windows)]
+/// Files dropped on the window from the file manager (Explorer, Nautilus,
+/// Dolphin...: the toolkit reports the drop everywhere winit runs).
+#[cfg(any(windows, all(unix, not(target_os = "macos"))))]
 pub(crate) fn on_files_dropped(w: &slint::Window, f: impl Fn(std::path::PathBuf) + 'static) {
     use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
     w.on_winit_window_event(move |_, ev| {
@@ -297,7 +298,7 @@ pub(crate) fn on_files_dropped(w: &slint::Window, f: impl Fn(std::path::PathBuf)
     });
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
 pub(crate) fn on_files_dropped(_w: &slint::Window, _f: impl Fn(std::path::PathBuf) + 'static) {}
 
 /// A file / folder picker that belongs to `w`: it stays on top of it and

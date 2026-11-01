@@ -310,7 +310,6 @@
  "Site Logins": "Логины сайтов",
  "Sounds": "Звуки",
  "Window opacity": "Непрозрачность окна",
- "Launch Ezoo Download on Windows startup": "Запускать Ezoo Download вместе с Windows",
  "Keep running next to the clock when the window is closed": "Оставаться рядом с часами при закрытии окна",
  "Watch the clipboard for download links": "Следить за буфером обмена на ссылки для загрузки",
  "Automatically start downloading links placed in the clipboard": "Автоматически скачивать ссылки, попавшие в буфер обмена",
@@ -390,7 +389,6 @@
  "Site / path": "Сайт / путь",
  "example.com/members": "example.com/members",
  "Add / Update": "Добавить / Обновить",
- "Saved in the settings file of your Windows user account.": "Хранится в файле настроек вашей учётной записи Windows.",
  "Play sounds": "Воспроизводить звуки",
  "Download failed": "Ошибка загрузки",
  "Queue started": "Очередь запущена",
@@ -485,5 +483,7 @@
  "Download the subtitles of videos too, in these languages:": "Скачивать и субтитры видео на этих языках:",
  "Quality of MP3 files": "Качество файлов MP3",
  "Next to the clock": "К часам",
- "Draw the windows with the graphics card (uses more memory; after a restart)": "Рисовать окна видеокартой (больше памяти; после перезапуска)"
+ "Draw the windows with the graphics card (uses more memory; after a restart)": "Рисовать окна видеокартой (больше памяти; после перезапуска)",
+ "Start Ezoo Download when you sign in": "Запускать Ezoo Download при входе в систему",
+ "Saved in the settings file of your user account.": "Хранится в файле настроек вашей учётной записи."
 }

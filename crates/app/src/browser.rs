@@ -32,20 +32,47 @@ fn env_path(var: &str, rest: &str) -> Option<PathBuf> {
     std::env::var_os(var).map(|v| PathBuf::from(v).join(rest))
 }
 
+#[cfg_attr(not(windows), allow(dead_code))]
 fn first_existing(list: Vec<Option<PathBuf>>) -> Option<PathBuf> {
     list.into_iter().flatten().find(|p| p.exists())
 }
 
+/// A program looked up in PATH (Linux and the other Unix systems keep their
+/// browsers there: /usr/bin/google-chrome, /usr/bin/firefox...).
+#[cfg(unix)]
+fn in_path(names: &[&str]) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    let dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();
+    names.iter().find_map(|name| dirs.iter().map(|d| d.join(name)).find(|p| p.is_file()))
+}
+
+/// The program of a browser: its usual Windows places, or its name in PATH.
+fn exe_of(windows: Vec<Option<PathBuf>>, unix_names: &[&str]) -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        let _ = unix_names;
+        first_existing(windows)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = windows;
+        in_path(unix_names)
+    }
+}
+
 fn detect() -> Vec<Browser> {
     let rgb = slint::Color::from_rgb_u8;
-    vec![
+    let mut list = vec![
         Browser {
             name: "Chrome",
-            exe: first_existing(vec![
-                env_path("ProgramFiles", r"Google\Chrome\Application\chrome.exe"),
-                env_path("ProgramFiles(x86)", r"Google\Chrome\Application\chrome.exe"),
-                env_path("LOCALAPPDATA", r"Google\Chrome\Application\chrome.exe"),
-            ]),
+            exe: exe_of(
+                vec![
+                    env_path("ProgramFiles", r"Google\Chrome\Application\chrome.exe"),
+                    env_path("ProgramFiles(x86)", r"Google\Chrome\Application\chrome.exe"),
+                    env_path("LOCALAPPDATA", r"Google\Chrome\Application\chrome.exe"),
+                ],
+                &["google-chrome-stable", "google-chrome"],
+            ),
             extensions_page: "chrome://extensions/",
             store: STORE_CHROME,
             firefox: false,
@@ -53,10 +80,13 @@ fn detect() -> Vec<Browser> {
         },
         Browser {
             name: "Edge",
-            exe: first_existing(vec![
-                env_path("ProgramFiles(x86)", r"Microsoft\Edge\Application\msedge.exe"),
-                env_path("ProgramFiles", r"Microsoft\Edge\Application\msedge.exe"),
-            ]),
+            exe: exe_of(
+                vec![
+                    env_path("ProgramFiles(x86)", r"Microsoft\Edge\Application\msedge.exe"),
+                    env_path("ProgramFiles", r"Microsoft\Edge\Application\msedge.exe"),
+                ],
+                &["microsoft-edge-stable", "microsoft-edge"],
+            ),
             extensions_page: "edge://extensions/",
             store: STORE_EDGE,
             firefox: false,
@@ -64,11 +94,14 @@ fn detect() -> Vec<Browser> {
         },
         Browser {
             name: "Firefox",
-            exe: first_existing(vec![
-                env_path("ProgramFiles", r"Mozilla Firefox\firefox.exe"),
-                env_path("ProgramFiles(x86)", r"Mozilla Firefox\firefox.exe"),
-                env_path("LOCALAPPDATA", r"Mozilla Firefox\firefox.exe"),
-            ]),
+            exe: exe_of(
+                vec![
+                    env_path("ProgramFiles", r"Mozilla Firefox\firefox.exe"),
+                    env_path("ProgramFiles(x86)", r"Mozilla Firefox\firefox.exe"),
+                    env_path("LOCALAPPDATA", r"Mozilla Firefox\firefox.exe"),
+                ],
+                &["firefox", "firefox-esr"],
+            ),
             extensions_page: "about:debugging#/runtime/this-firefox",
             store: STORE_FIREFOX,
             firefox: true,
@@ -76,11 +109,14 @@ fn detect() -> Vec<Browser> {
         },
         Browser {
             name: "Opera",
-            exe: first_existing(vec![
-                env_path("LOCALAPPDATA", r"Programs\Opera\opera.exe"),
-                env_path("LOCALAPPDATA", r"Programs\Opera GX\opera.exe"),
-                env_path("ProgramFiles", r"Opera\opera.exe"),
-            ]),
+            exe: exe_of(
+                vec![
+                    env_path("LOCALAPPDATA", r"Programs\Opera\opera.exe"),
+                    env_path("LOCALAPPDATA", r"Programs\Opera GX\opera.exe"),
+                    env_path("ProgramFiles", r"Opera\opera.exe"),
+                ],
+                &["opera"],
+            ),
             extensions_page: "opera://extensions",
             store: STORE_OPERA,
             firefox: false,
@@ -88,17 +124,34 @@ fn detect() -> Vec<Browser> {
         },
         Browser {
             name: "Brave",
-            exe: first_existing(vec![
-                env_path("ProgramFiles", r"BraveSoftware\Brave-Browser\Application\brave.exe"),
-                env_path("ProgramFiles(x86)", r"BraveSoftware\Brave-Browser\Application\brave.exe"),
-                env_path("LOCALAPPDATA", r"BraveSoftware\Brave-Browser\Application\brave.exe"),
-            ]),
+            exe: exe_of(
+                vec![
+                    env_path("ProgramFiles", r"BraveSoftware\Brave-Browser\Application\brave.exe"),
+                    env_path("ProgramFiles(x86)", r"BraveSoftware\Brave-Browser\Application\brave.exe"),
+                    env_path("LOCALAPPDATA", r"BraveSoftware\Brave-Browser\Application\brave.exe"),
+                ],
+                &["brave-browser", "brave"],
+            ),
             extensions_page: "brave://extensions/",
             store: STORE_BRAVE,
             firefox: false,
             tint: rgb(0xfb, 0x54, 0x2b),
         },
-    ]
+    ];
+    // Linux distributions ship Chromium (Chrome without Google's parts)
+    #[cfg(all(unix, not(target_os = "macos")))]
+    list.insert(
+        1,
+        Browser {
+            name: "Chromium",
+            exe: in_path(&["chromium", "chromium-browser"]),
+            extensions_page: "chrome://extensions/",
+            store: "",
+            firefox: false,
+            tint: rgb(0x62, 0x8c, 0xd6),
+        },
+    );
+    list
 }
 
 /// The extension as it came with this program: when a file of its folder is
@@ -159,10 +212,16 @@ fn extension_dir(firefox: bool) -> Option<PathBuf> {
     put_extension(&own, firefox).then_some(own)
 }
 
-/// The signed Firefox add-on next to the program, when the release has one.
+/// The signed Firefox add-on next to the program, when the release has one
+/// (a package puts it in /usr/share/ezoodownload instead).
 fn firefox_xpi() -> Option<PathBuf> {
     let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    Some(dir.join(FIREFOX_XPI)).filter(|p| p.exists())
+    let mut candidates = vec![dir.join(FIREFOX_XPI)];
+    for d in ["/usr/share/ezoodownload", "/usr/local/share/ezoodownload"] {
+        candidates.push(Path::new(d).join(FIREFOX_XPI));
+    }
+    candidates.push(swiftget_engine::default_data_dir().join(FIREFOX_XPI));
+    candidates.into_iter().find(|p| p.exists())
 }
 
 pub(crate) fn open(ui: &Ui) {

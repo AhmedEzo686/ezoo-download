@@ -310,7 +310,6 @@
  "Site Logins": "Site girişleri",
  "Sounds": "Sesler",
  "Window opacity": "Pencere opaklığı",
- "Launch Ezoo Download on Windows startup": "Ezoo Download'u Windows açılışında başlat",
  "Keep running next to the clock when the window is closed": "Pencere kapatılınca saatin yanında çalışmaya devam et",
  "Watch the clipboard for download links": "Panoyu indirme bağlantıları için izle",
  "Automatically start downloading links placed in the clipboard": "Panoya konan bağlantıları otomatik indirmeye başla",
@@ -390,7 +389,6 @@
  "Site / path": "Site / yol",
  "example.com/members": "example.com/members",
  "Add / Update": "Ekle / Güncelle",
- "Saved in the settings file of your Windows user account.": "Windows kullanıcı hesabınızın ayar dosyasına kaydedilir.",
  "Play sounds": "Ses çal",
  "Download failed": "İndirme başarısız",
  "Queue started": "Kuyruk başladı",
@@ -485,5 +483,7 @@
  "Download the subtitles of videos too, in these languages:": "Videoların altyazılarını da bu dillerde indir:",
  "Quality of MP3 files": "MP3 dosyalarının kalitesi",
  "Next to the clock": "Saatin yanına",
- "Draw the windows with the graphics card (uses more memory; after a restart)": "Pencereleri ekran kartıyla çiz (daha çok bellek; yeniden başlatınca)"
+ "Draw the windows with the graphics card (uses more memory; after a restart)": "Pencereleri ekran kartıyla çiz (daha çok bellek; yeniden başlatınca)",
+ "Start Ezoo Download when you sign in": "Oturum açtığınızda Ezoo Download'ı başlat",
+ "Saved in the settings file of your user account.": "Kullanıcı hesabınızın ayar dosyasına kaydedilir."
 }

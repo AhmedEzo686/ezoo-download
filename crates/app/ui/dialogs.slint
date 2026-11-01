@@ -200,6 +200,7 @@ export component ColumnsDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: @tr("Columns");
     preferred-width: 320px;
+    min-width: 320px;
     in-out property <Cols> cols;
     callback save();
     callback reset();
@@ -330,6 +331,7 @@ export component CategoryDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: root.is-new ? @tr("Add category") : @tr("Category properties");
     preferred-width: 520px;
+    min-width: 520px;
     in property <bool> is-new;
     in property <bool> builtin;
     in-out property <string> name;
@@ -438,6 +440,7 @@ export component FindDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: @tr("Find file");
     preferred-width: 440px;
+    min-width: 440px;
     in-out property <string> text;
     in-out property <bool> in-name: true;
     in-out property <bool> in-desc: true;
@@ -523,6 +526,7 @@ export component PropertiesDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: @tr("File Properties – {}", root.file-name);
     preferred-width: 600px;
+    min-width: 600px;
     in property <string> file-name;
     in property <string> kind: "general";
     in property <string> ext;
@@ -760,6 +764,7 @@ export component DuplicateDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: @tr("Duplicate download link");
     preferred-width: 520px;
+    min-width: 520px;
     in property <string> file-name;
     in property <string> existing-status;
     in-out property <int> choice: 1;
@@ -903,6 +908,7 @@ export component ConfirmDialog inherits ThemedWindow {
 export component CountdownDialog inherits ThemedWindow {
     title: @tr("Ezoo Download");
     preferred-width: 420px;
+    min-width: 420px;
     always-on-top: true;
     // always in front already; kept so every window can be brought forward the same way
     in property <bool> front;
@@ -968,7 +974,9 @@ export component SchedulerDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: @tr("Scheduler");
     preferred-width: 820px;
+    min-width: 820px;
     preferred-height: 560px;
+    min-height: 560px;
     in property <[QueueRow]> queues;
     in-out property <int> current: 0;
     in-out property <int> tab: 0;
@@ -1411,7 +1419,9 @@ export component GrabberDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: root.links-mode ? @tr("Download all links") : @tr("Site Grabber");
     preferred-width: 860px;
+    min-width: 860px;
     preferred-height: 600px;
+    min-height: 600px;
     // true: links handed over by the browser (no exploring)
     in property <bool> links-mode;
     in-out property <string> start-url;
@@ -1957,6 +1967,9 @@ export component SettingsDialog inherits ThemedWindow {
     title: @tr("Ezoo Download – Options");
     preferred-width: 820px;
     preferred-height: 600px;
+    // the layout below would otherwise open the window as small as it can
+    min-width: 820px;
+    min-height: 600px;
 
     in-out property <int> tab: 0;
     // General
@@ -2244,7 +2257,7 @@ export component SettingsDialog inherits ThemedWindow {
                         }
                     }
                     CheckBox {
-                        text: @tr("Launch Ezoo Download on Windows startup");
+                        text: @tr("Start Ezoo Download when you sign in");
                         checked <=> root.start-with-windows;
                     }
                     CheckBox {
@@ -2922,7 +2935,7 @@ export component SettingsDialog inherits ThemedWindow {
                         }
                     }
                     Hint {
-                        text: @tr("Saved in the settings file of your Windows user account.");
+                        text: @tr("Saved in the settings file of your user account.");
                     }
                 }
 
@@ -3342,7 +3355,9 @@ export component PlaylistDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: @tr("Download a playlist");
     preferred-width: 780px;
+    min-width: 780px;
     preferred-height: 600px;
+    min-height: 600px;
     in-out property <string> url;
     in property <bool> busy;
     in property <string> status;
@@ -3689,6 +3704,7 @@ export component BrowserDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: @tr("Add Ezoo Download to your browser");
     preferred-width: 880px;
+    min-width: 880px;
     in property <[BrowserRow]> browsers;
     in property <string> steps;
     in property <string> folder;
@@ -4034,6 +4050,7 @@ export component UpdateDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: @tr("Check for updates");
     preferred-width: 460px;
+    min-width: 460px;
     // 0 checking, 1 newest already, 2 downloading, 3 installing, 4 problem
     in property <int> state;
     in property <string> heading;

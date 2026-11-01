@@ -310,7 +310,6 @@
  "Site Logins": "Logins de sites",
  "Sounds": "Sons",
  "Window opacity": "Opacidade da janela",
- "Launch Ezoo Download on Windows startup": "Abrir o Ezoo Download ao iniciar o Windows",
  "Keep running next to the clock when the window is closed": "Continuar ao lado do relógio quando a janela for fechada",
  "Watch the clipboard for download links": "Monitorar a área de transferência em busca de links",
  "Automatically start downloading links placed in the clipboard": "Iniciar automaticamente os links copiados para a área de transferência",
@@ -390,7 +389,6 @@
  "Site / path": "Site / caminho",
  "example.com/members": "example.com/members",
  "Add / Update": "Adicionar / Atualizar",
- "Saved in the settings file of your Windows user account.": "Salvo no arquivo de configurações da sua conta do Windows.",
  "Play sounds": "Tocar sons",
  "Download failed": "Falha no download",
  "Queue started": "Fila iniciada",
@@ -485,5 +483,7 @@
  "Download the subtitles of videos too, in these languages:": "Baixar também as legendas dos vídeos, nestes idiomas:",
  "Quality of MP3 files": "Qualidade dos arquivos MP3",
  "Next to the clock": "Perto do relógio",
- "Draw the windows with the graphics card (uses more memory; after a restart)": "Desenhar as janelas com a placa de vídeo (mais memória; depois de reiniciar)"
+ "Draw the windows with the graphics card (uses more memory; after a restart)": "Desenhar as janelas com a placa de vídeo (mais memória; depois de reiniciar)",
+ "Start Ezoo Download when you sign in": "Iniciar o Ezoo Download ao entrar na sessão",
+ "Saved in the settings file of your user account.": "Salvo no arquivo de configurações da sua conta de usuário."
 }

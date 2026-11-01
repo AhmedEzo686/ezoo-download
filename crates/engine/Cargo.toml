@@ -35,5 +35,13 @@ windows-sys = { version = "0.59", features = [
     "Win32_Security_Cryptography",
 ] }
 
+[target.'cfg(unix)'.dependencies]
+# free space (statvfs) and the file system name
+libc = "0.2"
+# not used directly: it makes the OpenSSL that native-tls links a static one,
+# so the Linux program does not need the exact OpenSSL of the computer it was
+# built on (Windows uses its own SChannel and does not build this at all)
+openssl = { version = "0.10", features = ["vendored"] }
+
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
