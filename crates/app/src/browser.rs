@@ -46,17 +46,40 @@ fn in_path(names: &[&str]) -> Option<PathBuf> {
     names.iter().find_map(|name| dirs.iter().map(|d| d.join(name)).find(|p| p.is_file()))
 }
 
-/// The program of a browser: its usual Windows places, or its name in PATH.
-fn exe_of(windows: Vec<Option<PathBuf>>, unix_names: &[&str]) -> Option<PathBuf> {
+/// A browser a package manager put outside PATH: a Flatpak (system or user)
+/// or a Snap. Their launcher scripts take the browser's own arguments.
+#[cfg(unix)]
+fn packaged(flatpak_id: &str, snap: &str, extra: &[&str]) -> Option<PathBuf> {
+    let mut candidates = vec![
+        PathBuf::from("/var/lib/flatpak/exports/bin").join(flatpak_id),
+        PathBuf::from("/snap/bin").join(snap),
+    ];
+    if let Some(home) = std::env::var_os("HOME") {
+        candidates.push(PathBuf::from(home).join(".local/share/flatpak/exports/bin").join(flatpak_id));
+    }
+    // places distributions use instead of a link in PATH
+    candidates.extend(extra.iter().map(PathBuf::from));
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+/// The program of a browser: its usual Windows places, or its name in PATH,
+/// or the Flatpak / Snap it was installed as.
+fn exe_of(
+    windows: Vec<Option<PathBuf>>,
+    unix_names: &[&str],
+    flatpak_id: &str,
+    snap: &str,
+    extra: &[&str],
+) -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        let _ = unix_names;
+        let _ = (unix_names, flatpak_id, snap, extra);
         first_existing(windows)
     }
     #[cfg(not(windows))]
     {
         let _ = windows;
-        in_path(unix_names)
+        in_path(unix_names).or_else(|| packaged(flatpak_id, snap, extra))
     }
 }
 
@@ -72,6 +95,9 @@ fn detect() -> Vec<Browser> {
                     env_path("LOCALAPPDATA", r"Google\Chrome\Application\chrome.exe"),
                 ],
                 &["google-chrome-stable", "google-chrome"],
+                "com.google.Chrome",
+                "google-chrome",
+                &["/opt/google/chrome/chrome"],
             ),
             extensions_page: "chrome://extensions/",
             store: STORE_CHROME,
@@ -86,6 +112,9 @@ fn detect() -> Vec<Browser> {
                     env_path("ProgramFiles", r"Microsoft\Edge\Application\msedge.exe"),
                 ],
                 &["microsoft-edge-stable", "microsoft-edge"],
+                "com.microsoft.Edge",
+                "microsoft-edge",
+                &[],
             ),
             extensions_page: "edge://extensions/",
             store: STORE_EDGE,
@@ -101,6 +130,9 @@ fn detect() -> Vec<Browser> {
                     env_path("LOCALAPPDATA", r"Mozilla Firefox\firefox.exe"),
                 ],
                 &["firefox", "firefox-esr"],
+                "org.mozilla.firefox",
+                "firefox",
+                &[],
             ),
             extensions_page: "about:debugging#/runtime/this-firefox",
             store: STORE_FIREFOX,
@@ -115,7 +147,10 @@ fn detect() -> Vec<Browser> {
                     env_path("LOCALAPPDATA", r"Programs\Opera GX\opera.exe"),
                     env_path("ProgramFiles", r"Opera\opera.exe"),
                 ],
-                &["opera"],
+                &["opera", "opera-stable"],
+                "com.opera.Opera",
+                "opera",
+                &["/usr/lib/x86_64-linux-gnu/opera/opera", "/usr/lib/opera/opera"],
             ),
             extensions_page: "opera://extensions",
             store: STORE_OPERA,
@@ -131,6 +166,9 @@ fn detect() -> Vec<Browser> {
                     env_path("LOCALAPPDATA", r"BraveSoftware\Brave-Browser\Application\brave.exe"),
                 ],
                 &["brave-browser", "brave"],
+                "com.brave.Browser",
+                "brave",
+                &[],
             ),
             extensions_page: "brave://extensions/",
             store: STORE_BRAVE,
@@ -144,7 +182,13 @@ fn detect() -> Vec<Browser> {
         1,
         Browser {
             name: "Chromium",
-            exe: in_path(&["chromium", "chromium-browser"]),
+            exe: exe_of(
+                Vec::new(),
+                &["chromium", "chromium-browser"],
+                "org.chromium.Chromium",
+                "chromium",
+                &["/usr/lib/chromium/chromium"],
+            ),
             extensions_page: "chrome://extensions/",
             store: "",
             firefox: false,
