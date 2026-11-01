@@ -1055,3 +1055,52 @@ async fn file_changed_on_the_server_starts_again() {
     mgr.remove(id, false);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A download that failed before it wrote anything is removed, and the same
+/// file is added again at once: cleaning up the old one must not take the
+/// new one's file away (it went on into nothing and was gone at 100 %).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn removing_an_old_download_leaves_the_new_ones_file() {
+    let data: Arc<Vec<u8>> = Arc::new((0..2_000_000u32).map(|i| (i % 251) as u8).collect());
+    let port = serve_files(vec![("/big.bin", data.clone())]).await;
+    let root = std::env::temp_dir().join(format!("ezoo-same-name-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = root.join("dl");
+    std::fs::create_dir_all(&dir).unwrap();
+    let mgr = swiftget_engine::Manager::new(tokio::runtime::Handle::current(), root.join("app")).unwrap();
+    // the first try fails at once (nothing answers there)
+    let old = mgr.add(swiftget_engine::NewDownload {
+        url: "http://127.0.0.1:9/big.bin".into(),
+        file_name: Some("big.bin".into()),
+        save_dir: Some(dir.clone()),
+        start: true,
+        ..Default::default()
+    });
+    for _ in 0..500 {
+        if mgr.get(old).map(|v| v.status == swiftget_engine::Status::Failed).unwrap_or(false) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    mgr.remove(old, false);
+    let new = mgr.add(swiftget_engine::NewDownload {
+        url: format!("http://127.0.0.1:{port}/big.bin"),
+        file_name: Some("big.bin".into()),
+        save_dir: Some(dir.clone()),
+        connections: Some(1),
+        start: true,
+        ..Default::default()
+    });
+    assert_eq!(mgr.get(new).unwrap().file_name, "big.bin");
+    let mut status = swiftget_engine::Status::Queued;
+    for _ in 0..1500 {
+        status = mgr.get(new).unwrap().status;
+        if matches!(status, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(status, swiftget_engine::Status::Completed, "{:?}", mgr.get(new).unwrap().error);
+    assert!(std::fs::read(dir.join("big.bin")).unwrap() == *data);
+    let _ = std::fs::remove_dir_all(&root);
+}

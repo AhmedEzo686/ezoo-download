@@ -2474,6 +2474,9 @@ export component DetailsDialog inherits ThemedWindow {
     in property <string> error;
     in property <string> kind: "general";
     in property <float> progress;
+    // after the data: what it does now ("Joining…: 45%") and how far
+    in property <string> step;
+    in property <float> step-progress;
     in property <int> state;
     in property <[SegView]> segs;
     in-out property <bool> show-details: false;
@@ -2808,6 +2811,35 @@ export component DetailsDialog inherits ThemedWindow {
                 animate width {
                     duration: 100ms;
                     easing: linear;
+                }
+            }
+        }
+        // the second bar: joining the picture and the sound, moving the file...
+        if root.step != "": VerticalLayout {
+            padding-top: 6px;
+            spacing: 3px;
+            Text {
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                text: root.step;
+                font-size: 11px * Theme.font-scale;
+                color: Theme.text;
+            }
+            Rectangle {
+                height: 12px;
+                border-width: 1px;
+                border-color: Theme.line;
+                background: Theme.bar-bg;
+                clip: true;
+                Rectangle {
+                    x: Theme.rtl ? parent.width - 1px - self.width : 1px;
+                    y: 1px;
+                    height: parent.height - 2px;
+                    width: (parent.width - 2px) * root.step-progress;
+                    background: @linear-gradient(180deg, #5aa2ff 0%, #1d63d6 100%);
+                    animate width {
+                        duration: 250ms;
+                        easing: linear;
+                    }
                 }
             }
         }

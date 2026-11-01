@@ -48,6 +48,43 @@ pub enum DownloadKind {
     Torrent,
 }
 
+/// What a download does after the data is all here (its second bar).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    /// the picture and the sound into one file
+    Join,
+    /// a stream into an MP4 file
+    ToMp4,
+    /// the sound into an MP3 file
+    ToMp3,
+    /// the file to its folder on another disk
+    Move,
+    /// the part of a video cut out
+    Cut,
+}
+
+impl Step {
+    pub fn from_code(c: u8) -> Option<Step> {
+        Some(match c {
+            1 => Step::Join,
+            2 => Step::ToMp4,
+            3 => Step::ToMp3,
+            4 => Step::Move,
+            5 => Step::Cut,
+            _ => return None,
+        })
+    }
+    pub fn code(self) -> u8 {
+        match self {
+            Step::Join => 1,
+            Step::ToMp4 => 2,
+            Step::ToMp3 => 3,
+            Step::Move => 4,
+            Step::Cut => 5,
+        }
+    }
+}
+
 /// "Download a part of a video": only from `start` to `end` (seconds).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Clip {
@@ -318,7 +355,7 @@ impl DownloadRecord {
         }
     }
     /// base name of the temporary files (with the id when they share a temp folder)
-    fn temp_stem(&self) -> String {
+    pub fn temp_stem(&self) -> String {
         if let Some(stem) = &self.work_stem {
             return stem.clone();
         }
@@ -422,6 +459,8 @@ pub struct DownloadView {
     pub queue_pos: u64,
     /// the connection dropped: waiting for the internet to come back
     pub waiting: bool,
+    /// after the data: what it does now and how far (0..1)
+    pub step: Option<(Step, f32)>,
 }
 
 impl DownloadView {

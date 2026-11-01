@@ -366,8 +366,9 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 14] = [
+const WHATS_NEW: [&str; 15] = [
     "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.",
+    "Big files: a second bar shows the joining of picture and sound and the moving of the file to its folder, big videos are joined in about half the time, a folder chosen in Download File Info takes the file there at once (the free space of that disk counts), and removing a download never takes another download's file away.",
     "No more black windows: a window that Windows had cleared (shown again from next to the clock, after the screen slept...) is drawn whole again.",
     "Sites that let only the browser in (HTTP 403): Ezoo Download sends exactly what the browser sent, and if the site still refuses, the browser is asked for the file and hands it back with the site's sign-in.",
     "A PDF link goes straight to Ezoo Download: no second window asking where to save from the PDF viewer of Edge and Brave.",

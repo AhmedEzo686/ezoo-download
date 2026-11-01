@@ -639,6 +639,15 @@ const AR: &[(&str, &str)] = &[
     ("The part could not be cut. Try the quick cut, or another quality.", "تعذّر قص الجزء. جرّب القص السريع، أو جودة أخرى."),
     ("The part you chose is after the end of the video.", "الجزء الذي اخترته بعد نهاية الفيديو."),
     ("Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.", "تحميل جزء من فيديو: اختر من / إلى (أو \"Now\" أثناء التشغيل)، وشاهد الجزء أولًا، ويُحمَّل هذا الجزء فقط، بقص سريع أو قص دقيق. في قائمة الجودات في الإضافة، وفي المهام > تحميل جزء من فيديو."),
+    ("Joining the picture and the sound", "دمج الصورة والصوت"),
+    ("Making the MP4 file", "إنشاء ملف MP4"),
+    ("Making the MP3 file", "إنشاء ملف MP3"),
+    ("Moving the file to its folder", "نقل الملف إلى مجلده"),
+    ("Cutting the part", "قص الجزء"),
+    ("{}…", "{}…"),
+    ("Not enough free space on the disk {}: the file needs {} more, only {} is free. Choose a folder on another disk (right-click the download > Move / Rename), or free some space, then click Resume.", "لا توجد مساحة كافية على القرص {}: الملف يحتاج {} أخرى، والمتاح {} فقط. اختر مجلدًا على قرص آخر (زر الفأرة الأيمن على التحميل > نقل / إعادة تسمية)، أو وفّر بعض المساحة، ثم اضغط استئناف."),
+    ("The downloaded data is gone: its temporary file was removed while it downloaded (an antivirus or a cleaning program?). Click Redownload; if it happens again, allow the download folder in the antivirus.", "البيانات التي تم تحميلها اختفت: حُذف ملفها المؤقت أثناء التحميل (برنامج حماية أو برنامج تنظيف؟). اضغط \"إعادة التحميل\"؛ وإذا تكرر ذلك، استثنِ مجلد التحميل في برنامج الحماية."),
+    ("Big files: a second bar shows the joining of picture and sound and the moving of the file to its folder, big videos are joined in about half the time, a folder chosen in Download File Info takes the file there at once (the free space of that disk counts), and removing a download never takes another download's file away.", "الملفات الكبيرة: شريط ثانٍ يُظهر دمج الصورة والصوت ونقل الملف إلى مجلده، والفيديوهات الكبيرة تُدمج في نصف الوقت تقريبًا، والمجلد الذي تختاره في نافذة معلومات التحميل يأخذ الملف إليه فورًا (وتُحسب مساحة ذلك القرص)، وحذف تحميل لا يأخذ أبدًا ملف تحميل آخر."),
 ];
 
 #[cfg(test)]

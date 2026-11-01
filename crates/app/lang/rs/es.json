@@ -315,5 +315,14 @@
  "The part {} was added to the list.": "La parte {} se añadió a la lista.",
  "The part could not be cut. Try the quick cut, or another quality.": "No se pudo cortar la parte. Prueba el corte rápido u otra calidad.",
  "The part you chose is after the end of the video.": "La parte que elegiste está después del final del vídeo.",
- "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.": "Descargar una parte de un vídeo: elige desde / hasta (o \"Now\" mientras se reproduce), mira la parte primero, y solo se descarga esa parte, con corte rápido o exacto. En la lista de calidades del complemento y en Tareas > Descargar una parte de un vídeo."
+ "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.": "Descargar una parte de un vídeo: elige desde / hasta (o \"Now\" mientras se reproduce), mira la parte primero, y solo se descarga esa parte, con corte rápido o exacto. En la lista de calidades del complemento y en Tareas > Descargar una parte de un vídeo.",
+ "Joining the picture and the sound": "Uniendo la imagen y el sonido",
+ "Making the MP4 file": "Creando el archivo MP4",
+ "Making the MP3 file": "Creando el archivo MP3",
+ "Moving the file to its folder": "Moviendo el archivo a su carpeta",
+ "Cutting the part": "Cortando la parte",
+ "{}…": "{}…",
+ "Not enough free space on the disk {}: the file needs {} more, only {} is free. Choose a folder on another disk (right-click the download > Move / Rename), or free some space, then click Resume.": "No hay espacio suficiente en el disco {}: el archivo necesita {} más y solo hay {} libres. Elige una carpeta en otro disco (clic derecho en la descarga > Mover / Renombrar) o libera espacio, y luego pulsa Reanudar.",
+ "The downloaded data is gone: its temporary file was removed while it downloaded (an antivirus or a cleaning program?). Click Redownload; if it happens again, allow the download folder in the antivirus.": "Los datos descargados han desaparecido: su archivo temporal se eliminó durante la descarga (¿un antivirus o un programa de limpieza?). Pulsa Volver a descargar; si vuelve a pasar, permite la carpeta de descargas en el antivirus.",
+ "Big files: a second bar shows the joining of picture and sound and the moving of the file to its folder, big videos are joined in about half the time, a folder chosen in Download File Info takes the file there at once (the free space of that disk counts), and removing a download never takes another download's file away.": "Archivos grandes: una segunda barra muestra la unión de imagen y sonido y el traslado del archivo a su carpeta, los vídeos grandes se unen en la mitad del tiempo, una carpeta elegida en Información de la descarga recibe el archivo al instante (cuenta el espacio libre de ese disco), y quitar una descarga nunca se lleva el archivo de otra."
 }

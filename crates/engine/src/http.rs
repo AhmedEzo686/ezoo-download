@@ -30,9 +30,22 @@ pub struct Progress {
     /// connections the user wants now (0 = as many as the download began
     /// with): changed while it runs, it gets more / fewer at once
     pub want_connections: AtomicU32,
+    /// after the data: what it does (Step code, 0 = nothing) and how far (per mille)
+    pub step: std::sync::atomic::AtomicU8,
+    pub step_done: AtomicU32,
 }
 
 impl Progress {
+    /// Now doing `step` (None: nothing more).
+    pub fn set_step(&self, step: Option<crate::model::Step>) {
+        self.step.store(step.map(|s| s.code()).unwrap_or(0), Ordering::Relaxed);
+        self.step_done.store(0, Ordering::Relaxed);
+    }
+    /// How far the step is (0..1).
+    pub fn step_at(&self, f: f64) {
+        self.step_done.store((f.clamp(0.0, 1.0) * 1000.0) as u32, Ordering::Relaxed);
+    }
+
     /// Data arrived: the connection works (again).
     pub fn online(&self) {
         if self.waiting.swap(false, Ordering::Relaxed) {

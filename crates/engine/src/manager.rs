@@ -516,7 +516,7 @@ impl Manager {
 
     /// Remove from the list. Partial data is always deleted; the finished
     /// file only when `delete_file` is true.
-    pub fn remove(&self, id: DownloadId, delete_file: bool) {
+    pub fn remove(self: &Arc<Self>, id: DownloadId, delete_file: bool) {
         let entry = {
             let mut inner = self.inner.lock().unwrap();
             inner.dirty = true;
@@ -528,11 +528,12 @@ impl Manager {
         }
         let rec = entry.rec;
         let data_dir = self.data_dir.clone();
+        let me = self.clone();
         self.rt.spawn(async move {
             // give running connections a moment to close their file handles
             tokio::time::sleep(Duration::from_millis(800)).await;
             for _ in 0..5 {
-                let mut ok = remove_temp_files(&rec);
+                let mut ok = remove_temp_files(&rec, &me.paths_in_use());
                 if delete_file && rec.status == Status::Completed && rec.kind == DownloadKind::Torrent {
                     ok &= remove_torrent_data(&rec);
                 } else if delete_file && rec.status == Status::Completed && rec.target_path().exists() {
@@ -552,7 +553,7 @@ impl Manager {
 
     /// Remove many downloads from the list at once (files stay on the disk,
     /// unfinished parts are cleaned up): one lock, one background clean-up.
-    pub fn remove_many(&self, ids: &[DownloadId]) {
+    pub fn remove_many(self: &Arc<Self>, ids: &[DownloadId]) {
         let gone: Vec<Entry> = {
             let mut inner = self.inner.lock().unwrap();
             inner.dirty = true;
@@ -573,12 +574,14 @@ impl Manager {
         if recs.is_empty() {
             return;
         }
+        let me = self.clone();
         self.rt.spawn(async move {
             tokio::time::sleep(Duration::from_millis(800)).await;
             for _ in 0..5 {
                 let mut left = Vec::new();
+                let in_use = me.paths_in_use();
                 for rec in recs {
-                    if !remove_temp_files(&rec) {
+                    if !remove_temp_files(&rec, &in_use) {
                         left.push(rec);
                     }
                 }
@@ -594,7 +597,7 @@ impl Manager {
     /// Take a download back completely: stop it and delete everything it
     /// wrote (parts, temporary files and the finished file), as if it had
     /// never started. Used when "Download File Info" is cancelled.
-    pub fn discard(&self, id: DownloadId) {
+    pub fn discard(self: &Arc<Self>, id: DownloadId) {
         let entry = {
             let mut inner = self.inner.lock().unwrap();
             inner.dirty = true;
@@ -605,14 +608,16 @@ impl Manager {
             t.cancel();
         }
         let rec = entry.rec;
+        let me = self.clone();
         self.rt.spawn(async move {
             tokio::time::sleep(Duration::from_millis(800)).await;
             // the file got its name when it was added (a free one), so
             // whatever is there now was written by this download
             for _ in 0..8 {
-                let mut ok = remove_temp_files(&rec);
+                let in_use = me.paths_in_use();
+                let mut ok = remove_temp_files(&rec, &in_use);
                 let target = rec.target_path();
-                if target.exists() {
+                if target.exists() && !in_use.contains(&target) {
                     ok &= std::fs::remove_file(&target).is_ok();
                 }
                 if ok {
@@ -776,14 +781,17 @@ impl Manager {
     /// already started in the background: give it the final folder, name,
     /// note and login. Works while it downloads.
     pub fn retarget(
-        &self,
+        self: &Arc<Self>,
         id: DownloadId,
         dir: &Path,
         name: &str,
         description: Option<String>,
         auth: Option<(String, String)>,
     ) -> anyhow::Result<()> {
-        let done = {
+        let mut moves: Vec<(PathBuf, PathBuf)> = Vec::new();
+        let mut first_dir = None;
+        let mut first_stem = String::new();
+        let (done, running) = {
             let mut inner = self.inner.lock().unwrap();
             let e = inner.entries.get_mut(&id).ok_or_else(|| anyhow!("download not found"))?;
             e.rec.description = description.filter(|d| !d.trim().is_empty());
@@ -796,19 +804,29 @@ impl Manager {
                 if dir != e.rec.save_dir || name != e.rec.file_name {
                     std::fs::create_dir_all(dir)?;
                     // it may be downloading already (in the folder first
-                    // chosen): its temporary files stay where they are, only
-                    // the finished file goes to the new folder. Without this
-                    // a resumed download wrote a new, nearly empty file there.
-                    if e.rec.work_stem.is_some() && e.rec.temp_dir.as_ref().is_none_or(|t| t.as_os_str().is_empty()) {
-                        e.rec.temp_dir = Some(e.rec.work_dir());
-                    }
+                    // chosen): its temporary files go with it to the new
+                    // folder (they stayed behind: the first folder's disk
+                    // had to have room for all of it, and the file was
+                    // copied over at the end), unless the user has a
+                    // temporary folder of their own
+                    let before = e.rec.temp_paths();
+                    let own_temp = e.rec.temp_dir.as_ref().is_some_and(|t| !t.as_os_str().is_empty() && *t != e.rec.save_dir);
+                    first_dir = Some(e.rec.work_dir());
+                    first_stem = e.rec.temp_stem();
                     e.rec.save_dir = dir.to_path_buf();
                     e.rec.file_name = name;
                     e.rec.category = self.settings.read().unwrap().category_of(&e.rec.file_name, &e.rec.url);
+                    if e.rec.work_stem.is_some() && !own_temp {
+                        e.rec.temp_dir = Some(dir.to_path_buf());
+                    }
+                    let after = e.rec.temp_paths();
+                    if e.rec.kind != DownloadKind::Torrent {
+                        moves = before.into_iter().zip(after).filter(|(a, b)| a != b && a.exists()).collect();
+                    }
                 }
             }
             inner.dirty = true;
-            done
+            (done, inner.entries.get(&id).map(|e| e.task.is_some()).unwrap_or(false))
         };
         // finished already (small file): move the file itself
         if done {
@@ -817,6 +835,55 @@ impl Manager {
             if target != current {
                 self.move_file(id, &target, false)?;
             }
+            return Ok(());
+        }
+        if moves.is_empty() {
+            return Ok(());
+        }
+        // the files are closed first: it stops for a moment
+        if running {
+            if let Some(t) = self.inner.lock().unwrap().entries.get(&id).and_then(|e| e.task.clone()) {
+                t.cancel();
+            }
+            for _ in 0..250 {
+                if self.inner.lock().unwrap().entries.get(&id).map(|e| e.task.is_none()).unwrap_or(true) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+        let mut stayed = false;
+        for (from, to) in &moves {
+            if std::fs::rename(from, to).is_ok() {
+                continue;
+            }
+            // another disk: a small start is copied, a big one stays where it
+            // is (copied once, when it is finished)
+            let small = from.is_file() && std::fs::metadata(from).map(|m| m.len() <= 512 << 20).unwrap_or(false);
+            if small && std::fs::copy(from, to).is_ok() {
+                let _ = std::fs::remove_file(from);
+            } else {
+                let _ = std::fs::remove_file(to);
+                stayed = true;
+                break;
+            }
+        }
+        if stayed {
+            // everything back where it was, the temporary files stay there
+            for (from, to) in &moves {
+                if to.exists() && !from.exists() {
+                    let _ = std::fs::rename(to, from);
+                }
+            }
+            // the same files as before: their folder and their name
+            let back = first_dir.clone();
+            self.update(id, move |x| {
+                x.temp_dir = back;
+                x.work_stem = Some(first_stem);
+            });
+        }
+        if running {
+            self.start(id);
         }
         Ok(())
     }
@@ -930,7 +997,10 @@ impl Manager {
             if e.task.is_some() {
                 return;
             }
-            remove_temp_files(&e.rec);
+            let rec = e.rec.clone();
+            let in_use = paths_in_use_but(&inner, id);
+            remove_temp_files(&rec, &in_use);
+            let Some(e) = inner.entries.get_mut(&id) else { return };
             e.segs.lock().unwrap().clear();
             e.audio_segs.lock().unwrap().clear();
             e.progress.bytes.store(0, Ordering::Relaxed);
@@ -1048,8 +1118,19 @@ impl Manager {
             order.sort();
             for (_, id) in order {
                 let Some(e) = inner.entries.get_mut(&id) else { continue };
-                if settings.max_active > 0 && running >= settings.max_active as usize {
-                    break;
+                // its data is all here (only the joining / moving is left,
+                // after the program was closed): it does not wait for a free place
+                let ready = {
+                    let segs = e.segs.lock().unwrap();
+                    let audio = e.audio_segs.lock().unwrap();
+                    e.rec.kind != DownloadKind::Torrent
+                        && e.rec.clip.is_none()
+                        && !segs.is_empty()
+                        && segments::all_finished(&segs)
+                        && (e.rec.kind != DownloadKind::Dash || (!audio.is_empty() && segments::all_finished(&audio)))
+                };
+                if !ready && settings.max_active > 0 && running >= settings.max_active as usize {
+                    continue;
                 }
                 if e.rec.status != Status::Queued || e.task.is_some() {
                     continue;
@@ -1511,7 +1592,7 @@ impl Manager {
                     max_request: http_download::max_request_for(rec.request_url()),
                     limiter: limiter.clone(),
                 };
-                http_download::run(self.shared.clone(), job, segs, progress.clone(), cancel).await?;
+                http_download::run(self.shared.clone(), job, segs, progress.clone(), cancel.clone()).await?;
             }
             DownloadKind::Hls => {
                 let job = HlsJob {
@@ -1525,7 +1606,7 @@ impl Manager {
                     limiter: limiter.clone(),
                     clip: None,
                 };
-                hls::run(self.shared.clone(), job, progress.clone(), cancel).await?;
+                hls::run(self.shared.clone(), job, progress.clone(), cancel.clone()).await?;
             }
             DownloadKind::Dash => unreachable!("handled by run_dash"),
             DownloadKind::Torrent => unreachable!("handled by run_torrent"),
@@ -1539,7 +1620,13 @@ impl Manager {
             let kbps = ytdlp::mp3_kbps();
             // ffmpeg missing: fetched again first
             crate::tools::restore_ffmpeg(&self.client()).await;
-            tokio::task::spawn_blocking(move || mux::to_mp3(&input, &t2, kbps, Some(&title))).await??;
+            progress.set_step(Some(Step::ToMp3));
+            let (p2, c2) = (progress.clone(), cancel.clone());
+            let made = tokio::task::spawn_blocking(move || mux::to_mp3_watched(&input, &t2, kbps, Some(&title), &|f| p2.step_at(f), Some(&c2))).await?;
+            if made.is_err() {
+                progress.set_step(None);
+            }
+            made?;
             std::fs::rename(&tmp, &part)?;
         }
         if rec.kind == DownloadKind::Hls && filename::extension(&rec.file_name) == "ts" && mux::find_ffmpeg().is_some() {
@@ -1550,7 +1637,14 @@ impl Manager {
             let t2 = tmp.clone();
             // ffmpeg missing: fetched again first
             crate::tools::restore_ffmpeg(&self.client()).await;
-            let made = tokio::task::spawn_blocking(move || mux::ts_to_mp4(&input, &t2)).await.map(|r| r.is_ok()).unwrap_or(false);
+            progress.set_step(Some(Step::ToMp4));
+            let (p2, c2) = (progress.clone(), cancel.clone());
+            let r = tokio::task::spawn_blocking(move || mux::ts_to_mp4(&input, &t2, &|f| p2.step_at(f), Some(&c2))).await;
+            if cancel.is_cancelled() {
+                progress.set_step(None);
+                return Err(Cancelled.into());
+            }
+            let made = r.map(|r| r.is_ok()).unwrap_or(false);
             if made && std::fs::rename(&tmp, &part).is_ok() {
                 let (stem, _) = filename::split_ext(&rec.file_name);
                 let name = filename::unique_name(&rec.save_dir, &format!("{stem}.mp4"));
@@ -1559,7 +1653,7 @@ impl Manager {
                 let _ = std::fs::remove_file(&tmp);
             }
         }
-        self.finish_file(id, &rec)
+        self.finish_file(id, &rec, &progress, &cancel).await
     }
 
     /// "Download a part of a video": only the part is fetched (the parts of
@@ -1613,7 +1707,7 @@ impl Manager {
             });
         }
         progress.assembling.store(false, Ordering::Relaxed);
-        self.finish_file(id, &rec)
+        self.finish_file(id, &rec, &progress, &cancel).await
     }
 
     /// A torrent: aria2 gets it, we watch and show its progress.
@@ -1845,8 +1939,9 @@ impl Manager {
         Ok(())
     }
 
-    /// `.sgpart` -> real name (pick a new name if that one got taken meanwhile)
-    fn finish_file(&self, id: DownloadId, rec: &DownloadRecord) -> anyhow::Result<()> {
+    /// `.sgpart` -> real name (pick a new name if that one got taken meanwhile).
+    /// To a folder on another disk it is copied, with its own bar.
+    async fn finish_file(&self, id: DownloadId, rec: &DownloadRecord, progress: &Arc<Progress>, cancel: &CancellationToken) -> anyhow::Result<()> {
         // name and folder may have changed while it was downloading
         let (save_dir, file_name) = {
             let inner = self.inner.lock().unwrap();
@@ -1856,6 +1951,14 @@ impl Manager {
                 .map(|e| (e.rec.save_dir.clone(), e.rec.file_name.clone()))
                 .unwrap_or_else(|| (rec.save_dir.clone(), rec.file_name.clone()))
         };
+        let part = rec.part_path();
+        if !part.exists() {
+            progress.set_step(None);
+            anyhow::bail!(
+                "the downloaded data is gone: its temporary file \"{}\" was removed while it downloaded (an antivirus or a cleaning program?)",
+                part.display()
+            );
+        }
         let mut target = save_dir.join(&file_name);
         if target.exists() {
             let name = filename::unique_name(&save_dir, &file_name);
@@ -1863,11 +1966,19 @@ impl Manager {
             self.update(id, move |x| x.file_name = name);
         }
         let _ = std::fs::create_dir_all(&save_dir);
-        if std::fs::rename(rec.part_path(), &target).is_err() {
-            // temporary folder on another disk: copy, then remove
-            std::fs::copy(rec.part_path(), &target)?;
-            let _ = std::fs::remove_file(rec.part_path());
+        if std::fs::rename(&part, &target).is_err() {
+            // temporary folder on another disk: copied (its own bar), then removed
+            progress.set_step(Some(Step::Move));
+            let (from, to, p2, c2) = (part.clone(), target.clone(), progress.clone(), cancel.clone());
+            let copied = tokio::task::spawn_blocking(move || copy_watched(&from, &to, &|f| p2.step_at(f), &c2)).await?;
+            if let Err(e) = copied {
+                let _ = std::fs::remove_file(&target);
+                progress.set_step(None);
+                return Err(e);
+            }
+            let _ = std::fs::remove_file(&part);
         }
+        progress.set_step(None);
         let settings = self.settings();
         if settings.set_file_date {
             if let Some(t) = rec.server_time {
@@ -2008,10 +2119,16 @@ impl Manager {
         );
         // ffmpeg missing: fetched again first
         crate::tools::restore_ffmpeg(&self.client()).await;
-        tokio::task::spawn_blocking(move || mux::merge(&video, &audio, &output, &name)).await??;
+        progress.set_step(Some(Step::Join));
+        let (p2, c2) = (progress.clone(), cancel.clone());
+        let joined = tokio::task::spawn_blocking(move || mux::merge(&video, &audio, &output, &name, &|f| p2.step_at(f), Some(&c2))).await?;
+        if joined.is_err() {
+            progress.set_step(None);
+        }
+        joined?;
         let _ = std::fs::remove_file(rec.video_part_path());
         let _ = std::fs::remove_file(rec.audio_part_path());
-        self.finish_file(id, &rec)
+        self.finish_file(id, &rec, &progress, &cancel).await
     }
 
     fn tick(self: &Arc<Self>) {
@@ -2289,13 +2406,36 @@ fn remove_torrent_data(rec: &DownloadRecord) -> bool {
 
 /// Delete every temporary file of a download. Returns false if something
 /// could not be removed (still open), so the caller can retry.
-fn remove_temp_files(rec: &DownloadRecord) -> bool {
+/// Every file another download of the list uses (its temporary files and
+/// its file), but those of `except`.
+fn paths_in_use_but(inner: &Inner, except: DownloadId) -> HashSet<PathBuf> {
+    let mut set = HashSet::new();
+    for e in inner.entries.values().filter(|e| e.rec.id != except) {
+        if e.rec.kind != DownloadKind::Torrent {
+            set.extend(e.rec.temp_paths());
+        }
+        set.insert(e.rec.target_path());
+    }
+    set
+}
+
+impl Manager {
+    /// Every file a download of the list uses now.
+    fn paths_in_use(&self) -> HashSet<PathBuf> {
+        paths_in_use_but(&self.inner.lock().unwrap(), DownloadId::MAX)
+    }
+}
+
+/// The temporary files of `rec` go, never one that a download still in
+/// the list uses (a download removed while a new one of the same file
+/// started took that one's file away: it went on into nothing).
+fn remove_temp_files(rec: &DownloadRecord, in_use: &HashSet<PathBuf>) -> bool {
     let mut ok = true;
     if rec.kind == DownloadKind::Torrent && rec.status != Status::Completed {
         // what an unfinished torrent got so far is its partial data
         ok &= remove_torrent_data(rec);
     }
-    for p in rec.temp_paths() {
+    for p in rec.temp_paths().into_iter().filter(|p| !in_use.contains(p)) {
         if p.is_dir() {
             ok &= std::fs::remove_dir_all(&p).is_ok();
         } else if p.exists() {
@@ -2366,7 +2506,35 @@ fn view_of(e: &Entry, with_parts: bool) -> DownloadView {
         headers: e.rec.headers.clone(),
         parent_page: e.rec.source_page.clone().or_else(|| e.rec.headers.referer.clone()),
         queue_pos: e.rec.queue_pos,
+        step: Step::from_code(e.progress.step.load(Ordering::Relaxed))
+            .filter(|_| status.is_running())
+            .map(|st| (st, e.progress.step_done.load(Ordering::Relaxed) as f32 / 1000.0)),
     }
+}
+
+/// Copy `from` to `to` (another disk), telling how far it is; stops at once
+/// when `cancel` fires.
+fn copy_watched(from: &Path, to: &Path, on: &dyn Fn(f64), cancel: &CancellationToken) -> anyhow::Result<()> {
+    use std::io::{Read, Write};
+    let total = std::fs::metadata(from)?.len().max(1);
+    let mut src = std::fs::File::open(from)?;
+    let mut dst = std::io::BufWriter::with_capacity(4 << 20, std::fs::File::create(to)?);
+    let mut buf = vec![0u8; 4 << 20];
+    let mut done = 0u64;
+    loop {
+        if cancel.is_cancelled() {
+            return Err(Cancelled.into());
+        }
+        let n = src.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        dst.write_all(&buf[..n])?;
+        done += n as u64;
+        on(done as f64 / total as f64);
+    }
+    dst.flush()?;
+    Ok(())
 }
 
 /// Where a part of a video comes from.
@@ -2430,6 +2598,7 @@ async fn cut_source(
         };
         let first_at = hls::run(shared.clone(), job, progress.clone(), cancel.clone()).await?;
         progress.assembling.store(true, Ordering::Relaxed);
+        progress.set_step(Some(Step::Cut));
         (vec![work.joined.to_string_lossy().into_owned()], (c.start - first_at).max(0.0))
     } else {
         let mut inputs = Vec::new();
@@ -2457,6 +2626,8 @@ async fn cut_source(
         move |f| {
             if remote {
                 p2.parts_done.store((f * 1000.0) as u32, Ordering::Relaxed);
+            } else {
+                p2.step_at(f);
             }
         },
         cancel,
@@ -2464,6 +2635,7 @@ async fn cut_source(
     .await;
     drop(tickets);
     progress.connections.store(0, Ordering::Relaxed);
+    progress.set_step(None);
     if hls && result.is_ok() {
         let _ = std::fs::remove_file(&work.joined);
     }

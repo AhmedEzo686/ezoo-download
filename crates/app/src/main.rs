@@ -3127,6 +3127,17 @@ pub(crate) fn err_text(e: &str) -> String {
         t("Nobody shares this torrent right now. It keeps looking and starts by itself as soon as someone does. If it stays like this, the torrent has no sharers left, or your internet provider or firewall blocks torrents.")
     } else if e.contains("ffmpeg.exe is missing") {
         t("ffmpeg.exe (it joins the video and the sound) is missing and could not be downloaded again. Allow it in your antivirus or install Ezoo Download again, then click Resume: nothing downloaded is lost.")
+    } else if let Some(rest) = e.split("Not enough free space on the disk ").nth(1) {
+        // "C:: the file needs 148 GB more, only 83 GB free."
+        let (disk, rest) = rest.split_once(": the file needs ").unwrap_or(("", rest));
+        let (need, free) = rest.split_once(" more, only ").unwrap_or((rest, ""));
+        let free = free.trim_end_matches(" free.");
+        tf(
+            "Not enough free space on the disk {}: the file needs {} more, only {} is free. Choose a folder on another disk (right-click the download > Move / Rename), or free some space, then click Resume.",
+            &[&disk, &need, &free],
+        )
+    } else if e.contains("the downloaded data is gone") {
+        t("The downloaded data is gone: its temporary file was removed while it downloaded (an antivirus or a cleaning program?). Click Redownload; if it happens again, allow the download folder in the antivirus.")
     } else if e.contains("ffmpeg could not cut the part") {
         t("The part could not be cut. Try the quick cut, or another quality.")
     } else if e.contains("the part asked for is after the end of the video") {
@@ -3149,6 +3160,8 @@ fn row_of(v: &DownloadView, sel: bool) -> DownloadRow {
     };
     let status = match v.status {
         _ if v.waiting => t("Waiting for connection…"),
+        // after the data: joining, moving... with how far it is
+        _ if v.step.is_some() => v.step.map(|(st, f)| format!("{} {:.0}%", step_text(st), f * 100.0)).unwrap_or_default(),
         Status::Downloading if v.kind == DownloadKind::Torrent && v.total_size.is_none() => t("Getting the file list…"),
         Status::Downloading | Status::Paused if v.total_size.is_some() => format!("{:.2}%", pct * 100.0),
         Status::Downloading if v.parts_total > 0 => tf("{}/{} parts", &[&v.parts_done, &v.parts_total]),
@@ -3578,6 +3591,18 @@ fn taskbar_state(v: &DownloadView) -> winfx::TaskbarProgress {
     }
 }
 
+/// What a download does after its data is all here (its second bar).
+fn step_text(st: swiftget_engine::Step) -> String {
+    use swiftget_engine::Step;
+    t(match st {
+        Step::Join => "Joining the picture and the sound",
+        Step::ToMp4 => "Making the MP4 file",
+        Step::ToMp3 => "Making the MP3 file",
+        Step::Move => "Moving the file to its folder",
+        Step::Cut => "Cutting the part",
+    })
+}
+
 fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) {
     let pct = v.progress();
     d.set_name(v.file_name.clone().into());
@@ -3617,6 +3642,17 @@ fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) 
     d.set_resumable_ok(v.resumable);
     d.set_error(err_text(v.error.as_deref().unwrap_or_default()).into());
     d.set_progress(pct);
+    match v.step {
+        Some((st, f)) => {
+            d.set_step(format!("{}: {:.0}%", step_text(st), f * 100.0).into());
+            d.set_step_progress(f);
+            d.set_status(tf("{}…", &[&step_text(st)]).into());
+        }
+        None => {
+            d.set_step(SharedString::new());
+            d.set_step_progress(0.0);
+        }
+    }
     d.set_state(state_of(v.status));
 
     // connections, in file order

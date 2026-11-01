@@ -315,5 +315,14 @@
  "The part {} was added to the list.": "{} parçası listeye eklendi.",
  "The part could not be cut. Try the quick cut, or another quality.": "Parça kesilemedi. Hızlı kesimi ya da başka bir kaliteyi deneyin.",
  "The part you chose is after the end of the video.": "Seçtiğiniz parça videonun sonundan sonra.",
- "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.": "Bir videonun bir kısmını indirin: başlangıç / bitiş seçin (ya da oynarken \"Now\"), önce parçaya bakın; yalnızca o parça indirilir, hızlı ya da tam kesimle. Eklentinin kalite listesinde ve Görevler > Bir videonun bir kısmını indir menüsünde."
+ "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.": "Bir videonun bir kısmını indirin: başlangıç / bitiş seçin (ya da oynarken \"Now\"), önce parçaya bakın; yalnızca o parça indirilir, hızlı ya da tam kesimle. Eklentinin kalite listesinde ve Görevler > Bir videonun bir kısmını indir menüsünde.",
+ "Joining the picture and the sound": "Görüntü ve ses birleştiriliyor",
+ "Making the MP4 file": "MP4 dosyası yapılıyor",
+ "Making the MP3 file": "MP3 dosyası yapılıyor",
+ "Moving the file to its folder": "Dosya klasörüne taşınıyor",
+ "Cutting the part": "Parça kesiliyor",
+ "{}…": "{}…",
+ "Not enough free space on the disk {}: the file needs {} more, only {} is free. Choose a folder on another disk (right-click the download > Move / Rename), or free some space, then click Resume.": "{} diskinde yeterli boş alan yok: dosyanın {} daha alana ihtiyacı var, yalnızca {} boş. Başka bir diskte bir klasör seçin (indirmeye sağ tıklayın > Taşı / Yeniden adlandır) ya da yer açın, sonra Devam'a tıklayın.",
+ "The downloaded data is gone: its temporary file was removed while it downloaded (an antivirus or a cleaning program?). Click Redownload; if it happens again, allow the download folder in the antivirus.": "İndirilen veriler kayboldu: geçici dosyası indirilirken silindi (bir antivirüs ya da temizlik programı mı?). Yeniden indir'e tıklayın; tekrar olursa indirme klasörüne antivirüste izin verin.",
+ "Big files: a second bar shows the joining of picture and sound and the moving of the file to its folder, big videos are joined in about half the time, a folder chosen in Download File Info takes the file there at once (the free space of that disk counts), and removing a download never takes another download's file away.": "Büyük dosyalar: ikinci bir çubuk görüntü ile sesin birleştirilmesini ve dosyanın klasörüne taşınmasını gösterir, büyük videolar yaklaşık yarı sürede birleştirilir, İndirme Bilgisi penceresinde seçilen klasör dosyayı hemen alır (o diskin boş alanı sayılır) ve bir indirmeyi kaldırmak asla başka bir indirmenin dosyasını götürmez."
 }

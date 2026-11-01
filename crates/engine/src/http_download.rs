@@ -106,12 +106,20 @@ pub async fn run(
         std::fs::create_dir_all(dir)?;
     }
     let segmented = job.resumable && job.total_size.is_some();
-    let file = OpenOptions::new()
-        .create(true)
-        .read(true)
-        .write(true)
-        .truncate(false)
-        .open(&job.part_path)?;
+    let mut opts = OpenOptions::new();
+    opts.create(true).read(true).write(true).truncate(false);
+    // nobody can delete or move the file while it downloads (Windows let
+    // another program, a cleaner or an antivirus, remove it: the download
+    // went on into nothing and the file was gone at 100 %); reading it
+    // ("Play while downloading") still works
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_SHARE_READ: u32 = 1;
+        const FILE_SHARE_WRITE: u32 = 2;
+        opts.share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
+    }
+    let file = opts.open(&job.part_path)?;
 
     {
         let mut table = segs.lock().unwrap();

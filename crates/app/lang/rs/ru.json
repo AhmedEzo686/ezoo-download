@@ -315,5 +315,14 @@
  "The part {} was added to the list.": "Часть {} добавлена в список.",
  "The part could not be cut. Try the quick cut, or another quality.": "Не удалось обрезать часть. Попробуйте быструю обрезку или другое качество.",
  "The part you chose is after the end of the video.": "Выбранная часть находится после конца видео.",
- "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.": "Скачать часть видео: выберите с / по (или «Now» во время просмотра), сначала посмотрите часть, и скачивается только она — с быстрой или точной обрезкой. В списке качеств дополнения и в меню Задачи > Скачать часть видео."
+ "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.": "Скачать часть видео: выберите с / по (или «Now» во время просмотра), сначала посмотрите часть, и скачивается только она — с быстрой или точной обрезкой. В списке качеств дополнения и в меню Задачи > Скачать часть видео.",
+ "Joining the picture and the sound": "Объединение изображения и звука",
+ "Making the MP4 file": "Создание файла MP4",
+ "Making the MP3 file": "Создание файла MP3",
+ "Moving the file to its folder": "Перемещение файла в его папку",
+ "Cutting the part": "Обрезка части",
+ "{}…": "{}…",
+ "Not enough free space on the disk {}: the file needs {} more, only {} is free. Choose a folder on another disk (right-click the download > Move / Rename), or free some space, then click Resume.": "Недостаточно места на диске {}: файлу нужно ещё {}, свободно только {}. Выберите папку на другом диске (правый щелчок по загрузке > Переместить / Переименовать) или освободите место, затем нажмите «Продолжить».",
+ "The downloaded data is gone: its temporary file was removed while it downloaded (an antivirus or a cleaning program?). Click Redownload; if it happens again, allow the download folder in the antivirus.": "Скачанные данные пропали: временный файл был удалён во время загрузки (антивирус или программа очистки?). Нажмите «Скачать заново»; если это повторится, разрешите папку загрузок в антивирусе.",
+ "Big files: a second bar shows the joining of picture and sound and the moving of the file to its folder, big videos are joined in about half the time, a folder chosen in Download File Info takes the file there at once (the free space of that disk counts), and removing a download never takes another download's file away.": "Большие файлы: вторая полоса показывает объединение изображения и звука и перемещение файла в его папку, большие видео объединяются примерно вдвое быстрее, папка, выбранная в окне «Сведения о загрузке», сразу получает файл (учитывается свободное место этого диска), а удаление загрузки никогда не забирает файл другой."
 }
