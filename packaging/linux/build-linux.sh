@@ -59,6 +59,56 @@ cp -f "$here/install-local.sh" "$appdir/install.sh"
 chmod +x "$appdir/install.sh"
 (cd "$stage" && tar czf "$dist/EzooDownload-$version-linux-x86_64.tar.gz" "$(basename "$appdir")")
 
+say "The AppImage (one file, no install)"
+tool="${APPIMAGETOOL:-$(command -v appimagetool || true)}"
+if [ -z "$tool" ] && [ -x "$HOME/.local/bin/appimagetool" ]; then
+    tool="$HOME/.local/bin/appimagetool"
+fi
+if [ -n "$tool" ]; then
+    imgdir="$stage/EzooDownload.AppDir"
+    rm -rf "$imgdir"
+    mkdir -p "$imgdir/usr/bin" "$imgdir/usr/lib" "$imgdir/usr/share/ezoodownload"
+    install -m755 "$stage/EzooDownload" "$imgdir/usr/bin/EzooDownload"
+    # where the program looks for them when it runs from inside the image
+    for name in extension extension-firefox ezoo-download-firefox.xpi THIRD-PARTY-NOTICES.txt; do
+        [ -e "$stage/$name" ] || continue
+        cp -a "$stage/$name" "$imgdir/usr/share/ezoodownload/"
+        cp -a "$stage/$name" "$imgdir/usr/bin/"
+    done
+    # the libraries the program links itself (the ones every desktop has are
+    # left to the system: libc, X11, Wayland, OpenGL)
+    for lib in libfontconfig.so.1 libfreetype.so.6 libexpat.so.1 libz.so.1 libzstd.so.1 \
+               libbz2.so.1.0 libpng16.so.16 libbrotlidec.so.1 libbrotlicommon.so.1; do
+        for dir in /usr/lib/x86_64-linux-gnu /usr/lib64 /usr/lib /lib/x86_64-linux-gnu /lib64 /lib; do
+            if [ -e "$dir/$lib" ]; then
+                cp -L "$dir/$lib" "$imgdir/usr/lib/"
+                break
+            fi
+        done
+    done
+    install -m644 "$stage/ezoodownload.desktop" "$imgdir/ezoodownload.desktop"
+    cp "$stage/icons/ezoodownload-256.png" "$imgdir/ezoodownload.png"
+    cat > "$imgdir/AppRun" <<'EOF'
+#!/bin/sh
+# AppImage entry point: find our own folder, then start the program.
+here="$(dirname "$(readlink -f "$0")")"
+export LD_LIBRARY_PATH="$here/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export PATH="$here/usr/bin:$PATH"
+exec "$here/usr/bin/EzooDownload" "$@"
+EOF
+    chmod 755 "$imgdir/AppRun"
+    # extract-and-run: appimagetool itself is an AppImage, and FUSE is not
+    # there in every container / build machine
+    if APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 "$tool" --no-appstream \
+        "$imgdir" "$dist/EzooDownload-$version-x86_64.AppImage" >"$stage/appimage.log" 2>&1; then
+        chmod 755 "$dist/EzooDownload-$version-x86_64.AppImage"
+    else
+        echo "appimagetool failed (see $stage/appimage.log); the .deb and the folder are still built"
+    fi
+else
+    echo "appimagetool not found: put it in ~/.local/bin or set APPIMAGETOOL=... to also make the AppImage"
+fi
+
 say "The .deb package"
 deb="$stage/deb"
 mkdir -p "$deb/DEBIAN" \
@@ -141,3 +191,6 @@ ls -lh "$dist" | sed 's/^/   /'
 echo
 echo "Install:  sudo apt install ./dist/ezoodownload_${version}_${arch}.deb"
 echo "Or:       tar xzf dist/EzooDownload-${version}-linux-x86_64.tar.gz && ./EzooDownload-${version}-linux-x86_64/install.sh"
+if [ -f "$dist/EzooDownload-$version-x86_64.AppImage" ]; then
+    echo "AppImage: chmod +x dist/EzooDownload-${version}-x86_64.AppImage && ./dist/EzooDownload-${version}-x86_64.AppImage"
+fi

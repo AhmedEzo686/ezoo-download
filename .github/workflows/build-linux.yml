@@ -36,18 +36,32 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
-      - name: Build the .deb and the portable folder
+      - name: appimagetool (pinned, checksummed)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
+            https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  $RUNNER_TEMP/appimagetool" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/appimagetool"
+
+      - name: Build the .deb, the AppImage and the portable folder
+        env:
+          APPIMAGETOOL: ${{ runner.temp }}/appimagetool
         run: ./packaging/linux/build-linux.sh
 
-      - name: Check the package
+      - name: Check the packages
         run: |
           dpkg-deb -I dist/ezoodownload_*.deb
           dpkg-deb -c dist/ezoodownload_*.deb | head -40
+          # the AppImage must contain the program and its icon
+          ./dist/EzooDownload-*-x86_64.AppImage --appimage-extract 'usr/bin/EzooDownload' >/dev/null
+          ./dist/EzooDownload-*-x86_64.AppImage --appimage-extract 'ezoodownload.png' >/dev/null
+          rm -rf squashfs-root
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ezoodownload-linux
           path: |
             dist/*.deb
+            dist/*.AppImage
             dist/*.tar.gz
           retention-days: 14

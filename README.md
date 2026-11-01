@@ -56,7 +56,7 @@
 يوجد الآن بناء كامل للينكس (نفس الشيفرة، واجهة Slint أصلية):
 
 ```bash
-./packaging/linux/build-linux.sh     # dist/ezoodownload_*.deb و dist/*.tar.gz
+./packaging/linux/build-linux.sh     # dist/ezoodownload_*.deb و dist/*.AppImage و dist/*.tar.gz
 sudo apt install ./dist/ezoodownload_*.deb
 ```
 

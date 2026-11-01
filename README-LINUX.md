@@ -45,7 +45,18 @@ sudo dpkg -i dist/ezoodownload_1.0.8_amd64.deb && sudo apt -f install
 
 ثم ابحث عن **Ezoo Download** في قائمة التطبيقات.
 
-### 2) نسخة محمولة بدون صلاحيات مدير
+### 2) AppImage (ملف واحد، بدون تثبيت)
+
+```bash
+chmod +x EzooDownload-1.0.8-x86_64.AppImage
+./EzooDownload-1.0.8-x86_64.AppImage
+```
+
+- يحتوي البرنامج + مجلدات الإضافة + الأيقونة + المكتبات التي يحتاجها، ويعمل على معظم التوزيعات.
+- على نظام بدون FUSE (بعض الحاويات) شغّله بـ: `./EzooDownload-*.AppImage --appimage-extract-and-run`.
+- لا يضيف مدخلًا في قائمة التطبيقات؛ لو أردت ذلك استخدم حزمة `.deb` أو النسخة المحمولة بالأسفل.
+
+### 3) نسخة محمولة بدون صلاحيات مدير
 
 ```bash
 tar xzf dist/EzooDownload-1.0.8-linux-x86_64.tar.gz
