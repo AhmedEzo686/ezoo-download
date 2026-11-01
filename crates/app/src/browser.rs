@@ -297,7 +297,7 @@ fn firefox_xpi() -> Option<PathBuf> {
 }
 
 pub(crate) fn open(ui: &Ui) {
-    let Some(d) = ui.browsers.upgrade() else { return };
+    let Some(d) = crate::ensure_browsers(ui) else { return };
     let list = detect();
     let rows: Vec<BrowserRow> = list
         .iter()

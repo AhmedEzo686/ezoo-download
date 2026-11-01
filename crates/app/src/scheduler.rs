@@ -31,7 +31,7 @@ fn queue_rows(ui: &Ui) -> Vec<QueueRow> {
 
 /// Open the window on a queue (None = the one selected in the sidebar).
 pub(crate) fn open(ui: &Ui, queue: Option<u64>) {
-    let Some(d) = ui.sched.upgrade() else { return };
+    let Some(d) = crate::ensure_sched(ui) else { return };
     let s = ui.ctx.mgr.settings();
     let wanted = queue
         .or_else(|| ui.ctx.main.upgrade().map(|m| m.get_current_queue() as u64))

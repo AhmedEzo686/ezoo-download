@@ -9,7 +9,7 @@ use crate::i18n::{t, tf};
 const QUALITIES: [&str; 11] = ["best", "2160", "1440", "1080", "720", "480", "360", "240", "144", "audio", "mp3"];
 
 pub(crate) fn open(ui: &Ui) {
-    let Some(d) = ui.playlist.upgrade() else { return };
+    let Some(d) = crate::ensure_playlist(ui) else { return };
     if !d.window().is_visible() {
         // a playlist address in the clipboard is the likely one
         let clip = arboard::Clipboard::new().ok().and_then(|mut c| c.get_text().ok()).unwrap_or_default();
@@ -26,7 +26,7 @@ pub(crate) fn open(ui: &Ui) {
 /// The browser's "Download all" on a playlist page: the window with that
 /// list, already looking up its videos.
 pub(crate) fn open_url(ui: &Ui, url: &str) {
-    let Some(d) = ui.playlist.upgrade() else { return };
+    let Some(d) = crate::ensure_playlist(ui) else { return };
     d.set_url(url.into());
     d.set_message(SharedString::new());
     open_window!(d);

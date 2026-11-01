@@ -158,7 +158,7 @@ fn size_text(n: u64) -> String {
 /// Help > Check for updates: look now instead of waiting for the next check,
 /// in the update window.
 pub fn check_now(ui: &Ui) {
-    let Some(d) = ui.updater.upgrade() else { return };
+    let Some(d) = crate::ensure_updater(ui) else { return };
     open_window!(d);
     let set = |state: i32, heading: String, detail: String| {
         d.set_state(state);

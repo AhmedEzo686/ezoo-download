@@ -114,41 +114,72 @@ pub(crate) struct Ui {
     cats: Rc<VecModel<CatRow>>,
     /// one progress window per download
     progress: Rc<RefCell<HashMap<u64, ProgressWin>>>,
-    batch: Weak<BatchDialog>,
-    settings_dlg: Weak<SettingsDialog>,
-    complete: Weak<CompleteDialog>,
+    batch: Lazy<BatchDialog>,
+    settings_dlg: Lazy<SettingsDialog>,
+    complete: Lazy<CompleteDialog>,
     complete_id: Rc<Cell<Option<u64>>>,
-    columns: Weak<ColumnsDialog>,
-    category: Weak<CategoryDialog>,
+    columns: Lazy<ColumnsDialog>,
+    category: Lazy<CategoryDialog>,
     /// category being edited (None = a new one)
     editing_category: Rc<RefCell<Option<String>>>,
-    find: Weak<FindDialog>,
-    props: Weak<PropertiesDialog>,
+    find: Lazy<FindDialog>,
+    props: Lazy<PropertiesDialog>,
     props_id: Rc<Cell<Option<u64>>>,
-    dup: Weak<DuplicateDialog>,
+    dup: Lazy<DuplicateDialog>,
     pending: Rc<RefCell<Option<PendingAdd>>>,
-    countdown: Weak<CountdownDialog>,
+    countdown: Lazy<CountdownDialog>,
     /// (action, seconds left)
     power: Rc<RefCell<Option<(AfterDone, i32)>>>,
-    sched: Weak<SchedulerDialog>,
+    sched: Lazy<SchedulerDialog>,
     sched_state: Rc<RefCell<scheduler::SchedState>>,
-    grabber: Weak<GrabberDialog>,
+    grabber: Lazy<GrabberDialog>,
     grab_state: Rc<RefCell<grab::GrabUi>>,
-    tips: Weak<TipDialog>,
-    refresh_dlg: Weak<RefreshDialog>,
+    tips: Lazy<TipDialog>,
+    refresh_dlg: Lazy<RefreshDialog>,
     /// download waiting for a new address from the browser
     refresh_id: Rc<Cell<Option<u64>>>,
     options_lists: Rc<RefCell<options::Lists>>,
     sel: Rc<RefCell<Selection>>,
-    playlist: Weak<PlaylistDialog>,
+    playlist: Lazy<PlaylistDialog>,
     playlist_rows: Rc<VecModel<LinkRow>>,
-    torrent: Weak<TorrentDialog>,
+    torrent: Lazy<TorrentDialog>,
     torrent_rows: Rc<VecModel<LinkRow>>,
-    browsers: Weak<BrowserDialog>,
-    updater: Weak<UpdateDialog>,
+    browsers: Lazy<BrowserDialog>,
+    updater: Lazy<UpdateDialog>,
+    about: Lazy<AboutDialog>,
     /// the download list's columns (order + widths) as the header shows them
     columns_model: Rc<VecModel<ColDef>>,
     browser_list: Rc<RefCell<Vec<browser::Browser>>>,
+}
+
+/// A dialog window that is made only when it is first used.
+///
+/// Linux window lists (GNOME's own among them) show every window a program
+/// owns, even the ones that were never shown; Slint creates the native window
+/// with the component, so making all dialogs at startup filled the window
+/// list with eighteen windows nobody opened.
+pub(crate) struct Lazy<T: slint::StrongHandle + 'static> {
+    cell: Rc<RefCell<Weak<T>>>,
+}
+
+impl<T: slint::StrongHandle + 'static> Clone for Lazy<T> {
+    fn clone(&self) -> Self {
+        Self { cell: self.cell.clone() }
+    }
+}
+
+impl<T: slint::StrongHandle + 'static> Lazy<T> {
+    pub(crate) fn new() -> Self {
+        Self { cell: Rc::new(RefCell::new(Weak::default())) }
+    }
+
+    pub(crate) fn upgrade(&self) -> Option<T> {
+        self.cell.borrow().upgrade()
+    }
+
+    pub(crate) fn set(&self, w: Weak<T>) {
+        *self.cell.borrow_mut() = w;
+    }
 }
 
 /// One line in a small log next to the downloads list (data\events.log):
@@ -349,38 +380,7 @@ fn run() -> anyhow::Result<()> {
 
     let main = MainWindow::new()?;
     let add = AddDialog::new()?;
-    let batch = BatchDialog::new()?;
-    let settings_dlg = SettingsDialog::new()?;
-    let complete = CompleteDialog::new()?;
-    let columns = ColumnsDialog::new()?;
-    let category = CategoryDialog::new()?;
-    let find = FindDialog::new()?;
-    let props = PropertiesDialog::new()?;
-    let dup = DuplicateDialog::new()?;
-    let countdown = CountdownDialog::new()?;
-    let sched = SchedulerDialog::new()?;
-    let grabber = GrabberDialog::new()?;
-    let tips = TipDialog::new()?;
-    let refresh_dlg = RefreshDialog::new()?;
-    let playlist_dlg = PlaylistDialog::new()?;
-    let torrent_dlg = TorrentDialog::new()?;
-    let browsers_dlg = BrowserDialog::new()?;
-    let updater_dlg = UpdateDialog::new()?;
-    let about_dlg = AboutDialog::new()?;
-    {
-        about_dlg.on_open_link(|u| {
-            if u.starts_with("https://") {
-                let _ = open::that_detached(u.as_str());
-            }
-        });
-        let w = about_dlg.as_weak();
-        about_dlg.on_close_window(move || {
-            if let Some(d) = w.upgrade() {
-                let _ = d.hide();
-            }
-        });
-        ABOUT.with(|a| *a.borrow_mut() = Some(about_dlg.as_weak()));
-    }
+    // every other window is made when it is first opened (see Lazy)
 
     let ctx = Ctx {
         mgr: mgr.clone(),
@@ -396,35 +396,36 @@ fn run() -> anyhow::Result<()> {
         queues: Rc::new(VecModel::default()),
         cats: Rc::new(VecModel::default()),
         progress: Rc::new(RefCell::new(HashMap::new())),
-        batch: batch.as_weak(),
-        settings_dlg: settings_dlg.as_weak(),
-        complete: complete.as_weak(),
+        batch: Lazy::new(),
+        settings_dlg: Lazy::new(),
+        complete: Lazy::new(),
         complete_id: Rc::new(Cell::new(None)),
-        columns: columns.as_weak(),
-        category: category.as_weak(),
+        columns: Lazy::new(),
+        category: Lazy::new(),
         editing_category: Rc::new(RefCell::new(None)),
-        find: find.as_weak(),
-        props: props.as_weak(),
+        find: Lazy::new(),
+        props: Lazy::new(),
         props_id: Rc::new(Cell::new(None)),
-        dup: dup.as_weak(),
+        dup: Lazy::new(),
         pending: Rc::new(RefCell::new(None)),
-        countdown: countdown.as_weak(),
+        countdown: Lazy::new(),
         power: Rc::new(RefCell::new(None)),
-        sched: sched.as_weak(),
+        sched: Lazy::new(),
         sched_state: Rc::new(RefCell::new(scheduler::SchedState::default())),
-        grabber: grabber.as_weak(),
+        grabber: Lazy::new(),
         grab_state: Rc::new(RefCell::new(grab::GrabUi::default())),
-        tips: tips.as_weak(),
-        refresh_dlg: refresh_dlg.as_weak(),
+        tips: Lazy::new(),
+        refresh_dlg: Lazy::new(),
         refresh_id: Rc::new(Cell::new(None)),
         options_lists: Rc::new(RefCell::new(options::Lists::default())),
         sel: Rc::new(RefCell::new(Selection::default())),
-        playlist: playlist_dlg.as_weak(),
+        playlist: Lazy::new(),
         playlist_rows: Rc::new(VecModel::default()),
-        torrent: torrent_dlg.as_weak(),
+        torrent: Lazy::new(),
         torrent_rows: Rc::new(VecModel::default()),
-        browsers: browsers_dlg.as_weak(),
-        updater: updater_dlg.as_weak(),
+        browsers: Lazy::new(),
+        updater: Lazy::new(),
+        about: Lazy::new(),
         columns_model: Rc::new(VecModel::default()),
         browser_list: Rc::new(RefCell::new(Vec::new())),
     };
@@ -458,15 +459,6 @@ fn run() -> anyhow::Result<()> {
     // a new version of the program itself: from GitHub, installed silently
     update::spawn(&ui.ctx);
     wire_add(&ui);
-    wire_batch(&ui);
-    wire_complete(&ui);
-    options::wire(&ui);
-    scheduler::wire(&ui);
-    grab::wire(&ui);
-    extra::wire(&ui);
-    playlist::wire(&ui);
-    torrent_ui::wire(&ui);
-    browser::wire(&ui);
 
     // ------------------------------------------------------------ browser + clipboard
     if let Some(server) = server {
@@ -1124,15 +1116,10 @@ fn wire_main(ui: &Ui) {
         let ui2 = ui.clone();
         main.on_check_app_update(move || update::check_now(&ui2));
     }
-    if let Some(d) = ui.updater.upgrade() {
-        let w = d.as_weak();
-        d.on_close_window(move || {
-            if let Some(d) = w.upgrade() {
-                let _ = d.hide();
-            }
-        });
+    {
+        let ui = ui.clone();
+        main.on_about(move || about(&ui));
     }
-    main.on_about(about);
     main.on_quit(|| {
         let _ = slint::quit_event_loop();
     });
@@ -1249,17 +1236,11 @@ fn multi_action(ui: &Ui, ids: &[u64], action: &str) {
     }
 }
 
-fn about() {
-    ABOUT.with(|a| {
-        if let Some(d) = a.borrow().as_ref().and_then(|w| w.upgrade()) {
-            d.set_version(env!("CARGO_PKG_VERSION").into());
-            open_window!(d);
-        }
-    });
-}
-
-thread_local! {
-    static ABOUT: RefCell<Option<Weak<AboutDialog>>> = const { RefCell::new(None) };
+fn about(ui: &Ui) {
+    if let Some(d) = ensure_about(ui) {
+        d.set_version(env!("CARGO_PKG_VERSION").into());
+        open_window!(d);
+    }
 }
 
 fn tray_action(ui: &Ui, action: tray::TrayAction) {
@@ -1275,7 +1256,7 @@ fn tray_action(ui: &Ui, action: tray::TrayAction) {
         T::ToggleLimiter => toggle_limiter(ui),
         T::Scheduler => scheduler::open(ui, None),
         T::Options => options::open(ui, 0),
-        T::About => about(),
+        T::About => about(ui),
         T::Exit => {
             let _ = slint::quit_event_loop();
         }
@@ -1713,7 +1694,7 @@ fn wire_complete(ui: &Ui) {
 }
 
 pub(crate) fn show_complete(ui: &Ui, id: u64) {
-    if let (Some(v), Some(d)) = (ui.ctx.mgr.get(id), ui.complete.upgrade()) {
+    if let (Some(v), Some(d)) = (ui.ctx.mgr.get(id), ensure_complete(ui)) {
         ui.complete_id.set(Some(id));
         d.set_name(v.file_name.clone().into());
         d.set_url(v.url.clone().into());
@@ -1860,6 +1841,75 @@ macro_rules! open_window {
     }};
 }
 pub(crate) use open_window;
+
+// ------------------------------------------------------------ dialog windows
+// Every dialog is made the first time it is opened; at startup only the main
+// window exists (see Lazy).
+macro_rules! ensure_dialog {
+    ($name:ident, $field:ident, $ty:path, $wire:path) => {
+        pub(crate) fn $name(ui: &Ui) -> Option<$ty> {
+            if let Some(d) = ui.$field.upgrade() {
+                return Some(d);
+            }
+            let d = <$ty>::new().ok()?;
+            ui.$field.set(d.as_weak());
+            $wire(ui);
+            Some(d)
+        }
+    };
+}
+
+ensure_dialog!(ensure_batch, batch, BatchDialog, wire_batch);
+ensure_dialog!(ensure_complete, complete, CompleteDialog, wire_complete);
+ensure_dialog!(ensure_settings, settings_dlg, SettingsDialog, options::wire);
+ensure_dialog!(ensure_sched, sched, SchedulerDialog, scheduler::wire);
+ensure_dialog!(ensure_grabber, grabber, GrabberDialog, grab::wire);
+ensure_dialog!(ensure_playlist, playlist, PlaylistDialog, playlist::wire);
+ensure_dialog!(ensure_browsers, browsers, BrowserDialog, browser::wire);
+ensure_dialog!(ensure_columns, columns, ColumnsDialog, extra::wire);
+ensure_dialog!(ensure_category, category, CategoryDialog, extra::wire);
+ensure_dialog!(ensure_find, find, FindDialog, extra::wire);
+ensure_dialog!(ensure_props, props, PropertiesDialog, extra::wire);
+ensure_dialog!(ensure_dup, dup, DuplicateDialog, extra::wire);
+ensure_dialog!(ensure_countdown, countdown, CountdownDialog, extra::wire);
+ensure_dialog!(ensure_tips, tips, TipDialog, extra::wire);
+ensure_dialog!(ensure_refresh, refresh_dlg, RefreshDialog, extra::wire);
+ensure_dialog!(ensure_torrent, torrent, TorrentDialog, torrent_ui::wire);
+
+fn ensure_updater(ui: &Ui) -> Option<UpdateDialog> {
+    if let Some(d) = ui.updater.upgrade() {
+        return Some(d);
+    }
+    let d = UpdateDialog::new().ok()?;
+    ui.updater.set(d.as_weak());
+    let w = d.as_weak();
+    d.on_close_window(move || {
+        if let Some(d) = w.upgrade() {
+            let _ = d.hide();
+        }
+    });
+    Some(d)
+}
+
+fn ensure_about(ui: &Ui) -> Option<AboutDialog> {
+    if let Some(d) = ui.about.upgrade() {
+        return Some(d);
+    }
+    let d = AboutDialog::new().ok()?;
+    ui.about.set(d.as_weak());
+    d.on_open_link(|u| {
+        if u.starts_with("https://") {
+            let _ = open::that_detached(u.as_str());
+        }
+    });
+    let w = d.as_weak();
+    d.on_close_window(move || {
+        if let Some(d) = w.upgrade() {
+            let _ = d.hide();
+        }
+    });
+    Some(d)
+}
 
 pub(crate) fn bring_to_front(ctx: &Ctx) {
     if let Some(w) = ctx.main.upgrade() {
@@ -2065,11 +2115,9 @@ pub(crate) fn apply_look(ui: &Ui, look: &Look) {
         ui.browsers,
         ui.updater
     );
-    ABOUT.with(|a| {
-        if let Some(d) = a.borrow().as_ref().and_then(|w| w.upgrade()) {
-            set_theme_of(d.global::<Theme>(), look);
-        }
-    });
+    if let Some(d) = ui.about.upgrade() {
+        set_theme_of(d.global::<Theme>(), look);
+    }
     for (d, _) in ui.progress.borrow().values() {
         set_theme_of(d.global::<Theme>(), look);
     }
@@ -2154,7 +2202,7 @@ pub(crate) fn apply_view_settings(ui: &Ui, s: &Settings) {
 }
 
 fn open_batch(ui: &Ui, text: String) {
-    let Some(d) = ui.batch.upgrade() else { return };
+    let Some(d) = ensure_batch(ui) else { return };
     let s = ui.ctx.mgr.settings();
     d.set_queue_names(queue_names(&s));
     let current = ui.ctx.main.upgrade().map(|m| m.get_current_queue() as u64).unwrap_or(MAIN_QUEUE);
