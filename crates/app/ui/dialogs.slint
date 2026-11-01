@@ -3901,6 +3901,85 @@ export component AboutDialog inherits ThemedWindow {
 }
 
 
+// Once after 50 finished downloads (then at most once a month): a small
+// word about supporting the free program. Nothing is locked behind it.
+export component SupportDialog inherits ThemedWindow {
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Support Ezoo Download");
+    preferred-width: 460px;
+    preferred-height: 250px;
+    min-width: 400px;
+    min-height: 230px;
+    callback open-link(string);
+    callback close-window();
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        GridLayout {
+            // a row that reads from right to left in Arabic (wrapped text needs a grid)
+            spacing: 14px;
+            Image {
+                col: Theme.rtl ? 1 : 0;
+                row: 0;
+                source: @image-url("icon.png");
+                width: 40px;
+                height: 40px;
+            }
+            VerticalLayout {
+                col: Theme.rtl ? 0 : 1;
+                row: 0;
+                spacing: 6px;
+                horizontal-stretch: 1;
+                Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: @tr("Did Ezoo Download save you time?");
+                    font-size: 14px * Theme.font-scale;
+                    font-weight: 700;
+                    color: Theme.text;
+                }
+                Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: @tr("It is free and has no ads. If you like, you can support its development with any amount.");
+                    wrap: word-wrap;
+                    color: Theme.text;
+                    font-size: 12px * Theme.font-scale;
+                    vertical-stretch: 1;
+                }
+            }
+        }
+        // an HRow already starts on the right in Arabic
+        HRow {
+            spacing: 8px;
+            Button {
+                text: @tr("Support with PayPal");
+                primary: true;
+                clicked => {
+                    root.open-link("https://www.paypal.com/paypalme/ahmedezzat99");
+                    root.close-window();
+                }
+            }
+            Button {
+                text: @tr("Support with InstaPay");
+                primary: true;
+                clicked => {
+                    root.open-link("https://ipn.eg/S/a7medek/instapay/1pmCQ7");
+                    root.close-window();
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("Not now");
+                clicked => {
+                    root.close-window();
+                }
+            }
+        }
+    }
+}
+
 // After an update: what is new, right to left in Arabic.
 export component WhatsNewDialog inherits ThemedWindow {
     in property <bool> front;

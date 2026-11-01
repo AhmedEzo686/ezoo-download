@@ -505,4 +505,8 @@ AR = {
     "Quality of MP3 files": "جودة ملفات MP3",
     "Next to the clock": "بجوار الساعة",
     "Draw the windows with the graphics card (uses more memory; after a restart)": "رسم النوافذ بكارت الشاشة (يستهلك ذاكرة أكثر؛ بعد إعادة التشغيل)",
+    "Support Ezoo Download": "ادعم Ezoo Download",
+    "Did Ezoo Download save you time?": "هل وفّر لك Ezoo Download وقتك؟",
+    "It is free and has no ads. If you like, you can support its development with any amount.": "البرنامج مجاني وبدون إعلانات. إن أحببت، يمكنك دعم تطويره بأي مبلغ.",
+    "Not now": "ليس الآن",
 }

@@ -486,5 +486,9 @@
  "Quality of MP3 files": "Calidad de los archivos MP3",
  "Next to the clock": "Junto al reloj",
  "Draw the windows with the graphics card (uses more memory; after a restart)": "Dibujar las ventanas con la tarjeta gráfica (más memoria; tras reiniciar)",
- "Repair the add-in": "Reparar el complemento"
+ "Repair the add-in": "Reparar el complemento",
+ "Support Ezoo Download": "Apoyar Ezoo Download",
+ "Did Ezoo Download save you time?": "¿Ezoo Download te ahorró tiempo?",
+ "It is free and has no ads. If you like, you can support its development with any amount.": "Es gratis y no tiene anuncios. Si quieres, puedes apoyar su desarrollo con cualquier cantidad.",
+ "Not now": "Ahora no"
 }

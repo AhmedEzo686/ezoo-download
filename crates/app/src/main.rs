@@ -213,6 +213,17 @@ fn main() {
     if std::env::var_os("SLINT_BACKEND").is_none() && !gpu {
         std::env::set_var("SLINT_BACKEND", "winit-software");
     }
+    // every window is made away from the screen and comes in once drawn
+    // (no white box on the left before a window opens)
+    #[cfg(windows)]
+    {
+        let mut pick = slint::BackendSelector::new().with_winit_window_attributes_hook(winfx::made_away);
+        if std::env::var_os("SLINT_BACKEND").is_none() {
+            // drawn with the graphics card: still the winit windows
+            pick = pick.backend_name("winit".into());
+        }
+        let _ = pick.select();
+    }
     if let Err(e) = run() {
         let text = format!("{e:#}");
         note(&format!("could not start: {text}"));
@@ -624,7 +635,9 @@ fn run() -> anyhow::Result<()> {
             // the download behind an open "Download File Info" says nothing
             // until Start is pressed
             let early = early_download(&ui.ctx);
-            let finished: Vec<u64> = ui.ctx.mgr.take_completed().into_iter().filter(|id| Some(*id) != early).collect();
+            let completed = ui.ctx.mgr.take_completed();
+            extra::finished_well(&ui, completed.len());
+            let finished: Vec<u64> = completed.into_iter().filter(|id| Some(*id) != early).collect();
             if let Some(&last) = finished.last() {
                 if ui.ctx.mgr.settings().show_complete_dialog {
                     show_complete(&ui, last);
@@ -690,16 +703,16 @@ fn run() -> anyhow::Result<()> {
     let was_maximized = mgr.settings().main_maximized;
     if !(background && has_tray) {
         main.show()?;
-        // the main window: in the middle of the screen, and it can be maximized
-        winfx::place(main.as_weak(), true);
-        if was_maximized {
-            let w = main.as_weak();
-            Timer::single_shot(Duration::from_millis(60), move || {
+        // the main window: in the middle of the screen (once drawn), and it
+        // can be maximized; maximized there, so it comes back there
+        let w = main.as_weak();
+        winfx::place_then(main.as_weak(), true, move || {
+            if was_maximized {
                 if let Some(m) = w.upgrade() {
                     m.window().set_maximized(true);
                 }
-            });
-        }
+            }
+        });
         winfx::set_opacity(main.window(), mgr.settings().opacity);
         let mut s = mgr.settings();
         if !s.extension_prompted {
@@ -1974,6 +1987,10 @@ pub(crate) use to_front;
 macro_rules! open_window {
     ($w:expr) => {{
         let was_open = $w.window().is_visible();
+        if !was_open {
+            // shown away from the screen, brought in once drawn
+            $crate::winfx::send_away($w.window());
+        }
         let _ = $w.show();
         if !was_open {
             $crate::winfx::place($w.as_weak(), false);
@@ -1987,6 +2004,9 @@ pub(crate) fn bring_to_front(ctx: &Ctx) {
     if let Some(w) = ctx.main.upgrade() {
         // the main window keeps its maximize button (open_window! is for the others)
         let was_open = w.window().is_visible();
+        if !was_open {
+            winfx::send_away(w.window());
+        }
         let _ = w.show();
         if !was_open {
             winfx::place(w.as_weak(), true);

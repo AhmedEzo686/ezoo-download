@@ -1435,6 +1435,18 @@ msgstr "Apoiar com InstaPay"
 msgid "InstaPay: a7medek@instapay (scan the code with your bank's app)"
 msgstr "InstaPay: a7medek@instapay (escaneie o código com o app do seu banco)"
 
+msgid "Support Ezoo Download"
+msgstr "Apoiar o Ezoo Download"
+
+msgid "Did Ezoo Download save you time?"
+msgstr "O Ezoo Download economizou seu tempo?"
+
+msgid "It is free and has no ads. If you like, you can support its development with any amount."
+msgstr "É grátis e não tem anúncios. Se quiser, você pode apoiar o desenvolvimento com qualquer valor."
+
+msgid "Not now"
+msgstr "Agora não"
+
 msgid "What's new in Ezoo Download"
 msgstr "Novidades do Ezoo Download"
 

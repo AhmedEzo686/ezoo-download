@@ -616,6 +616,7 @@ const AR: &[(&str, &str)] = &[
     ("Settings that need a new start (the drawing, the port) ask to restart the program.", "الإعدادات التي تحتاج تشغيلًا جديدًا (طريقة الرسم، المنفذ) تطلب إعادة تشغيل البرنامج."),
     ("Safer: only the Ezoo Download add-in can talk to the program (a secret key), and watching the clipboard is off until you turn it on.", "أمان أكثر: إضافة Ezoo Download فقط هي التي تستطيع التحدث مع البرنامج (مفتاح سري)، ومراقبة الحافظة متوقفة حتى تشغّلها بنفسك."),
     ("The mouse pointer stays normal on the video button.", "مؤشر الماوس يبقى عاديًا على زر الفيديو."),
+    ("Windows open in the middle of the screen without a white box first.", "النوافذ تفتح في منتصف الشاشة مباشرة بدون مربع أبيض قبلها."),
     ("This video is protected by its site (DRM): no download program can save it. It can only be watched on the site.", "هذا الفيديو محمي من صاحب الموقع (DRM): لا يمكن لأي برنامج تحميل أن يحفظه. يمكن مشاهدته من الموقع فقط."),
     ("The add-in's files were put back. It starts again by itself within a minute (or click Reload on it in the browser's extensions page).", "تمت إعادة ملفات الإضافة. ستبدأ من جديد وحدها خلال دقيقة (أو اضغط \"إعادة التحميل\" عليها في صفحة الإضافات في المتصفح)."),
     ("Some files of the add-in could not be written. Close the browser and click \"Repair the add-in\" again.", "تعذّرت كتابة بعض ملفات الإضافة. أغلق المتصفح واضغط \"إصلاح الإضافة\" مرة أخرى."),

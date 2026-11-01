@@ -379,6 +379,10 @@ pub struct Settings {
     /// draw the windows with the graphics card (more memory; off = the
     /// processor draws them, works on every computer)
     pub gpu_drawing: bool,
+    /// downloads that finished well (for the word about supporting the program)
+    pub finished_count: u64,
+    /// when that word was shown last (seconds since 1970; 0 = never)
+    pub support_asked_at: u64,
     /// the key the browser add-in sends with every request (made at the
     /// first start; encrypted on the disk)
     #[serde(with = "crate::secret::string")]
@@ -483,6 +487,8 @@ impl Default for Settings {
             main_maximized: false,
             progress_details: false,
             gpu_drawing: false,
+            finished_count: 0,
+            support_asked_at: 0,
             api_token: String::new(),
             api_port: 0,
         }

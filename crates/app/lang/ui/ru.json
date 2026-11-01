@@ -486,5 +486,9 @@
  "Quality of MP3 files": "Качество файлов MP3",
  "Next to the clock": "К часам",
  "Draw the windows with the graphics card (uses more memory; after a restart)": "Рисовать окна видеокартой (больше памяти; после перезапуска)",
- "Repair the add-in": "Восстановить дополнение"
+ "Repair the add-in": "Восстановить дополнение",
+ "Support Ezoo Download": "Поддержать Ezoo Download",
+ "Did Ezoo Download save you time?": "Ezoo Download сэкономил вам время?",
+ "It is free and has no ads. If you like, you can support its development with any amount.": "Программа бесплатная и без рекламы. Если хотите, можете поддержать её развитие любой суммой.",
+ "Not now": "Не сейчас"
 }
