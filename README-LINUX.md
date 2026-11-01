@@ -121,8 +121,10 @@ OpenSSL يُبنى داخل البرنامج (vendored)، لذلك لا يعتم
 ## 🖱️ إضافة المتصفح
 
 من داخل البرنامج: **Options ← General ← Add Ezoo Download to my browser…**
-- **Chrome / Chromium / Edge / Brave / Opera:** `chrome://extensions` ← فعّل *Developer mode* ← *Load unpacked* ← اختر مجلد `~/.local/share/ezoodownload/extension`.
+- **Chrome / Chromium / Edge / Brave / Opera:** `chrome://extensions` ← فعّل *Developer mode* ← *Load unpacked* ← اختر مجلد `~/.local/share/ezoodownload/extension` (البرنامج ينسخ مساره إلى الحافظة ويفتح الصفحة).
 - **Firefox:** إن وُجد ملف `ezoo-download-firefox.xpi` تُثبَّت الإضافة الموقّعة مباشرةً، وإلا فمن `about:debugging`.
+
+> **بخصوص `.crx`:** كروم الحديث (156 وما قبله) **يرفض تثبيت ملف `.crx` من خارج Chrome Web Store** حتى بوجوده على القرص؛ الطريقة المعتمدة هي *Load unpacked* من المجلد أو النشر في المتجر. لذلك البرنامج يعطيك المجلد جاهزًا. الإصدارات تنزّل أيضًا `ezoo-download-chrome-<version>.zip` (نفس المجلد مضغوطًا) و`.crx` للمتصفحات/سياسات الشركات التي ما زالت تقبل التوقيع المحلي.
 
 المنفذ الافتراضي `9614` ويمكن تغييره من الإعدادات (أعد التشغيل بعدها).
 

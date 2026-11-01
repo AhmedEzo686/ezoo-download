@@ -41,6 +41,40 @@ cp -f "$root/extension-signed/"*firefox-*.xpi "$stage/ezoo-download-firefox.xpi"
 cp -f "$root/THIRD-PARTY-NOTICES.txt" "$stage/"
 cp -f "$here/ezoodownload.desktop" "$stage/"
 
+say "The browser extension as a download (Chrome: unpack it, Load unpacked)"
+extver=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$stage/extension/manifest.json" | head -1)
+[ -n "$extver" ] || extver="$version"
+python3 - "$stage/extension" "$dist/ezoo-download-chrome-$extver.zip" <<'PY'
+import os, sys, zipfile
+src, out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for root, dirs, files in os.walk(src):
+        dirs.sort()
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            z.write(path, os.path.relpath(path, src))
+PY
+
+# a .crx as well, for the browsers and enterprise policies that still accept
+# one. Chrome itself only installs its Web Store or "Load unpacked" (a local
+# .crx is refused), so this is the archive form of the same extension.
+chrome_bin=""
+for c in google-chrome google-chrome-stable chromium chromium-browser; do
+    if command -v "$c" >/dev/null; then chrome_bin="$c"; break; fi
+done
+if [ -n "$chrome_bin" ]; then
+    rm -rf "$stage/packext" "$stage/packext.crx" "$stage/packext.pem"
+    cp -a "$stage/extension" "$stage/packext"
+    if "$chrome_bin" --headless=new --pack-extension="$stage/packext" --no-message-box \
+        >"$stage/pack.log" 2>&1 && [ -f "$stage/packext.crx" ]; then
+        mv -f "$stage/packext.crx" "$dist/ezoo-download-chrome-$extver.crx"
+        echo "   .crx: dist/ezoo-download-chrome-$extver.crx"
+    else
+        echo "   could not pack the .crx (see $stage/pack.log)"
+    fi
+    rm -rf "$stage/packext" "$stage/packext.pem"
+fi
+
 say "Making the icons"
 mkdir -p "$stage/icons"
 for size in 16 24 32 48 64 128 256; do
