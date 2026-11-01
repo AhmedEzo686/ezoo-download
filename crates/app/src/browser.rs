@@ -242,18 +242,46 @@ pub(crate) fn put_extension(dir: &Path, firefox: bool) -> bool {
     ok
 }
 
-/// The extension's folder next to the program (Firefox has its own copy),
-/// complete. Where the program's folder can't be written, a copy in the
-/// program's data folder is used.
+/// The extension's folder (Firefox has its own copy), complete.
+///
+/// On Linux the data folder is used even when the program's own folder is
+/// writable: Chrome, Opera and the others remember the folder the user picked
+/// once in "Load unpacked", so it must not move when the program is updated
+/// or installed another way (.deb, AppImage, portable). On Windows the folder
+/// next to the program keeps the old behaviour.
 fn extension_dir(firefox: bool) -> Option<PathBuf> {
     let name = if firefox { "extension-firefox" } else { "extension" };
+    #[cfg(not(windows))]
+    {
+        let own = swiftget_engine::default_data_dir().join(name);
+        if put_extension(&own, firefox) {
+            return Some(own);
+        }
+    }
     let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
     let next_to = dir.join(name);
     if put_extension(&next_to, firefox) {
         return Some(next_to);
     }
-    let own = swiftget_engine::default_data_dir().join(name);
-    put_extension(&own, firefox).then_some(own)
+    #[cfg(windows)]
+    {
+        let own = swiftget_engine::default_data_dir().join(name);
+        return put_extension(&own, firefox).then_some(own);
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
+/// The same extension in a folder the browser's file window opens at.
+fn in_downloads(dir: &Path, firefox: bool) -> PathBuf {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else { return dir.to_path_buf() };
+    let base = if home.join("Downloads").is_dir() { home.join("Downloads") } else { home };
+    let target = base.join(if firefox { "EzooDownload-extension-firefox" } else { "EzooDownload-extension" });
+    if put_extension(&target, firefox) {
+        target
+    } else {
+        dir.to_path_buf()
+    }
 }
 
 /// The signed Firefox add-on next to the program, when the release has one
@@ -317,6 +345,19 @@ fn add(ui: &Ui, i: usize) {
         d.set_steps(t("The extension folder was not found next to EzooDownload.exe. Install Ezoo Download again.").into());
         return;
     };
+    // A folder in Downloads is easy to pick in the browser's "Load unpacked"
+    // window; a hidden one under ~/.local is not (a Flatpak browser may not
+    // resolve it at all). The same files, one more copy.
+    let dir = in_downloads(&dir, b.firefox);
+    if !b.firefox {
+        // the packed add-on too, for the browsers that take a .crx by dropping it
+        if let Some(me) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+            let crx = me.join("ezoo-download-chrome.crx");
+            if crx.is_file() {
+                let _ = std::fs::copy(&crx, dir.join("ezoo-download-chrome.crx"));
+            }
+        }
+    }
     let path = dir.display().to_string();
     if let Ok(mut c) = arboard::Clipboard::new() {
         let _ = c.set_text(path.clone());

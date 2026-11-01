@@ -68,6 +68,7 @@ if [ -n "$chrome_bin" ]; then
     if "$chrome_bin" --headless=new --pack-extension="$stage/packext" --no-message-box \
         >"$stage/pack.log" 2>&1 && [ -f "$stage/packext.crx" ]; then
         mv -f "$stage/packext.crx" "$dist/ezoo-download-chrome-$extver.crx"
+        cp -f "$dist/ezoo-download-chrome-$extver.crx" "$stage/ezoo-download-chrome.crx"
         echo "   .crx: dist/ezoo-download-chrome-$extver.crx"
     else
         echo "   could not pack the .crx (see $stage/pack.log)"
@@ -87,7 +88,7 @@ say "The portable folder (no root needed)"
 mkdir -p "$appdir/icons"
 install -m755 "$stage/EzooDownload" "$appdir/EzooDownload"
 cp -a "$stage/extension" "$stage/extension-firefox" "$stage/ezoo-download-firefox.xpi" \
-      "$stage/THIRD-PARTY-NOTICES.txt" "$stage/ezoodownload.desktop" "$appdir/" 2>/dev/null || true
+      "$stage/THIRD-PARTY-NOTICES.txt" "$stage/ezoodownload.desktop" "$stage/ezoo-download-chrome.crx" "$appdir/" 2>/dev/null || true
 cp "$stage/icons/"*.png "$appdir/icons/"
 cp -f "$here/install-local.sh" "$appdir/install.sh"
 chmod +x "$appdir/install.sh"
@@ -104,7 +105,7 @@ if [ -n "$tool" ]; then
     mkdir -p "$imgdir/usr/bin" "$imgdir/usr/lib" "$imgdir/usr/share/ezoodownload"
     install -m755 "$stage/EzooDownload" "$imgdir/usr/bin/EzooDownload"
     # where the program looks for them when it runs from inside the image
-    for name in extension extension-firefox ezoo-download-firefox.xpi THIRD-PARTY-NOTICES.txt; do
+    for name in extension extension-firefox ezoo-download-firefox.xpi THIRD-PARTY-NOTICES.txt ezoo-download-chrome.crx; do
         [ -e "$stage/$name" ] || continue
         cp -a "$stage/$name" "$imgdir/usr/share/ezoodownload/"
         cp -a "$stage/$name" "$imgdir/usr/bin/"
@@ -152,6 +153,10 @@ mkdir -p "$deb/DEBIAN" \
          "$deb/usr/share/doc/ezoodownload" \
          "$deb/usr/share/icons/hicolor"
 install -Dm755 "$stage/EzooDownload" "$deb/usr/bin/EzooDownload"
+if [ -f "$stage/ezoo-download-chrome.crx" ]; then
+    install -Dm644 "$stage/ezoo-download-chrome.crx" "$deb/usr/bin/ezoo-download-chrome.crx"
+    install -Dm644 "$stage/ezoo-download-chrome.crx" "$deb/usr/share/ezoodownload/ezoo-download-chrome.crx"
+fi
 install -Dm644 "$stage/ezoodownload.desktop" "$deb/usr/share/applications/ezoodownload.desktop"
 install -Dm644 "$stage/THIRD-PARTY-NOTICES.txt" "$deb/usr/share/doc/ezoodownload/THIRD-PARTY-NOTICES.txt"
 for name in extension extension-firefox; do
