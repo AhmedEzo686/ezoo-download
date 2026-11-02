@@ -175,6 +175,7 @@ pub async fn run(
             segmented,
             crew: crew.clone(),
             wanted: Arc::new(wanted.clone()),
+            retry_after: std::sync::atomic::AtomicU64::new(0),
         };
         set.spawn(ctx.run());
     };
@@ -242,6 +243,76 @@ pub async fn run(
     Ok(())
 }
 
+// ---------------------------------------------------------------- servers that allow fewer connections
+
+/// Sites that answered "too many requests" (HTTP 429): how many connections
+/// they took. Their next downloads start with that many.
+static LEARNED: std::sync::LazyLock<Mutex<(std::collections::BTreeMap<String, u32>, bool)>> =
+    std::sync::LazyLock::new(|| Mutex::new((Default::default(), false)));
+
+/// The site of an address: download2430.mediafire.com -> mediafire.com
+/// (its many download servers count as one).
+pub fn site_of(url: &str) -> Option<String> {
+    let host = url::Url::parse(url).ok()?.host_str()?.to_ascii_lowercase();
+    if host.parse::<std::net::IpAddr>().is_ok() || host.starts_with('[') {
+        return Some(host);
+    }
+    let parts: Vec<&str> = host.split('.').filter(|p| !p.is_empty()).collect();
+    let keep = match parts.as_slice() {
+        // example.co.uk, example.com.eg
+        [.., second, last] if last.len() == 2 && matches!(*second, "co" | "com" | "net" | "org" | "gov" | "edu" | "ac") => 3,
+        _ => 2,
+    };
+    Some(parts[parts.len().saturating_sub(keep)..].join("."))
+}
+
+/// How many connections the site of `url` took (None: no limit seen).
+pub fn learned_limit(url: &str) -> Option<u32> {
+    let site = site_of(url)?;
+    LEARNED.lock().unwrap().0.get(&site).copied()
+}
+
+fn learn(url: &str, n: u32) {
+    let Some(site) = site_of(url) else { return };
+    let mut l = LEARNED.lock().unwrap();
+    let n = n.max(1);
+    if l.0.get(&site).is_none_or(|old| n < *old) {
+        l.0.insert(site, n);
+        l.1 = true;
+    }
+}
+
+/// The limits seen before (at start).
+pub fn set_learned(map: std::collections::BTreeMap<String, u32>) {
+    let mut l = LEARNED.lock().unwrap();
+    l.0 = map.into_iter().filter(|(_, n)| *n >= 1).collect();
+    l.1 = false;
+}
+
+/// The limits, when new ones were seen since the last call (to be kept).
+pub fn take_learned_changes() -> Option<std::collections::BTreeMap<String, u32>> {
+    let mut l = LEARNED.lock().unwrap();
+    if !l.1 {
+        return None;
+    }
+    l.1 = false;
+    Some(l.0.clone())
+}
+
+/// Fewer connections from now on (never more than wanted already).
+fn lower_wanted(progress: &Progress, job_conns: u32, n: u32) {
+    let n = n.max(1);
+    let _ = progress.want_connections.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |cur| {
+        let now = if cur == 0 { job_conns } else { cur };
+        (n < now).then_some(n)
+    });
+}
+
+/// "Retry-After: 30" -> 30 s (a date or nothing: None).
+fn retry_after_of(resp: &reqwest::Response) -> Option<u64> {
+    resp.headers().get(reqwest::header::RETRY_AFTER)?.to_str().ok()?.trim().parse::<u64>().ok().filter(|s| *s <= 600)
+}
+
 /// A part could be taken by one more connection: one nobody works on, or
 /// one big enough to be shared.
 fn has_work(segs: &SegTable, min_split: u64) -> bool {
@@ -260,6 +331,8 @@ struct Worker {
     segmented: bool,
     crew: Arc<Mutex<Crew>>,
     wanted: Arc<dyn Fn() -> u32 + Send + Sync>,
+    /// the server's "Retry-After" of its last "too many requests" (seconds)
+    retry_after: std::sync::atomic::AtomicU64,
 }
 
 /// Counts the connection out when it ends, however it ends.
@@ -336,6 +409,7 @@ impl Worker {
     async fn download_segment(&self, idx: usize) -> anyhow::Result<()> {
         let mut attempt = 0u32;
         let mut net_tries = 0u32;
+        let mut too_many = 0u32;
         loop {
             if self.cancel.is_cancelled() {
                 return Err(Cancelled.into());
@@ -361,6 +435,36 @@ impl Worker {
                     }
                     let network = is_network_error(&e);
                     let status = http_status_of(&e);
+                    if status == Some(429) {
+                        // "too many requests": the site allows fewer connections
+                        // at a time. One less from now on (this one goes, its
+                        // part stays for the others), and the site's next
+                        // downloads start with that many; the last ones wait
+                        // as long as the site asks and go on.
+                        if self.segmented {
+                            let now = {
+                                let c = self.crew.lock().unwrap();
+                                c.running.saturating_sub(c.leaving)
+                            };
+                            let fewer = now.saturating_sub(1).max(1);
+                            lower_wanted(&self.progress, self.job.connections.max(1), fewer);
+                            learn(&self.job.url, fewer);
+                            if self.should_leave() {
+                                return Err(Leave.into());
+                            }
+                        }
+                        too_many += 1;
+                        if too_many > 40 {
+                            return Err(e);
+                        }
+                        let asked = self.retry_after.swap(0, Ordering::Relaxed);
+                        let wait = if asked > 0 { asked } else { (3 * too_many as u64).min(60) };
+                        tokio::select! {
+                            _ = tokio::time::sleep(Duration::from_secs(wait)) => {},
+                            _ = self.cancel.cancelled() => return Err(Cancelled.into()),
+                        }
+                        continue;
+                    }
                     if network {
                         // no internet / reset / stall: wait as long as it takes,
                         // the part keeps what it already has
@@ -428,6 +532,9 @@ impl Worker {
             Err(_) => return Err(NetDrop("the server did not answer (timed out)").into()),
         };
         let status = resp.status();
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            self.retry_after.store(retry_after_of(&resp).unwrap_or(0), Ordering::Relaxed);
+        }
         if self.segmented {
             if status != StatusCode::PARTIAL_CONTENT {
                 if status.is_client_error() || status.is_server_error() {
@@ -537,6 +644,27 @@ fn parse_content_range(v: &str) -> Option<(u64, Option<u64>)> {
     let start = range.split_once('-')?.0.trim().parse().ok()?;
     let total = total.trim().parse().ok();
     Some((start, total))
+}
+
+#[cfg(test)]
+mod learned_tests {
+    use super::*;
+
+    #[test]
+    fn sites_and_their_limits() {
+        assert_eq!(site_of("https://download2430.mediafire.com/x/y.rar").as_deref(), Some("mediafire.com"));
+        assert_eq!(site_of("https://a.b.example.co.uk/f").as_deref(), Some("example.co.uk"));
+        assert_eq!(site_of("http://127.0.0.1:8080/f").as_deref(), Some("127.0.0.1"));
+        learn("https://download1.mediafire.test/a", 8);
+        learn("https://download2.mediafire.test/b", 12);
+        assert_eq!(learned_limit("https://download9.mediafire.test/c"), Some(8));
+        learn("https://download2.mediafire.test/b", 5);
+        assert_eq!(learned_limit("https://x.mediafire.test/"), Some(5));
+        let p = Progress::default();
+        lower_wanted(&p, 32, 31);
+        lower_wanted(&p, 32, 40);
+        assert_eq!(p.want_connections.load(Ordering::Relaxed), 31);
+    }
 }
 
 #[cfg(test)]

@@ -137,6 +137,12 @@ impl Manager {
         std::fs::create_dir_all(&data_dir)?;
         let settings = Settings::load(&data_dir.join("settings.json"));
         ytdlp::set_mp3_kbps(settings.mp3_kbps);
+        // sites that allowed only a few connections ("too many requests")
+        if let Ok(text) = std::fs::read_to_string(data_dir.join("server-limits.json")) {
+            if let Ok(map) = serde_json::from_str(&text) {
+                http_download::set_learned(map);
+            }
+        }
         settings.create_folders();
         let proxy = ProxyConfig::from_settings(&settings);
         // a broken manual proxy must not keep the app from starting
@@ -2182,6 +2188,11 @@ impl Manager {
                 None
             }
         };
+        if let Some(map) = http_download::take_learned_changes() {
+            if let Ok(text) = serde_json::to_string_pretty(&map) {
+                let _ = std::fs::write(self.data_dir.join("server-limits.json"), text);
+            }
+        }
         if let Some(records) = to_save {
             let _ = store::save_downloads(&self.data_dir.join("downloads.json"), &records);
         }

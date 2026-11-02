@@ -596,11 +596,14 @@ impl Settings {
             .ok()
             .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
             .unwrap_or_default();
-        self.server_limits
+        let set = self
+            .server_limits
             .iter()
             .find(|l| host_matches(&host, &l.host))
             .map(|l| wanted.min(l.connections.max(1)))
-            .unwrap_or(wanted)
+            .unwrap_or(wanted);
+        // a site that said "too many requests" before: as many as it took
+        crate::http_download::learned_limit(url).map(|n| set.min(n)).unwrap_or(set)
     }
 
     /// Saved login for this address (Options > Site Logins).
