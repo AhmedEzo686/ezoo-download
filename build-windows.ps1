@@ -184,6 +184,23 @@ if (Test-Path $signedXpi) {
         if ($newest) { Copy-Item $newest.FullName $xpiOut -Force }
     }
 }
+# A signed add-on of another version is a stop-gap, not the release: say so,
+# so a build is not shipped with an add-on that lacks the fixes in extension\.
+if (Test-Path $xpiOut) {
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $xpiOut))
+        $entry = $zip.Entries | Where-Object { $_.FullName -eq "manifest.json" } | Select-Object -First 1
+        $reader = New-Object IO.StreamReader($entry.Open())
+        $xpiVersion = ($reader.ReadToEnd() | ConvertFrom-Json).version
+        $reader.Close(); $zip.Dispose()
+        if ($xpiVersion -ne $extVersion) {
+            Write-Warning "The signed add-on is $xpiVersion, extension\ is $extVersion - run 'web-ext sign' for $extVersion before releasing"
+        }
+    } catch {
+        Write-Warning "Could not read the version of $xpiOut"
+    }
+}
 foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "aria2c.exe", "aria2-COPYING.txt")) {
     if (Test-Path "$cache\$f") { Copy-Item "$cache\$f" $tools -Force }
 }

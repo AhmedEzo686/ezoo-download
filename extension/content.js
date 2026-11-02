@@ -48,9 +48,11 @@
 
   // --------------------------------------------------------------- videos
   // Videos of the page, also those inside shadow DOM (players built as web
-  // components). The deep search is slower, so it runs every few rounds.
+  // components). The deep search walks every element, so it runs on a timer:
+  // often on a page without a video (the player may be a web component),
+  // rarely on one that already has a video (it adds nothing there).
   let shadowVideos = [];
-  let deepRound = 0;
+  let deepAt = 0;
   function collectShadow(root, out, depth) {
     if (depth > 6) return;
     for (const el of root.querySelectorAll("*")) {
@@ -62,7 +64,9 @@
   }
   function allVideos() {
     const list = [...document.querySelectorAll("video")];
-    if (deepRound++ % 4 === 0) {
+    const every = list.length ? 30000 : 3000;
+    if (Date.now() - deepAt >= every) {
+      deepAt = Date.now();
       const found = [];
       try {
         collectShadow(document, found, 0);
@@ -174,6 +178,10 @@
 
   let lastPage = "";
   function watchVideos() {
+    // A page with no video at all is the common case: do not walk its DOM
+    // every 1.5 s just to find that out again (place() still looks now and
+    // then for players that appear later).
+    if (!document.querySelector("video") && !shadowVideos.length) return;
     const v = biggestVideo();
     if (!v) return;
     // ignore tiny muted background loops that never play for long
@@ -649,8 +657,14 @@
     b.host.style.top = `${Math.max(4, Math.min(y, innerHeight - h - 4))}px`;
   }
 
+  let probedAt = 0;
   function place() {
     if (!panelAllowed()) return;
+    // This runs in every frame of every tab, several times a second. A page
+    // with no video and no panel has nothing to place, so it is only looked
+    // at now and then (a player built later is still found).
+    if (!bubbles.size && !items.length && !document.querySelector("video") && Date.now() - probedAt < 4000) return;
+    probedAt = Date.now();
     const vids = allVideos().filter((v) => {
       const r = v.getBoundingClientRect();
       return r.width >= 200 && r.height >= 100;
@@ -724,7 +738,9 @@
       linkRules = chrome.runtime.lastError ? null : res || null;
     });
   refreshLinkRules();
-  setInterval(refreshLinkRules, 60000);
+  // every frame asked the add-in for the rules once a minute; once is enough,
+  // and the top page asks again when they change
+  if (TOP) setInterval(refreshLinkRules, 60000);
   // shown by the browser itself, not downloaded: never taken from a click
   const VIEWED = /^(html?|xhtml|php\d?|aspx?|jsp|cgi|pl|cfm|do|action|json|xml|txt|css|js|jpe?g|png|gif|webp|svg|bmp|ico|avif|pdf)$/;
   const keyHeld = (e, k) => (k === "alt" ? e.altKey : k === "ctrl" ? e.ctrlKey : k === "shift" ? e.shiftKey : false);

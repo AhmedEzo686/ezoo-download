@@ -17,6 +17,11 @@ if (typeof importScripts === "function") importScripts("yt-core.js");
 // keeps its downloads and no buttons are shown on videos)
 const DEFAULTS = { port: 9614, intercept: true, minSizeKB: 0, enabled: true };
 
+// The program is the same on Windows, Linux and macOS; only the tools next to
+// it carry ".exe" on Windows. Nothing else in the add-in depends on the system.
+const IS_WINDOWS = /Windows/i.test(navigator.userAgent || "");
+const toolName = (name) => (IS_WINDOWS ? `${name}.exe` : name);
+
 async function getOpts() {
   return Object.assign({}, DEFAULTS, await chrome.storage.local.get(DEFAULTS));
 }
@@ -390,9 +395,13 @@ async function justTaken(url) {
 // Chrome, Edge, Brave, Opera: decided before the browser asks where to
 // save it, so its own "Save as" window never shows up for files the app
 // takes. Firefox has no such moment: there it is decided when it starts.
-const DECIDE_EARLY = !!(chrome.downloads.onDeterminingFilename && chrome.downloads.onDeterminingFilename.addListener);
+// The event is looked up by name: Firefox does not implement it, and this
+// file still has to load there (the check below is what keeps it out).
+const DETERMINING = "onDeterminingFilename";
+const onDetermining = chrome.downloads[DETERMINING];
+const DECIDE_EARLY = !!(onDetermining && onDetermining.addListener);
 if (DECIDE_EARLY) {
-  chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  onDetermining.addListener((item, suggest) => {
     let answered = false;
     const keep = () => {
       if (!answered) {
@@ -482,7 +491,7 @@ async function itemsForTab(tabId) {
         } else if (yt.sabr) {
           items.push({
             label: "This video needs Ezoo Download",
-            sub: "Open Ezoo Download (with yt-dlp.exe next to it) and reload the page",
+            sub: `Open Ezoo Download (${IS_WINDOWS ? `with ${toolName("yt-dlp")} next to it` : "yt-dlp is set up automatically"}) and reload the page`,
             disabled: true,
           });
         }
@@ -709,7 +718,13 @@ chrome.webRequest.onHeadersReceived.addListener(
       ext: isHls ? "ts" : (type.split("/")[1] || "mp4").split(";")[0].replace("x-matroska", "mkv").replace("mpeg", "mp3"),
     });
   },
-  { urls: ["<all_urls>"] },
+  // Only the requests that can carry a video: pages, frames, players and
+  // fetch/XHR. Images, scripts, styles and fonts are skipped, so the add-in
+  // is not woken for every file a page loads.
+  {
+    urls: ["<all_urls>"],
+    types: ["main_frame", "sub_frame", "object", "xmlhttprequest", "media", "other"],
+  },
   ["responseHeaders"]
 );
 

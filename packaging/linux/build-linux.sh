@@ -37,13 +37,27 @@ if [ -f "$stage/extension-firefox/manifest.firefox.json" ]; then
     mv -f "$stage/extension-firefox/manifest.firefox.json" "$stage/extension-firefox/manifest.json"
 fi
 rm -f "$stage/extension/manifest.firefox.json"
-cp -f "$root/extension-signed/"*firefox-*.xpi "$stage/ezoo-download-firefox.xpi" 2>/dev/null || true
+# The add-on Firefox accepts must be the same version as extension/: a stale
+# signed .xpi is worse than none, because Firefox installs the old one and the
+# fixes in extension/ never reach it.
+extver=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$stage/extension/manifest.json" | head -1)
+[ -n "$extver" ] || extver="$version"
+signed="$root/extension-signed/ezoo-download-firefox-$extver.xpi"
+if [ -f "$signed" ]; then
+    cp -f "$signed" "$stage/ezoo-download-firefox.xpi"
+else
+    newest=$(ls "$root/extension-signed/"*firefox-*.xpi 2>/dev/null | sort -V | tail -1)
+    if [ -n "$newest" ]; then
+        say "WARNING: no signed add-on for $extver (extension-signed has $(basename "$newest"))"
+        say "         Firefox only keeps add-ons signed by Mozilla: run 'web-ext sign' for $extver"
+    else
+        say "WARNING: no signed Firefox add-on in extension-signed/ (Firefox needs one)"
+    fi
+fi
 cp -f "$root/THIRD-PARTY-NOTICES.txt" "$stage/"
 cp -f "$here/ezoodownload.desktop" "$stage/"
 
 say "The browser extension as a download (Chrome: unpack it, Load unpacked)"
-extver=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$stage/extension/manifest.json" | head -1)
-[ -n "$extver" ] || extver="$version"
 python3 - "$stage/extension" "$dist/ezoo-download-chrome-$extver.zip" <<'PY'
 import os, sys, zipfile
 src, out = sys.argv[1], sys.argv[2]
