@@ -247,6 +247,15 @@ fn install_crash_log() {
 }
 
 fn main() {
+    // The title bar is the desktop's own. On Wayland winit draws that bar
+    // itself, a character at a time (no shaping, no font fallback): Arabic and
+    // Cyrillic come out as boxes and the minimize button never tells the
+    // program that the window was minimized. Through X11 the window manager
+    // draws it instead - the same bar every GTK and Electron app gets.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("DISPLAY").is_some() && std::env::var_os("EZOO_WAYLAND").is_none() {
+        std::env::remove_var("WAYLAND_DISPLAY");
+    }
     install_crash_log();
     let data_dir = default_data_dir();
     let gpu = Settings::load(&data_dir.join("settings.json")).gpu_drawing;
