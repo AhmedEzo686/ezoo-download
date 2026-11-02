@@ -32,7 +32,7 @@ pub fn current() -> &'static str {
 }
 
 /// Public half of the release signing key (Ed25519, 32 bytes, hex).
-pub const UPDATE_PUBLIC_KEY: &str = "4bd5c564c841b012b39426755d585c48012f9360e193cd81d141f85ad9b58406";
+pub const UPDATE_PUBLIC_KEY: &str = "bc5f020bbbfc39daf5ff35a20494a20e60dc059e0d5cf0f14d730629b8f10fb9";
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct Release {

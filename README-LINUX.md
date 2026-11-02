@@ -38,9 +38,9 @@
 ### 1) حزمة Debian (مستحسن)
 
 ```bash
-sudo apt install ./dist/ezoodownload_1.1.3_amd64.deb
+sudo apt install ./dist/ezoodownload_1.1.4_amd64.deb
 # أو
-sudo dpkg -i dist/ezoodownload_1.1.3_amd64.deb && sudo apt -f install
+sudo dpkg -i dist/ezoodownload_1.1.4_amd64.deb && sudo apt -f install
 ```
 
 ثم ابحث عن **Ezoo Download** في قائمة التطبيقات.
@@ -48,8 +48,8 @@ sudo dpkg -i dist/ezoodownload_1.1.3_amd64.deb && sudo apt -f install
 ### 2) AppImage (ملف واحد، بدون تثبيت)
 
 ```bash
-chmod +x EzooDownload-1.1.3-x86_64.AppImage
-./EzooDownload-1.1.3-x86_64.AppImage
+chmod +x EzooDownload-1.1.4-x86_64.AppImage
+./EzooDownload-1.1.4-x86_64.AppImage
 ```
 
 - يحتوي البرنامج + مجلدات الإضافة + الأيقونة + المكتبات التي يحتاجها، ويعمل على معظم التوزيعات.
@@ -59,8 +59,8 @@ chmod +x EzooDownload-1.1.3-x86_64.AppImage
 ### 3) نسخة محمولة بدون صلاحيات مدير
 
 ```bash
-tar xzf dist/EzooDownload-1.1.3-linux-x86_64.tar.gz
-./EzooDownload-1.1.3-linux-x86_64/install.sh
+tar xzf dist/EzooDownload-1.1.4-linux-x86_64.tar.gz
+./EzooDownload-1.1.4-linux-x86_64/install.sh
 ```
 
 تُثبَّت في `~/.local` (البرنامج + أيقونة القائمة + الأيقونات). للإزالة:
