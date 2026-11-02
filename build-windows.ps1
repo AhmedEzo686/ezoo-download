@@ -159,6 +159,7 @@ $redist = Join-Path $cache "redist"
 New-Item -ItemType Directory -Force $redist | Out-Null
 if (Test-Path "$cache\vc_redist.x64.exe") { Copy-Item "$cache\vc_redist.x64.exe" $redist -Force }
 Copy-Item "THIRD-PARTY-NOTICES.txt" $stage -Force
+Copy-Item "LICENSE" (Join-Path $stage "LICENSE.txt") -Force
 # the Firefox add-on signed by Mozilla for this version (stays in Firefox for good)
 $extVersion = (Get-Content (Join-Path $PSScriptRoot "extension\manifest.firefox.json") -Raw | ConvertFrom-Json).version
 # Firefox keeps only add-ons signed by Mozilla (an unsigned one is gone

@@ -1429,6 +1429,15 @@ msgstr "الإصدار {}"
 msgid "Coded by Ahmed Ezzat"
 msgstr "Coded by Ahmed Ezzat"
 
+msgid "Official download page (GitHub)"
+msgstr "صفحة التحميل الرسمية (GitHub)"
+
+msgid "Download Ezoo Download only from its official page."
+msgstr "حمّل Ezoo Download من صفحته الرسمية فقط."
+
+msgid "© Ezoo Tech – All rights reserved"
+msgstr "© Ezoo Tech – كل الحقوق محفوظة"
+
 msgid "Like Ezoo Download? You can support its development:"
 msgstr "أعجبك Ezoo Download؟ يمكنك دعم تطويره:"
 

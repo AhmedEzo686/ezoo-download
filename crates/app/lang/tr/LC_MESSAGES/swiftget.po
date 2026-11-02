@@ -1429,6 +1429,15 @@ msgstr "Sürüm {}"
 msgid "Coded by Ahmed Ezzat"
 msgstr "Kodlayan: Ahmed Ezzat"
 
+msgid "Official download page (GitHub)"
+msgstr "Resmî indirme sayfası (GitHub)"
+
+msgid "Download Ezoo Download only from its official page."
+msgstr "Ezoo Download'ı yalnızca resmî sayfasından indirin."
+
+msgid "© Ezoo Tech – All rights reserved"
+msgstr "© Ezoo Tech – Tüm hakları saklıdır"
+
 msgid "Like Ezoo Download? You can support its development:"
 msgstr "Ezoo Download'u beğendiniz mi? Geliştirilmesine destek olabilirsiniz:"
 

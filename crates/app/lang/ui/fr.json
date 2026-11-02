@@ -509,5 +509,8 @@
  "Starts and ends on the very second you chose. The picture of the part is made again, so it takes longer (about as long as the part plays, or less) and works the processor. Sound alone is always cut exactly.": "Commence et finit à la seconde exacte choisie. L'image de la partie est refaite : c'est plus long (environ la durée de la partie, ou moins) et cela sollicite le processeur. Le son seul est toujours coupé exactement.",
  "Preparing the preview…": "Préparation de l'aperçu…",
  "Preview the part": "Aperçu de la partie",
- "Download the part": "Télécharger la partie"
+ "Download the part": "Télécharger la partie",
+ "Official download page (GitHub)": "Page officielle de téléchargement (GitHub)",
+ "Download Ezoo Download only from its official page.": "Téléchargez Ezoo Download uniquement depuis sa page officielle.",
+ "© Ezoo Tech – All rights reserved": "© Ezoo Tech – Tous droits réservés"
 }

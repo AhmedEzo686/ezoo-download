@@ -3840,6 +3840,31 @@ export component AboutDialog inherits ThemedWindow {
                 }
             }
         }
+        // the official place to get the program (when updating from inside
+        // the program does not work)
+        HRow {
+            alignment: center;
+            Button {
+                text: @tr("Official download page (GitHub)");
+                clicked => {
+                    root.open-link("https://github.com/AhmedEzo686/ezoo-download/releases/latest");
+                }
+            }
+        }
+        Text {
+            text: @tr("Download Ezoo Download only from its official page.");
+            horizontal-alignment: center;
+            font-size: 11px * Theme.font-scale;
+            color: Theme.muted;
+            wrap: word-wrap;
+        }
+        Text {
+            text: @tr("© Ezoo Tech – All rights reserved");
+            horizontal-alignment: center;
+            font-size: 12px * Theme.font-scale;
+            font-weight: 700;
+            color: Theme.text;
+        }
         Text {
             text: @tr("Like Ezoo Download? You can support its development:");
             horizontal-alignment: center;

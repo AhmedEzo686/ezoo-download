@@ -60,6 +60,7 @@ Name: "torrents"; Description: "Open .torrent files and magnet links with Ezoo D
 [Files]
 Source: "{#Stage}\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#Stage}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; the helpers go into {app}\tools; the app updates them there by itself
 Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Stage}\extension\*"; DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs createallsubdirs

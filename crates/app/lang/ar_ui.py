@@ -528,4 +528,7 @@ AR = {
     "Preparing the preview…": "جارٍ تجهيز المعاينة…",
     "Preview the part": "معاينة الجزء",
     "Download the part": "تحميل الجزء",
+    "Official download page (GitHub)": "صفحة التحميل الرسمية (GitHub)",
+    "Download Ezoo Download only from its official page.": "حمّل Ezoo Download من صفحته الرسمية فقط.",
+    "© Ezoo Tech – All rights reserved": "© Ezoo Tech – كل الحقوق محفوظة",
 }

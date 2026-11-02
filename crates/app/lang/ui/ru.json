@@ -509,5 +509,8 @@
  "Starts and ends on the very second you chose. The picture of the part is made again, so it takes longer (about as long as the part plays, or less) and works the processor. Sound alone is always cut exactly.": "Начинается и заканчивается точно в выбранную секунду. Изображение части создаётся заново, поэтому это дольше (примерно как длится часть или меньше) и нагружает процессор. Звук отдельно всегда обрезается точно.",
  "Preparing the preview…": "Подготовка просмотра…",
  "Preview the part": "Посмотреть часть",
- "Download the part": "Скачать часть"
+ "Download the part": "Скачать часть",
+ "Official download page (GitHub)": "Официальная страница загрузки (GitHub)",
+ "Download Ezoo Download only from its official page.": "Скачивайте Ezoo Download только с официальной страницы.",
+ "© Ezoo Tech – All rights reserved": "© Ezoo Tech – Все права защищены"
 }

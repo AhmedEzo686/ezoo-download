@@ -169,6 +169,7 @@ jobs:
           New-Item -ItemType Directory -Force "$p/tools", "dist" | Out-Null
           Copy-Item target/release/EzooDownload.exe $p
           Copy-Item THIRD-PARTY-NOTICES.txt $p
+          Copy-Item LICENSE "$p/LICENSE.txt"
           Copy-Item -Recurse extension "$p/extension"
           Copy-Item -Recurse extension "$p/extension-firefox"
           Remove-Item -Recurse -Force "$p/extension/test", "$p/extension-firefox/test"

@@ -509,5 +509,8 @@
  "Starts and ends on the very second you chose. The picture of the part is made again, so it takes longer (about as long as the part plays, or less) and works the processor. Sound alone is always cut exactly.": "Tam seçtiğiniz saniyede başlar ve biter. Parçanın görüntüsü yeniden yapılır; bu yüzden daha uzun sürer (yaklaşık parçanın süresi kadar ya da daha az) ve işlemciyi çalıştırır. Yalnızca ses her zaman tam kesilir.",
  "Preparing the preview…": "Önizleme hazırlanıyor…",
  "Preview the part": "Parçayı önizle",
- "Download the part": "Parçayı indir"
+ "Download the part": "Parçayı indir",
+ "Official download page (GitHub)": "Resmî indirme sayfası (GitHub)",
+ "Download Ezoo Download only from its official page.": "Ezoo Download'ı yalnızca resmî sayfasından indirin.",
+ "© Ezoo Tech – All rights reserved": "© Ezoo Tech – Tüm hakları saklıdır"
 }
