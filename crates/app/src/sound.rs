@@ -23,6 +23,14 @@ mod imp {
     }
 }
 
+/// macOS: afplay ships with the system and takes the file as it is.
+#[cfg(target_os = "macos")]
+mod imp {
+    pub fn play(path: &str) {
+        let _ = std::process::Command::new("/usr/bin/afplay").arg(path).spawn();
+    }
+}
+
 /// Linux: the first command-line player that is there. Each one gets the
 /// arguments that make it play a file and say nothing; it runs in the
 /// background, so a slow start never holds up the window.
@@ -71,7 +79,7 @@ mod imp {
     }
 }
 
-#[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
+#[cfg(not(any(windows, unix)))]
 mod imp {
     pub fn play(_path: &str) {}
 }

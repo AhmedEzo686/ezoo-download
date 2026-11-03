@@ -83,6 +83,28 @@ fn exe_of(
     }
 }
 
+/// macOS keeps browsers as application bundles under /Applications (or the
+/// user's own Applications folder), not as commands in PATH.
+#[cfg(target_os = "macos")]
+fn mac_browser(name: &str) -> Option<PathBuf> {
+    let (app, binary) = match name {
+        "Chrome" => ("Google Chrome.app", "Google Chrome"),
+        "Edge" => ("Microsoft Edge.app", "Microsoft Edge"),
+        "Firefox" => ("Firefox.app", "firefox"),
+        "Opera" => ("Opera.app", "Opera"),
+        "Brave" => ("Brave Browser.app", "Brave Browser"),
+        _ => return None,
+    };
+    let mut roots = vec![PathBuf::from("/Applications")];
+    if let Some(home) = std::env::var_os("HOME") {
+        roots.push(PathBuf::from(home).join("Applications"));
+    }
+    roots
+        .into_iter()
+        .map(|root| root.join(app).join("Contents/MacOS").join(binary))
+        .find(|path| path.is_file())
+}
+
 fn detect() -> Vec<Browser> {
     let rgb = slint::Color::from_rgb_u8;
     let mut list = vec![
@@ -176,6 +198,12 @@ fn detect() -> Vec<Browser> {
             tint: rgb(0xfb, 0x54, 0x2b),
         },
     ];
+    #[cfg(target_os = "macos")]
+    for browser in list.iter_mut() {
+        if let Some(exe) = mac_browser(browser.name) {
+            browser.exe = Some(exe);
+        }
+    }
     // Linux distributions ship Chromium (Chrome without Google's parts)
     #[cfg(all(unix, not(target_os = "macos")))]
     list.insert(
@@ -317,6 +345,16 @@ pub(crate) fn open(ui: &Ui) {
 }
 
 fn launch(exe: &Path, url: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        // Running the executable inside the bundle can reopen the profile
+        // picker and lose the page; LaunchServices hands the URL over.
+        let bundle = exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app"));
+        if let Some(bundle) = bundle {
+            let _ = std::process::Command::new("/usr/bin/open").arg("-a").arg(bundle).arg(url).spawn();
+            return;
+        }
+    }
     let _ = std::process::Command::new(exe).arg(url).spawn();
 }
 

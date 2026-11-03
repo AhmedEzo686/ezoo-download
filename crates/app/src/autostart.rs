@@ -111,7 +111,62 @@ mod imp {
     }
 }
 
-#[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
+/// macOS: a LaunchAgent in ~/Library/LaunchAgents, loaded at login.
+#[cfg(target_os = "macos")]
+mod imp {
+    use std::path::{Path, PathBuf};
+
+    const LABEL: &str = "com.ezoo.EzooDownload";
+
+    fn agent_path() -> Option<PathBuf> {
+        Some(PathBuf::from(std::env::var_os("HOME")?).join("Library/LaunchAgents").join(format!("{LABEL}.plist")))
+    }
+
+    fn plist(executable: &Path) -> String {
+        let escaped = executable
+            .to_string_lossy()
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;");
+        format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>{LABEL}</string>
+<key>ProgramArguments</key><array><string>{escaped}</string></array>
+<key>RunAtLoad</key><true/>
+<key>LimitLoadToSessionType</key><string>Aqua</string>
+</dict></plist>
+"#
+        )
+    }
+
+    pub fn is_enabled() -> bool {
+        agent_path().map(|p| p.exists()).unwrap_or(false)
+    }
+
+    pub fn installed_by_setup() -> bool {
+        false
+    }
+
+    pub fn set(enabled: bool) -> bool {
+        let Some(file) = agent_path() else { return false };
+        if !enabled {
+            return !file.exists() || std::fs::remove_file(&file).is_ok();
+        }
+        let Ok(exe) = std::env::current_exe() else { return false };
+        if let Some(dir) = file.parent() {
+            if std::fs::create_dir_all(dir).is_err() {
+                return false;
+            }
+        }
+        std::fs::write(&file, plist(&exe)).is_ok()
+    }
+}
+
+#[cfg(not(any(windows, unix)))]
 mod imp {
     pub fn is_enabled() -> bool {
         false

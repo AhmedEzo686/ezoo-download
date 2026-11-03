@@ -2924,6 +2924,11 @@ pub(crate) fn reveal_in_folder(v: &DownloadView) {
             return;
         }
     }
+    #[cfg(target_os = "macos")]
+    if v.status == Status::Completed && v.save_path.exists() {
+        let _ = std::process::Command::new("/usr/bin/open").arg("-R").arg(&v.save_path).spawn();
+        return;
+    }
     let _ = std::fs::create_dir_all(&dir);
     let _ = open::that_detached(&dir);
 }

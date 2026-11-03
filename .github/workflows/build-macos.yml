@@ -1,0 +1,65 @@
+name: Build Ezoo Download for macOS
+
+# Builds the .app bundle, a .dmg and a .zip on Apple's own runners: a macOS
+# build needs the Apple toolchain, which Linux cannot provide. Nothing is
+# published here; the artifacts stay on the run (and the release workflow
+# attaches them when a version is released).
+on:
+  push:
+    paths:
+      - "crates/**"
+      - "extension/**"
+      - "extension-signed/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build-macos.sh"
+      - ".github/workflows/build-macos.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            arch: x86_64
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: macos-${{ matrix.arch }}
+      - name: Check the workspace
+        run: cargo check --locked --workspace --target "${{ matrix.target }}"
+      - name: Run the Rust tests
+        run: cargo test --locked --workspace --target "${{ matrix.target }}" --no-fail-fast
+      - name: Run the extension tests
+        run: |
+          node extension/test/yt-core.test.js
+          node extension/test/background.sim.js
+      - name: Build and package
+        run: ./build-macos.sh --target "${{ matrix.target }}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: EzooDownload-macos-${{ matrix.arch }}
+          path: |
+            dist/EzooDownload-macos-${{ matrix.arch }}.dmg
+            dist/EzooDownload-macos-${{ matrix.arch }}.dmg.sha256
+            dist/EzooDownload-macos-${{ matrix.arch }}.zip
+            dist/EzooDownload-macos-${{ matrix.arch }}.zip.sha256
+          if-no-files-found: error
