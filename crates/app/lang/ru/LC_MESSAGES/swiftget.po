@@ -622,6 +622,9 @@ msgstr "№"
 msgid "Info"
 msgstr "Инфо"
 
+msgid "Drag me"
+msgstr "Перетащи меня"
+
 msgid "Download complete"
 msgstr "Загрузка завершена"
 

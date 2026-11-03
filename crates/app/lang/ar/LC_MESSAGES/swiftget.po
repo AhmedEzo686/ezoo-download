@@ -622,6 +622,9 @@ msgstr "رقم"
 msgid "Info"
 msgstr "معلومات"
 
+msgid "Drag me"
+msgstr "اسحبني"
+
 msgid "Download complete"
 msgstr "اكتمل التحميل"
 

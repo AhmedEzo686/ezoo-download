@@ -638,6 +638,7 @@ const AR: &[(&str, &str)] = &[
     ("The part {} was added to the list.", "أُضيف الجزء {} إلى القائمة."),
     ("The part could not be cut. Try the quick cut, or another quality.", "تعذّر قص الجزء. جرّب القص السريع، أو جودة أخرى."),
     ("The part you chose is after the end of the video.", "الجزء الذي اخترته بعد نهاية الفيديو."),
+    ("Drag the finished file out: in the \"Download complete\" window, pull the file's icon (\"Drag me\") onto the desktop, a folder, a chat or any program, and a copy of the file goes there.", "اسحب الملف بعد انتهاء تحميله: في نافذة \"اكتمل التحميل\" اسحب أيقونة الملف (\"اسحبني\") إلى سطح المكتب أو أي مجلد أو محادثة أو أي برنامج، فتوضع هناك نسخة من الملف."),
     ("Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.", "تحميل جزء من فيديو: اختر من / إلى (أو \"Now\" أثناء التشغيل)، وشاهد الجزء أولًا، ويُحمَّل هذا الجزء فقط، بقص سريع أو قص دقيق. في قائمة الجودات في الإضافة، وفي المهام > تحميل جزء من فيديو."),
     ("Joining the picture and the sound", "دمج الصورة والصوت"),
     ("Making the MP4 file", "إنشاء ملف MP4"),

@@ -2978,6 +2978,70 @@ export component DetailsDialog inherits ThemedWindow {
     }
 }
 
+// The finished file's icon with "Drag me" under it: pulled with the mouse,
+// the file goes where it is let go (the desktop, a folder, a chat, an
+// editor…) as a copy; the file itself stays where it is.
+component DragFile inherits Rectangle {
+    in property <string> kind;
+    in property <string> ext;
+    callback drag-out();
+    property <bool> gone;
+    min-width: max(72px, col.min-width);
+    min-height: col.min-height;
+    border-radius: 6px;
+    background: ta.pressed ? Theme.select : ta.has-hover ? Theme.hover : transparent;
+    border-width: ta.has-hover ? 1px : 0px;
+    border-color: Theme.select-line;
+    col := VerticalLayout {
+        padding: 6px;
+        spacing: 4px;
+        alignment: start;
+        BigTypeIcon {
+            kind: root.kind;
+            ext: root.ext;
+        }
+        HRow {
+            alignment: center;
+            spacing: 4px;
+            // arrows to all four sides: "pull me"
+            Rectangle {
+                width: 14px;
+                height: 14px;
+                Path {
+                    width: 14px;
+                    height: 14px;
+                    viewbox-width: 14;
+                    viewbox-height: 14;
+                    stroke: Theme.accent;
+                    stroke-width: 1.4px;
+                    fill: transparent;
+                    commands: "M 7 1 L 7 13 M 1 7 L 13 7 M 5 3 L 7 1 L 9 3 M 5 11 L 7 13 L 9 11 M 3 5 L 1 7 L 3 9 M 11 5 L 13 7 L 11 9";
+                }
+            }
+            Text {
+                text: @tr("Drag me");
+                font-size: 11px * Theme.font-scale;
+                color: Theme.accent;
+                vertical-alignment: center;
+            }
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: MouseCursor.grab;
+        pointer-event(ev) => {
+            if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                root.gone = false;
+            }
+        }
+        moved => {
+            if (self.pressed && !root.gone && (abs(self.mouse-x - self.pressed-x) > 6px || abs(self.mouse-y - self.pressed-y) > 6px)) {
+                root.gone = true;
+                root.drag-out();
+            }
+        }
+    }
+}
+
 export component CompleteDialog inherits ThemedWindow {
     // set for a moment so the window comes in front of the browser
     in property <bool> front;
@@ -2997,6 +3061,8 @@ export component CompleteDialog inherits ThemedWindow {
     callback open-with();
     callback open-folder();
     callback close-window();
+    // the file pulled out of the window (onto the desktop, a folder, a chat…)
+    callback drag-out();
 
     VerticalLayout {
         padding: 16px;
@@ -3004,11 +3070,14 @@ export component CompleteDialog inherits ThemedWindow {
         GridLayout {
             // a row that reads from right to left in Arabic (wrapped text needs a grid)
             spacing: 16px;
-            BigTypeIcon {
+            DragFile {
                 col: Theme.rtl ? 1 : 0;
                 row: 0;
                 kind: root.kind;
                 ext: root.ext;
+                drag-out => {
+                    root.drag-out();
+                }
             }
             VerticalLayout {
                 col: Theme.rtl ? 0 : 1;

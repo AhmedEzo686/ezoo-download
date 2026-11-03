@@ -622,6 +622,9 @@ msgstr "No."
 msgid "Info"
 msgstr "Bilgi"
 
+msgid "Drag me"
+msgstr "Sürükle beni"
+
 msgid "Download complete"
 msgstr "İndirme tamamlandı"
 

@@ -622,6 +622,9 @@ msgstr "N°"
 msgid "Info"
 msgstr "Infos"
 
+msgid "Drag me"
+msgstr "Glissez-moi"
+
 msgid "Download complete"
 msgstr "Téléchargement terminé"
 

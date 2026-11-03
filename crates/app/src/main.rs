@@ -1867,6 +1867,24 @@ fn wire_complete(ui: &Ui) {
         let ui = ui.clone();
         complete.on_close_window(move || close_complete(&ui));
     }
+    {
+        let ui = ui.clone();
+        complete.on_drag_out(move || {
+            // the finished file pulled out of the window: Windows takes it from here
+            let Some(v) = ui.complete_id.get().and_then(|i| ui.ctx.mgr.get(i)) else { return };
+            let Some(d) = ui.complete.upgrade() else { return };
+            if !v.save_path.is_file() {
+                return;
+            }
+            winfx::drag_file_out(d.window(), &v.save_path);
+            // the mouse was let go outside the window: the icon must know too
+            d.window().dispatch_event(slint::platform::WindowEvent::PointerReleased {
+                position: slint::LogicalPosition::new(0.0, 0.0),
+                button: slint::platform::PointerEventButton::Left,
+            });
+            d.window().dispatch_event(slint::platform::WindowEvent::PointerExited);
+        });
+    }
 }
 
 pub(crate) fn show_complete(ui: &Ui, id: u64) {

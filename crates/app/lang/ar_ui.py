@@ -188,6 +188,7 @@ AR = {
     "Address": "الرابط",
     "Saved as": "تم الحفظ باسم",
     "Don't show this again": "لا تظهر هذا مرة أخرى",
+    "Drag me": "اسحبني",
     "Columns": "الأعمدة",
     "Show these columns in the download list:": "إظهار هذه الأعمدة في قائمة التحميل:",
     "File Name (always shown)": "اسم الملف (يظهر دائماً)",
