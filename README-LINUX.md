@@ -38,9 +38,9 @@
 ### 1) حزمة Debian (مستحسن)
 
 ```bash
-sudo apt install ./dist/ezoodownload_1.1.4_amd64.deb
+sudo apt install ./dist/ezoodownload_1.1.5_amd64.deb
 # أو
-sudo dpkg -i dist/ezoodownload_1.1.4_amd64.deb && sudo apt -f install
+sudo dpkg -i dist/ezoodownload_1.1.5_amd64.deb && sudo apt -f install
 ```
 
 ثم ابحث عن **Ezoo Download** في قائمة التطبيقات.
@@ -48,19 +48,36 @@ sudo dpkg -i dist/ezoodownload_1.1.4_amd64.deb && sudo apt -f install
 ### 2) AppImage (ملف واحد، بدون تثبيت)
 
 ```bash
-chmod +x EzooDownload-1.1.4-x86_64.AppImage
-./EzooDownload-1.1.4-x86_64.AppImage
+chmod +x EzooDownload-1.1.5-x86_64.AppImage
+./EzooDownload-1.1.5-x86_64.AppImage
 ```
 
 - يحتوي البرنامج + مجلدات الإضافة + الأيقونة + المكتبات التي يحتاجها، ويعمل على معظم التوزيعات.
 - على نظام بدون FUSE (بعض الحاويات) شغّله بـ: `./EzooDownload-*.AppImage --appimage-extract-and-run`.
 - لا يضيف مدخلًا في قائمة التطبيقات؛ لو أردت ذلك استخدم حزمة `.deb` أو النسخة المحمولة بالأسفل.
 
-### 3) نسخة محمولة بدون صلاحيات مدير
+### 3) حزمة RPM (فيدورا / RHEL / openSUSE)
 
 ```bash
-tar xzf dist/EzooDownload-1.1.4-linux-x86_64.tar.gz
-./EzooDownload-1.1.4-linux-x86_64/install.sh
+sudo dnf install ./dist/ezoo-download-1.1.5-1.fc41.x86_64.rpm
+```
+
+### 4) Flatpak
+
+```bash
+flatpak install --user ./dist/EzooDownload-x86_64.flatpak
+flatpak run io.github.aelrased.ezoo-download
+```
+
+- يحتاج وقت التثبيت runtime من Flathub: `flatpak install flathub org.freedesktop.Platform//26.08` (بيتنزّل تلقائيًا في أغلب الحالات لو Flathub مضاف).
+- الصلاحيات المطلوبة: الشبكة، X11/Wayland، الصوت، بطاقة الرسوميات، والمجلد الرئيسي (عشان التنزيلات).
+- عشان إضافة المتصفح توصل للبرنامج، الساندبوكس بيشارك شبكة النظام فالمنفذ `127.0.0.1:9614` شغال زي العادي.
+
+### 5) نسخة محمولة بدون صلاحيات مدير
+
+```bash
+tar xzf dist/EzooDownload-1.1.5-linux-x86_64.tar.gz
+./EzooDownload-1.1.5-linux-x86_64/install.sh
 ```
 
 تُثبَّت في `~/.local` (البرنامج + أيقونة القائمة + الأيقونات). للإزالة:
@@ -76,15 +93,23 @@ rm -rf ~/.local/lib/ezoodownload ~/.local/bin/EzooDownload \
 ## 🧰 ما يُستحسن تثبيته
 
 ```bash
-sudo apt install ffmpeg aria2 yt-dlp xdg-desktop-portal
+sudo apt install aria2 yt-dlp xdg-desktop-portal
 ```
 
 | الحزمة | لماذا |
 |---|---|
-| `ffmpeg` | دمج الفيديو مع الصوت، وتحويل MP3، ولقطات المعاينة |
 | `aria2` | التورنت والمغناطيس (البرنامج يستدعي `aria2c`) |
 | `yt-dlp` | روابط الفيديو من المواقع (وإلا ينزّله البرنامج تلقائيًا مرة واحدة) |
 | `xdg-desktop-portal` | نوافذ اختيار الملفات والمجلدات |
+
+> **ffmpeg مدمج** في كل حزم لينكس (`.deb`، `.rpm`، AppImage، Flatpak، والنسخة المحمولة):
+> نسخة ثابتة (static) بتوضع في:
+> - `.deb`/`.rpm`: `/usr/lib/ezoodownload/ffmpeg`
+> - AppImage: `usr/bin/ffmpeg` جوّه الصورة
+> - المحمولة: `tools/ffmpeg` جنب البرنامج
+>
+> مش محتاج تثبّت ffmpeg بنفسك، ولو ثبّتته النظام بيبقى للبرامج التانية. النسخة المدمجة GPLv3
+> وملف ترخيصها معاها (`ffmpeg-LICENSE.txt`) ومذكورة في `THIRD-PARTY-NOTICES.txt`.
 
 > على GNOME تحتاج إضافة **AppIndicator and KStatusNotifierItem Support** ليظهر رمز البرنامج بجانب الساعة.
 > على KDE وXfce وCinnamon وBudgie يعمل مباشرة.

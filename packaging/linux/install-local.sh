@@ -11,7 +11,7 @@ echo "Installing into $lib"
 mkdir -p "$lib" "$prefix/bin" "$prefix/share/applications" "$prefix/share/icons/hicolor"
 cp -f "$here/EzooDownload" "$lib/EzooDownload"
 cp -f "$here/THIRD-PARTY-NOTICES.txt" "$lib/" 2>/dev/null || true
-for item in extension extension-firefox ezoo-download-firefox.xpi ezoo-download-chrome.crx; do
+for item in tools extension extension-firefox ezoo-download-firefox.xpi ezoo-download-chrome.crx; do
     if [ -e "$here/$item" ]; then
         cp -a "$here/$item" "$lib/"
     fi

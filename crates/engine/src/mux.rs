@@ -14,6 +14,18 @@ pub fn find_tool(name: &str) -> Option<PathBuf> {
         return Some(p);
     }
     if let Ok(me) = std::env::current_exe() {
+        // The Linux packages keep it in <prefix>/lib/ezoodownload: a copy in
+        // /usr/bin next to the program would collide with the system's own
+        // ffmpeg. This is /usr/lib/ezoodownload for /usr/bin/EzooDownload and
+        // /app/lib/ezoodownload inside a Flatpak.
+        if let Some(dir) = me.parent() {
+            if let Some(prefix) = dir.parent() {
+                let packaged = prefix.join("lib").join("ezoodownload").join(&exe_name);
+                if packaged.exists() {
+                    return Some(packaged);
+                }
+            }
+        }
         let local = me.with_file_name(&exe_name);
         if local.exists() {
             return Some(local);

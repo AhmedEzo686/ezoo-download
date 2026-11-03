@@ -98,9 +98,23 @@ done
 # the .desktop file and every file manager want one with the plain name
 cp "$stage/icons/ezoodownload-256.png" "$stage/icons/ezoodownload.png"
 
+say "The ffmpeg that goes into the packages"
+ffmpeg_dir=""
+if [ -z "${SKIP_FFMPEG:-}" ]; then
+    bash "$here/fetch-ffmpeg.sh" "$stage/ffmpeg-bin"
+    ffmpeg_dir="$stage/ffmpeg-bin"
+else
+    echo "SKIP_FFMPEG=1: the packages will use the system ffmpeg instead"
+fi
+
 say "The portable folder (no root needed)"
 mkdir -p "$appdir/icons"
 install -m755 "$stage/EzooDownload" "$appdir/EzooDownload"
+if [ -n "$ffmpeg_dir" ]; then
+    mkdir -p "$appdir/tools"
+    install -m755 "$ffmpeg_dir/ffmpeg" "$appdir/tools/ffmpeg"
+    cp "$ffmpeg_dir/ffmpeg-version.txt" "$ffmpeg_dir/ffmpeg-LICENSE.txt" "$appdir/tools/"
+fi
 cp -a "$stage/extension" "$stage/extension-firefox" "$stage/ezoo-download-firefox.xpi" \
       "$stage/THIRD-PARTY-NOTICES.txt" "$stage/ezoodownload.desktop" "$stage/ezoo-download-chrome.crx" "$appdir/" 2>/dev/null || true
 cp "$stage/icons/"*.png "$appdir/icons/"
@@ -118,6 +132,11 @@ if [ -n "$tool" ]; then
     rm -rf "$imgdir"
     mkdir -p "$imgdir/usr/bin" "$imgdir/usr/lib" "$imgdir/usr/share/ezoodownload"
     install -m755 "$stage/EzooDownload" "$imgdir/usr/bin/EzooDownload"
+    if [ -n "$ffmpeg_dir" ]; then
+        install -m755 "$ffmpeg_dir/ffmpeg" "$imgdir/usr/bin/ffmpeg"
+        cp "$ffmpeg_dir/ffmpeg-version.txt" "$imgdir/usr/bin/ffmpeg-version.txt"
+        cp "$ffmpeg_dir/ffmpeg-LICENSE.txt" "$imgdir/usr/share/ezoodownload/ffmpeg-LICENSE.txt"
+    fi
     # where the program looks for them when it runs from inside the image
     for name in extension extension-firefox ezoo-download-firefox.xpi THIRD-PARTY-NOTICES.txt ezoo-download-chrome.crx; do
         [ -e "$stage/$name" ] || continue
@@ -167,6 +186,11 @@ mkdir -p "$deb/DEBIAN" \
          "$deb/usr/share/doc/ezoodownload" \
          "$deb/usr/share/icons/hicolor"
 install -Dm755 "$stage/EzooDownload" "$deb/usr/bin/EzooDownload"
+if [ -n "$ffmpeg_dir" ]; then
+    install -Dm755 "$ffmpeg_dir/ffmpeg" "$deb/usr/lib/ezoodownload/ffmpeg"
+    install -Dm644 "$ffmpeg_dir/ffmpeg-version.txt" "$deb/usr/lib/ezoodownload/ffmpeg-version.txt"
+    install -Dm644 "$ffmpeg_dir/ffmpeg-LICENSE.txt" "$deb/usr/share/doc/ezoodownload/ffmpeg-LICENSE.txt"
+fi
 if [ -f "$stage/ezoo-download-chrome.crx" ]; then
     install -Dm644 "$stage/ezoo-download-chrome.crx" "$deb/usr/bin/ezoo-download-chrome.crx"
     install -Dm644 "$stage/ezoo-download-chrome.crx" "$deb/usr/share/ezoodownload/ezoo-download-chrome.crx"
@@ -206,7 +230,7 @@ Architecture: $arch
 Maintainer: Ahmed Ezzat <https://github.com/AhmedEzo686/ezoo-download>
 Installed-Size: $installed_size
 Depends: $deps
-Recommends: ffmpeg, aria2, yt-dlp, xdg-desktop-portal
+Recommends: aria2, yt-dlp, xdg-desktop-portal
 Homepage: https://github.com/AhmedEzo686/ezoo-download
 Description: Ezoo Download - download manager
  Downloads files and videos over several connections, with pause, resume,
@@ -238,6 +262,30 @@ chmod 755 "$deb/DEBIAN/postinst" "$deb/DEBIAN/postrm"
 chmod 644 "$deb/DEBIAN/control"
 
 dpkg-deb --root-owner-group --build "$deb" "$dist/ezoodownload_${version}_${arch}.deb" >/dev/null
+
+say "The .rpm package"
+if command -v rpmbuild >/dev/null 2>&1; then
+    rtop="$stage/rpmtop"
+    rm -rf "$rtop"
+    mkdir -p "$rtop/BUILD" "$rtop/RPMS" "$rtop/SOURCES" "$rtop/SPECS" "$rtop/BUILDROOT"
+    (cd "$deb" && tar czf "$rtop/SOURCES/root.tar.gz" usr)
+    if rpmbuild -bb --define "_topdir $rtop" --define "_sourcedir $rtop/SOURCES" \
+        --define "ver $version" "$here/rpm/ezoo-download.spec" >"$stage/rpm.log" 2>&1; then
+        find "$rtop/RPMS" -name '*.rpm' -exec cp -f {} "$dist/" \;
+    else
+        echo "rpmbuild failed (see $stage/rpm.log); the .deb is still built"
+    fi
+else
+    echo "rpmbuild not found: no .rpm yet (build it with packaging/linux/build-rpm.sh)"
+fi
+
+say "The Flatpak"
+if command -v flatpak >/dev/null 2>&1; then
+    bash "$root/packaging/flatpak/build-flatpak.sh" "$version" "$stage" "$ffmpeg_dir" \
+        || echo "Flatpak not built (see the message above); the other packages are fine"
+else
+    echo "flatpak not found: no .flatpak"
+fi
 
 say "Done"
 ls -lh "$dist" | sed 's/^/   /'
