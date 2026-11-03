@@ -4,6 +4,7 @@
 //! DRM protected streams (SAMPLE-AES, Widevine, FairPlay...) are refused on
 //! purpose. Live streams (no #EXT-X-ENDLIST) are refused too.
 
+use crate::http::SendOrdered;
 use crate::http::{request, ConnGuard, Progress, Shared};
 use crate::http_download::Cancelled;
 use crate::model::RequestHeaders;
@@ -54,7 +55,7 @@ async fn fetch_full(shared: &Shared, job: &HlsJob, url: &str, range: Option<(u64
     if let Some((off, len)) = range {
         rb = rb.header(reqwest::header::RANGE, format!("bytes={}-{}", off, off + len.max(1) - 1));
     }
-    let resp = rb.send().await?;
+    let resp = rb.send_ordered().await?;
     if !resp.status().is_success() {
         return Err(crate::http::HttpStatus(resp.status().as_u16()).into());
     }

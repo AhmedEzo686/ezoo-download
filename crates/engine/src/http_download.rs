@@ -5,6 +5,7 @@
 //! offset of the `.sgpart` file. When a worker finishes it steals half of the
 //! biggest remaining segment, so all connections stay busy until the end.
 
+use crate::http::SendOrdered;
 use crate::fileio::{make_sparse, write_at};
 use crate::http::{http_status_of, is_network_error, reconnect_delay, request, ConnGuard, HttpStatus, NetDrop, Progress, Shared};
 use crate::model::RequestHeaders;
@@ -563,7 +564,7 @@ impl Worker {
         }
         // the answer (its headers) must come: a server that keeps quiet does
         // not hold this connection for ever
-        let mut resp = match tokio::time::timeout(HEADERS_TIMEOUT, rb.send()).await {
+        let mut resp = match tokio::time::timeout(HEADERS_TIMEOUT, rb.send_ordered()).await {
             Ok(r) => r?,
             Err(_) => return Err(NetDrop("the server did not answer (timed out)").into()),
         };

@@ -1,6 +1,7 @@
 //! The download manager: owns every download, runs the queue, the scheduler,
 //! speed measurement and persistence. The UI only talks to this type.
 
+use crate::http::SendOrdered;
 use crate::config::{parse_hhmm, AfterDone, QueueDef, Settings, MAIN_QUEUE};
 use crate::{clip, clipserve};
 use crate::filename;
@@ -282,7 +283,7 @@ impl Manager {
     pub async fn fetch_torrent_file(&self, url: &str, headers: &RequestHeaders) -> anyhow::Result<PathBuf> {
         const MAX: usize = 16 << 20;
         let ua = self.settings().user_agent.clone();
-        let mut resp = http::request(&self.client(), url, headers, &ua).send().await?.error_for_status()?;
+        let mut resp = http::request(&self.client(), url, headers, &ua).send_ordered().await?.error_for_status()?;
         if resp.content_length().is_some_and(|n| n > MAX as u64) {
             anyhow::bail!("too big for a .torrent file");
         }

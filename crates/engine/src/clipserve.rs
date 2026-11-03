@@ -8,6 +8,7 @@
 //! way while the last one is handed over: big video sites send a piece at
 //! a time quickly, but slow down a single endless request.
 
+use crate::http::SendOrdered;
 use crate::http::{request, Progress, Shared};
 use crate::model::RequestHeaders;
 use std::collections::HashMap;
@@ -174,7 +175,7 @@ async fn serve(mut sock: TcpStream, table: Table) -> anyhow::Result<()> {
         };
         request(&client, &entry.src.url, &entry.src.headers, &entry.src.user_agent)
             .header(reqwest::header::RANGE, range)
-            .send()
+            .send_ordered()
     };
     let mut resp = match ask(from, Some(piece_end(from, FIRST_PIECE))).await {
         Ok(r) => r,

@@ -4,6 +4,7 @@
 //! of the install folder. Once a day, silently, Ezoo Download checks for new
 //! versions and updates them, and puts them back if one went missing.
 
+use crate::http::SendOrdered;
 use crate::mux::hide_window;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -97,7 +98,7 @@ async fn get_text(client: &reqwest::Client, url: &str) -> anyhow::Result<String>
     let text = client
         .get(url)
         .header(reqwest::header::USER_AGENT, crate::config::DEFAULT_USER_AGENT)
-        .send()
+        .send_ordered()
         .await?
         .error_for_status()?
         .text()
@@ -116,7 +117,7 @@ async fn download(client: &reqwest::Client, url: &str, dest: &Path, sha256: &str
     let mut resp = client
         .get(url)
         .header(reqwest::header::USER_AGENT, crate::config::DEFAULT_USER_AGENT)
-        .send()
+        .send_ordered()
         .await?
         .error_for_status()?;
     use std::io::Write;
