@@ -366,8 +366,9 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 19] = [
+const WHATS_NEW: [&str; 20] = [
     "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.",
+    "Sites behind Cloudflare protection that refused Ezoo Download (HTTP 403) while the browser and other download programs got the file (samfw.com and many more): Ezoo Download now asks for files the way they do.",
     "Drag the finished file out: in the \"Download complete\" window, pull the file's icon (\"Drag me\") onto the desktop, a folder, a chat or any program, and a copy of the file goes there.",
     "Big files: a second bar shows the joining of picture and sound and the moving of the file to its folder, big videos are joined in about half the time, a folder chosen in Download File Info takes the file there at once (the free space of that disk counts), and removing a download never takes another download's file away.",
     "Sites that allow only a few connections at a time (\"too many requests\", HTTP 429): the download goes on by itself with fewer connections, and that site's next downloads start with that many.",

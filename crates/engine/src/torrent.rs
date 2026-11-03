@@ -283,7 +283,7 @@ pub struct AddOptions {
 impl Aria2 {
     pub fn new(data_dir: &Path) -> Aria2 {
         // straight to 127.0.0.1, never through a proxy
-        let client = reqwest::Client::builder().no_proxy().timeout(Duration::from_secs(20)).build().unwrap_or_default();
+        let client = reqwest::Client::builder().no_proxy().http1_title_case_headers().timeout(Duration::from_secs(20)).build().unwrap_or_default();
         Aria2 { client, daemon: tokio::sync::Mutex::new(None), data_dir: data_dir.to_path_buf() }
     }
 

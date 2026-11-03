@@ -250,6 +250,11 @@ pub fn build_client_with(proxy: &ProxyConfig) -> anyhow::Result<Client> {
         // Real separate TCP connections. With HTTP/2 all our
         // "connections" would share one TCP connection and be as slow as one.
         .http1_only()
+        // "User-Agent:", not "user-agent:": the names written the way browsers
+        // and other download programs write them. Cloudflare's protection
+        // refuses lowercase names (HTTP 403, "challenge") even with the
+        // browser's own cookies and name (samfw.com and many more)
+        .http1_title_case_headers()
         .tcp_nodelay(true)
         .connect_timeout(Duration::from_secs(20))
         // a server that takes the connection and then says nothing (no
@@ -492,6 +497,37 @@ mod refused_tests {
         assert!(!p.resumable, "the server refuses ranges: one plain connection");
         let used = p.headers_used.expect("it worked only without the cookie");
         assert!(used.cookies.is_none());
+    }
+
+    /// A server like Cloudflare's protection: lowercase header names are a
+    /// program, not a browser, and get HTTP 403.
+    #[tokio::test]
+    async fn header_names_are_written_like_a_browser() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut s, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 8192];
+                    let n = s.read(&mut buf).await.unwrap_or(0);
+                    let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                    let browser_like = ["User-Agent: ", "Accept: ", "Range: ", "Referer: ", "Cookie: "].iter().all(|h| req.contains(h))
+                        && !req.contains("user-agent:");
+                    let resp = if browser_like {
+                        "HTTP/1.1 206 Partial Content\r\nContent-Length: 5\r\nContent-Range: bytes 0-4/5\r\nConnection: close\r\n\r\nhello"
+                    } else {
+                        "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    };
+                    let _ = s.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+        let client = build_client_with(&ProxyConfig { mode: 0, ..Default::default() }).unwrap();
+        let headers = RequestHeaders { cookies: Some("a=1".into()), referer: Some("https://example.com/".into()), ..Default::default() };
+        let p = probe(&client, &format!("http://{addr}/f.zip"), &headers, "Mozilla/5.0 test").await.unwrap();
+        assert_eq!(p.total_size, Some(5));
+        assert!(p.headers_used.is_none(), "the first, full request was taken");
     }
 }
 
