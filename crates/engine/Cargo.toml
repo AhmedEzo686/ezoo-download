@@ -14,7 +14,10 @@ serde_json.workspace = true
 tokio.workspace = true
 tokio-util = "0.7"
 # default features = native TLS (SChannel on Windows), HTTP/2, charset, system proxy
-reqwest = { version = "0.12" }
+# native-tls-alpn: the connection says which protocol it speaks (ALPN), as
+# browsers do. Without it Cloudflare's protection refuses the program
+# (HTTP 403, "challenge") however the request itself looks
+reqwest = { version = "0.12", features = ["native-tls-alpn"] }
 chrono = { version = "0.4", features = ["serde"] }
 directories = "5"
 url = "2"
