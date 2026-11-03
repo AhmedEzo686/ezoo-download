@@ -325,7 +325,10 @@ impl Aria2 {
             "--enable-dht=true",
             "--bt-enable-lpd=true",
             "--enable-peer-exchange=true",
-            "--bt-max-peers=80",
+            "--bt-max-peers=150",
+            // below this speed aria2 keeps looking for more people (its own
+            // 50K made a torrent stay slow with the first few it found)
+            "--bt-request-peer-speed-limit=20M",
             "--console-log-level=error",
             "--summary-interval=0",
             "--quiet=true",
@@ -430,6 +433,49 @@ impl Aria2 {
             followed_by: r["followedBy"].as_array().and_then(|a| a.first()).and_then(|g| g.as_str()).map(String::from),
             error: r["errorMessage"].as_str().filter(|m| !m.is_empty()).map(String::from),
         })
+    }
+
+    /// The file list of a magnet link before it is downloaded: only the
+    /// torrent's own description is fetched from the people who share it,
+    /// into `dir` (a .torrent file, given back). Gives up after `wait`.
+    pub async fn metadata(&self, magnet: &str, dir: &Path, wait: Duration) -> anyhow::Result<PathBuf> {
+        if !is_magnet(magnet) {
+            bail!("not a magnet link");
+        }
+        std::fs::create_dir_all(dir)?;
+        let opts = json!({
+            "dir": dir.to_string_lossy(),
+            "bt-metadata-only": "true",
+            "bt-save-metadata": "true",
+            "follow-torrent": "false",
+            "seed-time": "0",
+        });
+        let gid = self.call("aria2.addUri", vec![json!([magnet.trim()]), opts]).await?;
+        let gid = gid.as_str().map(String::from).ok_or_else(|| anyhow!("aria2 did not take the link"))?;
+        let started = std::time::Instant::now();
+        let result = loop {
+            if started.elapsed() > wait {
+                break Err(anyhow!("nobody sent the file list in time"));
+            }
+            tokio::time::sleep(Duration::from_millis(700)).await;
+            let st = match self.status(&gid).await {
+                Ok(s) => s,
+                Err(e) => break Err(e),
+            };
+            match st.status.as_str() {
+                "complete" => {
+                    let found = std::fs::read_dir(dir)?
+                        .filter_map(|e| e.ok())
+                        .map(|e| e.path())
+                        .find(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("torrent")));
+                    break found.ok_or_else(|| anyhow!("the file list was not saved"));
+                }
+                "error" | "removed" => break Err(anyhow!("{}", st.error.unwrap_or_else(|| "the file list could not be fetched".into()))),
+                _ => {}
+            }
+        };
+        self.remove(&gid).await;
+        result
     }
 
     /// Stop it now (what is here stays, it goes on from there next time).

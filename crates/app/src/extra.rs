@@ -366,10 +366,12 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 16] = [
+const WHATS_NEW: [&str; 18] = [
     "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.",
     "Big files: a second bar shows the joining of picture and sound and the moving of the file to its folder, big videos are joined in about half the time, a folder chosen in Download File Info takes the file there at once (the free space of that disk counts), and removing a download never takes another download's file away.",
     "Sites that allow only a few connections at a time (\"too many requests\", HTTP 429): the download goes on by itself with fewer connections, and that site's next downloads start with that many.",
+    "Torrents: a magnet link shows its files first so you can choose them, and torrents find more people to download from. Links that work only in the browser (ChatGPT files, iLovePDF and other links that work once or need the page's sign-in) stay in the browser instead of failing.",
+    "Facebook and Instagram: videos of closed groups and friends-only posts are found with the browser's sign-in, an AV1 video (sound without picture in older players) says so, and sites that drop extra connections get fewer by themselves.",
     "No more black windows: a window that Windows had cleared (shown again from next to the clock, after the screen slept...) is drawn whole again.",
     "Sites that let only the browser in (HTTP 403): Ezoo Download sends exactly what the browser sent, and if the site still refuses, the browser is asked for the file and hands it back with the site's sign-in.",
     "A PDF link goes straight to Ezoo Download: no second window asking where to save from the PDF viewer of Edge and Brave.",
@@ -413,6 +415,35 @@ pub(crate) fn whats_new(ui: &Ui) {
     });
     open_window!(d);
     WHATS_NEW_WIN.with(|x| *x.borrow_mut() = Some(d));
+}
+
+// ---------------------------------------------------------------- AV1 videos
+
+/// The first video in AV1 (a much smaller file of the same picture, what
+/// Facebook and YouTube give in their best qualities): Windows plays its
+/// sound but shows no picture without Microsoft's free AV1 extension. Said
+/// once, a moment after it finished.
+pub(crate) fn av1_tip(ui: &Ui, done: &[u64]) {
+    let s = ui.ctx.mgr.settings();
+    if s.av1_tip_shown {
+        return;
+    }
+    let av1 = done
+        .iter()
+        .filter_map(|id| ui.ctx.mgr.get(*id))
+        .any(|v| v.source_key.as_deref().is_some_and(|k| k.contains("AV1")) && v.status == Status::Completed);
+    if !av1 {
+        return;
+    }
+    let mut s = s;
+    s.av1_tip_shown = true;
+    let _ = ui.ctx.mgr.set_settings(s);
+    slint::Timer::single_shot(std::time::Duration::from_secs(2), move || {
+        let text = t("This video is in AV1 (the same picture in a much smaller file). If your player plays only its sound, without the picture, get Microsoft's free \"AV1 Video Extension\" (or play it with VLC).\n\nOpen it in the Microsoft Store now?");
+        if crate::ask(&text) {
+            let _ = open::that_detached("ms-windows-store://search/?query=AV1%20Video%20Extension");
+        }
+    });
 }
 
 // ---------------------------------------------------------------- support

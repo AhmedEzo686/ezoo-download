@@ -1198,3 +1198,83 @@ async fn a_site_that_allows_fewer_connections() {
     assert!(learned <= 8, "the site's next downloads start with fewer: {learned}");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A site that cuts off connections when more than 4 are open (it answers
+/// them, then drops them after a little): the download goes on with fewer
+/// connections and finishes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_site_that_drops_extra_connections() {
+    use std::sync::atomic::AtomicUsize;
+    let data: Arc<Vec<u8>> = Arc::new((0..8_000_000u32).map(|i| (i % 249) as u8).collect());
+    let open = Arc::new(AtomicUsize::new(0));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    {
+        let (data, open) = (data.clone(), open.clone());
+        tokio::spawn(async move {
+            loop {
+                let (sock, _) = listener.accept().await.unwrap();
+                let (data, open) = (data.clone(), open.clone());
+                tokio::spawn(async move {
+                    let (r, mut w) = sock.into_split();
+                    let mut r = BufReader::new(r);
+                    let mut range: Option<(usize, Option<usize>)> = None;
+                    loop {
+                        let mut line = String::new();
+                        if r.read_line(&mut line).await.unwrap_or(0) == 0 || line.trim().is_empty() {
+                            break;
+                        }
+                        if let Some(v) = line.to_ascii_lowercase().strip_prefix("range: bytes=") {
+                            let (a, b) = v.trim().split_once('-').unwrap();
+                            range = Some((a.parse().unwrap(), b.parse().ok()));
+                        }
+                    }
+                    let extra = open.fetch_add(1, Ordering::SeqCst) >= 4;
+                    let (a, b) = match range {
+                        Some((a, b)) => (a, b.unwrap_or(data.len() - 1).min(data.len() - 1)),
+                        None => (0, data.len() - 1),
+                    };
+                    let head = format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {a}-{b}/{}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        data.len(),
+                        b - a + 1
+                    );
+                    if w.write_all(head.as_bytes()).await.is_ok() {
+                        for (n, chunk) in data[a..=b].chunks(32768).enumerate() {
+                            // one too many: cut off after a little
+                            if extra && n >= 2 {
+                                break;
+                            }
+                            if w.write_all(chunk).await.is_err() {
+                                break;
+                            }
+                            tokio::time::sleep(Duration::from_millis(4)).await;
+                        }
+                    }
+                    open.fetch_sub(1, Ordering::SeqCst);
+                });
+            }
+        });
+    }
+    let root = std::env::temp_dir().join(format!("ezoo-drops-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let mgr = swiftget_engine::Manager::new(tokio::runtime::Handle::current(), root.join("app")).unwrap();
+    let id = mgr.add(swiftget_engine::NewDownload {
+        url: format!("http://127.0.0.1:{port}/f.bin"),
+        save_dir: Some(root.join("dl")),
+        connections: Some(16),
+        start: true,
+        ..Default::default()
+    });
+    let mut status = swiftget_engine::Status::Queued;
+    for _ in 0..4000 {
+        status = mgr.get(id).unwrap().status;
+        if matches!(status, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(status, swiftget_engine::Status::Completed, "{:?}", mgr.get(id).unwrap().error);
+    assert!(std::fs::read(mgr.get(id).unwrap().save_path).unwrap() == *data);
+    let _ = std::fs::remove_dir_all(&root);
+}

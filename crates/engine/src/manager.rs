@@ -2517,6 +2517,7 @@ fn view_of(e: &Entry, with_parts: bool) -> DownloadView {
         headers: e.rec.headers.clone(),
         parent_page: e.rec.source_page.clone().or_else(|| e.rec.headers.referer.clone()),
         queue_pos: e.rec.queue_pos,
+        source_key: e.rec.source_key.clone(),
         step: Step::from_code(e.progress.step.load(Ordering::Relaxed))
             .filter(|_| status.is_running())
             .map(|st| (st, e.progress.step_done.load(Ordering::Relaxed) as f32 / 1000.0)),
@@ -2654,6 +2655,25 @@ async fn cut_source(
 }
 
 impl Manager {
+    /// The file list of a magnet link (a .torrent file of it), fetched from
+    /// the people who share it; `then` gets the file.
+    pub fn magnet_files(self: &Arc<Self>, magnet: String, then: impl FnOnce(Result<PathBuf, String>) + Send + 'static) {
+        let me = self.clone();
+        self.rt.spawn(async move {
+            let n = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+            let dir = me.data_dir.join("torrents").join(format!("list-{n}"));
+            let r = me.torrents.metadata(&magnet, &dir, Duration::from_secs(90)).await;
+            // the .torrent goes next to the folder (the folder goes)
+            let r = r.and_then(|p| {
+                let kept = me.data_dir.join("torrents").join(format!("list-{n}.torrent"));
+                std::fs::rename(&p, &kept)?;
+                Ok(kept)
+            });
+            let _ = std::fs::remove_dir_all(&dir);
+            then(r.map_err(|e| format!("{e:#}")));
+        });
+    }
+
     /// "Preview" of a part before it is downloaded: the part, cut the quick
     /// way into a file of its own (only the part is fetched), for a player.
     /// `then` gets the file. The returned token stops it.

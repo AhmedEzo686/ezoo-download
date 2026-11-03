@@ -589,7 +589,36 @@ async function shouldTake(item) {
   const cfg = await getConfig();
   if (!wanted(cfg, url, baseName(item.filename), item.mime, currentKeys())) return false;
   if (await appSaysBrowser([item.url, url])) return false; // the user chose the browser for it
+  // a link that works once only (the browser just used it) or only with
+  // the page's own sign-in (ChatGPT, iLovePDF...): it stays in the browser
+  if (!(await appCanFetch(url, item))) return false;
   return true;
+}
+
+/** Can the program get this file with the browser's sign-in? (a short look; when it can't tell, yes) */
+async function appCanFetch(url, item) {
+  const { port } = await getOpts();
+  try {
+    const sent = browserRequest(url, item.url);
+    const pick = (n) => sent && sent.find((h) => h.name.toLowerCase() === n);
+    const passOn = sent ? sent.filter((h) => !/^(cookie|referer|user-agent|range)$/i.test(h.name)).map((h) => [h.name, h.value]) : null;
+    const body = {
+      url,
+      referrer: item.referrer || (pick("referer") && pick("referer").value) || null,
+      cookies: (pick("cookie") && pick("cookie").value) || (await cookieHeader(url)),
+      userAgent: (pick("user-agent") && pick("user-agent").value) || navigator.userAgent,
+      headers: passOn && passOn.length ? passOn : null,
+    };
+    const r = await fetchWithTimeout(
+      apiUrl(port, "/check"),
+      { method: "POST", headers: { "Content-Type": "application/json", "X-SwiftGet": "1" }, body: JSON.stringify(body) },
+      3200
+    );
+    if (!r.ok || typeof r.json !== "function") return true;
+    return (await r.json()).ok !== false;
+  } catch {
+    return true;
+  }
 }
 
 /** A PDF that a tab shows in the browser's own viewer right now. */
@@ -671,7 +700,7 @@ if (DECIDE_EARLY) {
       }
     };
     // never leave the browser waiting long
-    const guard = setTimeout(keep, 4000);
+    const guard = setTimeout(keep, 7000);
     shouldTake(item)
       .then((take) => {
         clearTimeout(guard);

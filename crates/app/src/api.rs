@@ -556,6 +556,26 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
                 _ => reply(req, 400, r#"{"error":"invalid request"}"#),
             }
         }
+        (Method::Post, "/check") => {
+            // a download the browser started: can the program get it too?
+            // Links that work once only (the browser just used them) or
+            // only with the page's own sign-in (ChatGPT, iLovePDF...) stay
+            // in the browser instead of failing here
+            let mut body = String::new();
+            if req.as_reader().take(1 << 20).read_to_string(&mut body).is_err() {
+                return reply(req, 400, r#"{"error":"bad body"}"#);
+            }
+            let Ok(add) = serde_json::from_str::<AddRequest>(&body) else {
+                return reply(req, 400, r#"{"error":"invalid request"}"#);
+            };
+            if !is_http(&add.url) {
+                return reply(req, 400, r#"{"error":"not a web address"}"#);
+            }
+            std::thread::spawn(move || {
+                let ok = can_fetch(&add);
+                reply(req, 200, if ok { r#"{"ok":true}"# } else { r#"{"ok":false}"# });
+            });
+        }
         (Method::Post, "/resolve") | (Method::Post, "/youtube") => {
             // download choices for any page with a video (yt-dlp, a few
             // seconds), answered from its own thread so nothing else waits
@@ -596,6 +616,40 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
     }
 }
 
+/// Whether the program gets a file at `add.url` with the browser's sign-in
+/// (a short look, a few seconds at most; when it can't tell, yes).
+fn can_fetch(add: &AddRequest) -> bool {
+    let mut headers = swiftget_engine::RequestHeaders {
+        referer: add.referrer.clone(),
+        cookies: add.cookies.clone(),
+        user_agent: add.user_agent.clone(),
+        extra: Vec::new(),
+        auth: None,
+    };
+    if let Some(list) = &add.headers {
+        swiftget_engine::ytdlp::apply_headers(&mut headers, list);
+    }
+    let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return true };
+    let Ok(client) = swiftget_engine::http::build_client() else { return true };
+    let url = add.url.clone();
+    rt.block_on(async move {
+        let look = swiftget_engine::http::probe(&client, &url, &headers, "Mozilla/5.0");
+        match tokio::time::timeout(std::time::Duration::from_millis(2500), look).await {
+            // a sign-in page instead of the file
+            Ok(Ok(p)) => !p.is_web_page(),
+            Ok(Err(e)) => match swiftget_engine::http::http_status_of(&e) {
+                Some(code) => !matches!(code, 400 | 401 | 403 | 404 | 405 | 410),
+                None => {
+                    let text = format!("{e:#}");
+                    !(text.contains("HTTP 40") || text.contains("HTTP 410") || text.contains("user name and password"))
+                }
+            },
+            // slow to answer: the program takes it (it waits longer)
+            Err(_) => true,
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -633,6 +687,36 @@ mod tests {
         assert!(ask(fport, "/where", Some(sign_headers("GET", "/where"))).contains(&format!("\"port\":{mport}")));
         // "are you there" stays open on both
         assert!(ask(fport, "/ping", None).starts_with("HTTP/1.1 200"));
+    }
+
+    #[test]
+    fn links_the_program_can_not_get_stay_in_the_browser() {
+        use std::io::{Read, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for s in l.incoming().flatten().take(20) {
+                let mut s = s;
+                let mut buf = [0u8; 4096];
+                let n = s.read(&mut buf).unwrap_or(0);
+                let head = String::from_utf8_lossy(&buf[..n]).to_string();
+                let answer = if head.starts_with("GET /gone") {
+                    "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                } else if head.starts_with("GET /signin") {
+                    "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                } else {
+                    "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-9/10\r\nContent-Length: 10\r\nContent-Type: application/zip\r\nConnection: close\r\n\r\n0123456789".to_string()
+                };
+                let _ = s.write_all(answer.as_bytes());
+            }
+        });
+        let ask = |path: &str| {
+            let a: AddRequest = serde_json::from_str(&format!(r#"{{"url":"http://127.0.0.1:{port}{path}"}}"#)).unwrap();
+            can_fetch(&a)
+        };
+        assert!(ask("/file.zip"));
+        assert!(!ask("/gone/file.zip"), "a link that works once only");
+        assert!(!ask("/signin/file.zip"), "a link that needs the page's sign-in");
     }
 
     #[test]

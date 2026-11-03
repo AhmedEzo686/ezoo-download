@@ -574,6 +574,8 @@
       kbps ? `${kbps.toLocaleString("en")} kbps` : "",
       y.size ? (y.quality === "mp3" ? "about " : "") + fmtSize(y.size) : "",
       y.quality === "mp3" ? "made into MP3 after the download" : "",
+      // some players play only the sound of an AV1 video
+      codec === "AV1" ? "AV1: smaller file, needs a newer player" : "",
     ]
       .filter(Boolean)
       .join(" · ");

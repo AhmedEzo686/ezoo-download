@@ -50,6 +50,9 @@ impl std::error::Error for Leave {}
 struct Crew {
     running: u32,
     leaving: u32,
+    /// connections the server dropped lately (when, and the bytes of the
+    /// whole download then)
+    drops: std::collections::VecDeque<(std::time::Instant, u64)>,
 }
 
 #[derive(Clone)]
@@ -348,6 +351,31 @@ impl Drop for OutOfCrew {
 }
 
 impl Worker {
+    /// A connection was dropped: when that happens again and again (6 in a
+    /// minute) while the download as a whole goes on, the server allows
+    /// fewer connections: half as many are wanted. True when that was decided.
+    fn server_drops_too_many(&self) -> bool {
+        let now = std::time::Instant::now();
+        let bytes = self.progress.bytes.load(Ordering::Relaxed);
+        let mut c = self.crew.lock().unwrap();
+        c.drops.push_back((now, bytes));
+        while c.drops.front().is_some_and(|(t, _)| now.duration_since(*t) > Duration::from_secs(60)) {
+            c.drops.pop_front();
+        }
+        let running = c.running.saturating_sub(c.leaving);
+        let first_bytes = c.drops.front().map(|(_, b)| *b).unwrap_or(bytes);
+        // the others still bring data (not the internet that is gone)
+        let going_on = bytes.saturating_sub(first_bytes) >= 1 << 20;
+        if c.drops.len() >= 6 && going_on && running > 2 {
+            c.drops.clear();
+            drop(c);
+            lower_wanted(&self.progress, self.job.connections.max(1), (running / 2).max(2));
+            true
+        } else {
+            false
+        }
+    }
+
     /// More connections run than wanted now: this one stops (counted at once,
     /// so only as many stop as needed).
     fn should_leave(&self) -> bool {
@@ -464,6 +492,14 @@ impl Worker {
                             _ = self.cancel.cancelled() => return Err(Cancelled.into()),
                         }
                         continue;
+                    }
+                    if network && self.segmented && !format!("{e:#}").contains("slow connection") && self.server_drops_too_many() {
+                        // the server keeps dropping connections while the
+                        // others go on (sites that allow only a few): half as
+                        // many from now on; this one goes, its part stays
+                        if self.should_leave() {
+                            return Err(Leave.into());
+                        }
                     }
                     if network {
                         // no internet / reset / stall: wait as long as it takes,

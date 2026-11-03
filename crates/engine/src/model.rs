@@ -461,6 +461,8 @@ pub struct DownloadView {
     pub waiting: bool,
     /// after the data: what it does now and how far (0..1)
     pub step: Option<(Step, f32)>,
+    /// video pages: the quality chosen ("1080p|MP4 AV1")
+    pub source_key: Option<String>,
 }
 
 impl DownloadView {
