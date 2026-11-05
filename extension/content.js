@@ -478,6 +478,9 @@
     return b;
   }
 
+  // the part panel is switched off in the add-in (see renderOne)
+  const PARTS_IN_ADDIN = false;
+
   function itemsOf(b) {
     if (b.own) return b.own;
     return isMain(b.video) ? items : [];
@@ -634,7 +637,8 @@
       );
     }
     if (note) {
-      const d = el("div", { class: "msg" + (isError ? " err" : ""), text: note });
+      // dir "auto": a note in Arabic reads right to left (its full stop at the end)
+      const d = el("div", { class: "msg" + (isError ? " err" : ""), dir: "auto", text: note });
       if (action) {
         const a = el("div", { class: "act", text: action.text });
         a.addEventListener("click", action.run);
@@ -648,8 +652,10 @@
       return;
     }
     const title = (list.find((m) => m.yt && m.yt.title) || {}).yt;
-    box.appendChild(el("div", { class: "head", title: (title && title.title) || cleanTitle(), text: (title && title.title) || cleanTitle() }));
-    const partOk = usable.some(canCut);
+    box.appendChild(el("div", { class: "head", dir: "auto", title: (title && title.title) || cleanTitle(), text: (title && title.title) || cleanTitle() }));
+    // "Download a part of this video" stays in the program only for now
+    // (Tasks > Download a part of a video); the add-in offers whole videos
+    const partOk = PARTS_IN_ADDIN && usable.some(canCut);
     if (b.clipMode && partOk) {
       box.appendChild(clipPanel(b));
     } else {

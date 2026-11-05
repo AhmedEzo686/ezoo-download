@@ -81,6 +81,9 @@ Type: files; Name: "{app}\ffmpeg.exe"
 ; browser keeps the add-in; the program writes its key in again at start)
 Type: filesandordirs; Name: "{app}\extension"
 Type: filesandordirs; Name: "{app}\extension-firefox"
+; the Firefox add-on of an older version never stays: only this setup's own
+; one (or none) is there to be added to Firefox
+Type: files; Name: "{app}\ezoo-download-firefox.xpi"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"

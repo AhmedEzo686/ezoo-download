@@ -215,6 +215,19 @@ fn firefox_xpi() -> Option<PathBuf> {
     Some(dir.join(FIREFOX_XPI)).filter(|p| p.exists())
 }
 
+/// "Update the Firefox add-on": Firefox opens the signed add-on of this
+/// program and asks "Add Ezoo Download?" (the new one takes the old one's
+/// place). Without the file (a build without it): the browsers window.
+pub(crate) fn update_firefox_addon(ui: &Ui) {
+    let firefox = detect().into_iter().find(|b| b.firefox).and_then(|b| b.exe);
+    match (firefox, firefox_xpi()) {
+        (Some(exe), Some(xpi)) => {
+            let _ = std::process::Command::new(&exe).arg(&xpi).spawn();
+        }
+        _ => open(ui),
+    }
+}
+
 pub(crate) fn open(ui: &Ui) {
     let Some(d) = ui.browsers.upgrade() else { return };
     let list = detect();

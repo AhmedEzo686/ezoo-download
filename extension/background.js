@@ -25,10 +25,17 @@ function apiUrl(port, path) {
   return `http://127.0.0.1:${port}${path}`;
 }
 
+// which add-in asks (its version and browser): the program tells the user
+// when the Firefox add-on is older than the program and must be updated
+// (Firefox keeps its own copy of the add-on)
+const IS_FIREFOX = typeof navigator !== "undefined" && /Firefox\//.test(navigator.userAgent || "");
+const ADDIN_HEADERS = { "X-Ezoo-Ext": chrome.runtime.getManifest().version, "X-Ezoo-Browser": IS_FIREFOX ? "firefox" : "chromium" };
+
 async function plainFetch(url, opts = {}, ms = 1500) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
   try {
+    if (/^http:\/\/127\.0\.0\.1:/.test(url)) opts = { ...opts, headers: Object.assign({}, ADDIN_HEADERS, opts.headers || {}) };
     return await fetch(url, { ...opts, signal: ctrl.signal });
   } finally {
     clearTimeout(timer);
@@ -1337,14 +1344,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const item = msg.item || {};
       // a video inside a frame (embedded player): that frame's page
       const referrer = sender.frameId && msg.referrer ? msg.referrer : sender.tab ? sender.tab.url : msg.referrer;
-      // "Download a part": only from / to (seconds)
-      const c = msg.clip;
-      const clip =
-        c && Number.isFinite(c.start) && Number.isFinite(c.end) && c.start >= 0 && c.end > c.start
-          ? { start: c.start, end: c.end, exact: !!c.exact }
-          : null;
-      if (item.yt) return reply(downloadVideo(item.yt, msg.title, referrer, clip), sendResponse);
-      return reply(sendToApp({ url: item.url, referrer, fileName: msg.fileName, clip }), sendResponse);
+      // whole videos only: "Download a part" is in the program for now, and
+      // no part chosen earlier is ever sent with a download
+      if (item.yt) return reply(downloadVideo(item.yt, msg.title, referrer, null), sendResponse);
+      return reply(sendToApp({ url: item.url, referrer, fileName: msg.fileName }), sendResponse);
     }
     case "swiftget-get-media":
       itemsForTab(msg.tabId).then(sendResponse);

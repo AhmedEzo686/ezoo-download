@@ -1459,6 +1459,18 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
                 },
             );
         }
+        api::ApiEvent::OldFirefoxAddon => {
+            note("the Firefox add-on is older than the program");
+            confirm(
+                &ui.ctx,
+                &t("Update the Firefox add-on"),
+                &t("The Ezoo Download add-on in Firefox is an older version than the program, so videos and downloads may not work in Firefox.\n\nClick OK: Firefox opens the new add-on. Then click \"Add\" in the message Firefox shows."),
+                {
+                    let ui = ui.clone();
+                    move || browser::update_firefox_addon(&ui)
+                },
+            );
+        }
         api::ApiEvent::Quit => {
             note("closed for the setup");
             let _ = slint::quit_event_loop();
@@ -2512,11 +2524,12 @@ pub(crate) fn early_download(ctx: &Ctx) -> Option<u64> {
 /// Ask the server about the file in the background, then show the result.
 fn start_probe(ctx: &Ctx, url: String) {
     let Some(d) = ctx.add.upgrade() else { return };
-    let (seq, mut headers) = {
+    let (seq, mut headers, audio_url) = {
         let mut st = ctx.add_state.lock().unwrap();
         st.probe_seq += 1;
         st.probe = None;
-        (st.probe_seq, st.headers.clone())
+        let audio = st.extra.audio_url.clone().filter(|_| st.origin_url == url);
+        (st.probe_seq, st.headers.clone(), audio)
     };
     if d.get_use_login() && !d.get_user().trim().is_empty() {
         headers.auth = Some((d.get_user().trim().to_string(), d.get_password().to_string()));
@@ -2525,7 +2538,15 @@ fn start_probe(ctx: &Ctx, url: String) {
     d.set_info_error(false);
     let ctx2 = ctx.clone();
     ctx.rt.spawn(async move {
-        let result = ctx2.mgr.probe(&url, &headers).await;
+        // picture and sound come apart: both sizes, so the window shows the
+        // whole size (as the browser add-in does)
+        let (result, audio_size) = match &audio_url {
+            Some(a) => {
+                let (v, s) = tokio::join!(ctx2.mgr.probe(&url, &headers), ctx2.mgr.probe(a, &headers));
+                (v, s.ok().and_then(|p| p.total_size))
+            }
+            None => (ctx2.mgr.probe(&url, &headers).await, None),
+        };
         let _ = slint::invoke_from_event_loop(move || {
             let Some(d) = ctx2.add.upgrade() else { return };
             let mut st = ctx2.add_state.lock().unwrap();
@@ -2543,7 +2564,13 @@ fn start_probe(ctx: &Ctx, url: String) {
                     }
                     let has_audio = st.extra.audio_url.is_some() && st.origin_url == url;
                     let size = p.total_size.map(fmt_size).unwrap_or_else(|| t("Unknown size"));
-                    let size_text = if has_audio { format!("{size}\n{}", t("+ audio")) } else { size };
+                    let size_text = match (has_audio, p.total_size, audio_size) {
+                        (true, Some(v), Some(a)) => {
+                            format!("{}\n{}\n{}", fmt_size(v + a), tf("picture {}", &[&fmt_size(v)]), tf("sound {}", &[&fmt_size(a)]))
+                        }
+                        (true, _, _) => format!("{size}\n{}", t("+ audio")),
+                        _ => size,
+                    };
                     d.set_size_text(size_text.into());
                     let kind = match (p.kind, p.resumable) {
                         _ if has_audio => "Video + audio, joined after download",

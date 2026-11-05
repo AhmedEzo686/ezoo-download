@@ -366,27 +366,11 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 20] = [
-    "Download a part of a video: choose from / to (or \"Now\" while it plays), look at the part first, and only that part is downloaded, with a quick cut or an exact cut. In the add-in's list of qualities, and in Tasks > Download a part of a video.",
-    "Sites behind Cloudflare protection that refused Ezoo Download (HTTP 403) while the browser and other download programs got the file (samfw.com and many more): Ezoo Download now asks for files the way they do.",
-    "Drag the finished file out: in the \"Download complete\" window, pull the file's icon (\"Drag me\") onto the desktop, a folder, a chat or any program, and a copy of the file goes there.",
-    "Big files: a second bar shows the joining of picture and sound and the moving of the file to its folder, big videos are joined in about half the time, a folder chosen in Download File Info takes the file there at once (the free space of that disk counts), and removing a download never takes another download's file away.",
-    "Sites that allow only a few connections at a time (\"too many requests\", HTTP 429): the download goes on by itself with fewer connections, and that site's next downloads start with that many.",
-    "Torrents: a magnet link shows its files first so you can choose them, and torrents find more people to download from. Links that work only in the browser (ChatGPT files, iLovePDF and other links that work once or need the page's sign-in) stay in the browser instead of failing.",
-    "Facebook and Instagram: videos of closed groups and friends-only posts are found with the browser's sign-in, an AV1 video (sound without picture in older players) says so, and sites that drop extra connections get fewer by themselves.",
-    "No more black windows: a window that Windows had cleared (shown again from next to the clock, after the screen slept...) is drawn whole again.",
-    "Sites that let only the browser in (HTTP 403): Ezoo Download sends exactly what the browser sent, and if the site still refuses, the browser is asked for the file and hands it back with the site's sign-in.",
-    "A PDF link goes straight to Ezoo Download: no second window asking where to save from the PDF viewer of Edge and Brave.",
-    "The browser add-in keeps working after an update: the setup puts it in again whole, it starts clean, and its window has \"Connect again\"; Options > Browsers has \"Repair the add-in\".",
-    "The video button stays where it is when its list opens (the list opens under it, or above it when there is no room), and a protected video (DRM) says so plainly with a lock.",
-    "Torrents find many more people to download from (public trackers), the window says how many are connected, and it tells you when nobody shares the torrent.",
-    "Direct links: the server is asked the way download managers usually ask, and a server that does not really resume gets one steady connection instead of failing again and again.",
-    "A file that changed on the server while it was paused starts again, instead of mixing the old and the new file; a server that can't resume and has trouble makes the download start again by itself.",
-    "The time left stays steady and still shows when the speed drops for a moment.",
-    "Settings that need a new start (the drawing, the port) ask to restart the program.",
-    "Safer: the add-in talks to the program on a port chosen at random on this computer, every request is signed with a secret key (the key itself is never sent), and watching the clipboard is off until you turn it on.",
-    "The mouse pointer stays normal on the video button.",
-    "Windows open in the middle of the screen without a white box first.",
+const WHATS_NEW: [&str; 4] = [
+    "The Firefox add-on stays up to date: when the add-on in Firefox is older than the program, Ezoo Download says so and opens the new one (click \"Add\" in Firefox).",
+    "Download File Info shows the whole size of a video whose picture and sound come apart (the same size as in the add-in), with the size of each.",
+    "The add-in downloads whole videos; \"Download a part of a video\" is in the program for now (Tasks > Download a part of a video).",
+    "Messages of the add-in in Arabic read right to left, and the setup never puts an older Firefox add-on back.",
 ];
 
 thread_local! {

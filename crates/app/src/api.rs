@@ -8,7 +8,7 @@
 use serde::Deserialize;
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::Duration;
 use tiny_http::{Header, Method, Request, Response, Server};
 
@@ -127,6 +127,9 @@ pub enum ApiEvent {
     /// the setup of a new version wants the program closed (it saves
     /// everything first; the downloads go on after the update)
     Quit,
+    /// the Ezoo Download add-on in Firefox is older than this program
+    /// (Firefox keeps its own copy): offer to put the new one in
+    OldFirefoxAddon,
 }
 
 /// Ask the copy of the program that is open to close (for the setup).
@@ -422,6 +425,44 @@ fn pair(req: Request, on_event: &impl Fn(ApiEvent)) {
     });
 }
 
+/// The Firefox add-on that asks is older than the one of this program.
+/// Add-ins say their version (X-Ezoo-Ext, since 1.0.10); a Firefox add-on
+/// that says nothing is from before.
+fn old_firefox_addon(req: &Request) -> bool {
+    is_old_firefox(
+        header(req, "X-Ezoo-Browser").as_deref(),
+        &header(req, "User-Agent").unwrap_or_default(),
+        header(req, "X-Ezoo-Ext").as_deref(),
+        &bundled_extension_version(),
+    )
+}
+
+fn is_old_firefox(browser: Option<&str>, user_agent: &str, ext: Option<&str>, ours: &str) -> bool {
+    let firefox = match browser {
+        Some(b) => b == "firefox",
+        None => user_agent.contains("Firefox/"),
+    };
+    if !firefox || ours.is_empty() {
+        return false;
+    }
+    match ext {
+        Some(v) => swiftget_engine::selfupdate::is_newer(ours, v.trim()),
+        // no version: an add-on from before 1.0.10
+        None => true,
+    }
+}
+
+/// At most once every 6 hours (the user may say "later").
+fn time_to_tell_old_addon() -> bool {
+    static LAST: AtomicU64 = AtomicU64::new(0);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let last = LAST.load(Ordering::Relaxed);
+    if last != 0 && now.saturating_sub(last) < 6 * 3600 {
+        return false;
+    }
+    LAST.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_ok()
+}
+
 /// Video look-ups running now (each one is a yt-dlp process).
 static RESOLVING: AtomicUsize = AtomicUsize::new(0);
 const MAX_RESOLVING: usize = 3;
@@ -442,6 +483,9 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
     }
 
     let path = req.url().split('?').next().unwrap_or("").to_string();
+    if old_firefox_addon(&req) && time_to_tell_old_addon() {
+        on_event(ApiEvent::OldFirefoxAddon);
+    }
     // "are you there", pairing, "show yourself" / "close" (this program and
     // its setup) are open on the known port; everything else is signed with
     // the key the add-in got from this program (another program on the
@@ -652,6 +696,22 @@ fn can_fetch(add: &AddRequest) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_old_firefox_addon_is_told() {
+        use super::is_old_firefox;
+        let ff = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0";
+        let chrome = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
+        // an add-on from before (no version): Firefox only
+        assert!(is_old_firefox(None, ff, None, "1.0.10"));
+        assert!(!is_old_firefox(None, chrome, None, "1.0.10"));
+        // the add-on says its version
+        assert!(is_old_firefox(Some("firefox"), ff, Some("1.0.9"), "1.0.10"));
+        assert!(!is_old_firefox(Some("firefox"), ff, Some("1.0.10"), "1.0.10"));
+        assert!(!is_old_firefox(Some("firefox"), ff, Some("1.0.11"), "1.0.10"));
+        assert!(!is_old_firefox(Some("chromium"), chrome, Some("1.0.8"), "1.0.10"));
+        assert!(!is_old_firefox(None, ff, None, ""));
+    }
 
     #[test]
     fn the_two_doors() {
