@@ -366,11 +366,15 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 4] = [
-    "The Firefox add-on stays up to date: when the add-on in Firefox is older than the program, Ezoo Download says so and opens the new one (click \"Add\" in Firefox).",
-    "Download File Info shows the whole size of a video whose picture and sound come apart (the same size as in the add-in), with the size of each.",
-    "The add-in downloads whole videos; \"Download a part of a video\" is in the program for now (Tasks > Download a part of a video).",
-    "Messages of the add-in in Arabic read right to left, and the setup never puts an older Firefox add-on back.",
+const WHATS_NEW: [&str; 8] = [
+    "A new 3D look (View > 3D): raised buttons with colored pictures, downloads on floating cards and shiny progress bars.",
+    "The setup asks for the language of the program at the first install, and can let torrents through the Windows firewall.",
+    "Options > Torrents: make Ezoo Download the main program for torrents, or leave magnet links and .torrent files to your own torrent program.",
+    "A torrent that is connected but gets nothing looks for other people by itself, and says why it waits.",
+    "Playlists: names in the program's language, right-to-left names shown from the right, a few videos at a time, and a video that fails is tried again by itself.",
+    "The add-in has one tab for the whole video and one for a part of it, and it never downloads the video that played before in the same player.",
+    "The right-click menu of the list is a real Windows menu that is never cut off, in the look of the program.",
+    "Sites that refuse extra connections: the download goes on with fewer. Up to 64 connections. A site that asks for a robot check says so, and the Firefox add-on is fetched from the official page when it is missing.",
 ];
 
 thread_local! {

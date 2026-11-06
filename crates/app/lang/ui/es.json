@@ -513,5 +513,8 @@
  "Official download page (GitHub)": "Página oficial de descarga (GitHub)",
  "Download Ezoo Download only from its official page.": "Descarga Ezoo Download solo desde su página oficial.",
  "© Ezoo Tech – All rights reserved": "© Ezoo Tech – Todos los derechos reservados",
- "Drag me": "Arrástrame"
+ "Drag me": "Arrástrame",
+ "Make Ezoo Download the main program for torrents": "Hacer de Ezoo Download el programa principal para torrents",
+ "On: magnet links and .torrent files open in Ezoo Download, from the browser and from Windows. Off: they stay with the browser and your own torrent program.": "Activado: los enlaces magnet y los archivos .torrent se abren en Ezoo Download, desde el navegador y desde Windows. Desactivado: se quedan con el navegador y tu propio programa de torrents.",
+ "3D": "3D"
 }

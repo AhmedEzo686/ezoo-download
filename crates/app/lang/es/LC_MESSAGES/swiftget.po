@@ -346,6 +346,9 @@ msgstr "Noche turquesa"
 msgid "Rose"
 msgstr "Rosa"
 
+msgid "3D"
+msgstr "3D"
+
 msgid "Appearance…"
 msgstr "Apariencia…"
 
@@ -1314,6 +1317,12 @@ msgstr "Activar siempre el limitador al iniciar Ezoo Download"
 
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "Cada descarga puede tener también su propio límite: su ventana de progreso > pestaña Limitador de velocidad."
+
+msgid "Make Ezoo Download the main program for torrents"
+msgstr "Hacer de Ezoo Download el programa principal para torrents"
+
+msgid "On: magnet links and .torrent files open in Ezoo Download, from the browser and from Windows. Off: they stay with the browser and your own torrent program."
+msgstr "Activado: los enlaces magnet y los archivos .torrent se abren en Ezoo Download, desde el navegador y desde Windows. Desactivado: se quedan con el navegador y tu propio programa de torrents."
 
 msgid "Keep sharing a finished torrent for (minutes)"
 msgstr "Seguir compartiendo un torrent terminado durante (minutos)"

@@ -14,6 +14,12 @@ thread_local! {
     static APPLIED: Cell<(isize, u32)> = const { Cell::new((0, 100)) };
 }
 
+/// The Win32 handle of a shown window (for the native menu).
+#[cfg(windows)]
+pub(crate) fn hwnd(w: &slint::Window) -> Option<isize> {
+    hwnd_of(w)
+}
+
 /// The Win32 handle of a shown window.
 #[cfg(windows)]
 fn hwnd_of(w: &slint::Window) -> Option<isize> {

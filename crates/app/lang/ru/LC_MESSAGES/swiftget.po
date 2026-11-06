@@ -346,6 +346,9 @@ msgstr "Бирюзовая ночь"
 msgid "Rose"
 msgstr "Розовая"
 
+msgid "3D"
+msgstr "3D"
+
 msgid "Appearance…"
 msgstr "Оформление…"
 
@@ -1314,6 +1317,12 @@ msgstr "Всегда включать ограничитель при запус
 
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "У каждой загрузки может быть свой лимит: её окно хода загрузки > вкладка «Ограничитель скорости»."
+
+msgid "Make Ezoo Download the main program for torrents"
+msgstr "Сделать Ezoo Download основной программой для торрентов"
+
+msgid "On: magnet links and .torrent files open in Ezoo Download, from the browser and from Windows. Off: they stay with the browser and your own torrent program."
+msgstr "Вкл.: magnet-ссылки и файлы .torrent открываются в Ezoo Download — из браузера и из Windows. Выкл.: они остаются браузеру и вашей программе для торрентов."
 
 msgid "Keep sharing a finished torrent for (minutes)"
 msgstr "Раздавать завершённый торрент ещё (минут)"

@@ -23,6 +23,12 @@ use tokio_util::sync::CancellationToken;
 
 /// How long we wait for the next chunk before treating the connection as dead.
 const STALL_TIMEOUT: Duration = Duration::from_secs(20);
+/// How long the other connections are watched before a refused one (403)
+/// is taken for "one connection too many".
+#[cfg(not(test))]
+const OTHERS_WATCH: Duration = Duration::from_secs(2);
+#[cfg(test)]
+const OTHERS_WATCH: Duration = Duration::from_millis(400);
 
 /// How long a request waits for the server's answer before it is made again.
 const HEADERS_TIMEOUT: Duration = Duration::from_secs(20);
@@ -162,7 +168,7 @@ pub async fn run(
             }
             match progress.want_connections.load(Ordering::Relaxed) {
                 0 => job_conns,
-                n => n.clamp(1, 32),
+                n => n.clamp(1, 64),
             }
         }
     };
@@ -379,6 +385,24 @@ impl Worker {
 
     /// More connections run than wanted now: this one stops (counted at once,
     /// so only as many stop as needed).
+    /// The other connections still bring data (watched for 2 seconds): the
+    /// link works, this connection alone was refused.
+    async fn others_bring_data(&self) -> bool {
+        let others = {
+            let c = self.crew.lock().unwrap();
+            c.running.saturating_sub(c.leaving)
+        };
+        if others < 2 {
+            return false;
+        }
+        let before = self.progress.bytes.load(Ordering::Relaxed);
+        tokio::select! {
+            _ = tokio::time::sleep(OTHERS_WATCH) => {}
+            _ = self.cancel.cancelled() => return false,
+        }
+        self.progress.bytes.load(Ordering::Relaxed) > before
+    }
+
     fn should_leave(&self) -> bool {
         let want = (self.wanted)();
         let mut c = self.crew.lock().unwrap();
@@ -494,6 +518,28 @@ impl Worker {
                         }
                         continue;
                     }
+                    if matches!(status, Some(401 | 403)) && self.segmented && !crate::http::wants_captcha(&e) && self.others_bring_data().await {
+                        // refused while the other connections of the same
+                        // link go on: not an expired link but one connection
+                        // too many (pixeldrain and other sites answer 403, not
+                        // 429). One less from now on, as for 429; this one
+                        // goes and its part stays for the others
+                        let now = {
+                            let c = self.crew.lock().unwrap();
+                            c.running.saturating_sub(c.leaving)
+                        };
+                        let fewer = now.saturating_sub(1).max(1);
+                        lower_wanted(&self.progress, self.job.connections.max(1), fewer);
+                        learn(&self.job.url, fewer);
+                        if self.should_leave() {
+                            return Err(Leave.into());
+                        }
+                        too_many += 1;
+                        if too_many > 40 {
+                            return Err(e);
+                        }
+                        continue;
+                    }
                     if network && self.segmented && !format!("{e:#}").contains("slow connection") && self.server_drops_too_many() {
                         // the server keeps dropping connections while the
                         // others go on (sites that allow only a few): half as
@@ -571,6 +617,15 @@ impl Worker {
         let status = resp.status();
         if status == StatusCode::TOO_MANY_REQUESTS {
             self.retry_after.store(retry_after_of(&resp).unwrap_or(0), Ordering::Relaxed);
+        }
+        if status == StatusCode::FORBIDDEN {
+            // a site that wants a "not a robot" check (pixeldrain and others
+            // say so in the answer): no new link or try helps, the browser must
+            let body = tokio::time::timeout(Duration::from_secs(3), resp.chunk()).await.ok().and_then(|c| c.ok()).flatten();
+            if body.is_some_and(|b| String::from_utf8_lossy(&b[..b.len().min(4096)]).to_ascii_lowercase().contains("captcha")) {
+                return Err(anyhow!(HttpStatus(403)).context(crate::http::CAPTCHA));
+            }
+            return Err(HttpStatus(403).into());
         }
         if self.segmented {
             if status != StatusCode::PARTIAL_CONTENT {

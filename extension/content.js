@@ -346,6 +346,18 @@
     .clip .acts { display: flex; gap: 6px; margin-top: 6px; }
     .clip .pick { margin-top: 8px; font-weight: 600; color: #334; }
     .cliprow .t { color: #1d63d6; }
+    /* "⬇ Whole video" / "✂ Part" */
+    .tabs { display: flex; border-bottom: 1px solid #e3e8ef; background: #f4f6fa; }
+    .tab { flex: 1; text-align: center; padding: 6px 4px; cursor: default; color: #4a5566; font-weight: 600; border-bottom: 2px solid transparent; }
+    .tab:hover { background: #e8f0fe; }
+    .tab.on { color: #1d63d6; border-bottom-color: #1d63d6; background: #fff; }
+    .clip .times { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 6px; }
+    .clip .times b { font-weight: 600; }
+    .clip .times input[type=text] { width: 58px; }
+    .clip .kinds { display: flex; gap: 6px; margin: 4px 0 2px; }
+    .clip .kinds span { flex: 1; text-align: center; border: 1px solid #c9d1dc; border-radius: 4px; padding: 3px 4px; cursor: default; color: #334; background: #fff; }
+    .clip .kinds span.on { border-color: #1d63d6; background: #e8f0fe; color: #1d63d6; font-weight: 600; }
+    .clip .note { color: #6b7686; font-size: 10.5px; }
     /* looks */
     .dark .btn { background: linear-gradient(#3a3f47, #23272e); border-color: #15181c; }
     .dark .btn:hover, .dark .btn.open { background: linear-gradient(#454b55, #2a2f37); }
@@ -471,6 +483,12 @@
       b.dismissed = true;
       host.remove();
     });
+    // one player for many videos (the previews of a home page, a feed): a
+    // new video in it forgets what was found for the one before
+    video.addEventListener("emptied", () => forget(b));
+    video.addEventListener("loadstart", () => {
+      if (b.own && b.ownFor !== videoKey(b.video)) forget(b);
+    });
     layer().appendChild(host);
     bubbles.set(video, b);
     renderOne(b);
@@ -478,18 +496,40 @@
     return b;
   }
 
-  // the part panel is switched off in the add-in (see renderOne)
-  const PARTS_IN_ADDIN = false;
+
+  // which video a player shows now: its own link and its own file
+  function videoKey(video) {
+    return (ownLink(video) || "") + "|" + (video.currentSrc || video.src || "");
+  }
+
+  // what was found belongs to another video of this player now
+  function forget(b) {
+    if (!b.own && !b.loading) return;
+    b.own = null;
+    b.ownFor = "";
+    b.loading = false;
+    b.open = false;
+    renderOne(b);
+  }
 
   function itemsOf(b) {
+    if (b.own && b.ownFor !== videoKey(b.video)) {
+      b.own = null;
+      b.ownFor = "";
+    }
     if (b.own) return b.own;
-    return isMain(b.video) ? items : [];
+    // the page's own video only: a player that shows another video (a
+    // preview on a home page) is looked up for that video
+    if (!isMain(b.video)) return [];
+    const mine = ownLink(b.video);
+    return !mine || isVideoPage(location.href) || mine === cleanLink(location.href) ? items : [];
   }
 
   function lookUp(b, stream) {
     // another video on the page (or nothing found for it yet): look it up now
     b.loading = true;
     b.open = true;
+    const asked = videoKey(b.video);
     renderOne(b, "Looking for the video qualities…");
     chrome.runtime.sendMessage(
       // its own post / video link, or its own file; the page only when
@@ -510,7 +550,13 @@
           if (/not running/i.test(res.error)) return notRunning(b, () => lookUp(b, stream));
           return renderOne(b, res.error, true);
         }
+        // the player went on to another video meanwhile: not its qualities
+        if (videoKey(b.video) !== asked) {
+          b.open = false;
+          return renderOne(b);
+        }
         b.own = res.items || [];
+        b.ownFor = asked;
         renderOne(b);
       }
     );
@@ -653,10 +699,29 @@
     }
     const title = (list.find((m) => m.yt && m.yt.title) || {}).yt;
     box.appendChild(el("div", { class: "head", dir: "auto", title: (title && title.title) || cleanTitle(), text: (title && title.title) || cleanTitle() }));
-    // "Download a part of this video" stays in the program only for now
-    // (Tasks > Download a part of a video); the add-in offers whole videos
-    const partOk = PARTS_IN_ADDIN && usable.some(canCut);
-    if (b.clipMode && partOk) {
+    // two tabs: the whole video (never a part), or a part of it
+    const partOk = usable.some(canCut);
+    const partTab = b.clipMode && partOk;
+    if (partOk) {
+      const tab = (on, text, part) => {
+        const t = el("div", { class: "tab" + (on ? " on" : ""), text });
+        t.addEventListener("click", () => {
+          if (b.clipMode === part) return;
+          b.clipMode = part;
+          if (part && !b.clip) {
+            const v = b.video;
+            const at = Math.floor(v.currentTime || 0);
+            const dur = Number.isFinite(v.duration) ? v.duration : 0;
+            b.clip = { from: at, to: dur ? Math.min(dur, at + 30) : at + 30, exact: false };
+          }
+          if (!part) stopPart(b);
+          renderOne(b);
+        });
+        return t;
+      };
+      box.appendChild(el("div", { class: "tabs" }, tab(!partTab, "⬇ Whole video", false), tab(partTab, "✂ Part", true)));
+    }
+    if (partTab) {
       box.appendChild(clipPanel(b));
     } else {
       const all = downloadAllOf(b, usable);
@@ -665,29 +730,10 @@
         row.addEventListener("click", all.run);
         box.appendChild(row);
       }
-      if (partOk) {
-        const row = el(
-          "div",
-          { class: "item cliprow" },
-          el("span", { class: "num", text: "✂" }),
-          el("div", { class: "body" }, el("div", { class: "t", text: "Download a part of this video…" }), el("div", { class: "s", text: "Only the part you choose is downloaded" }))
-        );
-        row.addEventListener("click", () => {
-          b.clipMode = true;
-          if (!b.clip) {
-            const v = b.video;
-            const at = Math.floor(v.currentTime || 0);
-            const dur = Number.isFinite(v.duration) ? v.duration : 0;
-            b.clip = { from: at, to: dur ? Math.min(dur, at + 30) : at + 30, exact: false };
-          }
-          renderOne(b);
-        });
-        box.appendChild(row);
-      }
     }
     let n = 0;
     list.forEach((m) => {
-      if (b.clipMode && partOk && !canCut(m)) return;
+      if (partTab && !canCut(m)) return;
       const d = describe(m);
       const t = el("div", { class: "t" }, el("span", { text: d.main }));
       if (d.tag) t.append(el("span", { class: "tag " + d.tag.replace(/\s/g, "").replace(/^(\d)K$/, "K$1"), text: d.tag }));
@@ -699,7 +745,7 @@
         el("span", { class: "num", text: m.disabled ? "" : `${++n}.` }),
         el("div", { class: "body" }, t, el("div", { class: "s", text: sub }))
       );
-      if (!m.disabled) row.addEventListener("click", () => (b.clipMode && partOk ? downloadPart(b, m) : download(b, m)));
+      if (!m.disabled) row.addEventListener("click", () => (partTab ? downloadPart(b, m) : download(b, m)));
       box.appendChild(row);
     });
   }
@@ -717,6 +763,7 @@
   }
 
   // From / To, the kind of cut, a look at the part on the page's own player
+  // (small: the qualities come right under it)
   function clipPanel(b) {
     const c = b.clip;
     const v = b.video;
@@ -727,7 +774,7 @@
       len.textContent = ok ? `Length of the part: ${clock(c.to - c.from)}` : "The end must come after the start.";
       len.classList.toggle("err", !ok);
     };
-    const timeRow = (label, key) => {
+    const time = (label, key) => {
       const input = el("input", { type: "text", value: clock(c[key]), "aria-label": label });
       keepKeys(input);
       input.addEventListener("input", () => {
@@ -738,41 +785,45 @@
           showLen();
         }
       });
-      const now = el("span", { class: "now", title: "The time the video is at now", text: "⏱ Now" });
+      const now = el("span", { class: "now", title: "The time the video is at now", text: "⏱" });
       now.addEventListener("click", () => {
         c[key] = Math.floor(v.currentTime || 0);
         input.value = clock(c[key]);
         input.classList.remove("bad");
         showLen();
       });
-      return el("div", { class: "row" }, el("b", { text: label }), input, now);
+      return [el("b", { text: label }), input, now];
     };
-    const kind = (exact, title, words) => {
-      const r = el("input", { type: "radio", name: "cut" });
-      r.checked = c.exact === exact;
-      r.addEventListener("change", () => (c.exact = exact));
-      return el("label", {}, r, el("span", {}, el("span", { text: title }), el("small", { text: words })));
+    const note = el("div", { class: "note" });
+    const kinds = el("div", { class: "kinds" });
+    const showKinds = () => {
+      kinds.replaceChildren();
+      for (const [exact, text, words] of [
+        [false, "Quick", "Takes seconds; it may start a second or two early."],
+        [true, "Exact", "Starts on the very second; takes longer."],
+      ]) {
+        const k = el("span", { class: c.exact === exact ? "on" : "", text });
+        k.addEventListener("click", () => {
+          c.exact = exact;
+          showKinds();
+        });
+        kinds.appendChild(k);
+        if (c.exact === exact) note.textContent = words;
+      }
     };
-    const preview = el("span", { class: "btn2", text: "▶ Preview the part" });
+    const preview = el("span", { class: "btn2", text: "▶ Preview" });
     preview.addEventListener("click", () => playPart(b));
-    const back = el("span", { class: "btn2", text: "← Back" });
-    back.addEventListener("click", () => {
-      b.clipMode = false;
-      stopPart(b);
-      renderOne(b);
-    });
     const box = el(
       "div",
       { class: "clip" },
-      timeRow("From", "from"),
-      timeRow("To", "to"),
+      el("div", { class: "times" }, ...time("From", "from"), ...time("To", "to"), preview),
       len,
-      kind(false, "Quick cut (recommended)", "Takes seconds, the quality stays as it is; the part may start a second or two before your time."),
-      kind(true, "Exact cut", "Starts on the very second you chose; the picture is made again, so it takes longer."),
-      el("div", { class: "acts" }, preview, back),
+      kinds,
+      note,
       el("div", { class: "pick", text: "Choose the quality of the part:" })
     );
     showLen();
+    showKinds();
     return box;
   }
 
@@ -812,7 +863,7 @@
     const fileName = `${cleanTitle()}.${m.ext || "mp4"}`;
     stopPart(b);
     chrome.runtime.sendMessage(
-      { type: "swiftget-download", item: m, title: document.title, fileName, referrer: location.href, clip },
+      { type: "swiftget-download", item: m, title: document.title, fileName, referrer: location.href, clip, part: true },
       (res) => {
         if (chrome.runtime.lastError || !res || !res.ok) notRunning(b, () => downloadPart(b, m));
         else {

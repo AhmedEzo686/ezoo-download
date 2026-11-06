@@ -664,6 +664,34 @@ const AR: &[(&str, &str)] = &[
     ("The file list did not come yet: all files will be downloaded (they show once it starts).", "لم تصل قائمة الملفات بعد: سيتم تحميل كل الملفات (تظهر بعد بدء التحميل)."),
     ("Torrents: a magnet link shows its files first so you can choose them, and torrents find more people to download from. Links that work only in the browser (ChatGPT files, iLovePDF and other links that work once or need the page's sign-in) stay in the browser instead of failing.", "التورنت: رابط المغناطيس يعرض ملفاته أولًا لتختار منها، والتورنت يجد أشخاصًا أكثر للتحميل منهم. الروابط التي تعمل في المتصفح فقط (ملفات ChatGPT وiLovePDF وغيرها من الروابط التي تعمل مرة واحدة أو تحتاج تسجيل دخول الصفحة) تبقى في المتصفح بدل أن تفشل."),
     ("Facebook and Instagram: videos of closed groups and friends-only posts are found with the browser's sign-in, an AV1 video (sound without picture in older players) says so, and sites that drop extra connections get fewer by themselves.", "فيسبوك وإنستجرام: فيديوهات الجروبات المغلقة ومنشورات الأصدقاء فقط تُجلب بتسجيل دخول المتصفح، وفيديو AV1 (صوت بدون صورة في المشغّلات القديمة) ينبّهك لذلك، والمواقع التي تقطع الاتصالات الزائدة تحصل على اتصالات أقل تلقائيًا."),
+    ("The site asks to confirm you are not a robot. Open the link in the browser, confirm there, then click Resume.", "الموقع يطلب التأكد من أنك لست روبوتًا. افتح الرابط في المتصفح وأكّد هناك، ثم اضغط استكمال."),
+    ("Connected to people who send nothing yet (they don't have the missing pieces, or they are busy). Ezoo Download keeps looking for others who have the file.", "متصل بأجهزة لا ترسل شيئًا حتى الآن (ليس لديها الأجزاء الناقصة، أو أنها مشغولة). Ezoo Download يواصل البحث عن آخرين لديهم الملف."),
+    ("Getting the signed Firefox add-on from the official page…", "جارٍ جلب إضافة Firefox الموقّعة من الصفحة الرسمية…"),
+    ("The Firefox add-on could not be fetched ({}). Check the internet and click Firefox again.", "تعذر جلب إضافة Firefox ‏({}). تأكد من الإنترنت واضغط Firefox مرة أخرى."),
+    ("Check file (SHA-256)", "فحص الملف (SHA-256)"),
+    ("Copy address", "نسخ الرابط"),
+    ("Delete from queue", "حذف من قائمة الانتظار"),
+    ("Download a part of it…", "تحميل جزء منه…"),
+    ("Move / Rename…", "نقل / إعادة تسمية…"),
+    ("Move to queue", "نقل إلى قائمة الانتظار"),
+    ("Open folder", "فتح المجلد"),
+    ("Open with…", "فتح باستخدام…"),
+    ("Open", "فتح"),
+    ("Play while downloading", "تشغيل أثناء التحميل"),
+    ("Properties", "الخصائص"),
+    ("Redownload", "إعادة التحميل"),
+    ("Refresh download address…", "تحديث رابط التحميل…"),
+    ("Remove", "حذف"),
+    ("Resume download", "استئناف التحميل"),
+    ("{} downloads selected", "تم تحديد {} تحميلات"),
+    ("A new 3D look (View > 3D): raised buttons with colored pictures, downloads on floating cards and shiny progress bars.", "شكل جديد ثلاثي الأبعاد (عرض > ثلاثي الأبعاد 3D): أزرار بارزة بصور ملونة، وتحميلات على بطاقات طافية، وأشرطة تقدم لامعة."),
+    ("The setup asks for the language of the program at the first install, and can let torrents through the Windows firewall.", "برنامج التثبيت يسأل عن لغة البرنامج عند أول تثبيت، ويمكنه السماح للتورنت بالمرور من جدار حماية Windows."),
+    ("Options > Torrents: make Ezoo Download the main program for torrents, or leave magnet links and .torrent files to your own torrent program.", "الخيارات > التورنت: اجعل Ezoo Download البرنامج الرئيسي للتورنت، أو اترك روابط magnet وملفات ‎.torrent لبرنامج التورنت الخاص بك."),
+    ("A torrent that is connected but gets nothing looks for other people by itself, and says why it waits.", "التورنت المتصل الذي لا يصله شيء يبحث عن أجهزة أخرى وحده، ويوضح سبب الانتظار."),
+    ("Playlists: names in the program's language, right-to-left names shown from the right, a few videos at a time, and a video that fails is tried again by itself.", "قوائم التشغيل: الأسماء بلغة البرنامج، والأسماء العربية تظهر من اليمين، وبضعة فيديوهات في المرة الواحدة، والفيديو الذي يفشل يُعاد تحميله وحده."),
+    ("The add-in has one tab for the whole video and one for a part of it, and it never downloads the video that played before in the same player.", "إضافة المتصفح فيها تبويب للفيديو كامل وتبويب لجزء منه، ولا تحمّل أبدًا الفيديو الذي كان يعمل قبله في نفس المشغل."),
+    ("The right-click menu of the list is a real Windows menu that is never cut off, in the look of the program.", "قائمة الزر الأيمن في القائمة أصبحت قائمة Windows حقيقية لا تُقطع أبدًا، بنفس شكل البرنامج."),
+    ("Sites that refuse extra connections: the download goes on with fewer. Up to 64 connections. A site that asks for a robot check says so, and the Firefox add-on is fetched from the official page when it is missing.", "المواقع التي ترفض الاتصالات الإضافية: التحميل يكمل باتصالات أقل. حتى 64 اتصالًا. الموقع الذي يطلب التأكد من أنك لست روبوتًا يوضح ذلك، وإضافة Firefox تُجلب من الصفحة الرسمية عندما تكون غير موجودة."),
 ];
 
 #[cfg(test)]
@@ -692,5 +720,44 @@ mod tests {
         }
         assert_eq!(index_of("xx"), 0);
         assert_eq!(effective("es"), "es");
+    }
+}
+
+/// A name written right to left (Arabic, Hebrew, Persian…): its first
+/// letter decides, as in a text editor.
+pub fn rtl_text(s: &str) -> bool {
+    for c in s.chars() {
+        let u = c as u32;
+        if matches!(u, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF | 0x10800..=0x10FFF | 0x1E800..=0x1EFFF) {
+            return true;
+        }
+        if c.is_alphabetic() {
+            return false;
+        }
+    }
+    false
+}
+
+/// The name as it is shown in a list: a right-to-left one starts with the
+/// invisible right-to-left mark, so numbers and Latin words in it keep
+/// their place.
+pub fn shown_name(s: &str) -> String {
+    if rtl_text(s) {
+        format!("\u{200F}{s}")
+    } else {
+        s.to_string()
+    }
+}
+
+#[cfg(test)]
+mod rtl_tests {
+    #[test]
+    fn first_letter_decides() {
+        assert!(super::rtl_text("07 - طريقة عمل الأرز"));
+        assert!(super::rtl_text("שלום world"));
+        assert!(!super::rtl_text("How to — طريقة"));
+        assert!(!super::rtl_text("123"));
+        assert_eq!(super::shown_name("abc"), "abc");
+        assert_eq!(super::shown_name("أ"), "\u{200F}أ");
     }
 }

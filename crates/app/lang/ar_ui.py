@@ -532,4 +532,7 @@ AR = {
     "Official download page (GitHub)": "صفحة التحميل الرسمية (GitHub)",
     "Download Ezoo Download only from its official page.": "حمّل Ezoo Download من صفحته الرسمية فقط.",
     "© Ezoo Tech – All rights reserved": "© Ezoo Tech – كل الحقوق محفوظة",
+    "Make Ezoo Download the main program for torrents": "جعل Ezoo Download البرنامج الرئيسي للتورنت",
+    "On: magnet links and .torrent files open in Ezoo Download, from the browser and from Windows. Off: they stay with the browser and your own torrent program.": "تشغيل: روابط magnet وملفات ‎.torrent تُفتح في Ezoo Download، من المتصفح ومن Windows. إيقاف: تبقى مع المتصفح وبرنامج التورنت الخاص بك.",
+    "3D": "ثلاثي الأبعاد 3D",
 }

@@ -28,6 +28,19 @@ mod imp {
         reg(&["query", r"HKCU\Software\Ezoo\EzooDownload", "/v", "Installed"])
     }
 
+    /// What the setup program wrote for the first start ("Language",
+    /// "Torrents").
+    pub fn setup_value(name: &str) -> Option<String> {
+        let out = Command::new(swiftget_engine::system::windows_tool("reg.exe"))
+            .args(["query", r"HKCU\Software\Ezoo\EzooDownload", "/v", name])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())?;
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        text.lines().find_map(|l| l.split_once("REG_SZ").map(|(_, v)| v.trim().to_string())).filter(|v| !v.is_empty())
+    }
+
     pub fn set(enabled: bool) -> bool {
         if enabled {
             let Ok(exe) = std::env::current_exe() else { return false };
@@ -50,6 +63,9 @@ mod imp {
     pub fn installed_by_setup() -> bool {
         false
     }
+    pub fn setup_value(_name: &str) -> Option<String> {
+        None
+    }
 }
 
-pub use imp::{installed_by_setup, is_enabled, set};
+pub use imp::{installed_by_setup, is_enabled, set, setup_value};

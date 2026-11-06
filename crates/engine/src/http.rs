@@ -144,7 +144,17 @@ pub fn is_passing_error(e: &anyhow::Error) -> bool {
 /// a new link is fetched the way the first one was (the address the
 /// download came from, or the video's page), checked, and the download goes
 /// on with it from where it was.
+/// The site wants a "not a robot" check in the browser first.
+pub const CAPTCHA: &str = "the site asks to confirm you are not a robot: open the link in the browser, confirm, then resume the download";
+
+pub fn wants_captcha(e: &anyhow::Error) -> bool {
+    format!("{e:#}").contains(CAPTCHA)
+}
+
 pub fn is_link_gone(e: &anyhow::Error) -> bool {
+    if wants_captcha(e) {
+        return false;
+    }
     if matches!(http_status_of(e), Some(401 | 403 | 410)) {
         return true;
     }
@@ -282,6 +292,22 @@ pub fn build_client_with(proxy: &ProxyConfig) -> anyhow::Result<Client> {
         _ => {}
     }
     Ok(b.build()?)
+}
+
+/// A small file (a few MB at most) fetched whole, e.g. the signed Firefox
+/// add-on of a release.
+pub async fn fetch_small(proxy: &ProxyConfig, url: &str) -> anyhow::Result<Vec<u8>> {
+    let client = build_client_with(proxy)?;
+    let resp = client
+        .get(url)
+        .header(reqwest::header::USER_AGENT, crate::config::DEFAULT_USER_AGENT)
+        .timeout(Duration::from_secs(60))
+        .send_ordered()
+        .await?;
+    if !resp.status().is_success() {
+        return Err(HttpStatus(resp.status().as_u16()).into());
+    }
+    Ok(resp.bytes().await?.to_vec())
 }
 
 /// How many redirects one request follows.

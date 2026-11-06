@@ -66,6 +66,7 @@ fn row(it: &Item) -> LinkRow {
     LinkRow {
         checked: it.checked,
         name: it.name.clone().into(),
+        rtl: crate::i18n::rtl_text(&it.name),
         kind: it.kind.into(),
         ext: it.ext.clone().into(),
         text: it.text.clone().into(),

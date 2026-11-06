@@ -503,11 +503,16 @@ fn resolve_args(page_url: &str, cookie_file: Option<&Path>, referer: Option<&str
     a
 }
 
-fn playlist_args(url: &str, cookie_file: Option<&Path>) -> Vec<std::ffi::OsString> {
+fn playlist_args(url: &str, cookie_file: Option<&Path>, lang: &str) -> Vec<std::ffi::OsString> {
     let mut a: Vec<std::ffi::OsString> = ["--ignore-config", "-J", "--flat-playlist", "--yes-playlist", "--no-warnings", "--no-cache-dir", "--socket-timeout", "20"]
         .iter()
         .map(Into::into)
         .collect();
+    // the names in the user's language, when the site has them in it
+    if !lang.is_empty() && lang.len() <= 5 && lang.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        a.push("--extractor-args".into());
+        a.push(format!("youtube:lang={lang}").into());
+    }
     if let Some(c) = cookie_file {
         a.push("--cookies".into());
         a.push(c.into());
@@ -790,15 +795,51 @@ pub struct PlaylistEntry {
 pub struct PlaylistInfo {
     pub title: String,
     pub entries: Vec<PlaylistEntry>,
+    /// lists inside it (a channel's tabs): their addresses
+    pub tabs: Vec<String>,
 }
 
 /// The videos of a playlist (or channel page), without looking at each
-/// video yet (`--flat-playlist`, fast). Blocking.
-pub fn playlist(url: &str) -> anyhow::Result<PlaylistInfo> {
+/// video yet (`--flat-playlist`, fast). `lang`: the language wanted for the
+/// names ("ar"; "" = the site's choice). Blocking.
+pub fn playlist(url: &str, lang: &str) -> anyhow::Result<PlaylistInfo> {
+    let url = channel_videos(url);
+    let info = playlist_once(&url, lang)?;
+    // a channel page gives its tabs (Videos, Shorts, Live), not videos: the
+    // videos of the first tab
+    if info.entries.is_empty() {
+        if let Some(tab) = info.tabs.first() {
+            let mut inner = playlist_once(tab, lang)?;
+            if inner.title == "Playlist" {
+                inner.title = info.title;
+            }
+            return Ok(inner);
+        }
+    }
+    Ok(info)
+}
+
+/// A YouTube channel's own address ("youtube.com/@name") lists its tabs:
+/// its videos are under "/videos".
+fn channel_videos(url: &str) -> String {
+    let trimmed = url.trim().trim_end_matches('/');
+    let Some(at) = trimmed.find("youtube.com/@") else { return url.trim().to_string() };
+    let rest = &trimmed[at + "youtube.com/@".len()..];
+    if rest.is_empty() || rest.contains('?') || rest.contains('#') {
+        return url.trim().to_string();
+    }
+    match rest.split_once('/') {
+        None => format!("{trimmed}/videos"),
+        Some((_, "featured")) => format!("{}/videos", trimmed.trim_end_matches("/featured")),
+        Some(_) => url.trim().to_string(),
+    }
+}
+
+fn playlist_once(url: &str, lang: &str) -> anyhow::Result<PlaylistInfo> {
     let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe was not found next to EzooDownload.exe"))?;
     let json = with_cookies(url, None, |file| {
         let mut cmd = ytdlp_command(&tool);
-        cmd.args(playlist_args(url, file));
+        cmd.args(playlist_args(url, file, lang));
         let out = cmd.output().context("could not start yt-dlp")?;
         if !out.status.success() {
             let err = String::from_utf8_lossy(&out.stderr);
@@ -824,7 +865,15 @@ pub fn parse_playlist(json: &Value) -> PlaylistInfo {
             });
         }
     }
+    let mut tabs = Vec::new();
     for e in list {
+        // a list inside the list (a channel's "Videos" tab): not a video
+        if e["_type"].as_str() == Some("playlist") || e["ie_key"].as_str() == Some("YoutubeTab") {
+            if let Some(u) = e["url"].as_str().filter(|u| u.starts_with("http")) {
+                tabs.push(u.to_string());
+            }
+            continue;
+        }
         let url = e["url"]
             .as_str()
             .filter(|u| u.starts_with("http"))
@@ -839,7 +888,7 @@ pub fn parse_playlist(json: &Value) -> PlaylistInfo {
         }
         entries.push(PlaylistEntry { title: t.to_string(), url, duration: as_u64(&e["duration"]).unwrap_or(0) });
     }
-    PlaylistInfo { title, entries }
+    PlaylistInfo { title, entries, tabs }
 }
 
 /// Height of a choice ("1080p60" -> 1080; audio / unknown -> 0).
@@ -1034,6 +1083,26 @@ mod tests {
     }
 
     #[test]
+    fn channel_pages_list_their_videos() {
+        assert_eq!(super::channel_videos("https://www.youtube.com/@name"), "https://www.youtube.com/@name/videos");
+        assert_eq!(super::channel_videos("https://www.youtube.com/@name/"), "https://www.youtube.com/@name/videos");
+        assert_eq!(super::channel_videos("https://www.youtube.com/@name/featured"), "https://www.youtube.com/@name/videos");
+        assert_eq!(super::channel_videos("https://www.youtube.com/@name/shorts"), "https://www.youtube.com/@name/shorts");
+        assert_eq!(super::channel_videos("https://www.youtube.com/playlist?list=PL1"), "https://www.youtube.com/playlist?list=PL1");
+        let tabs = serde_json::json!({"_type": "playlist", "title": "Name", "entries": [
+            {"_type": "url", "ie_key": "YoutubeTab", "url": "https://www.youtube.com/@name/videos", "title": "Name - Videos"},
+            {"_type": "url", "ie_key": "YoutubeTab", "url": "https://www.youtube.com/@name/shorts", "title": "Name - Shorts"}
+        ]});
+        let p = super::parse_playlist(&tabs);
+        assert!(p.entries.is_empty());
+        assert_eq!(p.tabs.len(), 2);
+        let a: Vec<String> = super::playlist_args("u", None, "ar").iter().map(|x| x.to_string_lossy().into_owned()).collect();
+        assert!(a.windows(2).any(|w| w[0] == "--extractor-args" && w[1] == "youtube:lang=ar"));
+        let b: Vec<String> = super::playlist_args("u", None, "a b").iter().map(|x| x.to_string_lossy().into_owned()).collect();
+        assert!(!b.contains(&"--extractor-args".to_string()));
+    }
+
+    #[test]
     fn playlists_and_quality_choice() {
         let j = json!({"_type": "playlist", "title": "Course", "entries": [
             {"id": "aaa", "title": "Lesson 1", "url": "https://www.youtube.com/watch?v=aaa", "duration": 61.0},
@@ -1073,7 +1142,7 @@ mod tests {
         assert!(!a.iter().any(|x| x == "--referer"), "only a web address is a referer");
         let r: Vec<String> = resolve_args("https://cdn/x.mpd", None, Some("https://site/page")).iter().map(|x| x.to_string_lossy().into_owned()).collect();
         assert!(r.windows(2).any(|w| w[0] == "--referer" && w[1] == "https://site/page"));
-        let p: Vec<String> = playlist_args("-o x", None).iter().map(|x| x.to_string_lossy().into_owned()).collect();
+        let p: Vec<String> = playlist_args("-o x", None, "").iter().map(|x| x.to_string_lossy().into_owned()).collect();
         assert_eq!(p[0], "--ignore-config");
         assert_eq!(&p[p.len() - 2..], ["--", "-o x"]);
     }

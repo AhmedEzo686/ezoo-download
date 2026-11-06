@@ -277,6 +277,10 @@ pub struct Settings {
     /// torrents: most upload speed in KB/s (0 = no limit)
     #[serde(default)]
     pub torrent_upload_kb: u64,
+    /// Ezoo Download is the main program for torrents: magnet links and
+    /// .torrent files from the browser (the add-in) and from Windows open in
+    /// it. Off: they stay with the browser / the torrent program of the user
+    pub torrent_main: bool,
     /// "remember this path for this category" from the download dialog
     pub category_dirs: std::collections::BTreeMap<String, PathBuf>,
     pub hide_categories: bool,
@@ -429,6 +433,7 @@ impl Default for Settings {
             speed_limit_on: false,
             torrent_seed_minutes: 0,
             torrent_upload_kb: 0,
+            torrent_main: true,
             category_dirs: Default::default(),
             hide_categories: false,
             sort_by: "date".into(),
@@ -672,7 +677,7 @@ impl Settings {
     }
 
     pub fn connections(&self) -> u32 {
-        self.connections.clamp(1, 32)
+        self.connections.clamp(1, 64)
     }
 
     pub fn min_split(&self) -> u64 {

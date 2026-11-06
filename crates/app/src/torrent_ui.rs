@@ -146,6 +146,7 @@ pub(crate) fn wire(ui: &Ui) {
                     .map(|f| LinkRow {
                         checked: true,
                         name: f.path.clone().into(),
+                        rtl: crate::i18n::rtl_text(&f.path),
                         kind: kind_for(&f.path).into(),
                         ext: fmt_size(f.size).into(),
                         text: f.index.to_string().into(),

@@ -346,6 +346,9 @@ msgstr "ليل فيروزي"
 msgid "Rose"
 msgstr "وردي"
 
+msgid "3D"
+msgstr "ثلاثي الأبعاد 3D"
+
 msgid "Appearance…"
 msgstr "المظهر…"
 
@@ -1314,6 +1317,12 @@ msgstr "تشغيل محدد السرعة دائماً عند بدء Ezoo Downloa
 
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "يمكن أن يكون لكل تحميل حد خاص: نافذة تقدّمه > تبويب محدد السرعة."
+
+msgid "Make Ezoo Download the main program for torrents"
+msgstr "جعل Ezoo Download البرنامج الرئيسي للتورنت"
+
+msgid "On: magnet links and .torrent files open in Ezoo Download, from the browser and from Windows. Off: they stay with the browser and your own torrent program."
+msgstr "تشغيل: روابط magnet وملفات ‎.torrent تُفتح في Ezoo Download، من المتصفح ومن Windows. إيقاف: تبقى مع المتصفح وبرنامج التورنت الخاص بك."
 
 msgid "Keep sharing a finished torrent for (minutes)"
 msgstr "استمرار مشاركة التورنت بعد اكتماله لمدة (دقائق)"

@@ -20,6 +20,9 @@ component DownloadItem inherits Rectangle {
     callback pick(bool, bool);
     // right click: keep a multiple selection that includes this row
     callback right-pick();
+    // Windows: the menu is a real Windows menu (made by the program)
+    in property <bool> native-menu;
+    callback open-native-menu();
     // dragging with the mouse held down: rows below (+) or above (-) this one
     callback drag(int);
     property <int> drag-last;
@@ -29,18 +32,34 @@ component DownloadItem inherits Rectangle {
     // dragging a finished file out of the program (onto the desktop, a folder…)
     callback drag-out();
     property <bool> dragged-out;
-    height: max(24px, 24px * Theme.font-scale);
+    height: Theme.depth ? max(40px, 34px * Theme.font-scale) : max(24px, 24px * Theme.font-scale);
     // as wide as all the columns (the list then scrolls sideways)
     out property <length> content-w: cells.min-width;
     // wide columns: the row is wider than the list. The look and the mouse
     // cover all of it (in Arabic the name is on the far right side of it)
-    Rectangle {
+    if !Theme.depth: Rectangle {
         x: 0px;
         width: cells.width;
         height: parent.height;
         background: root.selected ? Theme.select : ta.has-hover ? Theme.hover : transparent;
         border-width: root.selected ? 1px : 0px;
         border-color: Theme.select-line;
+    }
+    // the 3D look: every download is a card that floats over the list
+    if Theme.depth: Rectangle {
+        x: 4px;
+        y: 3px;
+        width: cells.width - 8px;
+        height: parent.height - 6px;
+        border-radius: 10px;
+        background: root.selected ? @linear-gradient(180deg, #4d45b8 0%, #3b358f 100%)
+            : ta.has-hover ? @linear-gradient(180deg, #34325e 0%, #2b2950 100%)
+            : @linear-gradient(180deg, #2c2a4f 0%, #252343 100%);
+        border-width: 1px;
+        border-color: root.selected ? #7466ff : #35335c;
+        drop-shadow-blur: root.selected ? 10px : 6px;
+        drop-shadow-offset-y: root.selected ? 4px : 2px;
+        drop-shadow-color: root.selected ? #3b33a899 : #00000066;
     }
     ta := TouchArea {
         x: 0px;
@@ -73,9 +92,13 @@ component DownloadItem inherits Rectangle {
             // right click: select the row and open the menu where the mouse is
             if (ev.button == PointerEventButton.right && ev.kind == PointerEventKind.up) {
                 root.right-pick();
-                root.menu-x = self.mouse-x;
-                root.menu-y = self.mouse-y;
-                menu.show();
+                if (root.native-menu) {
+                    root.open-native-menu();
+                } else {
+                    root.menu-x = self.mouse-x;
+                    root.menu-y = self.mouse-y;
+                    menu.show();
+                }
             }
         }
     }
@@ -313,17 +336,19 @@ component DownloadItem inherits Rectangle {
                 // thin progress line under the status, for running downloads
                 if root.data.state == 1 || (root.data.state == 2 && root.data.progress > 0): Rectangle {
                     x: 10px;
-                    y: parent.height - 5px;
+                    y: parent.height - (Theme.depth ? 10px : 5px);
                     width: parent.width - 20px;
-                    height: 3px;
-                    border-radius: 1.5px;
+                    height: Theme.depth ? 5px : 3px;
+                    border-radius: Theme.depth ? 2.5px : 1.5px;
                     background: Theme.bar-bg;
                     Rectangle {
                         x: Theme.rtl ? parent.width - self.width : 0;
                         width: parent.width * root.data.progress;
                         height: parent.height;
-                        border-radius: 1.5px;
-                        background: root.data.state == 1 ? Theme.accent : Theme.warn;
+                        border-radius: parent.border-radius;
+                        background: Theme.depth
+                            ? (root.data.state == 1 ? @linear-gradient(90deg, #8f7dff 0%, #6c5cff 100%) : @linear-gradient(90deg, #ffc24a 0%, #e08a00 100%))
+                            : root.data.state == 1 ? Theme.accent : Theme.warn;
                         animate width {
                             duration: 250ms;
                             easing: linear;
@@ -577,6 +602,9 @@ export component MainWindow inherits ThemedWindow {
     callback row-activated(int);
     callback row-clicked(int, bool, bool);
     callback row-right(int);
+    // the right-click menu as a Windows menu
+    in property <bool> native-menu;
+    callback row-menu(int);
     callback row-drag(int, int);
     callback row-drag-out(int);
     // the list's columns (order + widths); dragging in the header changes them
@@ -1099,6 +1127,12 @@ export component MainWindow inherits ThemedWindow {
                     title: (Theme.mode == 8 ? "● " : "○ ") + @tr("Rose");
                     activated => {
                         root.set-theme(8);
+                    }
+                }
+                MenuItem {
+                    title: (Theme.mode == 9 ? "● " : "○ ") + @tr("3D");
+                    activated => {
+                        root.set-theme(9);
                     }
                 }
                 MenuSeparator { }
@@ -1680,6 +1714,10 @@ export component MainWindow inherits ThemedWindow {
                                 columns: root.columns;
                                 selected: r.sel;
                                 sel-count: root.sel-count;
+                                native-menu: root.native-menu;
+                                open-native-menu => {
+                                    root.row-menu(r.id);
+                                }
                                 pick(ctrl, shift) => {
                                     root.row-clicked(r.id, ctrl, shift);
                                     keys.focus();
@@ -2073,7 +2111,7 @@ export component AddDialog inherits ThemedWindow {
             SpinBox {
                 width: 110px;
                 minimum: 1;
-                maximum: 32;
+                maximum: 64;
                 value <=> root.connections;
             }
             Rectangle {

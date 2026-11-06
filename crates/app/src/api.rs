@@ -168,6 +168,7 @@ pub fn config_json(s: &swiftget_engine::Settings) -> String {
         "skipKey": s.skip_key,
         "forceKey": s.force_key,
         "mp3Kbps": s.mp3_kbps,
+        "torrents": s.torrent_main,
         "panel": {
             "enabled": s.panel_enabled,
             "skipSites": split(&s.panel_skip_sites),

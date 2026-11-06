@@ -1655,6 +1655,7 @@ export component GrabberDialog inherits ThemedWindow {
                             }
                             Cell {
                                 text: l.name;
+                                horizontal-alignment: l.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                                 width: 256px;
                             }
                             Cell {
@@ -2053,6 +2054,7 @@ export component SettingsDialog inherits ThemedWindow {
     // Torrents tab
     in-out property <int> seed-minutes;
     in-out property <int> torrent-upload;
+    in-out property <bool> torrent-main;
     in property <string> message;
 
     callback browse(string);
@@ -2109,7 +2111,7 @@ export component SettingsDialog inherits ThemedWindow {
                         }
                         ComboBox {
                             width: 200px;
-                            model: [@tr("Light"), @tr("Dark"), @tr("Ocean blue"), @tr("Midnight purple"), @tr("Forest green"), @tr("Black"), @tr("Sunset"), @tr("Teal night"), @tr("Rose")];
+                            model: [@tr("Light"), @tr("Dark"), @tr("Ocean blue"), @tr("Midnight purple"), @tr("Forest green"), @tr("Black"), @tr("Sunset"), @tr("Teal night"), @tr("Rose"), @tr("3D")];
                             current-index <=> root.theme;
                         }
                         Rectangle {
@@ -2652,7 +2654,7 @@ export component SettingsDialog inherits ThemedWindow {
                             col: Theme.rtl ? 0 : 1;
                             row: 1;
                             minimum: 1;
-                            maximum: 32;
+                            maximum: 64;
                             value <=> root.connections;
                         }
                         Label {
@@ -2701,7 +2703,7 @@ export component SettingsDialog inherits ThemedWindow {
                         SpinBox {
                             width: 90px;
                             minimum: 1;
-                            maximum: 32;
+                            maximum: 64;
                             value <=> root.server-conns;
                         }
                         Button {
@@ -3015,6 +3017,13 @@ export component SettingsDialog inherits ThemedWindow {
                     padding: 14px;
                     spacing: 10px;
                     alignment: start;
+                    CheckBox {
+                        text: @tr("Make Ezoo Download the main program for torrents");
+                        checked <=> root.torrent-main;
+                    }
+                    Hint {
+                        text: @tr("On: magnet links and .torrent files open in Ezoo Download, from the browser and from Windows. Off: they stay with the browser and your own torrent program.");
+                    }
                     HRow {
                         spacing: 8px;
                         Label {
@@ -3253,6 +3262,7 @@ export component TorrentDialog inherits ThemedWindow {
                             }
                             Cell {
                                 text: f.name;
+                                horizontal-alignment: f.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                                 horizontal-stretch: 1;
                             }
                             Cell {
@@ -3494,6 +3504,7 @@ export component PlaylistDialog inherits ThemedWindow {
                             }
                             Cell {
                                 text: e.name;
+                                horizontal-alignment: e.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                                 horizontal-stretch: 1;
                             }
                             Cell {
@@ -3536,7 +3547,8 @@ export component PlaylistDialog inherits ThemedWindow {
                 SpinBox {
                     width: 90px;
                     minimum: 1;
-                    maximum: 8;
+                    // more at once and the site asks to confirm you are not a robot
+                    maximum: 3;
                     value <=> root.parallel;
                 }
                 Rectangle {

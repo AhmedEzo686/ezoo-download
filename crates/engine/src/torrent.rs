@@ -478,6 +478,21 @@ impl Aria2 {
         result
     }
 
+    /// People are connected but nobody sends anything: drop them and ask the
+    /// trackers and the DHT again (a pause and a start do both), so other
+    /// people, who have the pieces, get a turn.
+    pub async fn look_for_others(&self, gid: &str) -> anyhow::Result<()> {
+        self.call("aria2.forcePause", vec![json!(gid)]).await?;
+        for _ in 0..50 {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            if self.status(gid).await.map(|s| s.status == "paused").unwrap_or(false) {
+                break;
+            }
+        }
+        self.call("aria2.unpause", vec![json!(gid)]).await?;
+        Ok(())
+    }
+
     /// Stop it now (what is here stays, it goes on from there next time).
     pub async fn remove(&self, gid: &str) {
         if self.daemon.lock().await.is_none() {

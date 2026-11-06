@@ -66,6 +66,8 @@ struct SpeedMeter {
 
 struct Inner {
     entries: BTreeMap<DownloadId, Entry>,
+    /// a queue file that failed waits a little before it is tried again
+    retry_waiting: bool,
     next_id: DownloadId,
     dirty: bool,
     last_save: Instant,
@@ -199,6 +201,7 @@ impl Manager {
                 quota_log: VecDeque::new(),
                 quota_paused: Vec::new(),
                 quota_blocked: false,
+                retry_waiting: false,
                 queue_armed: HashSet::new(),
             }),
             settings: RwLock::new(settings),
@@ -419,7 +422,7 @@ impl Manager {
             status: if req.start { Status::Queued } else { Status::Paused },
             error: None,
             headers: req.headers,
-            connections: req.connections.unwrap_or(settings.connections()).clamp(1, 32),
+            connections: req.connections.unwrap_or(settings.connections()).clamp(1, 64),
             category,
             added_at: Utc::now(),
             finished_at: None,
@@ -1123,8 +1126,18 @@ impl Manager {
                 .map(|e| (if e.rec.queue.is_some() { e.rec.queue_pos } else { e.rec.id }, e.rec.id))
                 .collect();
             order.sort();
+            let mut waiting = false;
             for (_, id) in order {
                 let Some(e) = inner.entries.get_mut(&id) else { continue };
+                // tried again by the queue: not at once (the same trouble,
+                // a site that wants a pause), a little later
+                if e.rec.retry_count > 0
+                    && e.rec.error.as_deref().is_some_and(|x| x.ends_with(TRYING_AGAIN))
+                    && e.rec.last_try.is_some_and(|t| Utc::now().signed_duration_since(t) < chrono::Duration::from_std(RETRY_WAIT).unwrap_or_default())
+                {
+                    waiting = true;
+                    continue;
+                }
                 // its data is all here (only the joining / moving is left,
                 // after the program was closed): it does not wait for a free place
                 let ready = {
@@ -1158,6 +1171,7 @@ impl Manager {
                 launch.push((id, token));
                 running += 1;
             }
+            inner.retry_waiting = waiting;
         }
         for (id, token) in launch {
             let m = self.clone();
@@ -1402,7 +1416,7 @@ impl Manager {
                         if e.rec.retry_count < retries {
                             e.rec.retry_count += 1;
                             e.rec.status = Status::Queued;
-                            e.rec.error = Some(format!("{err:#} (trying again)"));
+                            e.rec.error = Some(format!("{err:#}{TRYING_AGAIN}"));
                         } else {
                             e.rec.status = Status::Failed;
                             e.rec.error = Some(format!("{err:#}"));
@@ -1755,6 +1769,9 @@ impl Manager {
         // since when nobody is connected (to say so after a while)
         let mut alone_since = Some(Instant::now());
         let mut said_alone = false;
+        // since when people are connected but none of them sends anything
+        let mut dry_since: Option<Instant> = None;
+        let mut said_dry = false;
         loop {
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(800)) => {}
@@ -1798,6 +1815,32 @@ impl Manager {
                 if !said_alone && since.elapsed() > Duration::from_secs(90) {
                     said_alone = true;
                     self.update(id, |x| x.error = Some("nobody shares this torrent right now".into()));
+                }
+            }
+            // connected, nothing comes: those people don't have the pieces
+            // (or don't give to us); after a while other people are looked
+            // for, and the user is told why it waits
+            let wanting = total > 0 && done < total && st.status == "active" && !st.seeding;
+            if wanting && st.connections > 0 && st.speed == 0 {
+                let since = *dry_since.get_or_insert_with(Instant::now);
+                if since.elapsed() > TORRENT_DRY {
+                    dry_since = Some(Instant::now());
+                    if !said_dry {
+                        said_dry = true;
+                        self.update(id, |x| x.error = Some(TORRENT_DRY_TEXT.into()));
+                    }
+                    let _ = self.torrents.look_for_others(&gid).await;
+                    continue;
+                }
+            } else if st.speed > 0 {
+                dry_since = None;
+                if said_dry {
+                    said_dry = false;
+                    self.update(id, |x| {
+                        if x.error.as_deref() == Some(TORRENT_DRY_TEXT) {
+                            x.error = None;
+                        }
+                    });
                 }
             }
             if !listed && !chosen.is_empty() {
@@ -1880,10 +1923,10 @@ impl Manager {
         rec.source_page = Some(page.clone());
         rec.source_key = Some(opt.key.clone());
         ytdlp::apply_headers(&mut rec.headers, &opt.headers);
-        // The video's own title (yt-dlp gives the title in the video's own
-        // language here; the playlist page often shows translated ones),
-        // keeping the "07 - " number of the playlist; the real container
-        // decides the extension.
+        // The name shown in the playlist window stays (it is in the user's
+        // language); only a list that gave no name takes the video's own
+        // title, keeping the "07 - " number of the playlist. The real
+        // container decides the extension.
         let (stem, ext) = filename::split_ext(&rec.file_name);
         let stem = playlist_stem(stem, &info.title);
         if !ext.eq_ignore_ascii_case(&opt.ext) || stem != filename::split_ext(&rec.file_name).0 {
@@ -2139,6 +2182,11 @@ impl Manager {
     }
 
     fn tick(self: &Arc<Self>) {
+        // a queue file waits to be tried again: its time may have come
+        let again = self.inner.lock().unwrap().retry_waiting;
+        if again {
+            self.pump();
+        }
         let to_save = {
             let mut inner = self.inner.lock().unwrap();
             let now = Instant::now();
@@ -2760,15 +2808,16 @@ fn collect_records(inner: &Inner) -> Vec<DownloadRecord> {
         .collect()
 }
 
-/// The file name of a playlist video: its own `title`, after the "07 - "
-/// number the playlist gave it (when it has one).
+/// The file name of a playlist video: the name the playlist gave it, or,
+/// when it gave none ("video"), its own `title` after the "07 - " number.
 fn playlist_stem(current: &str, title: &str) -> String {
     let title = title.trim();
-    if title.is_empty() {
-        return current.to_string();
-    }
     let digits = current.chars().take_while(|c| c.is_ascii_digit()).count();
     let number = if digits > 0 && current[digits..].starts_with(" - ") { &current[..digits + 3] } else { "" };
+    let named = current[number.len()..].trim();
+    if title.is_empty() || !(named.is_empty() || named.eq_ignore_ascii_case("video")) {
+        return current.to_string();
+    }
     format!("{number}{title}")
 }
 
@@ -2803,12 +2852,14 @@ mod name_tests {
     use super::playlist_stem;
 
     #[test]
-    fn playlist_videos_get_their_own_title() {
-        // the playlist page showed a translated title; the video's own one wins
-        assert_eq!(playlist_stem("07 - How to cook rice", "طريقة عمل الأرز"), "07 - طريقة عمل الأرز");
-        assert_eq!(playlist_stem("How to cook rice", "طريقة عمل الأرز"), "طريقة عمل الأرز");
-        assert_eq!(playlist_stem("2024 plans", "Plans"), "Plans");
+    fn playlist_videos_keep_the_name_of_the_list() {
+        // the list showed it in the user's language: that name stays
+        assert_eq!(playlist_stem("07 - طريقة عمل الأرز", "How to cook rice"), "07 - طريقة عمل الأرز");
+        assert_eq!(playlist_stem("2024 plans", "Plans"), "2024 plans");
         assert_eq!(playlist_stem("07 - Old", "  "), "07 - Old");
+        // no name in the list: the video's own
+        assert_eq!(playlist_stem("07 - video", "طريقة عمل الأرز"), "07 - طريقة عمل الأرز");
+        assert_eq!(playlist_stem("video", "Plans"), "Plans");
     }
 }
 
@@ -2831,3 +2882,17 @@ mod inside_tests {
         assert!(!inside(Path::new("/d/Other/a.bin"), d));
     }
 }
+
+/// How long people may be connected to a torrent without sending anything
+/// before others are looked for.
+const TORRENT_DRY: Duration = Duration::from_secs(120);
+/// What the user sees meanwhile.
+pub const TORRENT_DRY_TEXT: &str = "connected to people who send nothing yet: looking for others who have the file";
+
+/// After the error of a queue file that is tried again.
+const TRYING_AGAIN: &str = " (trying again)";
+/// How long a failed queue file waits before it is tried again.
+#[cfg(not(test))]
+const RETRY_WAIT: Duration = Duration::from_secs(20);
+#[cfg(test)]
+const RETRY_WAIT: Duration = Duration::from_millis(300);

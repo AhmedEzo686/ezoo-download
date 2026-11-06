@@ -357,6 +357,24 @@ const DRM_TEXTS = {
   ru: "🔒 Это видео защищено сайтом (DRM): ни одна программа не может его скачать. Его можно смотреть только на сайте.",
   en: "🔒 This video is protected by its site (DRM): no download program can save it. It can only be watched on the site.",
 };
+// Telegram Web plays its videos through its own page (a "stream" address
+// that exists only inside that page): no program can download it from
+// outside, Telegram's own download button can.
+const TELEGRAM_TEXTS = {
+  ar: "الفيديو ده في تيليجرام ويب مينفعش يتحمّل من برا الصفحة. نزّله من زرار التحميل بتاع تيليجرام نفسه (⋮ ← تنزيل).",
+  fr: "Cette vidéo de Telegram Web ne peut pas être téléchargée hors de la page. Utilisez le bouton de téléchargement de Telegram (⋮ → Télécharger).",
+  es: "Este vídeo de Telegram Web no se puede descargar fuera de la página. Usa el botón de descarga de Telegram (⋮ → Descargar).",
+  de: "Dieses Video in Telegram Web lässt sich nicht außerhalb der Seite laden. Nutze den Download-Knopf von Telegram (⋮ → Herunterladen).",
+  pt: "Este vídeo do Telegram Web não pode ser baixado fora da página. Use o botão de download do próprio Telegram (⋮ → Baixar).",
+  tr: "Telegram Web'deki bu video sayfanın dışından indirilemez. Telegram'ın kendi indirme düğmesini kullanın (⋮ → İndir).",
+  ru: "Это видео в Telegram Web нельзя скачать вне страницы. Используйте кнопку загрузки самого Telegram (⋮ → Скачать).",
+  en: "This Telegram Web video can't be downloaded outside the page. Use Telegram's own download button (⋮ → Download).",
+};
+const isTelegramStream = (url) => /^https:\/\/web\.telegram\.org\/(?:[a-z]\/)?stream\//i.test(url || "");
+function telegramText() {
+  const lang = String((navigator.language || "en")).slice(0, 2).toLowerCase();
+  return TELEGRAM_TEXTS[lang] || TELEGRAM_TEXTS.en;
+}
 const isDrm = (text) => /\bDRM\b|drm protected|widevine|playready/i.test(text || "");
 function drmText() {
   const lang = String((navigator.language || "en")).slice(0, 2).toLowerCase();
@@ -490,6 +508,9 @@ function wanted(cfg, url, fileName, mime, keys) {
   }
   if ((cfg.skipSites || []).some((s) => hostMatches(host, s))) return false;
   if ((cfg.skipAddresses || []).some((a) => wildcard(a, url))) return false;
+  // a .torrent file: only when Ezoo Download is the main torrent program
+  const isTorrent = extensionOf(fileName) === "torrent" || extensionOf(new URL(url).pathname) === "torrent" || /bittorrent/i.test(mime || "");
+  if (isTorrent) return cfg.torrents !== false;
   const exts = cfg.captureExts || [];
   if (!exts.length) return true;
   let ext = extensionOf(fileName) || extensionOf(new URL(url).pathname);
@@ -583,6 +604,8 @@ async function shouldTake(item) {
   if (!opts.enabled || !opts.intercept) return false;
   const url = item.finalUrl || item.url;
   if (!url || !/^https?:/i.test(url)) return false; // blob:, data:, file: stay in the browser
+  // Telegram's own download of a video: only its page can give the file
+  if (isTelegramStream(url) || isTelegramStream(item.url)) return false;
   if (!isNewDownload(item)) return false;
   if (await takeBypass(url)) return false;
   // the browser's PDF viewer saving the PDF it shows: the browser asks where
@@ -986,6 +1009,7 @@ chrome.webRequest.onHeadersReceived.addListener(
     const url = d.url;
     if (!/^https?:/i.test(url)) return;
     if (/googlevideo\.com/i.test(url)) return; // YouTube has its own handler below
+    if (isTelegramStream(url)) return; // only Telegram's own page can play it
     const h = headerMap(d.responseHeaders);
     const type = (h["content-type"] || "").toLowerCase();
     const isHls = HLS_TYPE.test(type) || /\.m3u8(\?|$)/i.test(url);
@@ -1064,6 +1088,16 @@ chrome.webRequest.onBeforeRequest.addListener(
   },
   { urls: ["*://*.googlevideo.com/videoplayback*"] }
 );
+
+// a part of a video as the page sent it: two times in seconds, the end
+// after the start (else nothing)
+function partOf(c) {
+  if (!c || typeof c !== "object") return null;
+  const start = Number(c.start);
+  const end = Number(c.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > 7 * 24 * 3600) return null;
+  return { start, end, exact: c.exact === true };
+}
 
 async function downloadVideo(option, pageTitle, pageUrl, clip) {
   const title = cleanYoutubeTitle(option.title || pageTitle);
@@ -1182,6 +1216,7 @@ async function resolvePage(tabId, page, embedded = false) {
 
 /** The bubble of a video that is not the page's main one was clicked. */
 async function resolveOneVideo(msg, tab) {
+  if (isTelegramStream(msg.src) || isTelegramStream(msg.resolve)) return { error: telegramText() };
   // a DASH stream of the page: its own qualities
   if (msg.resolve && /^https?:/i.test(msg.resolve)) {
     try {
@@ -1344,10 +1379,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const item = msg.item || {};
       // a video inside a frame (embedded player): that frame's page
       const referrer = sender.frameId && msg.referrer ? msg.referrer : sender.tab ? sender.tab.url : msg.referrer;
-      // whole videos only: "Download a part" is in the program for now, and
-      // no part chosen earlier is ever sent with a download
-      if (item.yt) return reply(downloadVideo(item.yt, msg.title, referrer, null), sendResponse);
-      return reply(sendToApp({ url: item.url, referrer, fileName: msg.fileName }), sendResponse);
+      // a part only from the "✂ Part" tab (the whole video never carries one)
+      const clip = msg.part ? partOf(msg.clip) : null;
+      if (msg.part && !clip) return reply(Promise.reject(new Error("the part is not right")), sendResponse);
+      if (item.yt) return reply(downloadVideo(item.yt, msg.title, referrer, clip), sendResponse);
+      return reply(sendToApp({ url: item.url, referrer, fileName: msg.fileName, clip }), sendResponse);
     }
     case "swiftget-get-media":
       itemsForTab(msg.tabId).then(sendResponse);
@@ -1392,8 +1428,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     case "swiftget-magnet":
       // a torrent's magnet link clicked on a page
       return reply(
-        getOpts().then((o) => {
+        getOpts().then(async (o) => {
           if (!o.enabled || !o.intercept) throw new Error("sending is off");
+          // Options > Torrents: Ezoo Download is not the main torrent program
+          const cfg = await getConfig();
+          if (cfg && cfg.torrents === false) throw new Error("torrents are not taken");
           return sendToApp({ url: msg.url, referrer: sender.tab ? sender.tab.url : "" });
         }),
         sendResponse

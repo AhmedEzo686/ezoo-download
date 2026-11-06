@@ -33,5 +33,5 @@ pub mod torrent;
 pub mod ytdlp;
 
 pub use config::{AfterDone, Schedule, Settings};
-pub use manager::{default_data_dir, ClipSource, DetailsEdit, Event, Manager, PreviewSource};
+pub use manager::{default_data_dir, ClipSource, DetailsEdit, Event, Manager, PreviewSource, TORRENT_DRY_TEXT};
 pub use model::*;

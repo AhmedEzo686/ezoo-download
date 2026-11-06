@@ -5,6 +5,8 @@
 slint::include_modules!();
 
 mod api;
+mod assoc;
+mod winmenu;
 mod autostart;
 mod browser;
 mod clipboard;
@@ -283,7 +285,20 @@ fn run() -> anyhow::Result<()> {
     // without it
     let (port, token) = {
         let path = data_dir.join("settings.json");
+        let first_start = !path.exists();
         let mut s = Settings::load(&path);
+        if first_start {
+            // what was chosen in the setup program: its language, and
+            // whether torrents are ours
+            if let Some(lang) = autostart::setup_value("Language").filter(|l| i18n::LANGS.iter().any(|(code, _)| code == l)) {
+                s.language = lang;
+            }
+            if let Some(t) = autostart::setup_value("Torrents") {
+                s.torrent_main = t != "0";
+            }
+            let _ = std::fs::create_dir_all(&data_dir);
+            let _ = s.save(&path);
+        }
         if s.api_token.len() < 32 {
             s.api_token = swiftget_engine::secret::random_token();
             let _ = std::fs::create_dir_all(&data_dir);
@@ -901,7 +916,7 @@ fn wire_main(ui: &Ui) {
         let ui = ui.clone();
         main.on_set_theme(move |m| {
             let mut s = ui.ctx.mgr.settings();
-            s.theme = m.clamp(0, 8) as u32;
+            s.theme = m.clamp(0, 9) as u32;
             let _ = ui.ctx.mgr.set_settings(s);
             apply_theme(&ui, m);
         });
@@ -1016,6 +1031,15 @@ fn wire_main(ui: &Ui) {
                 m.set_selected_id(id);
             }
             refresh(&ui);
+        });
+    }
+    main.set_native_menu(winmenu::available());
+    {
+        let ui = ui.clone();
+        main.on_row_menu(move |id| {
+            // after the click is over (the menu waits for the user)
+            let ui = ui.clone();
+            slint::Timer::single_shot(Duration::ZERO, move || row_menu(&ui, id));
         });
     }
     {
@@ -1407,7 +1431,9 @@ fn relay_refused(ui: &Ui, id: u64) -> bool {
     let Some(v) = ui.ctx.mgr.get(id) else { return false };
     let err = v.error.clone().unwrap_or_default();
     let refused = err.contains("HTTP 403") || err.contains("HTTP 401");
-    if v.kind != DownloadKind::Http || v.downloaded > 0 || !refused || !v.url.starts_with("http") {
+    // a site's video (yt-dlp found its link): a fresh link is fetched by the
+    // engine itself, the browser can't help with it
+    if v.kind != DownloadKind::Http || v.downloaded > 0 || !refused || !v.url.starts_with("http") || v.source_key.is_some() {
         return false;
     }
     let times = RELAYED.with(|r| {
@@ -2205,7 +2231,7 @@ pub(crate) struct Look {
 impl Look {
     pub(crate) fn of(s: &Settings) -> Look {
         Look {
-            mode: s.theme.min(8) as i32,
+            mode: s.theme.min(9) as i32,
             scale: s.font_scale.clamp(80, 150) as f32 / 100.0,
             family: if FONTS.contains(&s.font_family.as_str()) { s.font_family.clone() } else { String::new() },
             background: s.background_image.clone(),
@@ -2801,6 +2827,62 @@ pub(crate) fn show_progress_for_start(ui: &Ui, id: u64) {
     }
 }
 
+/// The right-click menu of a download, as a Windows menu: the same lines as
+/// the program's own one, those that can't be used now greyed out.
+fn row_menu(ui: &Ui, id: i32) {
+    use winmenu::Item;
+    let Some(main) = ui.ctx.main.upgrade() else { return };
+    let Some(v) = ui.ctx.mgr.get(id as u64) else { return };
+    let n = targets(ui, id as u64).len();
+    let state = state_of(v.status);
+    let done = state == 3;
+    let media = matches!(kind_for(&v.file_name), "video" | "audio");
+    const ACTIONS: [&str; 14] =
+        ["", "openwith", "preview", "clip", "folder", "resume", "stop", "restart", "refresh", "move", "copy", "sha256", "properties", "delete"];
+    let mut items = Vec::new();
+    if n > 1 {
+        items.push(Item::new(900, tf("{} downloads selected", &[&n]), false));
+    }
+    items.push(Item { bold: true, ..Item::new(100, if done { t("Open") } else { t("Show download progress") }, true) });
+    items.push(Item::new(1, t("Open with…"), done));
+    if !done && media {
+        items.push(Item::new(2, t("Play while downloading"), true));
+    }
+    if media && n <= 1 {
+        items.push(Item::new(3, t("Download a part of it…"), true));
+    }
+    items.push(Item::new(4, t("Open folder"), true));
+    items.push(Item::separator());
+    items.push(Item::new(5, t("Resume download"), state == 2 || state == 4 || n > 1));
+    items.push(Item::new(6, t("Stop download"), state == 0 || state == 1 || n > 1));
+    items.push(Item::new(7, t("Redownload"), true));
+    items.push(Item::new(8, t("Refresh download address…"), !done));
+    items.push(Item::new(9, t("Move / Rename…"), true));
+    items.push(Item::separator());
+    let mut queues: Vec<Item> = (0..ui.queues.row_count())
+        .filter_map(|i| ui.queues.row_data(i))
+        .map(|q| Item { checked: v.queue == Some(q.id as u64), ..Item::new(1000 + q.id.max(0) as u32, q.name.to_string(), true) })
+        .collect();
+    queues.push(Item::separator());
+    queues.push(Item::new(999, t("Delete from queue"), v.queue.is_some()));
+    items.push(Item { sub: queues, ..Item::new(0, t("Move to queue"), true) });
+    items.push(Item::separator());
+    items.push(Item::new(10, t("Copy address"), true));
+    items.push(Item::new(11, t("Check file (SHA-256)"), done));
+    items.push(Item::new(12, t("Properties"), true));
+    items.push(Item::separator());
+    items.push(Item::new(13, t("Remove"), true));
+    let dark = main.global::<Theme>().get_dark();
+    let Some(picked) = winmenu::popup(main.window(), &items, dark, i18n::is_rtl()) else { return };
+    match picked {
+        100 => main.invoke_row_activated(id),
+        999 => main.invoke_row_to_queue(id, -1),
+        q if q >= 1000 => main.invoke_row_to_queue(id, (q - 1000) as i32),
+        a if (a as usize) < ACTIONS.len() && a > 0 => main.invoke_row_action(id, ACTIONS[a as usize].into()),
+        _ => {}
+    }
+}
+
 fn row_action(ui: &Ui, id: u64, action: &str) {
     let Some(v) = ui.ctx.mgr.get(id) else { return };
     match action {
@@ -3165,6 +3247,10 @@ pub(crate) fn err_text(e: &str) -> String {
     } else if let Some(rest) = e.split("the server can't resume, starting again in ").nth(1) {
         let secs = rest.split(' ').next().unwrap_or("?");
         tf("The server had trouble and can't resume this file, so it starts again from the beginning in {} s.", &[&secs])
+    } else if e.contains(swiftget_engine::http::CAPTCHA) {
+        t("The site asks to confirm you are not a robot. Open the link in the browser, confirm there, then click Resume.")
+    } else if e.contains(swiftget_engine::TORRENT_DRY_TEXT) {
+        t("Connected to people who send nothing yet (they don't have the missing pieces, or they are busy). Ezoo Download keeps looking for others who have the file.")
     } else if e.contains("server answered HTTP 403") || e.contains("server answered HTTP 401") {
         t("The server refused Ezoo Download (it lets only the browser in). The link was opened in the browser, which hands it back with the site's sign-in; if the site still refuses, the browser downloads it itself.")
     } else if e.contains("DRM") {
