@@ -804,7 +804,20 @@ pub struct PlaylistInfo {
 /// names ("ar"; "" = the site's choice). Blocking.
 pub fn playlist(url: &str, lang: &str) -> anyhow::Result<PlaylistInfo> {
     let url = channel_videos(url);
-    let info = playlist_once(&url, lang)?;
+    let mut info = playlist_once(&url, lang)?;
+    // An Arabic (Russian…) list where only some videos have a name in the
+    // user's language comes mixed: then all in the list's own language
+    if let Some(own) = script_lang(&info.title).filter(|own| *own != lang) {
+        let theirs = info.entries.iter().filter(|e| script_lang(&e.title) == Some(own)).count();
+        if theirs > 0 && theirs < info.entries.len() {
+            if let Ok(again) = playlist_once(&url, own) {
+                let now = again.entries.iter().filter(|e| script_lang(&e.title) == Some(own)).count();
+                if now > theirs && again.entries.len() >= info.entries.len() {
+                    info = again;
+                }
+            }
+        }
+    }
     // a channel page gives its tabs (Videos, Shorts, Live), not videos: the
     // videos of the first tab
     if info.entries.is_empty() {
@@ -817,6 +830,28 @@ pub fn playlist(url: &str, lang: &str) -> anyhow::Result<PlaylistInfo> {
         }
     }
     Ok(info)
+}
+
+/// The language a name is written in, told by its first letter, for the
+/// scripts that belong to one language ("ar" for Arabic letters…); None
+/// for Latin letters (many languages) and names without letters.
+fn script_lang(name: &str) -> Option<&'static str> {
+    for c in name.chars() {
+        let u = c as u32;
+        let lang = match u {
+            0x0600..=0x06FF | 0x0750..=0x077F | 0x08A0..=0x08FF | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF => "ar",
+            0x0400..=0x04FF => "ru",
+            0x0590..=0x05FF => "iw",
+            0x0370..=0x03FF => "el",
+            0x0E00..=0x0E7F => "th",
+            0x3040..=0x30FF => "ja",
+            0xAC00..=0xD7AF => "ko",
+            _ if c.is_alphabetic() => return None,
+            _ => continue,
+        };
+        return Some(lang);
+    }
+    None
 }
 
 /// A YouTube channel's own address ("youtube.com/@name") lists its tabs:
@@ -1080,6 +1115,14 @@ mod tests {
         let info = build_options(&post);
         assert_eq!(info.title, "Video 1");
         assert_eq!(info.options[0].video_url, "https://x/1.mp4");
+    }
+
+    #[test]
+    fn names_tell_their_language() {
+        assert_eq!(super::script_lang("القرآن كامل بصوت الشيخ"), Some("ar"));
+        assert_eq!(super::script_lang("07 - Привет"), Some("ru"));
+        assert_eq!(super::script_lang("Surah Al-Asr - سورة"), None);
+        assert_eq!(super::script_lang("123"), None);
     }
 
     #[test]
