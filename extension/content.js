@@ -485,9 +485,13 @@
     });
     // one player for many videos (the previews of a home page, a feed): a
     // new video in it forgets what was found for the one before
-    video.addEventListener("emptied", () => forget(b));
+    // (only when it really is another video: a site's own player changes
+    // its blob: source and empties itself often for the same video)
+    video.addEventListener("emptied", () => {
+      if (stale(b)) forget(b);
+    });
     video.addEventListener("loadstart", () => {
-      if (b.own && b.ownFor !== videoKey(b.video)) forget(b);
+      if (stale(b)) forget(b);
     });
     layer().appendChild(host);
     bubbles.set(video, b);
@@ -497,9 +501,18 @@
   }
 
 
-  // which video a player shows now: its own link and its own file
+  // which video a player shows now: its own link, else its own file (a
+  // blob: source says nothing: the site makes a new one for the same video)
   function videoKey(video) {
-    return (ownLink(video) || "") + "|" + (video.currentSrc || video.src || "");
+    return ownLink(video) || directSrc(video) || "";
+  }
+
+  // what was found (or is being looked up) is for another video now
+  function stale(b) {
+    const key = videoKey(b.video);
+    if (b.own) return b.ownFor !== key;
+    if (b.loading) return b.asked !== key;
+    return false;
   }
 
   // what was found belongs to another video of this player now
@@ -530,6 +543,7 @@
     b.loading = true;
     b.open = true;
     const asked = videoKey(b.video);
+    b.asked = asked;
     renderOne(b, "Looking for the video qualities…");
     chrome.runtime.sendMessage(
       // its own post / video link, or its own file; the page only when
