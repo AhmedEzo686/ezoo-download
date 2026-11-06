@@ -346,18 +346,36 @@
     .clip .acts { display: flex; gap: 6px; margin-top: 6px; }
     .clip .pick { margin-top: 8px; font-weight: 600; color: #334; }
     .cliprow .t { color: #1d63d6; }
-    /* "⬇ Whole video" / "✂ Part" */
+    /* "⬇ Whole video" / "✂ Part" (the part in orange) */
     .tabs { display: flex; border-bottom: 1px solid #e3e8ef; background: #f4f6fa; }
-    .tab { flex: 1; text-align: center; padding: 6px 4px; cursor: default; color: #4a5566; font-weight: 600; border-bottom: 2px solid transparent; }
-    .tab:hover { background: #e8f0fe; }
+    .tab { flex: 1; text-align: center; padding: 7px 4px; cursor: default; color: #5b6575; font-weight: 600; border-bottom: 3px solid transparent; }
+    .tab:hover { background: #eef2f8; }
     .tab.on { color: #1d63d6; border-bottom-color: #1d63d6; background: #fff; }
-    .clip .times { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 6px; }
-    .clip .times b { font-weight: 600; }
-    .clip .times input[type=text] { width: 58px; }
-    .clip .kinds { display: flex; gap: 6px; margin: 4px 0 2px; }
-    .clip .kinds span { flex: 1; text-align: center; border: 1px solid #c9d1dc; border-radius: 4px; padding: 3px 4px; cursor: default; color: #334; background: #fff; }
-    .clip .kinds span.on { border-color: #1d63d6; background: #e8f0fe; color: #1d63d6; font-weight: 600; }
-    .clip .note { color: #6b7686; font-size: 10.5px; }
+    .tab.part.on { color: #e8590c; border-bottom-color: #e8590c; }
+    .cut { padding: 9px 12px 11px; background: #fff; }
+    .cut .lead { color: #e8590c; font-weight: 700; margin-bottom: 8px; }
+    .cut .times { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+    .cut .times b { font-weight: 700; color: #1f2733; }
+    .cut input[type=text] { width: 58px; font: inherit; text-align: center; padding: 3px 4px; border: 1px solid #c9d1dc; border-radius: 4px; color: #1f2733; background: #fff; }
+    .cut input.bad { border-color: #d1342f; }
+    .cut .now { color: #e8590c; cursor: default; white-space: nowrap; font-size: 10.5px; }
+    .cut .now:hover { text-decoration: underline; }
+    .cut .len { margin-left: auto; font-weight: 700; color: #1f2733; }
+    .cut .len.err { color: #d1342f; }
+    .cut .seg { display: inline-flex; border: 1px solid #e8590c; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+    .cut .seg span { padding: 3px 10px; color: #e8590c; cursor: default; background: #fff; }
+    .cut .seg span + span { border-left: 1px solid #e8590c; }
+    .cut .seg span.on { background: #e8590c; color: #fff; }
+    .cut .qs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .cut .qs span { padding: 3px 9px; border: 1px solid #c9d1dc; border-radius: 4px; color: #1f2733; cursor: default; background: #fff; font-weight: 600; }
+    .cut .qs span:hover { border-color: #e8590c; }
+    .cut .qs span.on { border-color: #e8590c; background: #fff3eb; color: #e8590c; }
+    .cut .acts { display: flex; gap: 8px; }
+    .cut .pv { padding: 6px 10px; border-radius: 5px; background: #fff3eb; color: #e8590c; cursor: default; white-space: nowrap; }
+    .cut .pv:hover { background: #ffe4d2; }
+    .cut .go { flex: 1; text-align: center; padding: 6px 10px; border-radius: 5px; color: #fff; font-weight: 700; cursor: default;
+               background: linear-gradient(#f57a2e, #e05a0c); box-shadow: 0 2px 6px rgba(224,90,12,.35); }
+    .cut .go:hover { background: linear-gradient(#ff8a3d, #e8630f); }
     /* looks */
     .dark .btn { background: linear-gradient(#3a3f47, #23272e); border-color: #15181c; }
     .dark .btn:hover, .dark .btn.open { background: linear-gradient(#454b55, #2a2f37); }
@@ -718,7 +736,7 @@
     const partTab = b.clipMode && partOk;
     if (partOk) {
       const tab = (on, text, part) => {
-        const t = el("div", { class: "tab" + (on ? " on" : ""), text });
+        const t = el("div", { class: "tab" + (part ? " part" : "") + (on ? " on" : ""), text });
         t.addEventListener("click", () => {
           if (b.clipMode === part) return;
           b.clipMode = part;
@@ -736,7 +754,7 @@
       box.appendChild(el("div", { class: "tabs" }, tab(!partTab, "⬇ Whole video", false), tab(partTab, "✂ Part", true)));
     }
     if (partTab) {
-      box.appendChild(clipPanel(b));
+      box.appendChild(clipPanel(b, usable));
     } else {
       const all = downloadAllOf(b, usable);
       if (all) {
@@ -745,9 +763,9 @@
         box.appendChild(row);
       }
     }
+    if (partTab) return;
     let n = 0;
     list.forEach((m) => {
-      if (partTab && !canCut(m)) return;
       const d = describe(m);
       const t = el("div", { class: "t" }, el("span", { text: d.main }));
       if (d.tag) t.append(el("span", { class: "tag " + d.tag.replace(/\s/g, "").replace(/^(\d)K$/, "K$1"), text: d.tag }));
@@ -759,7 +777,7 @@
         el("span", { class: "num", text: m.disabled ? "" : `${++n}.` }),
         el("div", { class: "body" }, t, el("div", { class: "s", text: sub }))
       );
-      if (!m.disabled) row.addEventListener("click", () => (partTab ? downloadPart(b, m) : download(b, m)));
+      if (!m.disabled) row.addEventListener("click", () => download(b, m));
       box.appendChild(row);
     });
   }
@@ -776,17 +794,34 @@
     for (const t of ["keydown", "keyup", "keypress"]) input.addEventListener(t, (e) => e.stopPropagation());
   }
 
-  // From / To, the kind of cut, a look at the part on the page's own player
-  // (small: the qualities come right under it)
-  function clipPanel(b) {
+  // a short name of a quality for the part ("1080p", "MP3")
+  function chipOf(m) {
+    const y = m.yt;
+    if (y) {
+      if (y.quality === "mp3") return "MP3";
+      if (y.quality === "audio" || /^audio\|/.test(y.key || "")) return (y.ext || "M4A").toUpperCase();
+      return (y.quality || (y.ext || "MP4").toUpperCase()) + (y.codec ? " " + y.codec : "");
+    }
+    const h = heightOf(m.label || "");
+    return h ? `${h}p` : (m.ext || (m.url || "").split("?")[0].split(".").pop() || "file").toUpperCase();
+  }
+
+  // The "✂ Part" tab: From / To, quick or exact, the quality, a look at the
+  // part on the page's own player, and its own button
+  function clipPanel(b, usable) {
     const c = b.clip;
     const v = b.video;
     const dur = Number.isFinite(v.duration) ? v.duration : 0;
-    const len = el("div", { class: "len" });
+    const choices = usable.filter(canCut);
+    if (!choices.some((m) => m === b.cutPick)) {
+      b.cutPick = choices.find((m) => m.yt && m.yt.quality === "720p") || choices.find((m) => heightOf(m.label || "") === 720) || choices[0];
+    }
+    const len = el("span", { class: "len" });
+    const ok = () => c.to > c.from && (!dur || c.from < dur);
     const showLen = () => {
-      const ok = c.to > c.from && (!dur || c.from < dur);
-      len.textContent = ok ? `Length of the part: ${clock(c.to - c.from)}` : "The end must come after the start.";
-      len.classList.toggle("err", !ok);
+      len.textContent = ok() ? clock(c.to - c.from) : "!";
+      len.title = ok() ? "Length of the part" : "The end must come after the start.";
+      len.classList.toggle("err", !ok());
     };
     const time = (label, key) => {
       const input = el("input", { type: "text", value: clock(c[key]), "aria-label": label });
@@ -799,45 +834,61 @@
           showLen();
         }
       });
-      const now = el("span", { class: "now", title: "The time the video is at now", text: "⏱" });
+      const now = el("span", { class: "now", title: "The time the video is at now", text: "⏱ Now" });
       now.addEventListener("click", () => {
         c[key] = Math.floor(v.currentTime || 0);
         input.value = clock(c[key]);
         input.classList.remove("bad");
         showLen();
       });
-      return [el("b", { text: label }), input, now];
+      return { label: el("b", { text: label }), input, now };
     };
-    const note = el("div", { class: "note" });
-    const kinds = el("div", { class: "kinds" });
-    const showKinds = () => {
-      kinds.replaceChildren();
+    const from = time("From", "from");
+    const to = time("To", "to");
+    const seg = el("div", { class: "seg" });
+    const showSeg = () => {
+      seg.replaceChildren();
       for (const [exact, text, words] of [
-        [false, "Quick", "Takes seconds; it may start a second or two early."],
-        [true, "Exact", "Starts on the very second; takes longer."],
+        [false, "Quick cut", "Takes seconds, the quality stays as it is; it may start a second or two early."],
+        [true, "Exact cut", "Starts on the very second you chose; the picture is made again, so it takes longer."],
       ]) {
-        const k = el("span", { class: c.exact === exact ? "on" : "", text });
+        const k = el("span", { class: c.exact === exact ? "on" : "", text, title: words });
         k.addEventListener("click", () => {
           c.exact = exact;
-          showKinds();
+          showSeg();
         });
-        kinds.appendChild(k);
-        if (c.exact === exact) note.textContent = words;
+        seg.appendChild(k);
       }
     };
-    const preview = el("span", { class: "btn2", text: "▶ Preview" });
+    const qs = el("div", { class: "qs" });
+    const showQs = () => {
+      qs.replaceChildren();
+      for (const m of choices) {
+        const d = describe(m);
+        const q = el("span", { class: m === b.cutPick ? "on" : "", text: chipOf(m), title: [d.main, d.sub].filter(Boolean).join(" · ") });
+        q.addEventListener("click", () => {
+          b.cutPick = m;
+          showQs();
+        });
+        qs.appendChild(q);
+      }
+    };
+    const preview = el("span", { class: "pv", text: "▶ Preview" });
     preview.addEventListener("click", () => playPart(b));
+    const go = el("span", { class: "go", text: "✂ Download the part" });
+    go.addEventListener("click", () => b.cutPick && downloadPart(b, b.cutPick));
     const box = el(
       "div",
-      { class: "clip" },
-      el("div", { class: "times" }, ...time("From", "from"), ...time("To", "to"), preview),
-      len,
-      kinds,
-      note,
-      el("div", { class: "pick", text: "Choose the quality of the part:" })
+      { class: "cut" },
+      el("div", { class: "lead", text: "Only the part you choose is downloaded" }),
+      el("div", { class: "times" }, from.label, from.input, to.label, to.input, to.now, len),
+      seg,
+      qs,
+      el("div", { class: "acts" }, preview, go)
     );
     showLen();
-    showKinds();
+    showSeg();
+    showQs();
     return box;
   }
 
