@@ -349,6 +349,15 @@ msgstr "وردي"
 msgid "3D"
 msgstr "ثلاثي الأبعاد 3D"
 
+msgid "Aurora glass"
+msgstr "زجاج الشفق"
+
+msgid "Soft clay"
+msgstr "صلصال ناعم"
+
+msgid "Cyber neon"
+msgstr "نيون سايبر"
+
 msgid "Appearance…"
 msgstr "المظهر…"
 

@@ -150,7 +150,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     }
     // General
     s.language = crate::i18n::LANGS[(d.get_language().max(0) as usize).min(crate::i18n::LANGS.len() - 1)].0.into();
-    s.theme = d.get_theme().clamp(0, 9) as u32;
+    s.theme = d.get_theme().clamp(0, 12) as u32;
     s.opacity = (d.get_window_opacity().round() as u32).clamp(50, 100);
     s.font_scale = (d.get_text_size().round() as u32).clamp(80, 150);
     s.font_family = crate::FONTS.get(d.get_font_index().max(0) as usize).copied().unwrap_or("").to_string();
@@ -245,7 +245,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
 /// The look the Options window shows now (not saved yet).
 fn look_of(d: &SettingsDialog) -> crate::Look {
     crate::Look {
-        mode: d.get_theme().clamp(0, 9),
+        mode: d.get_theme().clamp(0, 12),
         scale: (d.get_text_size().round() as u32).clamp(80, 150) as f32 / 100.0,
         family: crate::FONTS.get(d.get_font_index().max(0) as usize).copied().unwrap_or("").to_string(),
         background: d.get_bg_image().to_string(),

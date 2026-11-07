@@ -535,4 +535,7 @@ AR = {
     "Make Ezoo Download the main program for torrents": "جعل Ezoo Download البرنامج الرئيسي للتورنت",
     "On: magnet links and .torrent files open in Ezoo Download, from the browser and from Windows. Off: they stay with the browser and your own torrent program.": "تشغيل: روابط magnet وملفات ‎.torrent تُفتح في Ezoo Download، من المتصفح ومن Windows. إيقاف: تبقى مع المتصفح وبرنامج التورنت الخاص بك.",
     "3D": "ثلاثي الأبعاد 3D",
+    "Aurora glass": "زجاج الشفق",
+    "Soft clay": "صلصال ناعم",
+    "Cyber neon": "نيون سايبر",
 }

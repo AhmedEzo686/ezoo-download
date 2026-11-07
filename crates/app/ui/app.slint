@@ -51,15 +51,15 @@ component DownloadItem inherits Rectangle {
         y: 3px;
         width: cells.width - 8px;
         height: parent.height - 6px;
-        border-radius: 10px;
-        background: root.selected ? @linear-gradient(180deg, #4d45b8 0%, #3b358f 100%)
-            : ta.has-hover ? @linear-gradient(180deg, #34325e 0%, #2b2950 100%)
-            : @linear-gradient(180deg, #2c2a4f 0%, #252343 100%);
+        border-radius: Theme.card-radius;
+        background: root.selected ? @linear-gradient(Theme.look == 1 ? 90deg : 180deg, Theme.sel-top 0%, Theme.sel-bottom 100%)
+            : ta.has-hover ? @linear-gradient(180deg, Theme.card-hover-top 0%, Theme.card-bottom 100%)
+            : @linear-gradient(180deg, Theme.card-top 0%, Theme.card-bottom 100%);
         border-width: 1px;
-        border-color: root.selected ? #7466ff : #35335c;
-        drop-shadow-blur: root.selected ? 10px : 6px;
-        drop-shadow-offset-y: root.selected ? 4px : 2px;
-        drop-shadow-color: root.selected ? #3b33a899 : #00000066;
+        border-color: root.selected ? Theme.sel-line : Theme.card-line;
+        drop-shadow-blur: root.selected ? 12px : 7px;
+        drop-shadow-offset-y: root.selected ? 4px : Theme.look == 3 ? 4px : 2px;
+        drop-shadow-color: root.selected ? Theme.sel-shadow : Theme.card-shadow;
     }
     ta := TouchArea {
         x: 0px;
@@ -104,6 +104,9 @@ component DownloadItem inherits Rectangle {
     }
     property <length> menu-x;
     property <length> menu-y;
+    property <color> kind-color: root.data.kind == "video" ? #a56bff : root.data.kind == "audio" ? #2fc76c
+        : root.data.kind == "archive" ? #fb8a2e : root.data.kind == "exe" || root.data.kind == "apk" ? #3d8bf5
+        : root.data.kind == "pdf" ? #ec4652 : root.data.kind == "image" ? #2ec4b6 : root.data.kind == "torrent" ? #f472b6 : #f0b323;
     property <bool> done: root.data.state == 3;
     property <bool> can-resume: root.data.state == 2 || root.data.state == 4;
     property <bool> can-stop: root.data.state == 0 || root.data.state == 1;
@@ -300,10 +303,23 @@ component DownloadItem inherits Rectangle {
         padding-right: Theme.rtl ? (6px) : (0px);
         spacing: 0px;
         Rectangle {
-            width: 32px;
+            width: Theme.depth ? 42px : 32px;
+            // the 3D looks: the file's picture on a tile of its color
+            if Theme.depth: Rectangle {
+                x: 6px;
+                y: (parent.height - 28px) / 2;
+                width: 28px;
+                height: 28px;
+                border-radius: Theme.tile-style == 2 ? 7px : 9px;
+                background: Theme.tile-style == 2 ? root.kind-color.transparentize(20%) : root.kind-color.transparentize(Theme.dark ? 78% : 82%);
+                border-width: 1px;
+                border-color: root.kind-color.transparentize(Theme.tile-style == 1 ? 10% : 55%);
+                drop-shadow-blur: Theme.tile-style == 0 ? 0px : 9px;
+                drop-shadow-color: root.kind-color.transparentize(55%);
+            }
             TypeIcon {
                 kind: root.data.kind;
-                x: 4px;
+                x: Theme.depth ? 11px : 4px;
                 y: (parent.height - 18px) / 2;
             }
         }
@@ -347,7 +363,7 @@ component DownloadItem inherits Rectangle {
                         height: parent.height;
                         border-radius: parent.border-radius;
                         background: Theme.depth
-                            ? (root.data.state == 1 ? @linear-gradient(90deg, #8f7dff 0%, #6c5cff 100%) : @linear-gradient(90deg, #ffc24a 0%, #e08a00 100%))
+                            ? (root.data.state == 1 ? @linear-gradient(90deg, Theme.bar-a 0%, Theme.bar-b 100%) : @linear-gradient(90deg, #ffc24a 0%, #e08a00 100%))
                             : root.data.state == 1 ? Theme.accent : Theme.warn;
                         animate width {
                             duration: 250ms;
@@ -1133,6 +1149,24 @@ export component MainWindow inherits ThemedWindow {
                     title: (Theme.mode == 9 ? "● " : "○ ") + @tr("3D");
                     activated => {
                         root.set-theme(9);
+                    }
+                }
+                MenuItem {
+                    title: (Theme.mode == 10 ? "● " : "○ ") + @tr("Aurora glass");
+                    activated => {
+                        root.set-theme(10);
+                    }
+                }
+                MenuItem {
+                    title: (Theme.mode == 11 ? "● " : "○ ") + @tr("Soft clay");
+                    activated => {
+                        root.set-theme(11);
+                    }
+                }
+                MenuItem {
+                    title: (Theme.mode == 12 ? "● " : "○ ") + @tr("Cyber neon");
+                    activated => {
+                        root.set-theme(12);
                     }
                 }
                 MenuSeparator { }
@@ -2489,6 +2523,47 @@ export component BatchDialog inherits ThemedWindow {
 }
 
 // The per-download progress window (tabs like a classic download manager).
+// A floating card of the 3D looks (the download window).
+component DCard inherits Rectangle {
+    border-radius: Theme.card-radius;
+    background: @linear-gradient(180deg, Theme.card-top 0%, Theme.card-bottom 100%);
+    border-width: 1px;
+    border-color: Theme.card-line;
+    drop-shadow-blur: 8px;
+    drop-shadow-offset-y: Theme.look == 3 ? 3px : 2px;
+    drop-shadow-color: Theme.card-shadow;
+}
+
+// One number of the download window in the 3D looks.
+component StatCard inherits DCard {
+    horizontal-stretch: 1;
+    in property <string> label;
+    in property <string> value;
+    in property <color> tint: Theme.text;
+    min-width: 0px;
+    VerticalLayout {
+        padding: 9px;
+        padding-left: 11px;
+        padding-right: 11px;
+        spacing: 2px;
+        Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            text: root.label;
+            font-size: 10.5px * Theme.font-scale;
+            color: Theme.muted;
+        }
+        Text {
+            min-width: 0px;
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            text: root.value;
+            font-size: 13px * Theme.font-scale;
+            font-weight: 700;
+            color: root.tint;
+            overflow: elide;
+        }
+    }
+}
+
 export component DetailsDialog inherits ThemedWindow {
     // set for a moment so the window comes in front of the browser
     in property <bool> front;
@@ -2517,6 +2592,11 @@ export component DetailsDialog inherits ThemedWindow {
     in property <float> step-progress;
     in property <int> state;
     in property <[SegView]> segs;
+    // the 3D looks: the progress ring and the speed of the last minute, as
+    // drawings (made by the program)
+    in property <string> ring-path;
+    in property <string> speed-line;
+    in property <string> speed-area;
     in-out property <bool> show-details: false;
     in-out property <int> tab: 0;
     // speed limiter tab
@@ -2572,11 +2652,186 @@ export component DetailsDialog inherits ThemedWindow {
             }
         }
         Rectangle {
-            background: Theme.panel;
-            border-width: 1px;
+            background: Theme.depth && root.tab == 0 ? transparent : Theme.panel;
+            border-width: Theme.depth && root.tab == 0 ? 0px : 1px;
             border-color: Theme.line;
+            border-radius: Theme.depth ? Theme.card-radius : 0px;
             min-height: 150px;
-            if root.tab == 0: VerticalLayout {
+            if root.tab == 0 && Theme.depth: VerticalLayout {
+                padding: 10px;
+                spacing: 10px;
+                alignment: start;
+                HRow {
+                    spacing: 14px;
+                    // how much is here, as a ring
+                    Rectangle {
+                        width: 150px;
+                        height: 150px;
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 100;
+                            viewbox-height: 100;
+                            fill: transparent;
+                            stroke: Theme.bar-bg;
+                            stroke-width: 11px;
+                            commands: "M 50 7 A 43 43 0 1 1 49.99 7";
+                        }
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 100;
+                            viewbox-height: 100;
+                            fill: transparent;
+                            stroke: @linear-gradient(135deg, Theme.bar-a 0%, Theme.bar-b 100%);
+                            stroke-width: 11px;
+                            commands: root.ring-path;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 0px;
+                            Text {
+                                text: root.percent;
+                                horizontal-alignment: center;
+                                font-size: 30px * Theme.font-scale;
+                                font-weight: 800;
+                                color: Theme.text;
+                            }
+                            Text {
+                                text: root.speed;
+                                horizontal-alignment: center;
+                                font-size: 11px * Theme.font-scale;
+                                color: Theme.muted;
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 8px;
+                        DCard {
+                            HRow {
+                                padding: 10px;
+                                spacing: 10px;
+                                Rectangle {
+                                    width: 30px;
+                                    TypeIcon {
+                                        kind: root.kind;
+                                        x: 3px;
+                                        y: (parent.height - 22px) / 2;
+                                        width: 22px;
+                                        height: 22px;
+                                    }
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    Text {
+                                        min-width: 0px;
+                                        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                                        text: root.name;
+                                        font-weight: 700;
+                                        font-size: 13px * Theme.font-scale;
+                                        color: Theme.text;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        min-width: 0px;
+                                        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                                        text: root.url;
+                                        font-size: 10.5px * Theme.font-scale;
+                                        color: Theme.muted;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+                        }
+                        // the speed of the last minute
+                        DCard {
+                            vertical-stretch: 1;
+                            min-height: 84px;
+                            Text {
+                                x: Theme.rtl ? parent.width - self.width - 10px : 10px;
+                                y: 6px;
+                                text: @tr("Transfer rate");
+                                font-size: 10.5px * Theme.font-scale;
+                                color: Theme.muted;
+                            }
+                            Path {
+                                x: 8px;
+                                y: 22px;
+                                width: parent.width - 16px;
+                                height: parent.height - 28px;
+                                viewbox-width: 200;
+                                viewbox-height: 30;
+                                fill: @linear-gradient(180deg, Theme.bar-a.transparentize(45%) 0%, Theme.bar-a.transparentize(100%) 100%);
+                                stroke: transparent;
+                                commands: root.speed-area;
+                            }
+                            Path {
+                                x: 8px;
+                                y: 22px;
+                                width: parent.width - 16px;
+                                height: parent.height - 28px;
+                                viewbox-width: 200;
+                                viewbox-height: 30;
+                                fill: transparent;
+                                stroke: Theme.bar-a;
+                                stroke-width: 2px;
+                                commands: root.speed-line;
+                            }
+                        }
+                    }
+                }
+                GridLayout {
+                    spacing: 8px;
+                    StatCard {
+                        row: 0;
+                        col: Theme.rtl ? 2 : 0;
+                        label: @tr("Status");
+                        value: root.status;
+                        tint: root.state == 4 ? Theme.err : Theme.text;
+                    }
+                    StatCard {
+                        row: 0;
+                        col: 1;
+                        label: @tr("File size");
+                        value: root.size;
+                    }
+                    StatCard {
+                        row: 0;
+                        col: Theme.rtl ? 0 : 2;
+                        label: @tr("Downloaded");
+                        value: root.downloaded;
+                    }
+                    StatCard {
+                        row: 1;
+                        col: Theme.rtl ? 2 : 0;
+                        label: @tr("Transfer rate");
+                        value: root.speed;
+                    }
+                    StatCard {
+                        row: 1;
+                        col: 1;
+                        label: @tr("Time left");
+                        value: root.eta;
+                    }
+                    StatCard {
+                        row: 1;
+                        col: Theme.rtl ? 0 : 2;
+                        label: @tr("Resume capability");
+                        value: root.resumable;
+                        tint: root.resumable-ok ? Theme.ok : Theme.err;
+                    }
+                }
+                if root.error != "": Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: root.error;
+                    color: Theme.err;
+                    wrap: word-wrap;
+                    font-size: 11px * Theme.font-scale;
+                }
+            }
+            if root.tab == 0 && !Theme.depth: VerticalLayout {
                 padding: 8px;
                 spacing: 4px;
                 alignment: start;
@@ -2835,9 +3090,10 @@ export component DetailsDialog inherits ThemedWindow {
             height: 8px;
         }
         Rectangle {
-            height: 18px;
-            border-width: 1px;
+            height: Theme.depth ? 12px : 18px;
+            border-width: Theme.depth ? 0px : 1px;
             border-color: Theme.line;
+            border-radius: Theme.depth ? 6px : 0px;
             background: Theme.bar-bg;
             clip: true;
             Rectangle {
@@ -2845,7 +3101,8 @@ export component DetailsDialog inherits ThemedWindow {
                 y: 1px;
                 height: parent.height - 2px;
                 width: (parent.width - 2px) * root.progress;
-                background: @linear-gradient(180deg, #4fd06a 0%, #1f9d3e 100%);
+                border-radius: Theme.depth ? 5px : 0px;
+                background: Theme.depth ? @linear-gradient(90deg, Theme.bar-a 0%, Theme.bar-b 100%) : @linear-gradient(180deg, #4fd06a 0%, #1f9d3e 100%);
                 animate width {
                     duration: 100ms;
                     easing: linear;

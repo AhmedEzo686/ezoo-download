@@ -349,6 +349,15 @@ msgstr "Rosa"
 msgid "3D"
 msgstr "3D"
 
+msgid "Aurora glass"
+msgstr "Cristal aurora"
+
+msgid "Soft clay"
+msgstr "Arcilla suave"
+
+msgid "Cyber neon"
+msgstr "Neón cyber"
+
 msgid "Appearance…"
 msgstr "Apariencia…"
 

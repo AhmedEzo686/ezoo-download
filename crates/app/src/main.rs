@@ -916,7 +916,7 @@ fn wire_main(ui: &Ui) {
         let ui = ui.clone();
         main.on_set_theme(move |m| {
             let mut s = ui.ctx.mgr.settings();
-            s.theme = m.clamp(0, 9) as u32;
+            s.theme = m.clamp(0, 12) as u32;
             let _ = ui.ctx.mgr.set_settings(s);
             apply_theme(&ui, m);
         });
@@ -2231,7 +2231,7 @@ pub(crate) struct Look {
 impl Look {
     pub(crate) fn of(s: &Settings) -> Look {
         Look {
-            mode: s.theme.min(9) as i32,
+            mode: s.theme.min(12) as i32,
             scale: s.font_scale.clamp(80, 150) as f32 / 100.0,
             family: if FONTS.contains(&s.font_family.as_str()) { s.font_family.clone() } else { String::new() },
             background: s.background_image.clone(),
@@ -3534,7 +3534,9 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
     d.set_show_details(settings.progress_details);
     {
         let saved = saved_size(&ui.ctx.mgr, "progress");
-        let width = saved.map(|s| s.0).unwrap_or(500.0).max(440.0);
+        // the 3D looks show the ring and the cards: a little wider
+        let least = if settings.theme >= 9 { 600.0 } else { 440.0 };
+        let width = saved.map(|s| s.0).unwrap_or(500.0).max(least);
         let small = d.get_content_height();
         let height = if settings.progress_details { saved.map(|s| s.1).unwrap_or(0.0).max(small) } else { small };
         d.window().set_size(slint::LogicalSize::new(width, height.max(120.0)));
@@ -3683,8 +3685,23 @@ fn close_progress(map: &Rc<RefCell<HashMap<u64, ProgressWin>>>, id: u64) {
     });
 }
 
+#[cfg(test)]
+mod drawing_tests {
+    #[test]
+    fn ring_and_speed() {
+        assert_eq!(super::ring_path(0.0), "");
+        assert_eq!(super::ring_path(0.5), "M 50 7 A 43 43 0 0 1 50.00 93.00");
+        assert!(super::ring_path(0.75).starts_with("M 50 7 A 43 43 0 1 1 7.00"));
+        let (line, area) = super::speed_paths([0.0, 10.0].into_iter());
+        assert!(line.starts_with("M 196.6 29.0 L 200.0 3.0"), "{line}");
+        assert!(area.ends_with("L 200 30 L 196.6 30 Z"));
+        assert_eq!(super::speed_paths([5.0].into_iter()).0, "");
+    }
+}
+
 fn update_progress_windows(ui: &Ui) {
     let ids: Vec<u64> = ui.progress.borrow().keys().copied().collect();
+    SPEEDS.with(|m| m.borrow_mut().retain(|id, _| ids.contains(id)));
     for id in ids {
         match ui.ctx.mgr.get(id) {
             // finished: the "complete" window takes over
@@ -3735,6 +3752,58 @@ fn step_text(st: swiftget_engine::Step) -> String {
     })
 }
 
+/// The progress ring of the download window (a circle of radius 43 in a
+/// 100 x 100 box, from the top, clockwise).
+fn ring_path(p: f64) -> String {
+    let p = p.clamp(0.0, 1.0);
+    if p <= 0.001 {
+        return String::new();
+    }
+    if p >= 0.999 {
+        return "M 50 7 A 43 43 0 1 1 50 93 A 43 43 0 1 1 50 7".into();
+    }
+    let a = p * std::f64::consts::TAU;
+    let (x, y) = (50.0 + 43.0 * a.sin(), 50.0 - 43.0 * a.cos());
+    format!("M 50 7 A 43 43 0 {} 1 {x:.2} {y:.2}", u8::from(p > 0.5))
+}
+
+thread_local! {
+    // the speeds of the last minute of each open download window
+    static SPEEDS: RefCell<HashMap<u64, std::collections::VecDeque<f64>>> = RefCell::new(HashMap::new());
+}
+const SPEED_SAMPLES: usize = 60;
+
+/// The speed of the last minute as a line and the area under it (200 x 30).
+fn speed_drawing(id: u64, speed: f64) -> (String, String) {
+    SPEEDS.with(|m| {
+        let mut m = m.borrow_mut();
+        let q = m.entry(id).or_default();
+        q.push_back(speed.max(0.0));
+        while q.len() > SPEED_SAMPLES {
+            q.pop_front();
+        }
+        speed_paths(q.iter().copied())
+    })
+}
+
+fn speed_paths(values: impl Iterator<Item = f64>) -> (String, String) {
+    let v: Vec<f64> = values.collect();
+    if v.len() < 2 {
+        return (String::new(), String::new());
+    }
+    let top = v.iter().copied().fold(0.0, f64::max).max(1.0);
+    let step = 200.0 / (SPEED_SAMPLES - 1) as f64;
+    // the newest on the right
+    let x0 = 200.0 - step * (v.len() - 1) as f64;
+    let pts: Vec<(f64, f64)> = v.iter().enumerate().map(|(i, s)| (x0 + step * i as f64, 29.0 - 26.0 * s / top)).collect();
+    let mut line = format!("M {:.1} {:.1}", pts[0].0, pts[0].1);
+    for (x, y) in &pts[1..] {
+        line += &format!(" L {x:.1} {y:.1}");
+    }
+    let area = format!("{line} L 200 30 L {:.1} 30 Z", pts[0].0);
+    (line, area)
+}
+
 fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) {
     let pct = v.progress();
     d.set_name(v.file_name.clone().into());
@@ -3774,6 +3843,11 @@ fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) 
     d.set_resumable_ok(v.resumable);
     d.set_error(err_text(v.error.as_deref().unwrap_or_default()).into());
     d.set_progress(pct);
+    // the 3D looks draw these
+    d.set_ring_path(ring_path(pct as f64).into());
+    let (line, area) = speed_drawing(v.id, v.speed);
+    d.set_speed_line(line.into());
+    d.set_speed_area(area.into());
     match v.step {
         Some((st, f)) => {
             d.set_step(format!("{}: {:.0}%", step_text(st), f * 100.0).into());

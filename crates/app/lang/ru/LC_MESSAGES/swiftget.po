@@ -349,6 +349,15 @@ msgstr "Розовая"
 msgid "3D"
 msgstr "3D"
 
+msgid "Aurora glass"
+msgstr "Северное стекло"
+
+msgid "Soft clay"
+msgstr "Мягкая глина"
+
+msgid "Cyber neon"
+msgstr "Кибер-неон"
+
 msgid "Appearance…"
 msgstr "Оформление…"
 

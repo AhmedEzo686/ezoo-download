@@ -349,6 +349,15 @@ msgstr "Pembe"
 msgid "3D"
 msgstr "3D"
 
+msgid "Aurora glass"
+msgstr "Aurora cam"
+
+msgid "Soft clay"
+msgstr "Yumuşak kil"
+
+msgid "Cyber neon"
+msgstr "Siber neon"
+
 msgid "Appearance…"
 msgstr "Görünüm…"
 

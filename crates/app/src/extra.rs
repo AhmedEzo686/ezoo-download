@@ -367,7 +367,7 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 
 /// What the newest version brings (shown once after an automatic update).
 const WHATS_NEW: [&str; 8] = [
-    "A new 3D look (View > 3D): raised buttons with colored pictures, downloads on floating cards and shiny progress bars.",
+    "Four new 3D looks (View): 3D, Aurora glass, Soft clay and Cyber neon, with raised buttons, colored pictures, downloads on floating cards and a new download window with a progress ring and the speed.",
     "The setup asks for the language of the program at the first install, and can let torrents through the Windows firewall.",
     "Options > Torrents: make Ezoo Download the main program for torrents, or leave magnet links and .torrent files to your own torrent program.",
     "A torrent that is connected but gets nothing looks for other people by itself, and says why it waits.",
