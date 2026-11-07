@@ -163,6 +163,22 @@ pub(crate) fn left_button_down() -> bool {
     true
 }
 
+/// Are Ctrl and Shift held down right now (Windows asked)?
+#[cfg(windows)]
+pub(crate) fn ctrl_shift_held() -> Option<(bool, bool)> {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL, VK_SHIFT};
+    // SAFETY: plain queries of the system state
+    unsafe {
+        let held = |k: u16| (GetAsyncKeyState(k as i32) as u16 & 0x8000) != 0;
+        Some((held(VK_CONTROL), held(VK_SHIFT)))
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn ctrl_shift_held() -> Option<(bool, bool)> {
+    None
+}
+
 /// A hidden window that is shown again waits away from the screen too.
 #[cfg(windows)]
 pub(crate) fn send_away(w: &slint::Window) {

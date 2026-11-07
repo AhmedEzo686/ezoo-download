@@ -1018,6 +1018,9 @@ fn wire_main(ui: &Ui) {
     {
         let ui = ui.clone();
         main.on_row_clicked(move |id, ctrl, shift| {
+            // Ctrl / Shift as Windows has them now (a menu or another window
+            // may have kept the program from seeing one let go)
+            let (ctrl, shift) = winfx::ctrl_shift_held().unwrap_or((ctrl, shift));
             row_clicked(&ui, id as u64, ctrl, shift);
             refresh(&ui);
         });
@@ -2887,7 +2890,21 @@ fn row_menu(ui: &Ui, id: i32) {
     items.push(Item::separator());
     items.push(Item::new(13, t("Remove"), true));
     let dark = main.global::<Theme>().get_dark();
-    let Some(picked) = winmenu::popup(main.window(), &items, dark, i18n::is_rtl()) else { return };
+    let picked = winmenu::popup(main.window(), &items, dark, i18n::is_rtl());
+    // A click that closed the menu may reach the list a moment later without
+    // its release: the list would think the button is held. Once Windows says
+    // it is not, the list lets go of it.
+    for wait in [150, 450] {
+        let weak = ui.ctx.main.clone();
+        slint::Timer::single_shot(Duration::from_millis(wait), move || {
+            if let Some(m) = weak.upgrade() {
+                if !winfx::left_button_down() {
+                    let _ = m.window().dispatch_event_with_result(slint::platform::WindowEvent::PointerExited);
+                }
+            }
+        });
+    }
+    let Some(picked) = picked else { return };
     match picked {
         100 => main.invoke_row_activated(id),
         999 => main.invoke_row_to_queue(id, -1),

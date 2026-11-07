@@ -99,7 +99,11 @@ component DownloadItem inherits Rectangle {
             if (ev.kind == PointerEventKind.cancel || (ev.kind == PointerEventKind.up && ev.button == PointerEventButton.left)) {
                 root.left-down = false;
             }
-            // right click: select the row and open the menu where the mouse is
+            // right click, as in Explorer: the row is selected the moment the
+            // button goes down (seen at once), the menu opens when it is let go
+            if (ev.button == PointerEventButton.right && ev.kind == PointerEventKind.down) {
+                root.right-pick();
+            }
             if (ev.button == PointerEventButton.right && ev.kind == PointerEventKind.up) {
                 root.right-pick();
                 if (root.native-menu) {
