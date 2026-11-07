@@ -7,6 +7,7 @@ slint::include_modules!();
 mod api;
 mod assoc;
 mod winmenu;
+mod nativehost;
 mod autostart;
 mod browser;
 mod clipboard;
@@ -278,7 +279,9 @@ fn end_process(pid: u32) {
 
 fn run() -> anyhow::Result<()> {
     // started by Windows at sign-in: stay next to the clock, no window
-    let background = std::env::args().any(|a| a == "--background");
+    // --from-browser: opened by the add-in's helper for a download (the
+    // download's own window comes; the list stays in the tray)
+    let background = std::env::args().any(|a| a == "--background" || a == "--from-browser");
     let data_dir = default_data_dir();
     // the secret key of the browser add-in: made once, kept (encrypted) in
     // the settings; another program on the computer can't talk to the port
@@ -374,6 +377,12 @@ fn run() -> anyhow::Result<()> {
                     }
                     got
                 }
+                api::Existing::None if api::show_on_own_port(Settings::load(&data_dir.join("settings.json")).api_port) => {
+                    // the open copy answered on its own port (the known one
+                    // is kept by someone else): it comes to the front
+                    note("already open (its own port): brought to the front");
+                    return Ok(());
+                }
                 api::Existing::None => {
                     // the known port is kept by another program, or Windows
                     // keeps it for itself (a range of ports set aside by
@@ -402,6 +411,10 @@ fn run() -> anyhow::Result<()> {
             }
         }
         browser::prepare_extension_folders();
+        // the browser's helper (no port in the browser): on its own thread,
+        // nothing at start waits for it
+        let dir = data_dir.clone();
+        std::thread::spawn(move || nativehost::install(&dir));
         got.map(|(srv, _)| srv)
     };
     let _ = &token;

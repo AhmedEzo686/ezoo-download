@@ -1,0 +1,14 @@
+[package]
+name = "ezoo-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Ezoo Download – the helper the browser starts to talk to the program (no port in the browser)"
+
+[dependencies]
+serde_json.workspace = true
+ring = "0.17"
+
+[[bin]]
+name = "ezoo-host"
+path = "src/main.rs"

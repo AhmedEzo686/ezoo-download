@@ -107,6 +107,25 @@ async function init() {
     }
   });
 
+  // Firefox: the add-in talks to the program through the program's helper
+  // only once the user allows it (once); until then it uses the port
+  if (/Firefox\//.test(navigator.userAgent) && chrome.permissions) {
+    chrome.permissions.contains({ permissions: ["nativeMessaging"] }).then((has) => {
+      if (has) return;
+      const direct = document.createElement("button");
+      direct.className = "act";
+      direct.textContent = "Connect directly (recommended)";
+      direct.title = "Firefox asks once: the add-in then talks to Ezoo Download without a port";
+      direct.addEventListener("click", () => {
+        chrome.permissions.request({ permissions: ["nativeMessaging"] }).then((yes) => {
+          direct.textContent = yes ? "Connected directly ✔" : "Not allowed";
+          direct.disabled = !!yes;
+        });
+      });
+      document.querySelector("section").appendChild(direct);
+    }, () => {});
+  }
+
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;
   chrome.runtime.sendMessage({ type: "swiftget-get-media", tabId: tab.id }, (items) => {

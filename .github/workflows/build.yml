@@ -168,6 +168,7 @@ jobs:
           $p = "build-cache/stage"
           New-Item -ItemType Directory -Force "$p/tools", "dist" | Out-Null
           Copy-Item target/release/EzooDownload.exe $p
+          Copy-Item target/release/ezoo-host.exe $p
           Copy-Item THIRD-PARTY-NOTICES.txt $p
           Copy-Item LICENSE "$p/LICENSE.txt"
           Copy-Item -Recurse extension "$p/extension"

@@ -153,6 +153,8 @@ Name: "firewall"; Description: "{cm:TaskFirewall}"; GroupDescription: "{cm:Group
 
 [Files]
 Source: "{#Stage}\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion
+; the helper the browser starts (the program copies it into its data folder)
+Source: "{#Stage}\ezoo-host.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Stage}\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Stage}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; the helpers go into {app}\tools; the app updates them there by itself
@@ -194,6 +196,13 @@ Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: 
 Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: "Torrents"; ValueData: "0"; Tasks: not torrents
 ; start in the background (next to the clock) when the user signs in
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "EzooDownload"; ValueData: """{app}\{#MyAppExe}"" --background"; Flags: uninsdeletevalue; Tasks: autostart
+; the browsers' entry for the program's helper (the program fills it in at
+; start): gone again when Ezoo Download is removed
+Root: HKCU; Subkey: "Software\Google\Chrome\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Chromium\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Microsoft\Edge\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Mozilla\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
 ; "Open Ezoo Download" in the browser add-in (ezoo-download://open). The
 ; address given by the browser is never passed to the program.
 Root: HKCU; Subkey: "Software\Classes\ezoo-download"; ValueType: string; ValueName: ""; ValueData: "URL:Ezoo Download"; Flags: uninsdeletekey
@@ -221,11 +230,13 @@ Filename: "{app}\{#MyAppExe}"; Flags: nowait; Check: IsAutoUpdate
 
 [UninstallRun]
 Filename: "{cmd}"; Parameters: "/C taskkill /IM {#MyAppExe} /F"; Flags: runhidden; RunOnceId: "StopEzoo"
+Filename: "{cmd}"; Parameters: "/C taskkill /IM ezoo-host-* /F"; Flags: runhidden; RunOnceId: "StopEzooHost"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\extension"
 Type: filesandordirs; Name: "{app}\extension-firefox"
 Type: filesandordirs; Name: "{app}\tools"
+Type: filesandordirs; Name: "{userappdata}\Ezoo\EzooDownload\data\host"
 
 [Code]
 function IsAutoUpdate: Boolean;

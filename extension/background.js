@@ -30,6 +30,8 @@ function apiUrl(port, path) {
 // (Firefox keeps its own copy of the add-on)
 const IS_FIREFOX = typeof navigator !== "undefined" && /Firefox\//.test(navigator.userAgent || "");
 const ADDIN_HEADERS = { "X-Ezoo-Ext": chrome.runtime.getManifest().version, "X-Ezoo-Browser": IS_FIREFOX ? "firefox" : "chromium" };
+// who this add-in is: the program lets it start its helper (see below)
+if (!IS_FIREFOX && chrome.runtime.id) ADDIN_HEADERS["X-Ezoo-Id"] = chrome.runtime.id;
 
 async function plainFetch(url, opts = {}, ms = 1500) {
   const ctrl = new AbortController();
@@ -40,6 +42,144 @@ async function plainFetch(url, opts = {}, ms = 1500) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ---------------------------------------------------------------- the program's helper
+// The program puts a small helper of its own on this computer and tells the
+// browser about it ("native messaging"): the browser starts it and the add-in
+// talks to it through the browser itself, not over the network. Nothing the
+// browser does about pages reaching this computer, and no port kept by
+// another program or by Windows, stands in the way. Without the helper (an
+// older program, Firefox before the user allowed it) the port is used, as
+// before; when the helper can't reach the program, the port is tried too.
+const HOST = "com.ezoo.download";
+// asked for by the user (a download, the program's window): the helper may
+// open the program when it is closed
+const START_PATHS = new Set(["/add", "/links", "/playlist", "/show", "/open-torrent"]);
+let helper = null; // { port, pending, heard }
+let helperOffUntil = 0;
+let helperSeq = 0;
+let helperQuiet = null;
+
+async function helperAllowed() {
+  if (Date.now() < helperOffUntil) return false;
+  if (IS_FIREFOX) {
+    // Firefox: only once the user said yes in the add-in's window
+    try {
+      if (!(await chrome.permissions.contains({ permissions: ["nativeMessaging"] }))) return false;
+    } catch {
+      return false;
+    }
+  }
+  return typeof chrome.runtime.connectNative === "function";
+}
+
+function helperOpen() {
+  if (helper) return helper;
+  let port;
+  try {
+    port = chrome.runtime.connectNative(HOST);
+  } catch {
+    helperOffUntil = Date.now() + 60000;
+    return null;
+  }
+  const me = { port, pending: new Map(), heard: false };
+  port.onMessage.addListener((m) => {
+    me.heard = true;
+    const p = m && me.pending.get(m.id);
+    if (!p) return;
+    me.pending.delete(m.id);
+    clearTimeout(p.timer);
+    p.resolve(m);
+  });
+  port.onDisconnect.addListener(() => {
+    void (chrome.runtime && chrome.runtime.lastError);
+    if (helper === me) helper = null;
+    // never said a word: there is no helper on this computer (yet)
+    if (!me.heard) helperOffUntil = Date.now() + 60000;
+    for (const p of me.pending.values()) {
+      clearTimeout(p.timer);
+      p.resolve(null);
+    }
+    me.pending.clear();
+  });
+  helper = me;
+  return me;
+}
+
+/** After a quiet while the helper is let go (it ends; the browser may rest). */
+function helperRestLater() {
+  clearTimeout(helperQuiet);
+  helperQuiet = setTimeout(() => {
+    if (!helper) return;
+    if (helper.pending.size) return helperRestLater();
+    try {
+      helper.port.disconnect();
+    } catch {
+      /* gone already */
+    }
+    helper = null;
+  }, 120000);
+}
+
+function helperAsk(msg, wait) {
+  return new Promise((resolve) => {
+    const h = helperOpen();
+    if (!h) return resolve(null);
+    const id = ++helperSeq;
+    const timer = setTimeout(() => {
+      h.pending.delete(id);
+      resolve({ id, error: "timeout" });
+    }, wait + 2000);
+    h.pending.set(id, { resolve, timer });
+    try {
+      h.port.postMessage({ ...msg, id });
+    } catch {
+      h.pending.delete(id);
+      clearTimeout(timer);
+      resolve(null);
+    }
+    helperRestLater();
+  });
+}
+
+function helperResponse(status, body) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => JSON.parse(body || "null"),
+    text: async () => body || "",
+  };
+}
+
+/** A request through the helper; null = not this way (the port is tried). */
+async function viaHelper(path, opts, ms) {
+  if (path === "/pair" || path === "/quit" || !(await helperAllowed())) return null;
+  const start = START_PATHS.has(path) || !!opts.startApp;
+  const m = await helperAsk(
+    {
+      method: (opts.method || "GET").toUpperCase(),
+      path,
+      headers: Object.assign({}, ADDIN_HEADERS, opts.headers || {}),
+      body: typeof opts.body === "string" ? opts.body : null,
+      ms,
+      start,
+    },
+    // opening the program takes a few seconds
+    start ? Math.max(ms, 30000) : ms
+  );
+  if (!m) return null;
+  if (typeof m.status === "number") {
+    linkState = m.status === 401 ? "nokey" : "ok";
+    return helperResponse(m.status, m.body);
+  }
+  if (m.error === "timeout") {
+    const e = new Error("Ezoo Download took too long to answer");
+    e.name = "AbortError";
+    throw e;
+  }
+  // "down" (the program is closed), "big" (an answer too big for the helper)
+  return null;
 }
 
 // ---------------------------------------------------------------- the program's key
@@ -133,6 +273,8 @@ async function fetchWithTimeout(url, opts = {}, ms = 1500) {
   if (!m) return plainFetch(url, opts, ms);
   const frontPort = Number(m[1]);
   const path = m[2];
+  const helped = await viaHelper(path, opts, ms);
+  if (helped) return helped;
   if (FRONT_PATHS.has(path)) return plainFetch(url, opts, ms);
   const method = (opts.method || "GET").toUpperCase();
   const send = async (l) => {
@@ -312,6 +454,15 @@ async function appAlive() {
       return false;
     }
   };
+  try {
+    const h = await viaHelper("/ping", { headers: { "X-SwiftGet": "1" } }, 3000);
+    if (h && h.ok) {
+      followAppVersion();
+      return true;
+    }
+  } catch {
+    /* the port is asked below */
+  }
   for (const ms of [1500, 4000]) {
     if (await ask(port, ms)) {
       followAppVersion();
@@ -1148,11 +1299,12 @@ chrome.storage.onChanged.addListener((ch, area) => {
 // Ask the app (yt-dlp) for the qualities of a video page.
 const resolving = new Map(); // tabId -> page being resolved
 
-async function askApp(page, referer) {
+async function askApp(page, referer, startApp = false) {
   const { port } = await getOpts();
   const r = await fetchWithTimeout(
     apiUrl(port, "/resolve"),
     {
+      startApp,
       method: "POST",
       headers: { "Content-Type": "application/json", "X-SwiftGet": "1" },
       body: JSON.stringify({ url: page, cookieList: await cookieList(referer || page), referer: referer || null }),
@@ -1233,7 +1385,8 @@ async function resolveOneVideo(msg, tab) {
   // a DASH stream of the page: its own qualities
   if (msg.resolve && /^https?:/i.test(msg.resolve)) {
     try {
-      const r = await askApp(msg.resolve, tab && tab.url);
+      // the user asked (a player's own menu): a closed program is opened
+      const r = await askApp(msg.resolve, tab && tab.url, true);
       if (r.resolved && r.resolved.options.length) return { items: optionItems(r.resolved, msg.resolve) };
       return { error: r.resolveError || "Can't get this video" };
     } catch (e) {

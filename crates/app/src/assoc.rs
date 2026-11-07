@@ -55,7 +55,7 @@ pub(crate) fn torrents(on: bool) {
 }
 
 #[cfg(windows)]
-fn reg(args: &[&str]) -> Option<std::process::Output> {
+pub(crate) fn reg(args: &[&str]) -> Option<std::process::Output> {
     use std::os::windows::process::CommandExt;
     const NO_WINDOW: u32 = 0x0800_0000;
     std::process::Command::new(swiftget_engine::system::windows_tool("reg.exe")).args(args).creation_flags(NO_WINDOW).output().ok()
@@ -63,7 +63,7 @@ fn reg(args: &[&str]) -> Option<std::process::Output> {
 
 /// The value (None: the key's default) as `reg query` shows it.
 #[cfg(windows)]
-fn query(key: &str, name: Option<&str>) -> Option<String> {
+pub(crate) fn query(key: &str, name: Option<&str>) -> Option<String> {
     let mut args = vec!["query", key];
     match name {
         Some(n) => args.extend(["/v", n]),

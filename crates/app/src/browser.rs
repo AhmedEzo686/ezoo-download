@@ -209,6 +209,26 @@ fn extension_dir(firefox: bool) -> Option<PathBuf> {
     put_extension(&own, firefox).then_some(own)
 }
 
+/// The Chromium add-in folders of this program (next to it, and the copy in
+/// its data folder where it could not write there): an add-in loaded from
+/// one of them gets its id from that folder.
+pub(crate) fn extension_folders() -> Vec<PathBuf> {
+    let mut all = Vec::new();
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+        all.push(dir.join("extension"));
+    }
+    all.push(swiftget_engine::default_data_dir().join("extension"));
+    all.into_iter().filter(|p| p.is_dir()).collect()
+}
+
+/// The id of our Firefox add-on (from its manifest).
+pub(crate) fn firefox_addon_id() -> String {
+    serde_json::from_slice::<serde_json::Value>(MANIFEST_FIREFOX)
+        .ok()
+        .and_then(|v| v["browser_specific_settings"]["gecko"]["id"].as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
 /// The signed Firefox add-on next to the program, when the release has one.
 fn firefox_xpi() -> Option<PathBuf> {
     let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();

@@ -62,7 +62,7 @@ Write-Host "Version $version"
 
 # ---------------------------------------------------------------- 3. build
 # a running copy would lock the files we replace
-Get-Process EzooDownload, SwiftGet -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process EzooDownload, SwiftGet, ezoo-host -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Step "Building EzooDownload.exe (first time: 5-15 minutes)"
 cargo build --release
 if ($LASTEXITCODE -ne 0) { Fail "The build failed. Scroll up to see the first red 'error' lines." }
@@ -88,6 +88,8 @@ foreach ($old in @("extension", "portable", "store", "redist")) {
 }
 
 Copy-Item "target\release\EzooDownload.exe" $stage -Force
+# the helper the browser starts to talk to the program (no port)
+Copy-Item "target\release\ezoo-host.exe" $stage -Force
 foreach ($name in @("extension", "extension-firefox")) {
     $to = Join-Path $stage $name
     if (Test-Path $to) { Remove-Item -Recurse -Force $to }
@@ -218,6 +220,7 @@ function Sign-File($file) {
 if ($signtool) {
     Step "Signing EzooDownload.exe"
     Sign-File "$stage\EzooDownload.exe"
+    Sign-File "$stage\ezoo-host.exe"
 }
 
 

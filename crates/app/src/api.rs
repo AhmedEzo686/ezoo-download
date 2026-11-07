@@ -252,6 +252,28 @@ pub fn notify_existing(port: u16) -> Existing {
     }
 }
 
+/// The known port could not be asked: the copy that may be open is asked on
+/// its own port (signed, as the add-in does) to come to the front.
+pub fn show_on_own_port(port: u16) -> bool {
+    if port == 0 {
+        return false;
+    }
+    let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(800)) else {
+        return false;
+    };
+    let _ = s.set_read_timeout(Some(Duration::from_secs(3)));
+    let req = format!(
+        "POST /show HTTP/1.1\r\nHost: 127.0.0.1\r\nX-SwiftGet: 1\r\n{}Content-Length: 0\r\nConnection: close\r\n\r\n",
+        sign_headers("POST", "/show")
+    );
+    if s.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = String::new();
+    let _ = s.read_to_string(&mut buf);
+    buf.starts_with("HTTP/1.1 200") && buf.contains("Ezoo")
+}
+
 /// Which of the program's two ports a request came in on.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Door {
@@ -506,6 +528,11 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
         if !signed(&req, &path) {
             return reply(req, 401, r#"{"error":"pair","pair":true}"#);
         }
+        // an add-in with the key says who it is: the browser's helper may be
+        // started by it from now on (one without the key is never added)
+        if let Some(id) = header(&req, "X-Ezoo-Id") {
+            crate::nativehost::saw_addin(id.trim());
+        }
     }
     if path == "/pair" && *req.method() == Method::Post {
         return pair(req, on_event);
@@ -753,6 +780,59 @@ mod tests {
         assert!(ask(fport, "/where", Some(sign_headers("GET", "/where"))).contains(&format!("\"port\":{mport}")));
         // "are you there" stays open on both
         assert!(ask(fport, "/ping", None).starts_with("HTTP/1.1 200"));
+    }
+
+    /// The browser's helper (crates/host) talks to the program as the add-in
+    /// does: run with EZOO_HOST_BIN = the built helper.
+    #[test]
+    fn the_helper_gets_through() {
+        use std::io::{Read, Write};
+        let Some(bin) = std::env::var_os("EZOO_HOST_BIN") else { return };
+        let _ = TOKEN.set("a".repeat(64));
+        let token = TOKEN.get().unwrap().clone();
+        let main = bind(0).unwrap();
+        let mport = main.server_addr().to_ip().unwrap().port();
+        serve(main, Door::Main, || r#"{"ok":true,"from":"config"}"#.to_string(), |_| {});
+        let dir = std::env::temp_dir().join(format!("ezoo-helper-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let host = dir.join("ezoo-host");
+        std::fs::copy(&bin, &host).unwrap();
+        std::fs::write(dir.join("settings.json"), format!(r#"{{"api_port":{mport},"api_token":"{token}"}}"#)).unwrap();
+        std::fs::write(dir.join("app.json"), serde_json::json!({ "settings": dir.join("settings.json") }).to_string()).unwrap();
+        let mut child = std::process::Command::new(&host)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut input = child.stdin.take().unwrap();
+        let mut output = child.stdout.take().unwrap();
+        let mut ask = |v: serde_json::Value| -> serde_json::Value {
+            let d = v.to_string();
+            input.write_all(&(d.len() as u32).to_ne_bytes()).unwrap();
+            input.write_all(d.as_bytes()).unwrap();
+            input.flush().unwrap();
+            let mut len = [0u8; 4];
+            output.read_exact(&mut len).unwrap();
+            let mut buf = vec![0u8; u32::from_ne_bytes(len) as usize];
+            output.read_exact(&mut buf).unwrap();
+            serde_json::from_slice(&buf).unwrap()
+        };
+        let a = ask(serde_json::json!({ "id": 1, "method": "GET", "path": "/config", "ms": 3000 }));
+        assert_eq!(a["id"], 1);
+        assert_eq!(a["status"], 200, "{a}");
+        assert!(a["body"].as_str().unwrap().contains("config"));
+        let a = ask(serde_json::json!({ "id": 2, "method": "GET", "path": "/ping", "ms": 3000 }));
+        assert_eq!(a["status"], 200);
+        assert!(a["body"].as_str().unwrap().contains("EzooDownload"));
+        let a = ask(serde_json::json!({ "id": 3, "method": "POST", "path": "/nothing", "body": "{}", "ms": 3000 }));
+        assert_eq!(a["status"], 404);
+        // a wrong key: the program says no
+        std::fs::write(dir.join("settings.json"), format!(r#"{{"api_port":{mport},"api_token":"{}"}}"#, "b".repeat(64))).unwrap();
+        let a = ask(serde_json::json!({ "id": 4, "method": "GET", "path": "/config", "ms": 3000 }));
+        assert_eq!(a["status"], 401);
+        drop(input);
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
