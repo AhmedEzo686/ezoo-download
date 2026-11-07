@@ -1038,14 +1038,24 @@ fn wire_main(ui: &Ui) {
     {
         let ui = ui.clone();
         main.on_row_menu(move |id| {
-            // after the click is over (the menu waits for the user)
+            // the newly selected row is drawn first (a Windows menu stops
+            // the drawing of the program while it is open), then the menu
             let ui = ui.clone();
-            slint::Timer::single_shot(Duration::ZERO, move || row_menu(&ui, id));
+            if let Some(m) = ui.ctx.main.upgrade() {
+                m.window().request_redraw();
+            }
+            slint::Timer::single_shot(Duration::from_millis(60), move || row_menu(&ui, id));
         });
     }
     {
         let ui = ui.clone();
         main.on_row_drag(move |id, offset| {
+            // only while the left button is really held: Windows may keep the
+            // release of a click that closed a menu, and the list must not
+            // select rows when the mouse just moves
+            if !winfx::left_button_down() {
+                return;
+            }
             // select with the mouse: from the row where the drag started
             let order = visible_ids(&ui);
             let Some(start) = order.iter().position(|x| *x == id as u64) else { return };
@@ -1090,6 +1100,9 @@ fn wire_main(ui: &Ui) {
     {
         let ui = ui.clone();
         main.on_row_drag_out(move |id| {
+            if !winfx::left_button_down() {
+                return;
+            }
             // a finished file pulled out of the list: Windows takes it from here
             let Some(v) = ui.ctx.mgr.get(id as u64) else { return };
             if v.status != Status::Completed || !v.save_path.is_file() {

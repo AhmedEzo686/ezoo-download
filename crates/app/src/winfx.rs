@@ -144,6 +144,25 @@ pub(crate) fn latin_shortcuts(w: &slint::Window) {
 #[cfg(not(windows))]
 pub(crate) fn latin_shortcuts(_w: &slint::Window) {}
 
+/// Is the (main, left) mouse button held down right now? Windows itself is
+/// asked, not the messages the program got.
+#[cfg(windows)]
+pub(crate) fn left_button_down() -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_SWAPBUTTON};
+    // SAFETY: plain queries of the system state
+    unsafe {
+        // buttons swapped for left-handed use: the main one is the right one
+        let main = if GetSystemMetrics(SM_SWAPBUTTON) != 0 { VK_RBUTTON } else { VK_LBUTTON };
+        (GetAsyncKeyState(main as i32) as u16 & 0x8000) != 0
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn left_button_down() -> bool {
+    true
+}
+
 /// A hidden window that is shown again waits away from the screen too.
 #[cfg(windows)]
 pub(crate) fn send_away(w: &slint::Window) {
