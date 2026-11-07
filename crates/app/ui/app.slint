@@ -26,6 +26,8 @@ component DownloadItem inherits Rectangle {
     // dragging with the mouse held down: rows below (+) or above (-) this one
     callback drag(int);
     property <int> drag-last;
+    // the left button went down on this row and is still held
+    property <bool> left-down;
     callback activated();
     callback action(string);
     callback move-to-queue(int);
@@ -71,7 +73,11 @@ component DownloadItem inherits Rectangle {
         moved => {
             // a finished file pulled sideways: hand it to Windows to drop elsewhere
             // (only a clearly sideways pull on its own row: moving up or down
-            // over other rows selects them instead)
+            // over other rows selects them instead). Only while the left button
+            // is really held (never after a right click and its menu)
+            if (!root.left-down) {
+                return;
+            }
             if (self.pressed && root.done && !root.dragged-out && root.drag-last == 0 && self.mouse-y >= 0 && self.mouse-y < root.height
                 && abs(self.mouse-x - self.pressed-x) > 24px && abs(self.mouse-x - self.pressed-x) > 2 * abs(self.mouse-y - self.pressed-y)) {
                 root.dragged-out = true;
@@ -85,9 +91,13 @@ component DownloadItem inherits Rectangle {
         }
         pointer-event(ev) => {
             if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                root.left-down = true;
                 root.drag-last = 0;
                 root.dragged-out = false;
                 root.pick(ev.modifiers.control, ev.modifiers.shift);
+            }
+            if (ev.kind == PointerEventKind.cancel || (ev.kind == PointerEventKind.up && ev.button == PointerEventButton.left)) {
+                root.left-down = false;
             }
             // right click: select the row and open the menu where the mouse is
             if (ev.button == PointerEventButton.right && ev.kind == PointerEventKind.up) {
@@ -2665,6 +2675,8 @@ export component DetailsDialog inherits ThemedWindow {
             border-width: Theme.depth && root.tab == 0 ? 0px : 1px;
             border-color: Theme.line;
             border-radius: Theme.depth ? Theme.card-radius : 0px;
+            // its own size: a taller window gives the room to the connections
+            vertical-stretch: root.show-details ? 0 : 1;
             // the 3D looks: the ring, the cards and the numbers
             min-height: Theme.depth && root.tab == 0 ? (root.error != "" ? 330px : 300px) * max(1, Theme.font-scale) : 150px;
             if root.tab == 0 && Theme.depth: VerticalLayout {
@@ -3194,10 +3206,14 @@ export component DetailsDialog inherits ThemedWindow {
                 }
             }
         }
+        // a taller window gives its room to the list of connections (never
+        // as empty space between the parts)
         if root.show-details: VerticalLayout {
             spacing: 6px;
             padding-top: 8px;
+            vertical-stretch: 1;
             Text {
+                vertical-stretch: 0;
                 horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 text: @tr("Start positions and download progress by connections");
                 font-size: 11px * Theme.font-scale;
@@ -3205,6 +3221,7 @@ export component DetailsDialog inherits ThemedWindow {
             }
             Rectangle {
                 height: 20px;
+                vertical-stretch: 0;
                 border-width: 1px;
                 border-color: Theme.line;
                 background: Theme.panel;
@@ -3229,7 +3246,8 @@ export component DetailsDialog inherits ThemedWindow {
                 }
             }
             Rectangle {
-                height: 150px;
+                min-height: 150px;
+                vertical-stretch: 1;
                 background: Theme.panel;
                 border-width: 1px;
                 border-color: Theme.line;

@@ -59,6 +59,10 @@ pub(crate) fn popup(win: &slint::Window, items: &[Item], dark: bool, rtl: bool) 
         let id = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | side, at.x, at.y, hwnd, std::ptr::null());
         PostMessageW(hwnd, WM_NULL, 0, 0);
         DestroyMenu(menu);
+        // the clicks that closed the menu went to Windows, not to the list:
+        // whatever the list thought was still held down is let go (else
+        // moving the mouse afterwards selects rows as if dragging)
+        let _ = win.dispatch_event_with_result(slint::platform::WindowEvent::PointerExited);
         (id > 0).then_some(id as u32)
     }
 }
