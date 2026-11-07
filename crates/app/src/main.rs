@@ -374,7 +374,15 @@ fn run() -> anyhow::Result<()> {
                     }
                     got
                 }
-                api::Existing::None => None,
+                api::Existing::None => {
+                    // the known port is kept by another program, or Windows
+                    // keeps it for itself (a range of ports set aside by
+                    // Hyper-V / WSL / an update): the program still opens its
+                    // own port and the add-in finds it there (token.json, or
+                    // the port it was given when it was paired)
+                    note(&format!("port {port} can't be opened (another program or Windows keeps it): the add-in uses the program's own port"));
+                    None
+                }
             }
         }
     };
@@ -382,7 +390,7 @@ fn run() -> anyhow::Result<()> {
     // the next start), and the add-in folders get it with the key before
     // anything answers there (an add-in reloading right after an update
     // finds both at once)
-    let main_server = if server.is_some() {
+    let main_server = {
         let path = data_dir.join("settings.json");
         let mut s = Settings::load(&path);
         let got = api::bind_main(s.api_port);
@@ -395,8 +403,6 @@ fn run() -> anyhow::Result<()> {
         }
         browser::prepare_extension_folders();
         got.map(|(srv, _)| srv)
-    } else {
-        None
     };
     let _ = &token;
 
@@ -530,7 +536,7 @@ fn run() -> anyhow::Result<()> {
     browser::wire(&ui);
 
     // ------------------------------------------------------------ browser + clipboard
-    if let Some(server) = server {
+    if server.is_some() || main_server.is_some() {
         let ctx = ctx.clone();
         let cfg_mgr = mgr.clone();
         // the API thread only sends; the UI thread owns the windows
@@ -543,10 +549,14 @@ fn run() -> anyhow::Result<()> {
                 let _ = slint::invoke_from_event_loop(|| {});
             });
         }
-        api::serve(server, api::Door::Front, move || api::config_json(&cfg_mgr.settings()), move |event| {
-            let _ = tx.send(event);
-            let _ = slint::invoke_from_event_loop(|| {});
-        });
+        if let Some(server) = server {
+            api::serve(server, api::Door::Front, move || api::config_json(&cfg_mgr.settings()), move |event| {
+                let _ = tx.send(event);
+                let _ = slint::invoke_from_event_loop(|| {});
+            });
+        } else {
+            drop((tx, cfg_mgr));
+        }
         let ui2 = ui.clone();
         let api_timer = Timer::default();
         api_timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {

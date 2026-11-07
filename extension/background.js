@@ -299,15 +299,28 @@ async function followAppVersion() {
 }
 followAppVersion();
 
+// "are you there": on the known port, else on the program's own port (the
+// known one may be kept by another program or by Windows); a busy computer
+// may take a moment, so it is asked twice before the program is "not running"
 async function appAlive() {
   const { port } = await getOpts();
-  try {
-    const r = await fetchWithTimeout(apiUrl(port, "/ping"), { headers: { "X-SwiftGet": "1" } }, 800);
-    if (r.ok) followAppVersion();
-    return r.ok;
-  } catch {
-    return false;
+  const ask = async (p, ms) => {
+    try {
+      const r = await plainFetch(apiUrl(p, "/ping"), { headers: { "X-SwiftGet": "1" } }, ms);
+      return r.ok;
+    } catch {
+      return false;
+    }
+  };
+  for (const ms of [1500, 4000]) {
+    if (await ask(port, ms)) {
+      followAppVersion();
+      return true;
+    }
+    const l = await programLink(true);
+    if (l && l.port && l.port !== port && (await ask(l.port, ms))) return true;
   }
+  return false;
 }
 
 async function cookieHeader(url) {

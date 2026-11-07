@@ -25,13 +25,13 @@ pub fn bundled_extension_version() -> String {
 }
 
 pub fn leave_to_browser(url: &str) {
-    let mut l = FOR_BROWSER.lock().unwrap();
+    let mut l = FOR_BROWSER.lock().unwrap_or_else(|e| e.into_inner());
     l.retain(|(_, at)| at.elapsed() < Duration::from_secs(300));
     l.push((url.to_string(), std::time::Instant::now()));
 }
 
 fn take_for_browser(urls: &[String]) -> bool {
-    let mut l = FOR_BROWSER.lock().unwrap();
+    let mut l = FOR_BROWSER.lock().unwrap_or_else(|e| e.into_inner());
     l.retain(|(_, at)| at.elapsed() < Duration::from_secs(300));
     if let Some(i) = l.iter().position(|(u, _)| urls.iter().any(|x| x == u)) {
         l.remove(i);
@@ -277,7 +277,12 @@ pub fn serve(
         .name(format!("ezoo-api-{door:?}"))
         .spawn(move || {
             for req in server.incoming_requests() {
-                handle(req, door, &config, &on_event);
+                // one request that goes wrong must not close the door for
+                // good (the program would look closed to the add-in)
+                let run = std::panic::AssertUnwindSafe(|| handle(req, door, &config, &on_event));
+                if std::panic::catch_unwind(run).is_err() {
+                    eprintln!("a request to the add-in port failed");
+                }
             }
         })
         .expect("failed to start API thread");
@@ -317,7 +322,7 @@ fn signed(req: &Request, path: &str) -> bool {
         return false;
     }
     // each signed request only once
-    let mut seen = SEEN.lock().unwrap();
+    let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
     seen.retain(|_, t| t.elapsed() < Duration::from_secs(130));
     seen.insert(nonce, std::time::Instant::now()).is_none()
 }
@@ -391,7 +396,7 @@ const AFTER_NO: Duration = Duration::from_secs(120);
 /// the key. Asked once at a time, and not again for 10 minutes after a no.
 fn pair(req: Request, on_event: &impl Fn(ApiEvent)) {
     {
-        let mut p = PAIRING.lock().unwrap();
+        let mut p = PAIRING.lock().unwrap_or_else(|e| e.into_inner());
         let refused_lately = p.1.map(|t| t.elapsed() < AFTER_NO).unwrap_or(false);
         if p.0 || refused_lately {
             return reply(req, 429, r#"{"error":"wait"}"#);
@@ -406,7 +411,7 @@ fn pair(req: Request, on_event: &impl Fn(ApiEvent)) {
         let answer = rx.recv_timeout(Duration::from_secs(120));
         let yes = matches!(answer, Ok(true));
         {
-            let mut p = PAIRING.lock().unwrap();
+            let mut p = PAIRING.lock().unwrap_or_else(|e| e.into_inner());
             p.0 = false;
             // only a real "no" waits before asking again; no answer does not
             if !yes && !matches!(answer, Err(std::sync::mpsc::RecvTimeoutError::Timeout)) {
