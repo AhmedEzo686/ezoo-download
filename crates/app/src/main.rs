@@ -720,6 +720,7 @@ fn run() -> anyhow::Result<()> {
     let was_maximized = mgr.settings().main_maximized;
     if !(background && has_tray) {
         main.show()?;
+        winfx::latin_shortcuts(main.window());
         // the main window: in the middle of the screen (once drawn), and it
         // can be maximized; maximized there, so it comes back there
         let w = main.as_weak();
@@ -3320,6 +3321,7 @@ fn row_of(v: &DownloadView, sel: bool) -> DownloadRow {
     DownloadRow {
         id: v.id as i32,
         name: v.file_name.clone().into(),
+        name_rtl: i18n::rtl_text(&v.file_name),
         kind: if v.kind == DownloadKind::Torrent { "torrent" } else { kind_for(&v.file_name) }.into(),
         category: v.category.clone().into(),
         queue: v.queue.map(|q| q.to_string()).unwrap_or_default().into(),

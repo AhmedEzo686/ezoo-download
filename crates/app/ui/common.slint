@@ -5,6 +5,8 @@ import { Button, LineEdit, SpinBox, CheckBox as StdCheckBox, ComboBox, ListView,
 export struct DownloadRow {
     id: int,
     name: string,
+    // the name is written right to left (Arabic…): shown from the right
+    name-rtl: bool,
     // file type icon: video, audio, archive, pdf, doc, sheet, slides, text, exe, apk, disc, image, general
     kind: string,
     category: string,

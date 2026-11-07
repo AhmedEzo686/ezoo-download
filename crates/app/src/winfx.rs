@@ -97,9 +97,57 @@ pub(crate) fn made_away(
     a.with_position(slint::winit_030::winit::dpi::PhysicalPosition::new(AWAY.0, AWAY.1))
 }
 
+/// Ctrl+C / V / X / A / Z / Y work with every keyboard language: with an
+/// Arabic (Russian…) keyboard Windows says the key is "ؤ", not "c", and the
+/// text boxes only know the Latin letters. The key's place on the keyboard
+/// says which one it is.
+#[cfg(windows)]
+pub(crate) fn latin_shortcuts(w: &slint::Window) {
+    use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
+    use winit::event::{ElementState, WindowEvent};
+    use winit::keyboard::{Key, KeyCode, PhysicalKey};
+    let mut ctrl = false;
+    let mut alt = false;
+    w.on_winit_window_event(move |win, ev| {
+        match ev {
+            WindowEvent::ModifiersChanged(m) => {
+                ctrl = m.state().control_key();
+                alt = m.state().alt_key();
+            }
+            WindowEvent::KeyboardInput { event, .. } if ctrl && !alt => {
+                let foreign = matches!(&event.logical_key, Key::Character(c) if !c.is_ascii());
+                let latin = match event.physical_key {
+                    PhysicalKey::Code(KeyCode::KeyC) => "c",
+                    PhysicalKey::Code(KeyCode::KeyV) => "v",
+                    PhysicalKey::Code(KeyCode::KeyX) => "x",
+                    PhysicalKey::Code(KeyCode::KeyA) => "a",
+                    PhysicalKey::Code(KeyCode::KeyZ) => "z",
+                    PhysicalKey::Code(KeyCode::KeyY) => "y",
+                    _ => "",
+                };
+                if foreign && !latin.is_empty() {
+                    let text: slint::SharedString = latin.into();
+                    let _ = win.dispatch_event_with_result(if event.state == ElementState::Pressed {
+                        slint::platform::WindowEvent::KeyPressed { text }
+                    } else {
+                        slint::platform::WindowEvent::KeyReleased { text }
+                    });
+                    return EventResult::PreventDefault;
+                }
+            }
+            _ => {}
+        }
+        EventResult::Propagate
+    });
+}
+
+#[cfg(not(windows))]
+pub(crate) fn latin_shortcuts(_w: &slint::Window) {}
+
 /// A hidden window that is shown again waits away from the screen too.
 #[cfg(windows)]
 pub(crate) fn send_away(w: &slint::Window) {
+    latin_shortcuts(w);
     use slint::winit_030::{winit, WinitWindowAccessor};
     w.with_winit_window(|win: &winit::window::Window| {
         if !win.is_maximized() && win.is_visible() != Some(true) {

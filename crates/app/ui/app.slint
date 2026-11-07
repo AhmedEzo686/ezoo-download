@@ -333,7 +333,7 @@ component DownloadItem inherits Rectangle {
                 width: parent.width - 4px;
                 height: parent.height;
                 text: root.data.name;
-                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                horizontal-alignment: root.data.name-rtl || Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             }
             if c.key == "q": Cell {
                 width: parent.width;
@@ -1303,6 +1303,15 @@ export component MainWindow inherits ThemedWindow {
             }
             if (event.modifiers.control && (event.text == "f" || event.text == "F" || event.text == "ب")) {
                 root.find();
+                return accept;
+            }
+            // the selected downloads' addresses / a copied link to download
+            if (event.modifiers.control && (event.text == "c" || event.text == "C") && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "copy");
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "v" || event.text == "V")) {
+                root.add-url();
                 return accept;
             }
             if (event.modifiers.control && (event.text == "n" || event.text == "N" || event.text == "ى")) {
@@ -2656,7 +2665,8 @@ export component DetailsDialog inherits ThemedWindow {
             border-width: Theme.depth && root.tab == 0 ? 0px : 1px;
             border-color: Theme.line;
             border-radius: Theme.depth ? Theme.card-radius : 0px;
-            min-height: 150px;
+            // the 3D looks: the ring, the cards and the numbers
+            min-height: Theme.depth && root.tab == 0 ? (root.error != "" ? 330px : 300px) * max(1, Theme.font-scale) : 150px;
             if root.tab == 0 && Theme.depth: VerticalLayout {
                 padding: 10px;
                 spacing: 10px;

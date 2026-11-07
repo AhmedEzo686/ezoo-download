@@ -287,15 +287,28 @@ fn with_tag(q: &str, height: u64) -> String {
     }
 }
 
+/// A post's title without the counts the site puts before it
+/// ("995K views · 9.9K reactions | The real title" -> "The real title").
+fn post_title(title: &str) -> String {
+    let t = title.trim();
+    if let Some((head, rest)) = t.split_once(" | ") {
+        let counts = head.split('·').all(|part| {
+            let p = part.trim();
+            let starts_with_number = p.chars().next().is_some_and(|c| c.is_ascii_digit() || ('٠'..='٩').contains(&c));
+            starts_with_number && p.split_whitespace().count() <= 3
+        });
+        if counts && !rest.trim().is_empty() {
+            return rest.trim().to_string();
+        }
+    }
+    t.to_string()
+}
+
 /// Turn yt-dlp's JSON into download choices: every resolution paired with the
 /// best matching sound, plus "audio only".
 pub fn build_options(full: &Value) -> YtInfo {
     let info = main_entry(full);
-    let title = info["title"]
-        .as_str()
-        .or_else(|| full["title"].as_str())
-        .unwrap_or("video")
-        .to_string();
+    let title = post_title(info["title"].as_str().or_else(|| full["title"].as_str()).unwrap_or("video"));
     let site = info["extractor_key"]
         .as_str()
         .or_else(|| full["extractor_key"].as_str())
@@ -1115,6 +1128,14 @@ mod tests {
         let info = build_options(&post);
         assert_eq!(info.title, "Video 1");
         assert_eq!(info.options[0].video_url, "https://x/1.mp4");
+    }
+
+    #[test]
+    fn post_titles_lose_their_counts() {
+        assert_eq!(super::post_title("995K views · 9.9K reactions | It is real"), "It is real");
+        assert_eq!(super::post_title("1.2M views | فيديو"), "فيديو");
+        assert_eq!(super::post_title("Song A | Live"), "Song A | Live");
+        assert_eq!(super::post_title("plain"), "plain");
     }
 
     #[test]
