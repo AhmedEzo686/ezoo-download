@@ -85,9 +85,50 @@ impl Place {
         let b = std::fs::read(self.settings.as_ref()?).ok()?;
         let v: Value = serde_json::from_slice(&b).ok()?;
         let port = v["api_port"].as_u64().filter(|p| *p > 0 && *p <= 65535)? as u16;
-        let token = v["api_token"].as_str().filter(|t| t.len() >= 32)?.to_string();
+        let token = open_key(v["api_token"].as_str()?)?;
         Some((port, token))
     }
+}
+
+/// The program keeps its key encrypted for this Windows user ("dpapi:<hex>");
+/// this helper runs as the same user, so it can read it (no other can).
+fn open_key(stored: &str) -> Option<String> {
+    let key = match stored.strip_prefix("dpapi:") {
+        Some(hex) => String::from_utf8(unprotect(&from_hex(hex)?)?).ok()?,
+        None => stored.to_string(),
+    };
+    (key.len() >= 32).then_some(key)
+}
+
+fn from_hex(s: &str) -> Option<Vec<u8>> {
+    if !s.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok()).collect()
+}
+
+#[cfg(windows)]
+fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Security::Cryptography::{CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB};
+    let input = CRYPT_INTEGER_BLOB { cbData: u32::try_from(data.len()).ok()?, pbData: data.as_ptr() as *mut u8 };
+    let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+    // SAFETY: `input` points at `data`, only read during the call; on success
+    // Windows allocates `out`, which is copied and freed once
+    unsafe {
+        let ok = CryptUnprotectData(&input, std::ptr::null_mut(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out);
+        if ok == 0 || out.pbData.is_null() {
+            return None;
+        }
+        let bytes = std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec();
+        LocalFree(out.pbData as _);
+        Some(bytes)
+    }
+}
+
+#[cfg(not(windows))]
+fn unprotect(_data: &[u8]) -> Option<Vec<u8>> {
+    None
 }
 
 fn answer(place: &Place, msg: &Value) -> Value {
@@ -275,6 +316,15 @@ mod tests {
         assert_eq!(parse_response(plain), Some((200, "{\"ok\":true}".to_string())));
         let chunked = b"HTTP/1.1 401 Unauthorized\r\nTransfer-Encoding: chunked\r\n\r\n4\r\n{\"a\"\r\n3\r\n:1}\r\n0\r\n\r\n";
         assert_eq!(parse_response(chunked), Some((401, "{\"a\":1}".to_string())));
+    }
+
+    #[test]
+    fn the_key_is_read_as_the_program_keeps_it() {
+        assert_eq!(open_key(&"k".repeat(64)).as_deref(), Some("k".repeat(64).as_str()));
+        assert_eq!(open_key("short"), None);
+        // encrypted for another user (or not at all on this system): no key
+        assert_eq!(open_key("dpapi:0102"), None);
+        assert_eq!(open_key("dpapi:zz"), None);
     }
 
     #[test]

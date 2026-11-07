@@ -1395,6 +1395,7 @@ version = "1.0.11"
 dependencies = [
  "ring",
  "serde_json",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

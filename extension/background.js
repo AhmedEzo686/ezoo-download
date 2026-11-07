@@ -169,8 +169,11 @@ async function viaHelper(path, opts, ms) {
     start ? Math.max(ms, 30000) : ms
   );
   if (!m) return null;
+  // the program said no to the helper's key: the add-in's own way is tried
+  // (never a dead end because of the helper)
+  if (m.status === 401) return null;
   if (typeof m.status === "number") {
-    linkState = m.status === 401 ? "nokey" : "ok";
+    linkState = "ok";
     return helperResponse(m.status, m.body);
   }
   if (m.error === "timeout") {
