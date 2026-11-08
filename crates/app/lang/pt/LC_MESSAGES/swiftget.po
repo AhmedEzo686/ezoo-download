@@ -1426,6 +1426,9 @@ msgstr "Arquivos ao mesmo tempo"
 msgid "Number the files"
 msgstr "Numerar os arquivos"
 
+msgid "Subtitles too"
+msgstr "Legendas também"
+
 msgid "Not installed on this computer"
 msgstr "Não instalado neste computador"
 

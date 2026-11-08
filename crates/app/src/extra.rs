@@ -366,7 +366,7 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 8] = [
+const WHATS_NEW: [&str; 10] = [
     "Four new 3D looks (View): 3D, Aurora glass, Soft clay and Cyber neon, with raised buttons, colored pictures, downloads on floating cards and a new download window with a progress ring and the speed.",
     "The setup asks for the language of the program at the first install, and can let torrents through the Windows firewall.",
     "Options > Torrents: make Ezoo Download the main program for torrents, or leave magnet links and .torrent files to your own torrent program.",
@@ -374,7 +374,8 @@ const WHATS_NEW: [&str; 8] = [
     "Playlists: names in the program's language, right-to-left names shown from the right, a few videos at a time, and a video that fails is tried again by itself.",
     "The add-in has one tab for the whole video and one for a part of it, and it never downloads the video that played before in the same player.",
     "The right-click menu of the list is a real Windows menu that is never cut off, in the look of the program.",
-    "Sites that refuse extra connections: the download goes on with fewer. Up to 64 connections. A site that asks for a robot check says so, and the Firefox add-on is fetched from the official page when it is missing.",
+    "Sites that refuse extra connections: the download goes on with fewer. Up to 64 connections. A site that asks for a robot check says so, and the Firefox add-on is fetched from the official page when it is missing.",    "The add-in talks to the program directly, without a port: no more \"Ezoo Download is not running\" while it runs, and a closed program is opened for a download.",
+    "A power cut no longer loses the download list, the end of a download is never held by one slow connection, and a file that is already in the folder asks whether to replace it.",
 ];
 
 thread_local! {

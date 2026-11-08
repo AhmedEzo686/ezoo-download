@@ -199,7 +199,9 @@ pub fn check_now(ui: &Ui) {
         let mut s = shared.lock().unwrap();
         s.state = state;
         s.heading = heading;
-        s.detail = detail;
+        // a long address in an error has no place to break: the window
+        // became wider than the screen
+        s.detail = crate::breakable(&detail);
         s.progress = progress;
     };
     let client = ui.ctx.mgr.client();

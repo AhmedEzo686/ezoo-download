@@ -1426,6 +1426,9 @@ msgstr "Aynı anda dosya"
 msgid "Number the files"
 msgstr "Dosyaları numaralandır"
 
+msgid "Subtitles too"
+msgstr "Altyazılar da"
+
 msgid "Not installed on this computer"
 msgstr "Bu bilgisayarda yüklü değil"
 

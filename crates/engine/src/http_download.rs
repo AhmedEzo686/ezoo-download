@@ -6,7 +6,7 @@
 //! biggest remaining segment, so all connections stay busy until the end.
 
 use crate::http::SendOrdered;
-use crate::fileio::{make_sparse, write_at};
+use crate::fileio::{make_sparse, set_hidden, write_at};
 use crate::http::{http_status_of, is_network_error, reconnect_delay, request, ConnGuard, HttpStatus, NetDrop, Progress, Shared};
 use crate::model::RequestHeaders;
 use crate::segments::{self, Segment};
@@ -123,6 +123,20 @@ pub async fn run(
     progress: Arc<Progress>,
     cancel: CancellationToken,
 ) -> anyhow::Result<()> {
+    let part = job.part_path.clone();
+    let r = run_hidden(shared, job, segs, progress, cancel).await;
+    // however it ended: the temporary file is shown again
+    set_hidden(&part, false);
+    r
+}
+
+async fn run_hidden(
+    shared: Arc<Shared>,
+    job: HttpJob,
+    segs: SegTable,
+    progress: Arc<Progress>,
+    cancel: CancellationToken,
+) -> anyhow::Result<()> {
     if let Some(dir) = job.part_path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -141,6 +155,8 @@ pub async fn run(
         opts.share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE);
     }
     let file = opts.open(&job.part_path)?;
+    // while it downloads, nobody takes it for the file (it is not yet)
+    set_hidden(&job.part_path, true);
 
     {
         let mut table = segs.lock().unwrap();
@@ -318,7 +334,9 @@ pub async fn run(
 /// downloads start with that many, for a day: a site that was busy once
 /// (or a big shared server, a CDN) is not held at one or two connections
 /// for ever.
-static LEARNED: std::sync::LazyLock<Mutex<(std::collections::BTreeMap<String, (u32, u64)>, bool)>> =
+/// site -> (connections, when); and whether it changed since it was kept
+type Learned = (std::collections::BTreeMap<String, (u32, u64)>, bool);
+static LEARNED: std::sync::LazyLock<Mutex<Learned>> =
     std::sync::LazyLock::new(|| Mutex::new((Default::default(), false)));
 
 /// How long a learned limit holds.

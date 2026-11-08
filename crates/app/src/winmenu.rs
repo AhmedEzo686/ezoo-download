@@ -68,6 +68,9 @@ pub(crate) fn popup(win: &slint::Window, items: &[Item], dark: bool, rtl: bool) 
 }
 
 #[cfg(not(windows))]
+pub(crate) fn set_dark_menus(_dark: bool) {}
+
+#[cfg(not(windows))]
 pub(crate) fn popup(_win: &slint::Window, _items: &[Item], _dark: bool, _rtl: bool) -> Option<u32> {
     None
 }
@@ -105,7 +108,7 @@ unsafe fn fill(menu: windows_sys::Win32::UI::WindowsAndMessaging::HMENU, items: 
 /// Windows 10 1903 and newer can do it (uxtheme's unnamed functions 135
 /// and 136); older ones keep their usual light menu.
 #[cfg(windows)]
-fn set_dark_menus(dark: bool) {
+pub(crate) fn set_dark_menus(dark: bool) {
     use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
     type SetPreferredAppMode = unsafe extern "system" fn(i32) -> i32;
     type FlushMenuThemes = unsafe extern "system" fn();

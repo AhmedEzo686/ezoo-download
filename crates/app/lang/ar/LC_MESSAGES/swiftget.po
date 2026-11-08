@@ -1426,6 +1426,9 @@ msgstr "ملفات في نفس الوقت"
 msgid "Number the files"
 msgstr "ترقيم الملفات"
 
+msgid "Subtitles too"
+msgstr "والترجمة أيضًا"
+
 msgid "Not installed on this computer"
 msgstr "غير مثبّت على هذا الكمبيوتر"
 

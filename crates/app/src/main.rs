@@ -744,6 +744,8 @@ fn run() -> anyhow::Result<()> {
     if !(background && has_tray) {
         main.show()?;
         winfx::latin_shortcuts(main.window());
+        // the menus of Windows in the look of the program from the start
+        winmenu::set_dark_menus(main.global::<Theme>().get_dark());
         // the main window: in the middle of the screen (once drawn), and it
         // can be maximized; maximized there, so it comes back there
         let w = main.as_weak();
@@ -1388,8 +1390,47 @@ thread_local! {
 
 fn tray_action(ui: &Ui, action: tray::TrayAction) {
     use tray::TrayAction as T;
+    // a click waits a moment: the second click of a double click is not
+    // taken for "go away"
+    thread_local! {
+        static CLICKS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+        static SHOWN_AT: std::cell::Cell<Option<std::time::Instant>> = const { std::cell::Cell::new(None) };
+    }
     match action {
-        T::Show => bring_to_front(&ui.ctx),
+        T::Show => {
+            CLICKS.with(|c| c.set(c.get() + 1));
+            SHOWN_AT.with(|t| t.set(Some(std::time::Instant::now())));
+            bring_to_front(&ui.ctx);
+        }
+        T::Toggle => {
+            // the last click of a double click (Windows may send it after the double click)
+            if SHOWN_AT.with(|t| t.get()).is_some_and(|t| t.elapsed() < Duration::from_millis(600)) {
+                return;
+            }
+            let n = CLICKS.with(|c| {
+                c.set(c.get() + 1);
+                c.get()
+            });
+            let ui = ui.clone();
+            Timer::single_shot(Duration::from_millis(320), move || {
+                if CLICKS.with(|c| c.get()) != n {
+                    return;
+                }
+                let Some(w) = ui.ctx.main.upgrade() else { return };
+                let shown = w.window().is_visible() && !w.window().is_minimized();
+                if shown {
+                    // open already: to the tray (or the taskbar)
+                    if ui.ctx.mgr.settings().close_to_tray {
+                        let _ = w.hide();
+                    } else {
+                        w.window().set_minimized(true);
+                    }
+                } else {
+                    w.window().set_minimized(false);
+                    bring_to_front(&ui.ctx);
+                }
+            });
+        }
         T::AddUrl => {
             bring_to_front(&ui.ctx);
             open_add_dialog(&ui.ctx, String::new(), RequestHeaders::default(), None, VideoExtra::default());
@@ -1682,9 +1723,11 @@ fn wire_add(ui: &Ui) {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "download".into());
-            let path = ctx.mgr.settings().dir_for(&cat).join(&name).display().to_string();
+            let s = ctx.mgr.settings();
+            let path = s.dir_for(&cat).join(&name).display().to_string();
             d.set_save_as(path.clone().into());
             d.set_category_name(t(&cat).into());
+            d.set_remember_path(s.category_dirs.contains_key(&cat));
             ctx.add_state.lock().unwrap().auto_path = path;
         });
     }
@@ -2014,7 +2057,53 @@ impl Drop for ModalGuard {
 
 pub(crate) fn message(text: &str) {
     let _g = ModalGuard::new();
-    crate::winfx::msg_box().set_title(APP).set_description(text).show();
+    crate::winfx::msg_box().set_title(APP).set_description(breakable(text)).show();
+}
+
+/// A text that can be wrapped anywhere it is long: words longer than 32
+/// letters (addresses, paths, error codes) get places to break (an invisible
+/// space), so a window with it never gets wider than the screen.
+pub(crate) fn breakable(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 16);
+    let mut run = 0;
+    for c in text.chars() {
+        if c.is_whitespace() {
+            run = 0;
+        } else {
+            run += 1;
+            if run > 32 {
+                out.push('\u{200B}');
+                run = 1;
+            }
+        }
+        out.push(c);
+    }
+    out
+}
+
+enum FileThere {
+    Replace,
+    Number,
+    Cancel,
+}
+
+/// "The file is already in this folder": replace it, a new numbered name, or not now.
+fn ask_file_there(name: &str) -> FileThere {
+    use rfd::{MessageButtons, MessageDialogResult};
+    let _g = ModalGuard::new();
+    let (replace, number, cancel) = (t("Replace it"), t("New name (numbered)"), t("Cancel"));
+    let answer = crate::winfx::msg_box()
+        .set_title(APP)
+        .set_description(tf("The file \"{}\" is already in this folder.\nReplace it, or save the new one with a numbered name?", &[&name]))
+        .set_buttons(MessageButtons::YesNoCancelCustom(replace.clone(), number.clone(), cancel))
+        .show();
+    match answer {
+        MessageDialogResult::Custom(c) if c == replace => FileThere::Replace,
+        MessageDialogResult::Yes => FileThere::Replace,
+        MessageDialogResult::Custom(c) if c == number => FileThere::Number,
+        MessageDialogResult::No => FileThere::Number,
+        _ => FileThere::Cancel,
+    }
 }
 
 pub(crate) fn ask(text: &str) -> bool {
@@ -2349,6 +2438,11 @@ pub(crate) fn apply_look(ui: &Ui, look: &Look) {
     for (d, _) in ui.progress.borrow().values() {
         set_theme_of(d.global::<Theme>(), look);
     }
+    // the program's Windows menus too (the menu bar's lists, the tray menu,
+    // the list's right-click menu): dark with a dark look
+    if let Some(m) = ui.ctx.main.upgrade() {
+        winmenu::set_dark_menus(m.global::<Theme>().get_dark());
+    }
     // the main window only: the picture behind it
     if let Some(m) = ui.ctx.main.upgrade() {
         match background_image(&look.background) {
@@ -2464,6 +2558,9 @@ fn show_name_in_dialog(ctx: &Ctx, d: &AddDialog, name: &str, url: &str) -> Strin
     let cats = ctx.add_state.lock().unwrap().categories.clone();
     d.set_category_index(cats.iter().position(|c| *c == cat).unwrap_or(0) as i32);
     d.set_category_name(t(&cat).into());
+    // a category with a remembered folder: the box stays ticked (shows it is
+    // remembered; untick it to forget)
+    d.set_remember_path(s.category_dirs.contains_key(&cat));
     d.set_kind(kind_for(name).into());
     d.set_ext(filename::extension(name).to_uppercase().into());
     path
@@ -2517,7 +2614,6 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     }
     d.set_url(url.clone().into());
     d.set_description(SharedString::new());
-    d.set_remember_path(false);
     d.set_size_text(SharedString::new());
     d.set_connections(s.connections() as i32);
     d.set_queue_names(queue_names(&s));
@@ -2692,22 +2788,48 @@ fn confirm_add(ui: &Ui, start: bool) {
         .map(|n| with_extension_of(&n.to_string_lossy(), &suggested))
         .filter(|n| !n.trim().is_empty());
     let dir = save_as.parent().map(Path::to_path_buf).filter(|p| !p.as_os_str().is_empty());
-    let settings = ctx.mgr.settings();
-    if d.get_remember_path() {
-        if let Some(dir) = &dir {
-            let mut s = settings.clone();
-            let key = ctx
-                .add_state
-                .lock()
-                .unwrap()
-                .categories
-                .get(d.get_category_index().max(0) as usize)
-                .cloned()
-                .unwrap_or_else(|| "General".into());
-            s.category_dirs.insert(key, dir.clone());
+    // a file of that name is in the folder already: the user says what to do
+    // (before, a number was put to the name without a word)
+    let name = match (&dir, name) {
+        (Some(dir), Some(n)) if dir.join(&n).is_file() => match ask_file_there(&n) {
+            FileThere::Replace => {
+                if let Err(e) = std::fs::remove_file(dir.join(&n)) {
+                    message(&tf("Could not replace the file: {}", &[&e.to_string()]));
+                    return;
+                }
+                Some(n)
+            }
+            FileThere::Number => {
+                let numbered = filename::unique_name(dir, &n);
+                d.set_save_as(dir.join(&numbered).display().to_string().into());
+                Some(numbered)
+            }
+            FileThere::Cancel => return,
+        },
+        (_, n) => n,
+    };
+    let key = ctx
+        .add_state
+        .lock()
+        .unwrap()
+        .categories
+        .get(d.get_category_index().max(0) as usize)
+        .cloned()
+        .unwrap_or_else(|| "General".into());
+    {
+        // ticked: this folder is the category's from now on; unticked where
+        // one was remembered: forgotten (the usual folder again)
+        let mut s = ctx.mgr.settings();
+        let changed = match (&dir, d.get_remember_path()) {
+            (Some(dir), true) => s.category_dirs.insert(key.clone(), dir.clone()).as_ref() != Some(dir),
+            (_, false) => s.category_dirs.remove(&key).is_some(),
+            _ => false,
+        };
+        if changed {
             let _ = ctx.mgr.set_settings(s);
         }
     }
+    let settings = ctx.mgr.settings();
     let req = {
         let mut st = ctx.add_state.lock().unwrap();
         st.probe_seq += 1;
@@ -2912,6 +3034,8 @@ fn row_menu(ui: &Ui, id: i32) {
     items.push(Item::new(12, t("Properties"), true));
     items.push(Item::separator());
     items.push(Item::new(13, t("Remove"), true));
+    items.push(Item::separator());
+    items.push(Item::new(901, t("Select all"), true));
     let dark = main.global::<Theme>().get_dark();
     let picked = winmenu::popup(main.window(), &items, dark, i18n::is_rtl());
     // A click that closed the menu may reach the list a moment later without
@@ -2930,6 +3054,7 @@ fn row_menu(ui: &Ui, id: i32) {
     let Some(picked) = picked else { return };
     match picked {
         100 => main.invoke_row_activated(id),
+        901 => main.invoke_select_all(),
         999 => main.invoke_row_to_queue(id, -1),
         q if q >= 1000 => main.invoke_row_to_queue(id, (q - 1000) as i32),
         a if (a as usize) < ACTIONS.len() && a > 0 => main.invoke_row_action(id, ACTIONS[a as usize].into()),
@@ -3322,6 +3447,8 @@ pub(crate) fn err_text(e: &str) -> String {
             "Not enough free space on the disk {}: the file needs {} more, only {} is free. Choose a folder on another disk (right-click the download > Move / Rename), or free some space, then click Resume.",
             &[&disk, &need, &free],
         )
+    } else if e.contains("the site gave a list of pieces of a video stream") || e.contains("the site gave a web page, not the video") {
+        t("The site gave a page instead of the video (it protects its videos, or the link expired), so no broken file was kept. Play the video on its page and use the Ezoo Download button that appears on it.")
     } else if e.contains("the downloaded data is gone") {
         t("The downloaded data is gone: its temporary file was removed while it downloaded (an antivirus or a cleaning program?). Click Redownload; if it happens again, allow the download folder in the antivirus.")
     } else if e.contains("ffmpeg could not cut the part") {

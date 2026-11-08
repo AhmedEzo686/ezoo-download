@@ -2,6 +2,7 @@
 # Run `python lang/make_po.py` after changing it: it rebuilds
 # lang/ar/LC_MESSAGES/swiftget.po from the @tr("...") texts of ui/*.slint.
 AR = {
+    "Subtitles too": "والترجمة أيضًا",
     "{} downloads selected": "تم تحديد {} تحميلات",
     "Open": "فتح",
     "Show download progress": "عرض تقدّم التحميل",

@@ -21,6 +21,7 @@ pub(crate) fn open(ui: &Ui) {
             d.set_url(clip.into());
         }
         d.set_message(SharedString::new());
+        d.set_subtitles(ui.ctx.mgr.settings().subtitles);
     }
     open_window!(d);
     d.window().set_minimized(false);
@@ -58,6 +59,7 @@ pub(crate) fn wire(ui: &Ui) {
     let Some(d) = ui.playlist.upgrade() else { return };
     let rows = ui.playlist_rows.clone();
     d.set_entries(ModelRc::from(rows.clone()));
+    d.set_subtitles(ui.ctx.mgr.settings().subtitles);
     {
         let (w, mgr) = (d.as_weak(), ui.ctx.mgr.clone());
         d.on_fetch(move || {
@@ -181,6 +183,17 @@ pub(crate) fn wire(ui: &Ui) {
             if let Some(mut def) = ui.ctx.mgr.settings().queue(queue).cloned() {
                 def.retries = PLAYLIST_RETRIES;
                 let _ = ui.ctx.mgr.update_queue(def);
+            }
+            // "Subtitles too": the same switch as in Options > Downloads
+            {
+                let mut s = ui.ctx.mgr.settings();
+                if s.subtitles != d.get_subtitles() {
+                    s.subtitles = d.get_subtitles();
+                    if s.subtitles && s.subtitle_langs.trim().is_empty() {
+                        s.subtitle_langs = "ar en".into();
+                    }
+                    let _ = ui.ctx.mgr.set_settings(s);
+                }
             }
             let width = chosen.len().to_string().len().max(2);
             for r in &chosen {

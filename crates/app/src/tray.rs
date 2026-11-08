@@ -4,6 +4,9 @@
 #[cfg_attr(not(windows), allow(dead_code))]
 pub enum TrayAction {
     Show,
+    /// one click on the icon: the window opens, or goes to the tray when it
+    /// is already in front
+    Toggle,
     AddUrl,
     ResumeAll,
     StopAll,
@@ -222,9 +225,12 @@ mod imp {
                     }
                     continue;
                 }
-                // left double click: the window (the menu is on the right button)
-                if let TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } = ev {
-                    out.push(TrayAction::Show);
+                // left click: the window opens / goes away; a double click:
+                // it opens (the menu is on the right button)
+                match ev {
+                    TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } => out.push(TrayAction::Toggle),
+                    TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } => out.push(TrayAction::Show),
+                    _ => {}
                 }
             }
             while let Ok(ev) = MenuEvent::receiver().try_recv() {

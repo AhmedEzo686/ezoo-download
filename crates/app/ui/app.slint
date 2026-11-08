@@ -1340,14 +1340,25 @@ export component MainWindow inherits ThemedWindow {
         }
 
         VerticalLayout {
-            // ---- toolbar (buttons that don't fit a narrow window are cut off)
-            Rectangle {
+            // ---- toolbar: when the buttons with their names don't fit (bigger
+            // text, a narrow window), they show their pictures only; what still
+            // does not fit is cut at the end (the left in Arabic), never the
+            // first buttons
+            tb := Rectangle {
+                // 13 + 2 wider buttons, 5 lines between them, the filter box
+                property <length> full-need: 13 * max(56px, 56px * Theme.font-scale) + 2 * max(62px, 62px * Theme.font-scale) + 5 * 7px + 14px + 96px + 16px;
+                property <length> small-need: 15 * 34px + 5 * 7px + 14px + 96px + 16px;
+                // only with bigger text (at the usual size the last buttons
+                // are cut in a narrow window, as before)
+                property <bool> small-now: root.toolbar-small || (Theme.font-scale > 1.05 && self.width < self.full-need);
                 // bigger text (Options > Appearance): a taller bar, the names are never cut
-                height: root.toolbar-small ? 42px : max(64px, 38px + 26px * Theme.font-scale);
+                height: tb.small-now ? 42px : max(64px, 38px + 26px * Theme.font-scale);
                 min-width: 0px;
                 clip: true;
                 background: @linear-gradient(180deg, Theme.toolbar-top 0%, Theme.toolbar-bottom 100%);
                 HRow {
+                    width: max(parent.width, tb.small-now ? tb.small-need : tb.full-need);
+                    x: Theme.rtl ? parent.width - self.width : 0;
                     padding: 4px;
                     padding-left: Theme.rtl ? (10px) : (6px);
                     padding-right: Theme.rtl ? (6px) : (10px);
@@ -1355,7 +1366,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "add";
                         text: @tr("Add URL");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.add-url();
                         }
@@ -1363,7 +1374,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "batch";
                         text: @tr("Add Batch");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.add-batch();
                         }
@@ -1372,7 +1383,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "resume";
                         text: @tr("Resume");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         enabled: root.can-resume;
                         clicked => {
                             root.resume(root.selected-id);
@@ -1381,7 +1392,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "stop";
                         text: @tr("Stop");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         enabled: root.can-stop;
                         clicked => {
                             root.pause(root.selected-id);
@@ -1390,7 +1401,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "stopall";
                         text: @tr("Stop All");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.stop-all();
                         }
@@ -1399,7 +1410,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "delete";
                         text: @tr("Delete");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         enabled: root.selected-id >= 0;
                         clicked => {
                             root.delete(root.selected-id);
@@ -1408,7 +1419,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "deletedone";
                         text: @tr("Delete Done");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.delete-completed();
                         }
@@ -1417,7 +1428,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "options";
                         text: @tr("Options");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.open-settings(0);
                         }
@@ -1425,7 +1436,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "scheduler";
                         text: @tr("Scheduler");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.open-scheduler();
                         }
@@ -1433,7 +1444,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "limiter";
                         text: root.limiter-on ? @tr("Limiter: On") : @tr("Limiter: Off");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.toggle-limiter();
                         }
@@ -1442,8 +1453,8 @@ export component MainWindow inherits ThemedWindow {
                     start-q := ToolBtn {
                         icon: "startqueue";
                         text: @tr("Start Queue");
-                        small: root.toolbar-small;
-                        width: root.toolbar-small ? 34px : max(62px, 62px * Theme.font-scale);
+                        small: tb.small-now;
+                        width: tb.small-now ? 34px : max(62px, 62px * Theme.font-scale);
                         clicked => {
                             root.qmenu-start = true;
                             root.qmenu-x = self.x;
@@ -1453,8 +1464,8 @@ export component MainWindow inherits ThemedWindow {
                     stop-q := ToolBtn {
                         icon: "stopqueue";
                         text: @tr("Stop Queue");
-                        small: root.toolbar-small;
-                        width: root.toolbar-small ? 34px : max(62px, 62px * Theme.font-scale);
+                        small: tb.small-now;
+                        width: tb.small-now ? 34px : max(62px, 62px * Theme.font-scale);
                         clicked => {
                             root.qmenu-start = false;
                             root.qmenu-x = self.x;
@@ -1465,7 +1476,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "grabber";
                         text: @tr("Grabber");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.grabber();
                         }
@@ -1473,7 +1484,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "playlist";
                         text: @tr("Playlist");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.playlist();
                         }
@@ -1481,7 +1492,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "torrent";
                         text: @tr("Torrent");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.torrent();
                         }

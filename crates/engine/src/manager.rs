@@ -2022,6 +2022,12 @@ impl Manager {
                 part.display()
             );
         }
+        // a "video" of a few bytes: the site gave a page or a list instead
+        // of the video (sites that protect their videos); never shown as done
+        if let Some(why) = not_the_media(&part, &file_name) {
+            progress.set_step(None);
+            anyhow::bail!("{why}");
+        }
         let mut target = save_dir.join(&file_name);
         if target.exists() {
             let name = filename::unique_name(&save_dir, &file_name);
@@ -2803,6 +2809,30 @@ fn with_login(s: &Settings, url: &str, h: &RequestHeaders) -> RequestHeaders {
     h
 }
 
+/// A video or song file that is not one: a small file whose start is a web
+/// page or a stream's list of pieces. The reason, for the user.
+fn not_the_media(part: &Path, file_name: &str) -> Option<String> {
+    let media = matches!(
+        filename::extension(file_name).as_str(),
+        "mp4" | "mkv" | "webm" | "mov" | "avi" | "flv" | "m4v" | "mp3" | "m4a" | "aac" | "ogg" | "opus" | "wav" | "ts"
+    );
+    let len = std::fs::metadata(part).ok()?.len();
+    if !media || len == 0 || len > 512 * 1024 {
+        return None;
+    }
+    let mut head = vec![0u8; 512.min(len as usize)];
+    use std::io::Read;
+    std::fs::File::open(part).ok()?.read_exact(&mut head).ok()?;
+    let text = String::from_utf8_lossy(&head).trim_start_matches('\u{feff}').trim_start().to_ascii_lowercase();
+    if text.starts_with("#extm3u") {
+        return Some("the site gave a list of pieces of a video stream, not the video (it cannot be saved as one file this way): play the video on its page and use the add-in's button there".into());
+    }
+    if text.starts_with("<!doctype") || text.starts_with("<html") || text.starts_with("<?xml") || text.starts_with("{\"") {
+        return Some("the site gave a web page, not the video (the site protects its videos, or the link has expired): play the video on its page and use the add-in's button there".into());
+    }
+    None
+}
+
 fn collect_records(inner: &Inner) -> Vec<DownloadRecord> {
     inner
         .entries
@@ -2910,3 +2940,23 @@ const TRYING_AGAIN: &str = " (trying again)";
 const RETRY_WAIT: Duration = Duration::from_secs(20);
 #[cfg(test)]
 const RETRY_WAIT: Duration = Duration::from_millis(300);
+
+#[cfg(test)]
+mod media_tests {
+    use super::not_the_media;
+
+    #[test]
+    fn a_page_is_not_a_video() {
+        let dir = std::env::temp_dir().join(format!("ezoo-notmedia-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("x.sgpart");
+        std::fs::write(&p, b"<!DOCTYPE html><html><body>no</body></html>").unwrap();
+        assert!(not_the_media(&p, "film.mp4").unwrap().contains("web page"));
+        assert_eq!(not_the_media(&p, "notes.html"), None);
+        std::fs::write(&p, b"#EXTM3U\n#EXT-X-VERSION:3\n").unwrap();
+        assert!(not_the_media(&p, "film.mp4").unwrap().contains("stream"));
+        std::fs::write(&p, [0u8, 0, 0, 0x20, b'f', b't', b'y', b'p']).unwrap();
+        assert_eq!(not_the_media(&p, "film.mp4"), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

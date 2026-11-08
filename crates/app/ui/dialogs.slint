@@ -3363,6 +3363,8 @@ export component PlaylistDialog inherits ThemedWindow {
     in-out property <int> parallel: 2;
     in-out property <bool> numbered: true;
     in-out property <bool> start-now: true;
+    // the videos' subtitles too (Options > Downloads, the same switch)
+    in-out property <bool> subtitles;
     in property <string> checked-text;
     in property <string> message;
     callback fetch();
@@ -3585,6 +3587,10 @@ export component PlaylistDialog inherits ThemedWindow {
             CheckBox {
                 text: @tr("Start now");
                 checked <=> root.start-now;
+            }
+            CheckBox {
+                text: @tr("Subtitles too");
+                checked <=> root.subtitles;
             }
             Text {
                 text: root.message != "" ? root.message : root.checked-text;
