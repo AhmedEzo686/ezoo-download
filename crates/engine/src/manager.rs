@@ -1626,7 +1626,23 @@ impl Manager {
                     max_request: http_download::max_request_for(rec.request_url()),
                     limiter: limiter.clone(),
                 };
-                http_download::run(self.shared.clone(), job, segs, progress.clone(), cancel.clone()).await?;
+                http_download::run(self.shared.clone(), job.clone(), segs.clone(), progress.clone(), cancel.clone()).await?;
+                // a packed file (RAR, ZIP, 7z...) never has long runs of empty
+                // bytes: such a run is a part that never came (the file was
+                // "damaged" while other programs got it whole). Those parts
+                // are fetched once more; empty again, they are what the
+                // server has.
+                if let (true, Some(total)) = (rec.resumable && is_packed(&rec.file_name), rec.total_size) {
+                    let p2 = part.clone();
+                    let holes = tokio::task::spawn_blocking(move || find_holes(&p2)).await.unwrap_or_default();
+                    if !holes.is_empty() {
+                        let missing: u64 = holes.iter().map(|(a, b)| b - a).sum();
+                        eprintln!("{}: {} empty parts ({missing} bytes): fetched again", rec.file_name, holes.len());
+                        *segs.lock().unwrap() = segments_for_holes(total, &holes);
+                        progress.bytes.fetch_sub(missing.min(progress.bytes.load(Ordering::Relaxed)), Ordering::Relaxed);
+                        http_download::run(self.shared.clone(), job, segs, progress.clone(), cancel.clone()).await?;
+                    }
+                }
             }
             DownloadKind::Hls => {
                 let job = HlsJob {
@@ -2809,6 +2825,71 @@ fn with_login(s: &Settings, url: &str, h: &RequestHeaders) -> RequestHeaders {
     h
 }
 
+/// Packed files: their bytes look random, long runs of zero bytes never
+/// happen in them.
+fn is_packed(file_name: &str) -> bool {
+    matches!(
+        filename::extension(file_name).as_str(),
+        "rar" | "zip" | "7z" | "gz" | "tgz" | "xz" | "txz" | "bz2" | "zst" | "lz" | "lzma" | "cab"
+    ) || file_name.to_ascii_lowercase().contains(".part") && file_name.to_ascii_lowercase().ends_with(".rar")
+}
+
+/// Runs of at least 64 KiB of zero bytes in the file: [start, end).
+fn find_holes(path: &Path) -> Vec<(u64, u64)> {
+    const MIN_HOLE: u64 = 64 * 1024;
+    use std::io::Read;
+    let Ok(mut f) = std::fs::File::open(path) else { return Vec::new() };
+    let mut buf = vec![0u8; 1 << 20];
+    let (mut at, mut run_start): (u64, Option<u64>) = (0, None);
+    let mut holes = Vec::new();
+    loop {
+        let n = match f.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
+        let chunk = &buf[..n];
+        // a whole buffer of zeros is checked fast
+        if chunk.iter().all(|b| *b == 0) {
+            run_start.get_or_insert(at);
+        } else {
+            for (i, b) in chunk.iter().enumerate() {
+                let pos = at + i as u64;
+                if *b == 0 {
+                    run_start.get_or_insert(pos);
+                } else if let Some(s) = run_start.take() {
+                    if pos - s >= MIN_HOLE {
+                        holes.push((s, pos));
+                    }
+                }
+            }
+        }
+        at += n as u64;
+    }
+    if let Some(s) = run_start {
+        if at - s >= MIN_HOLE {
+            holes.push((s, at));
+        }
+    }
+    holes
+}
+
+/// A table where only the holes are left to get.
+fn segments_for_holes(total: u64, holes: &[(u64, u64)]) -> Vec<segments::Segment> {
+    let mut out = Vec::new();
+    let mut at = 0;
+    for &(a, b) in holes {
+        if a > at {
+            out.push(segments::Segment { pos: a, ..segments::Segment::new(at, a) });
+        }
+        out.push(segments::Segment::new(a, b));
+        at = b;
+    }
+    if at < total {
+        out.push(segments::Segment { pos: total, ..segments::Segment::new(at, total) });
+    }
+    out
+}
+
 /// A video or song file that is not one: a small file whose start is a web
 /// page or a stream's list of pieces. The reason, for the user.
 fn not_the_media(part: &Path, file_name: &str) -> Option<String> {
@@ -2943,7 +3024,29 @@ const RETRY_WAIT: Duration = Duration::from_millis(300);
 
 #[cfg(test)]
 mod media_tests {
-    use super::not_the_media;
+    use super::{find_holes, is_packed, not_the_media, segments_for_holes};
+
+    #[test]
+    fn empty_parts_of_a_packed_file_are_found() {
+        let dir = std::env::temp_dir().join(format!("ezoo-holes-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("a.rar.sgpart");
+        let mut data: Vec<u8> = (0..3_000_000u32).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8 | 1).collect();
+        for b in &mut data[1_000_123..1_300_000] {
+            *b = 0;
+        }
+        // a few zeros in a row are normal
+        for b in &mut data[2_000_000..2_000_100] {
+            *b = 0;
+        }
+        std::fs::write(&p, &data).unwrap();
+        assert_eq!(find_holes(&p), vec![(1_000_123, 1_300_000)]);
+        assert!(is_packed("big.part01.rar") && is_packed("x.ZIP") && !is_packed("disk.iso"));
+        let t = segments_for_holes(3_000_000, &[(1_000_123, 1_300_000)]);
+        assert_eq!(super::segments::downloaded(&t), 3_000_000 - (1_300_000 - 1_000_123));
+        assert_eq!(t.iter().map(|s| s.end - s.start).sum::<u64>(), 3_000_000);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_page_is_not_a_video() {

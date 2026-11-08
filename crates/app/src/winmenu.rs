@@ -80,6 +80,16 @@ unsafe fn fill(menu: windows_sys::Win32::UI::WindowsAndMessaging::HMENU, items: 
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         AppendMenuW, CreatePopupMenu, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
     };
+    // no line of this menu can be ticked: no empty room for the tick on
+    // the left (Windows keeps it by default)
+    if !items.iter().any(|i| i.checked) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{SetMenuInfo, MENUINFO, MIM_STYLE, MNS_NOCHECK};
+        let mut info: MENUINFO = std::mem::zeroed();
+        info.cbSize = std::mem::size_of::<MENUINFO>() as u32;
+        info.fMask = MIM_STYLE;
+        info.dwStyle = MNS_NOCHECK;
+        SetMenuInfo(menu, &info);
+    }
     for it in items {
         if it.id == 0 && it.sub.is_empty() {
             AppendMenuW(menu, MF_SEPARATOR, 0, std::ptr::null());

@@ -770,15 +770,67 @@ pub fn forget(page_url: &str) {
 }
 
 fn resolve_now(page_url: &str, cookies: Option<&[BrowserCookie]>, referer: Option<&str>) -> anyhow::Result<YtInfo> {
+    // a file on Google Drive: its own file, whole, as it was put there (the
+    // player's qualities are made smaller by Google, and yt-dlp often can't
+    // see a file shared with the user)
+    let drive = drive_file_id(page_url);
     let tool = find_tool("yt-dlp")
-        .ok_or_else(|| anyhow!("yt-dlp.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again"))?;
+        .ok_or_else(|| anyhow!("yt-dlp.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again"));
     let cookies = cookies.filter(|c| !c.is_empty());
-    let json = with_cookies(page_url, cookies, |file| run_ytdlp(&tool, page_url, file, referer))?;
-    let info = build_options(&json);
+    let found = tool.and_then(|tool| with_cookies(page_url, cookies, |file| run_ytdlp(&tool, page_url, file, referer)));
+    let mut info = match (found, &drive) {
+        (Ok(json), _) => build_options(&json),
+        (Err(_), Some(_)) => YtInfo { title: String::new(), site: "Google Drive".into(), options: Vec::new() },
+        (Err(e), None) => return Err(e),
+    };
+    if let Some(id) = drive {
+        info.site = "Google Drive".into();
+        info.options.insert(0, drive_original(&id, &info));
+    }
     if info.options.is_empty() {
         bail!("no downloadable video was found on this page");
     }
     Ok(info)
+}
+
+/// The id of a Google Drive file from its page ("/file/d/ID/view",
+/// "open?id=ID", "uc?id=ID").
+pub fn drive_file_id(url: &str) -> Option<String> {
+    let u = url::Url::parse(url).ok()?;
+    let host = u.host_str()?.to_ascii_lowercase();
+    if !(host == "drive.google.com" || host == "docs.google.com" || host == "drive.usercontent.google.com") {
+        return None;
+    }
+    let mut parts = u.path_segments()?;
+    let id = loop {
+        match parts.next() {
+            Some("d") => break parts.next().map(str::to_string),
+            Some(_) => continue,
+            None => break u.query_pairs().find(|(k, _)| k == "id").map(|(_, v)| v.to_string()),
+        }
+    }?;
+    (id.len() >= 10 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')).then_some(id)
+}
+
+/// "Original file": the file itself, as the Download button of Drive gives it.
+fn drive_original(id: &str, info: &YtInfo) -> YtOption {
+    let ext = info.options.first().map(|o| o.ext.clone()).unwrap_or_default();
+    YtOption {
+        key: "drive-original".into(),
+        label: "Original file".into(),
+        sub: "Google Drive".into(),
+        quality: "Original".into(),
+        // confirm=t: no "can't scan this file for viruses" page for big files
+        video_url: format!("https://drive.usercontent.google.com/download?id={id}&export=download&confirm=t"),
+        audio_url: None,
+        ext,
+        size: 0,
+        headers: vec![("Referer".into(), "https://drive.google.com/".into())],
+        tag: String::new(),
+        codec: String::new(),
+        duration: info.options.first().map(|o| o.duration).unwrap_or(0),
+        kbps: 0,
+    }
 }
 
 /// Fresh links for a choice made earlier (links expire after a few hours).
@@ -1128,6 +1180,19 @@ mod tests {
         let info = build_options(&post);
         assert_eq!(info.title, "Video 1");
         assert_eq!(info.options[0].video_url, "https://x/1.mp4");
+    }
+
+    #[test]
+    fn drive_files_are_known() {
+        assert_eq!(
+            drive_file_id("https://drive.google.com/file/d/1aLKUiTGVrngA6MeznJwaivpiMOkOAm8D/view?usp=drive_link").as_deref(),
+            Some("1aLKUiTGVrngA6MeznJwaivpiMOkOAm8D")
+        );
+        assert_eq!(drive_file_id("https://drive.google.com/open?id=1aLKUiTGVrngA6Mez").as_deref(), Some("1aLKUiTGVrngA6Mez"));
+        assert_eq!(drive_file_id("https://drive.google.com/drive/my-drive"), None);
+        assert_eq!(drive_file_id("https://example.com/file/d/1aLKUiTGVrngA6MeznJ/view"), None);
+        let o = drive_original("1aLKUiTGVrngA6Mez", &YtInfo { title: String::new(), site: String::new(), options: Vec::new() });
+        assert!(o.video_url.starts_with("https://drive.usercontent.google.com/download?id=1aLKUiTGVrngA6Mez"));
     }
 
     #[test]
