@@ -714,7 +714,7 @@ impl Worker {
             Some(limit) if self.segmented => end.min(pos + limit.max(1)),
             _ => end,
         };
-        let mut rb = request(&self.shared.client(), &self.job.url, &self.job.headers, &self.job.user_agent);
+        let mut rb = request(&crate::http::client_for(&self.shared.client(), &self.job.url), &self.job.url, &self.job.headers, &self.job.user_agent);
         if self.segmented {
             rb = rb.header(RANGE, format!("bytes={}-{}", pos, req_end - 1));
         }

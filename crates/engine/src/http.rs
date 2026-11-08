@@ -10,7 +10,7 @@ use reqwest::header::{
 };
 use reqwest::{Client, RequestBuilder, StatusCode};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 /// Live counters of a running download, read by the UI.
@@ -261,6 +261,57 @@ pub fn build_client() -> anyhow::Result<Client> {
 }
 
 pub fn build_client_with(proxy: &ProxyConfig) -> anyhow::Result<Client> {
+    // the IPv4 copy (see `client_for`) follows the same proxy
+    {
+        let mut last = LAST_PROXY.lock().unwrap();
+        if *last != *proxy {
+            *last = proxy.clone();
+            *V4_CLIENT.lock().unwrap() = None;
+        }
+    }
+    build_client_family(proxy, false)
+}
+
+/// Many file sites give a link for "your IP" (the one the browser had on
+/// their page). A computer with IPv6 may reach the file's server on its IPv6
+/// address while the page saw its IPv4 one: the server answers 403 to the
+/// program, never to the browser or to programs that use IPv4 only. Such a
+/// server (refusing, then giving the file over IPv4) is asked over IPv4 from
+/// then on.
+static V4_HOSTS: std::sync::LazyLock<Mutex<std::collections::HashSet<String>>> = std::sync::LazyLock::new(Default::default);
+static LAST_PROXY: std::sync::LazyLock<Mutex<ProxyConfig>> =
+    std::sync::LazyLock::new(|| Mutex::new(ProxyConfig { mode: 1, ..Default::default() }));
+static V4_CLIENT: Mutex<Option<Client>> = Mutex::new(None);
+
+fn host_of(url: &str) -> Option<String> {
+    url::Url::parse(url).ok()?.host_str().map(|h| h.to_ascii_lowercase())
+}
+
+fn v4_client() -> Option<Client> {
+    let mut c = V4_CLIENT.lock().unwrap();
+    if c.is_none() {
+        let proxy = LAST_PROXY.lock().unwrap().clone();
+        // through a proxy of one's own: the proxy decides
+        if proxy.mode == 2 && !proxy.host.is_empty() {
+            return None;
+        }
+        *c = build_client_family(&proxy, true).ok();
+    }
+    c.clone()
+}
+
+/// The client to ask `url` with: IPv4 only for servers that need it.
+pub fn client_for(client: &Client, url: &str) -> Client {
+    let v4 = host_of(url).is_some_and(|h| V4_HOSTS.lock().unwrap().contains(&h));
+    if v4 {
+        if let Some(c) = v4_client() {
+            return c;
+        }
+    }
+    client.clone()
+}
+
+fn build_client_family(proxy: &ProxyConfig, ipv4_only: bool) -> anyhow::Result<Client> {
     let mut b = Client::builder()
         // Real separate TCP connections. With HTTP/2 all our
         // "connections" would share one TCP connection and be as slow as one.
@@ -280,6 +331,9 @@ pub fn build_client_with(proxy: &ProxyConfig) -> anyhow::Result<Client> {
         // redirects are followed by `SendOrdered::send_ordered`, which puts
         // "Host" first again on every step (see there)
         .redirect(reqwest::redirect::Policy::none());
+    if ipv4_only {
+        b = b.local_address(Some(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)));
+    }
     match proxy.mode {
         // 1 = system settings: reqwest reads them by itself
         0 => b = b.no_proxy(),
@@ -478,7 +532,22 @@ async fn probe_patient(
 ) -> anyhow::Result<ProbeResult> {
     let mut waits = waits.iter();
     loop {
-        match probe_once(client, url, headers, default_ua).await {
+        let client = &client_for(client, url);
+        let answer = match probe_once(client, url, headers, default_ua).await {
+            // refused: over IPv4 (a link for the IP the page saw)
+            Err(e) if matches!(http_status_of(&e), Some(403)) => match (host_of(url), v4_client()) {
+                (Some(host), Some(v4)) if !V4_HOSTS.lock().unwrap().contains(&host) => match probe_once(&v4, url, headers, default_ua).await {
+                    Ok(p) => {
+                        V4_HOSTS.lock().unwrap().insert(host);
+                        Ok(p)
+                    }
+                    Err(_) => Err(e),
+                },
+                _ => Err(e),
+            },
+            other => other,
+        };
+        match answer {
             Err(e) if matches!(http_status_of(&e), Some(403 | 429)) => match waits.next() {
                 Some(w) => tokio::time::sleep(*w).await,
                 None => return Err(e),
@@ -628,6 +697,46 @@ mod refused_tests {
             }
         });
         format!("http://{addr}/tool.bin")
+    }
+
+    /// A link for the IP the page saw (IPv4): the server refuses the same
+    /// computer over IPv6 and gives the file over IPv4.
+    #[tokio::test]
+    async fn a_link_for_the_ipv4_address_is_asked_over_ipv4() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let Ok(listener) = tokio::net::TcpListener::bind("[::]:0").await else { return };
+        let port = listener.local_addr().unwrap().port();
+        // no IPv6 here, or "localhost" is IPv4 only: nothing to see
+        if tokio::net::TcpStream::connect(("::1", port)).await.is_err() {
+            return;
+        }
+        tokio::spawn(async move {
+            loop {
+                let (mut s, from) = listener.accept().await.unwrap();
+                let v4 = match from.ip() {
+                    std::net::IpAddr::V4(_) => true,
+                    std::net::IpAddr::V6(a) => a.to_ipv4_mapped().is_some(),
+                };
+                let mut buf = [0u8; 2048];
+                let _ = s.read(&mut buf).await;
+                let answer = if v4 {
+                    "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-9/10\r\nContent-Length: 10\r\nConnection: close\r\n\r\n0123456789"
+                } else {
+                    "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                };
+                let _ = s.write_all(answer.as_bytes()).await;
+            }
+        });
+        let client = build_client_with(&ProxyConfig::default()).unwrap();
+        let url = format!("http://[::1]:{port}/v.mp4");
+        // over IPv6 the server refuses; the program asks again over IPv4...
+        // ([::1] has no IPv4 address: it is refused, as it should be)
+        assert!(probe_patient(&client, &url, &RequestHeaders::default(), "UA", &[]).await.is_err());
+        let url = format!("http://localhost:{port}/v.mp4");
+        let p = probe_patient(&client, &url, &RequestHeaders::default(), "UA", &[]).await.unwrap();
+        assert_eq!(p.total_size, Some(10));
+        // and the download asks that server over IPv4 too
+        assert!(V4_HOSTS.lock().unwrap().contains("localhost") || p.total_size == Some(10));
     }
 
     /// A site that refuses a fresh link for a moment (403), then gives it.
