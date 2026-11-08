@@ -403,10 +403,12 @@
     .icon .ico { width: 16px; height: 16px; }`;
 
   function isMain(video) {
-    return TOP && video === biggestVideo();
+    // a player in a frame the page covers (below): it is the page's video
+    return TOP && (video.tagName === "IFRAME" || video === biggestVideo());
   }
 
   function directSrc(video) {
+    if (video.tagName === "IFRAME") return "";
     const src = video.currentSrc || video.src || "";
     return /^https?:/i.test(src) && !/\.m3u8|\.mpd/i.test(src) ? src : "";
   }
@@ -1004,6 +1006,30 @@
       }
       if (!b.dismissed) placeOne(b);
     }
+    // the video plays in a frame the page lays a see-through layer over
+    // (Google Drive): the frame's own button can be seen but never pressed,
+    // so this page shows one over the frame (with what was found for it)
+    if (TOP && items.length && !vids.length) {
+      for (const f of coveredPlayers()) {
+        const b = bubbles.get(f) || makeBubble(f);
+        if (!b.dismissed) placeOne(b);
+      }
+    }
+  }
+
+  // big frames whose top right corner (where the button is) the page covers
+  function coveredPlayers() {
+    const out = [];
+    for (const f of document.querySelectorAll("iframe")) {
+      const r = f.getBoundingClientRect();
+      if (r.width < 300 || r.height < 170 || r.bottom < 60 || r.top > innerHeight - 60) continue;
+      const x = Math.min(r.right - 40, innerWidth - 5);
+      const y = Math.max(r.top + 16, 5);
+      const top = document.elementFromPoint(x, y);
+      if (top && top !== f && !(bubbles.get(f) && top === bubbles.get(f).host)) out.push(f);
+      if (out.length >= 2) break;
+    }
+    return out;
   }
 
   function flashOne(b, text, isError) {
