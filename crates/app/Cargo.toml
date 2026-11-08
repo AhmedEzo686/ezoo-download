@@ -47,5 +47,4 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Ole",
     "Win32_System_LibraryLoader",
     "Win32_UI_Input_KeyboardAndMouse",
-    "Win32_Graphics_Gdi",
 ] }

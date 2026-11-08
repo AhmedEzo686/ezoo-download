@@ -107,6 +107,7 @@ fn detect() -> Vec<Browser> {
 /// folder is put back in order from this copy first.
 const EXTENSION_FILES: &[(&str, &[u8])] = &[
     ("background.js", include_bytes!("../../../extension/background.js")),
+    ("early.js", include_bytes!("../../../extension/early.js")),
     ("content.js", include_bytes!("../../../extension/content.js")),
     ("yt-core.js", include_bytes!("../../../extension/yt-core.js")),
     ("popup.html", include_bytes!("../../../extension/popup.html")),

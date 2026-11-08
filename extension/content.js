@@ -436,6 +436,8 @@
     host.style.setProperty("--z", String(zoom));
     host.style.setProperty("--o", String(solid));
     const root = host.attachShadow({ mode: "closed" });
+    // early.js keeps the page's own player from taking presses on it
+    (globalThis.__ezooRoots = globalThis.__ezooRoots || new WeakMap()).set(host, root);
     const svgNs = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(svgNs, "svg");
     svg.setAttribute("class", "ico");
@@ -485,13 +487,16 @@
       b.dy = e.clientY - down.oy - r.top;
       placeOne(b);
     });
-    addEventListener("mouseup", () => {
+    const up = () => {
       if (!down) return;
       const wasDrag = down.moved;
       down = null;
       root.getElementById("main").classList.remove("drag");
       if (!wasDrag) clicked(b);
-    });
+    };
+    addEventListener("mouseup", up);
+    // heard here when the page's player keeps it from the window (early.js)
+    root.addEventListener("mouseup", up);
     root.getElementById("help").addEventListener("click", () => {
       b.help = !b.help;
       b.open = true;
