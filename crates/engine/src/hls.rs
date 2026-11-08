@@ -198,8 +198,15 @@ pub async fn run(
                                 .unwrap_or_else(|| (parts[i].sequence as u128).to_be_bytes());
                             decrypt(key, &iv, &mut data)?;
                         }
+                        // on the disk before it counts as there (a power
+                        // cut left empty pieces that were taken as done)
                         let tmp = path.with_extension("tmp");
-                        std::fs::write(&tmp, &data)?;
+                        {
+                            use std::io::Write;
+                            let mut f = std::fs::File::create(&tmp)?;
+                            f.write_all(&data)?;
+                            f.sync_data()?;
+                        }
                         std::fs::rename(&tmp, &path)?;
                         Ok::<u64, anyhow::Error>(data.len() as u64)
                     };

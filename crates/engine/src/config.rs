@@ -505,10 +505,8 @@ impl Default for Settings {
 
 impl Settings {
     pub fn load(path: &Path) -> Settings {
-        let mut s: Settings = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+        // broken (the power went off while it was saved): its last good copy
+        let mut s: Settings = crate::store::read_json_kept(path).unwrap_or_default();
         if s.version < 2 {
             // v2: full speed by default (32 connections, no limit on downloads)
             s.connections = 32;

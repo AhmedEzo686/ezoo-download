@@ -60,7 +60,18 @@ struct Crew {
     /// connections the server dropped lately (when, and the bytes of the
     /// whole download then)
     drops: std::collections::VecDeque<(std::time::Instant, u64)>,
+    /// the best a connection brought on average (bytes a second): the last
+    /// one left alone is held to it
+    best: u64,
 }
+
+/// At the end of a download, parts are shared down to this size (the last
+/// piece is not left to one slow connection).
+const TAIL_SPLIT: u64 = 64 * 1024;
+
+/// After this long without the server refusing (seconds), one connection more
+/// is tried again (up to as many as the download began with).
+const CLIMB_AFTER: u64 = 60;
 
 #[derive(Clone)]
 pub struct HttpJob {
@@ -151,6 +162,9 @@ pub async fn run(
         }
         for s in table.iter_mut() {
             s.active = false;
+            // what is there now was made sure of (the last download ended
+            // with it on the disk)
+            s.on_disk = Some(s.pos);
         }
         progress
             .bytes
@@ -194,8 +208,16 @@ pub async fn run(
     }
 
     let mut first_error: Option<anyhow::Error> = None;
+    // every few seconds what was written is made sure to be on the disk
+    // (and the list may save that far)
+    let mut to_disk = tokio::time::interval(Duration::from_secs(4));
+    to_disk.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    to_disk.tick().await;
     let mut look = tokio::time::interval(Duration::from_millis(500));
     look.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // what one connection brings at best (measured every 2 s over the whole
+    // download)
+    let mut sample = (std::time::Instant::now(), progress.bytes.load(Ordering::Relaxed));
     loop {
         tokio::select! {
             res = set.join_next() => {
@@ -219,7 +241,39 @@ pub async fn run(
                     child.cancel();
                 }
             }
+            _ = to_disk.tick() => {
+                let seen: Vec<u64> = segs.lock().unwrap().iter().map(|s| s.pos).collect();
+                let f = file.clone();
+                let synced = tokio::task::spawn_blocking(move || f.sync_data().is_ok()).await.unwrap_or(false);
+                if synced {
+                    let mut table = segs.lock().unwrap();
+                    for (s, pos) in table.iter_mut().zip(seen) {
+                        s.on_disk = Some(pos.min(s.pos));
+                    }
+                }
+            }
             _ = look.tick() => {
+                let spent = sample.0.elapsed();
+                if spent >= Duration::from_secs(2) {
+                    let now = progress.bytes.load(Ordering::Relaxed);
+                    let conns = progress.connections.load(Ordering::Relaxed).max(1) as u64;
+                    let per = now.saturating_sub(sample.1) * 1000 / (spent.as_millis().max(1) as u64) / conns;
+                    let mut c = crew.lock().unwrap();
+                    c.best = c.best.max(per);
+                    drop(c);
+                    sample = (std::time::Instant::now(), now);
+                }
+                // the server made it take fewer connections: a minute later
+                // without that, one more is tried (it lowers again if not)
+                if segmented {
+                    let at = progress.lowered_at.load(Ordering::Relaxed);
+                    let want = progress.want_connections.load(Ordering::Relaxed);
+                    let began = job.connections.max(1);
+                    if at > 0 && want > 0 && want < began && now_secs().saturating_sub(at) >= CLIMB_AFTER {
+                        progress.want_connections.store(want + 1, Ordering::Relaxed);
+                        progress.lowered_at.store(if want + 1 >= began { 0 } else { now_secs() }, Ordering::Relaxed);
+                    }
+                }
                 // more connections wanted (Options): as many more as there are
                 // parts worth sharing
                 if first_error.is_none() && segmented && !child.is_cancelled() {
@@ -238,7 +292,11 @@ pub async fn run(
             }
         }
     }
-    file.sync_all().ok();
+    if file.sync_all().is_ok() {
+        for s in segs.lock().unwrap().iter_mut() {
+            s.on_disk = None;
+        }
+    }
 
     if cancel.is_cancelled() {
         return Err(Cancelled.into());
@@ -256,9 +314,19 @@ pub async fn run(
 // ---------------------------------------------------------------- servers that allow fewer connections
 
 /// Sites that answered "too many requests" (HTTP 429): how many connections
-/// they took. Their next downloads start with that many.
-static LEARNED: std::sync::LazyLock<Mutex<(std::collections::BTreeMap<String, u32>, bool)>> =
+/// they took, and when that was seen (seconds since 1970). Their next
+/// downloads start with that many, for a day: a site that was busy once
+/// (or a big shared server, a CDN) is not held at one or two connections
+/// for ever.
+static LEARNED: std::sync::LazyLock<Mutex<(std::collections::BTreeMap<String, (u32, u64)>, bool)>> =
     std::sync::LazyLock::new(|| Mutex::new((Default::default(), false)));
+
+/// How long a learned limit holds.
+const LEARNED_FOR: u64 = 24 * 3600;
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
 
 /// The site of an address: download2430.mediafire.com -> mediafire.com
 /// (its many download servers count as one).
@@ -276,42 +344,60 @@ pub fn site_of(url: &str) -> Option<String> {
     Some(parts[parts.len().saturating_sub(keep)..].join("."))
 }
 
-/// How many connections the site of `url` took (None: no limit seen).
+/// How many connections the site of `url` took (None: no limit seen lately).
 pub fn learned_limit(url: &str) -> Option<u32> {
     let site = site_of(url)?;
-    LEARNED.lock().unwrap().0.get(&site).copied()
+    let l = LEARNED.lock().unwrap();
+    l.0.get(&site).filter(|(_, at)| now_secs().saturating_sub(*at) < LEARNED_FOR).map(|(n, _)| *n)
 }
 
 fn learn(url: &str, n: u32) {
     let Some(site) = site_of(url) else { return };
     let mut l = LEARNED.lock().unwrap();
     let n = n.max(1);
-    if l.0.get(&site).is_none_or(|old| n < *old) {
-        l.0.insert(site, n);
+    let now = now_secs();
+    let lower = match l.0.get(&site) {
+        None => true,
+        Some((old, at)) => n < *old || now.saturating_sub(*at) >= LEARNED_FOR,
+    };
+    if lower {
+        l.0.insert(site, (n, now));
         l.1 = true;
     }
 }
 
-/// The limits seen before (at start).
-pub fn set_learned(map: std::collections::BTreeMap<String, u32>) {
+/// The limits seen before (at start), as kept by `take_learned_changes`:
+/// {"site": [n, seconds]}. Older files ({"site": n}, no time) are not taken:
+/// their limits were kept for ever, and are let go now.
+pub fn set_learned(map: std::collections::BTreeMap<String, serde_json::Value>) {
+    let now = now_secs();
     let mut l = LEARNED.lock().unwrap();
-    l.0 = map.into_iter().filter(|(_, n)| *n >= 1).collect();
+    l.0 = map
+        .into_iter()
+        .filter_map(|(site, v)| {
+            let n = v.get(0)?.as_u64()? as u32;
+            let at = v.get(1)?.as_u64()?;
+            (n >= 1 && now.saturating_sub(at) < LEARNED_FOR).then_some((site, (n, at)))
+        })
+        .collect();
     l.1 = false;
 }
 
 /// The limits, when new ones were seen since the last call (to be kept).
-pub fn take_learned_changes() -> Option<std::collections::BTreeMap<String, u32>> {
+pub fn take_learned_changes() -> Option<std::collections::BTreeMap<String, (u32, u64)>> {
     let mut l = LEARNED.lock().unwrap();
     if !l.1 {
         return None;
     }
     l.1 = false;
-    Some(l.0.clone())
+    let now = now_secs();
+    Some(l.0.iter().filter(|(_, (_, at))| now.saturating_sub(*at) < LEARNED_FOR).map(|(k, v)| (k.clone(), *v)).collect())
 }
 
 /// Fewer connections from now on (never more than wanted already).
 fn lower_wanted(progress: &Progress, job_conns: u32, n: u32) {
     let n = n.max(1);
+    progress.lowered_at.store(now_secs(), Ordering::Relaxed);
     let _ = progress.want_connections.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |cur| {
         let now = if cur == 0 { job_conns } else { cur };
         (n < now).then_some(n)
@@ -327,7 +413,7 @@ fn retry_after_of(resp: &reqwest::Response) -> Option<u64> {
 /// one big enough to be shared.
 fn has_work(segs: &SegTable, min_split: u64) -> bool {
     let t = segs.lock().unwrap();
-    let min = min_split.max(1) * 2;
+    let min = min_split.clamp(1, TAIL_SPLIT) * 2;
     t.iter().any(|s| !s.is_finished() && (!s.active || s.remaining() >= min))
 }
 
@@ -434,7 +520,9 @@ impl Worker {
             let idx = {
                 let mut table = self.segs.lock().unwrap();
                 if self.segmented {
+                    // the last parts too are shared, in smaller pieces
                     segments::claim_work(&mut table, self.job.min_split)
+                        .or_else(|| segments::split_largest(&mut table, self.job.min_split.min(TAIL_SPLIT)))
                 } else {
                     let s = &mut table[0];
                     if s.active || s.is_finished() {
@@ -575,7 +663,11 @@ impl Worker {
                         s.pos = s.start;
                         let _ = self.file.set_len(0);
                     }
-                    let backoff = if network {
+                    let made_again = format!("{e:#}").contains("slow connection");
+                    let backoff = if made_again {
+                        // a slow connection made again: at once
+                        Duration::ZERO
+                    } else if network {
                         reconnect_delay(net_tries)
                     } else {
                         Duration::from_secs((1u64 << attempt.min(5)).min(30))
@@ -680,7 +772,14 @@ impl Worker {
                 let average = all_now.saturating_sub(all_before) / secs / conns;
                 // much slower than the others (and the limiter is not the reason)
                 let limited = self.shared.limiter.rate() > 0 || self.job.limiter.rate() > 0;
-                if !limited && conns >= 2 && my_rate < SLOW_BYTES_PER_SEC && my_rate * SLOW_SHARE < average {
+                // alone (the others are done): held to the best the
+                // connections brought before (a slow last connection kept
+                // the download at 90-99 % for ever)
+                let best = self.crew.lock().unwrap().best;
+                // (only near the end: a slow line is not made again and again)
+                let near_end = self.job.total_size.is_some_and(|t| segments::downloaded(&self.segs.lock().unwrap()) >= t / 10 * 8);
+                let compare = if conns >= 2 { average } else if near_end && self.job.connections >= 2 { best } else { u64::MAX };
+                if !limited && my_rate < SLOW_BYTES_PER_SEC && my_rate.saturating_mul(SLOW_SHARE) < compare && compare != u64::MAX {
                     slow_windows += 1;
                 } else {
                     slow_windows = 0;
@@ -752,6 +851,12 @@ mod learned_tests {
         assert_eq!(learned_limit("https://download9.mediafire.test/c"), Some(8));
         learn("https://download2.mediafire.test/b", 5);
         assert_eq!(learned_limit("https://x.mediafire.test/"), Some(5));
+        // a limit from a file of an older version (no time): let go
+        let old: std::collections::BTreeMap<String, serde_json::Value> =
+            serde_json::from_str(r#"{"old.test": 1, "new.test": [3, 9999999999], "gone.test": [2, 1]}"#).unwrap();
+        set_learned(old);
+        assert_eq!(learned_limit("https://old.test/"), None);
+        assert_eq!(learned_limit("https://gone.test/"), None, "older than a day");
         let p = Progress::default();
         lower_wanted(&p, 32, 31);
         lower_wanted(&p, 32, 40);

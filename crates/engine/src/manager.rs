@@ -142,6 +142,7 @@ impl Manager {
         ytdlp::set_mp3_kbps(settings.mp3_kbps);
         // sites that allowed only a few connections ("too many requests")
         if let Ok(text) = std::fs::read_to_string(data_dir.join("server-limits.json")) {
+            // {"site": [connections, when]}
             if let Ok(map) = serde_json::from_str(&text) {
                 http_download::set_learned(map);
             }
@@ -246,6 +247,8 @@ impl Manager {
                 let n = s.connections_for(&e.rec.url, s.connections());
                 e.rec.connections = n;
                 e.progress.want_connections.store(n, Ordering::Relaxed);
+                // the user's own number: not raised again by itself
+                e.progress.lowered_at.store(0, Ordering::Relaxed);
             }
             inner.dirty = true;
         }
@@ -1296,6 +1299,10 @@ impl Manager {
         let mut stuck = 0u32;
         // new links fetched because the old one stopped working
         let mut relinks = 0u32;
+        // the bytes when a new link was fetched last: a link that worked a
+        // while again starts the count anew (a long download whose link
+        // expires every few hours is not given up after 6)
+        let mut relink_bytes = 0u64;
         // a download without resume started again from the beginning
         let mut restarts = 0u32;
         let mut last_bytes = progress.as_ref().map(|p| p.bytes.load(Ordering::Relaxed)).unwrap_or(0);
@@ -1324,6 +1331,11 @@ impl Manager {
                         && http::is_link_gone(e)
                         && relinks < if p.bytes.load(Ordering::Relaxed) > 0 { 6 } else { 2 } =>
                 {
+                    let now = p.bytes.load(Ordering::Relaxed);
+                    if relinks > 0 && now > relink_bytes {
+                        relinks = 0;
+                    }
+                    relink_bytes = now;
                     relinks += 1;
                     self.relink.lock().unwrap().insert(id);
                     let wait = http::relink_delay(relinks);
@@ -1338,7 +1350,8 @@ impl Manager {
                     let now = p.bytes.load(Ordering::Relaxed);
                     stuck = if now > last_bytes { 1 } else { stuck + 1 };
                     last_bytes = now;
-                    if stuck > 12 {
+                    // about an hour of tries that brought nothing
+                    if stuck > 60 {
                         break r;
                     }
                     let wait = http::retry_delay(stuck);
@@ -2797,8 +2810,9 @@ fn collect_records(inner: &Inner) -> Vec<DownloadRecord> {
         .map(|e| {
             let mut r = e.rec.clone();
             if r.status != Status::Completed {
-                r.segments = e.segs.lock().unwrap().clone();
-                r.audio_segments = e.audio_segs.lock().unwrap().clone();
+                // only what is surely on the disk (a power cut loses the rest)
+                r.segments = segments::as_on_disk(&e.segs.lock().unwrap());
+                r.audio_segments = segments::as_on_disk(&e.audio_segs.lock().unwrap());
                 r.downloaded = e.progress.bytes.load(Ordering::Relaxed);
                 r.parts_total = e.progress.parts_total.load(Ordering::Relaxed);
                 r.parts_done = e.progress.parts_done.load(Ordering::Relaxed);

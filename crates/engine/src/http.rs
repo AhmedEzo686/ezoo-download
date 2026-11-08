@@ -30,6 +30,9 @@ pub struct Progress {
     /// connections the user wants now (0 = as many as the download began
     /// with): changed while it runs, it gets more / fewer at once
     pub want_connections: AtomicU32,
+    /// when the server last made it take fewer connections (seconds since
+    /// 1970): a while without that, one more is tried again
+    pub lowered_at: std::sync::atomic::AtomicU64,
     /// after the data: what it does (Step code, 0 = nothing) and how far (per mille)
     pub step: std::sync::atomic::AtomicU8,
     pub step_done: AtomicU32,
@@ -162,29 +165,31 @@ pub fn is_link_gone(e: &anyhow::Error) -> bool {
     text.contains("link has expired") || text.contains("not the same file")
 }
 
-/// How long to wait before the next try to get a working link: 3 s, 10 s,
-/// 30 s, 1 min, 2 min, 5 min.
+/// How long to wait before the next try to get a working link: 2 s, 5 s,
+/// 15 s, 30 s, 1 min, 2 min.
 pub fn relink_delay(n: u32) -> Duration {
     Duration::from_secs(match n {
-        0 | 1 => 3,
-        2 => 10,
-        3 => 30,
-        4 => 60,
-        5 => 120,
-        _ => 300,
+        0 | 1 => 2,
+        2 => 5,
+        3 => 15,
+        4 => 30,
+        5 => 60,
+        _ => 120,
     })
 }
 
-/// How long to wait before the next try after a passing failure:
-/// 15 s, 30 s, 1 min, 2 min, 5 min, then every 10 minutes.
+/// How long to wait before the next try after a passing failure: soon at
+/// first (a download that stood still for minutes with "trying again in
+/// 10 min" was started by hand with Pause / Resume): 3 s, 5 s, 10 s, 20 s,
+/// 30 s, then every minute.
 pub fn retry_delay(n: u32) -> Duration {
     Duration::from_secs(match n {
-        0 | 1 => 15,
-        2 => 30,
-        3 => 60,
-        4 => 120,
-        5 => 300,
-        _ => 600,
+        0 | 1 => 3,
+        2 => 5,
+        3 => 10,
+        4 => 20,
+        5 => 30,
+        _ => 60,
     })
 }
 
@@ -686,7 +691,8 @@ mod passing_tests {
         assert!(is_passing_error(&anyhow::anyhow!("download ended before all parts were received")));
         assert!(!is_passing_error(&anyhow::anyhow!("not enough room on the disk")));
         assert!(!is_passing_error(&anyhow::Error::new(HttpStatus(410)).context("the link has expired or the file was removed")));
-        assert_eq!(retry_delay(1).as_secs(), 15);
-        assert_eq!(retry_delay(20).as_secs(), 600);
+        // soon at first, never more than a minute
+        assert_eq!(retry_delay(1).as_secs(), 3);
+        assert_eq!(retry_delay(20).as_secs(), 60);
     }
 }

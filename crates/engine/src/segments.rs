@@ -18,11 +18,18 @@ pub struct Segment {
     /// A connection is currently working on this segment (runtime only).
     #[serde(skip)]
     pub active: bool,
+    /// While it downloads: how far the file is surely on the disk (Windows
+    /// keeps what was written in memory for a while; after a power cut that
+    /// part of the file is empty). The list saves this, not `pos`: the few
+    /// seconds after it are downloaded again instead of left as a hole.
+    /// None = all of `pos` is on the disk (runtime only).
+    #[serde(skip)]
+    pub on_disk: Option<u64>,
 }
 
 impl Segment {
     pub fn new(start: u64, end: u64) -> Self {
-        Segment { start, pos: start, end, active: false }
+        Segment { start, pos: start, end, active: false, on_disk: None }
     }
     pub fn remaining(&self) -> u64 {
         self.end.saturating_sub(self.pos)
@@ -57,6 +64,21 @@ pub fn plan(total: u64, connections: u32, min_size: u64) -> Vec<Segment> {
 /// Total bytes already downloaded across all segments.
 pub fn downloaded(segs: &[Segment]) -> u64 {
     segs.iter().map(|s| s.done()).sum()
+}
+
+/// The table as the list saves it: each part only as far as it is surely on
+/// the disk.
+pub fn as_on_disk(segs: &[Segment]) -> Vec<Segment> {
+    segs.iter()
+        .map(|s| {
+            let mut s = s.clone();
+            if let Some(d) = s.on_disk {
+                s.pos = d.clamp(s.start, s.pos);
+            }
+            s.on_disk = None;
+            s
+        })
+        .collect()
 }
 
 pub fn all_finished(segs: &[Segment]) -> bool {
@@ -94,6 +116,8 @@ pub fn split_largest(segs: &mut Vec<Segment>, min_split: u64) -> Option<usize> {
     segs[idx].end = mid;
     let mut new_seg = Segment::new(mid, old_end);
     new_seg.active = true;
+    // nothing of it written yet, so nothing of it on the disk
+    new_seg.on_disk = segs[idx].on_disk.map(|_| mid);
     segs.push(new_seg);
     Some(segs.len() - 1)
 }
@@ -156,6 +180,27 @@ mod tests {
         segs[0].active = true;
         segs[0].pos = 90;
         assert!(claim_work(&mut segs, 10).is_none());
+    }
+
+    #[test]
+    fn saved_only_as_far_as_on_the_disk() {
+        let mut segs = plan(1000, 2, 10);
+        for s in segs.iter_mut() {
+            s.on_disk = Some(s.pos);
+            s.active = true;
+        }
+        segs[0].pos = 300;
+        segs[0].on_disk = Some(200);
+        segs[1].pos = 700;
+        let i = split_largest(&mut segs, 10).unwrap();
+        assert_eq!(segs[i].on_disk, Some(segs[i].start), "a new part has nothing on the disk");
+        let saved = as_on_disk(&segs);
+        assert_eq!(saved[0].pos, 200);
+        assert_eq!(saved[1].pos, 500, "written but not on the disk yet: again");
+        assert!(saved.iter().all(|s| s.on_disk.is_none()));
+        // no download running: everything counts
+        let idle = vec![Segment { pos: 50, ..Segment::new(0, 100) }];
+        assert_eq!(as_on_disk(&idle)[0].pos, 50);
     }
 
     #[test]
