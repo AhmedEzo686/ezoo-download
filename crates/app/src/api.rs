@@ -710,7 +710,7 @@ fn can_fetch(add: &AddRequest) -> bool {
     let Ok(client) = swiftget_engine::http::build_client() else { return true };
     let url = add.url.clone();
     rt.block_on(async move {
-        let look = swiftget_engine::http::probe(&client, &url, &headers, swiftget_engine::config::DEFAULT_USER_AGENT);
+        let look = swiftget_engine::http::probe_quick(&client, &url, &headers, swiftget_engine::config::DEFAULT_USER_AGENT);
         match tokio::time::timeout(std::time::Duration::from_millis(2500), look).await {
             // a sign-in page instead of the file
             Ok(Ok(p)) => !p.is_web_page(),

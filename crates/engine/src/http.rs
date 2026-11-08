@@ -523,6 +523,12 @@ pub async fn probe(
     probe_patient(client, url, headers, default_ua, &NOT_READY_WAITS.map(Duration::from_secs)).await
 }
 
+/// One look only (the add-in asks while the browser waits): a refusal is
+/// told at once.
+pub async fn probe_quick(client: &Client, url: &str, headers: &RequestHeaders, default_ua: &str) -> anyhow::Result<ProbeResult> {
+    probe_patient(client, url, headers, default_ua, &[]).await
+}
+
 async fn probe_patient(
     client: &Client,
     url: &str,

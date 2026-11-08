@@ -1084,6 +1084,11 @@
     if (forced || ext === "torrent") return true;
     return (r.exts || []).some((x) => wildcard(x, ext));
   }
+  // Heard after the page's own click code (not before it, and the click is
+  // not stopped): file sites often make their link work in that code (a
+  // request saying "the download starts", a cookie); stopped, the link stayed
+  // "403 Forbidden" for the program while the browser and other programs got
+  // the file. Only the browser's own download is held back.
   addEventListener(
     "click",
     (e) => {
@@ -1093,7 +1098,6 @@
       const href = String(a.href);
       if (!wantedLink(e, href)) return;
       e.preventDefault();
-      e.stopPropagation();
       chrome.runtime.sendMessage({ type: "swiftget-link", url: href }, (res) => {
         // not taken (the app is closed, the user chose the browser): the browser's way
         if (chrome.runtime.lastError || !res || !res.ok) {
@@ -1107,7 +1111,7 @@
         }
       });
     },
-    true
+    false
   );
 
   // magnet links of torrents go to Ezoo Download (Alt + click: to the browser)
