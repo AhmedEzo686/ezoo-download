@@ -454,7 +454,41 @@ fn fallbacks(h: &RequestHeaders) -> Vec<(bool, RequestHeaders)> {
 
 /// Ask the server about a file: real size, final URL after redirects,
 /// file name and whether it supports ranges (= resume + many connections).
+/// Some file sites refuse a fresh link for a few seconds (HTTP 403 / 429:
+/// the link is made ready after a wait on their page): the program asked
+/// once and showed the error, a moment later it worked. It is asked again
+/// a few times (2, 3, 5, 8 s) before the refusal is believed.
+const NOT_READY_WAITS: [u64; 4] = [2, 3, 5, 8];
+
 pub async fn probe(
+    client: &Client,
+    url: &str,
+    headers: &RequestHeaders,
+    default_ua: &str,
+) -> anyhow::Result<ProbeResult> {
+    probe_patient(client, url, headers, default_ua, &NOT_READY_WAITS.map(Duration::from_secs)).await
+}
+
+async fn probe_patient(
+    client: &Client,
+    url: &str,
+    headers: &RequestHeaders,
+    default_ua: &str,
+    waits: &[Duration],
+) -> anyhow::Result<ProbeResult> {
+    let mut waits = waits.iter();
+    loop {
+        match probe_once(client, url, headers, default_ua).await {
+            Err(e) if matches!(http_status_of(&e), Some(403 | 429)) => match waits.next() {
+                Some(w) => tokio::time::sleep(*w).await,
+                None => return Err(e),
+            },
+            other => return other,
+        }
+    }
+}
+
+async fn probe_once(
     client: &Client,
     url: &str,
     headers: &RequestHeaders,
@@ -485,14 +519,14 @@ pub async fn probe(
             continue;
         }
         if !status.is_success() {
-            bail!("server answered HTTP {}", status.as_u16());
+            return Err(HttpStatus(status.as_u16()).into());
         }
         let changed = h != *headers;
         found = Some((resp, with_range, changed.then_some(h)));
         break;
     }
     let Some((resp, with_range, headers_used)) = found else {
-        bail!("server answered HTTP {}", first_refusal.unwrap_or(403));
+        return Err(HttpStatus(first_refusal.unwrap_or(403)).into());
     };
     let status = resp.status();
     let final_url = resp.url().to_string();
@@ -594,6 +628,36 @@ mod refused_tests {
             }
         });
         format!("http://{addr}/tool.bin")
+    }
+
+    /// A site that refuses a fresh link for a moment (403), then gives it.
+    #[tokio::test]
+    async fn a_link_not_ready_yet_is_asked_again() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let opened = std::time::Instant::now();
+        tokio::spawn(async move {
+            loop {
+                let (mut s, _) = listener.accept().await.unwrap();
+                let mut buf = [0u8; 2048];
+                let _ = s.read(&mut buf).await;
+                let answer = if opened.elapsed() < Duration::from_millis(700) {
+                    "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                } else {
+                    "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-9/10\r\nContent-Length: 10\r\nContent-Type: video/mp4\r\nConnection: close\r\n\r\n0123456789".to_string()
+                };
+                let _ = s.write_all(answer.as_bytes()).await;
+            }
+        });
+        let client = build_client().unwrap();
+        let url = format!("http://127.0.0.1:{port}/v.mp4");
+        let waits = [Duration::from_millis(300); 4];
+        let p = probe_patient(&client, &url, &RequestHeaders::default(), "UA", &waits).await.unwrap();
+        assert_eq!(p.total_size, Some(10));
+        // refused for good: the 403 after the tries
+        let e = probe_patient(&client, "http://127.0.0.1:1/x", &RequestHeaders::default(), "UA", &waits).await;
+        assert!(e.is_err());
     }
 
     #[tokio::test]
