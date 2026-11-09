@@ -6,6 +6,25 @@
   if (window.__ezooDownload) return;
   window.__ezooDownload = true;
   const TOP = window.top === window;
+  // The add-in's own words. The program's window follows the program's own
+  // language setting; these are what the add-in draws on a page.
+  const LANG = String(navigator.language || "en").slice(0, 2).toLowerCase();
+  const AR = {
+    "Download this video": "تحميل هذا الفيديو",
+    "Download all videos of this playlist": "تحميل كل فيديوهات قائمة التشغيل",
+    "Download a part of this video…": "تحميل جزء من هذا الفيديو…",
+    "Looking for the video qualities…": "بندور على جودات الفيديو…",
+    "Only the part you choose is downloaded": "بيتنزّل الجزء اللي تختاره بس",
+    "Choose the quality of the part:": "اختار جودة الجزء:",
+    "Open Ezoo Download": "افتح Ezoo Download",
+    "▶ Preview the part": "▶ معاينة الجزء",
+    "← Back": "→ رجوع",
+    "⏱ Now": "⏱ دلوقتي",
+    "Help": "مساعدة",
+    "Hide": "إخفاء",
+    "The time the video is at now": "الوقت اللي الفيديو واقف عنده",
+  };
+  const tr = (s) => (LANG === "ar" ? AR[s] || s : s);
 
   let items = [];
   // Options > File Types > "Download panel for web players"
@@ -38,6 +57,22 @@
     if (!s) return "";
     const two = (n) => String(n).padStart(2, "0");
     return s >= 3600 ? `${Math.floor(s / 3600)}:${two(Math.floor(s / 60) % 60)}:${two(s % 60)}` : `${Math.floor(s / 60)}:${two(s % 60)}`;
+  };
+  // "1:02:05", "02:05", "125", "2:05.5" -> seconds (null when not a time)
+  const parseClock = (text) => {
+    const t = String(text || "").trim().replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x660)).replace(",", ".");
+    const m = /^(?:(\d{1,2}):)?(?:(\d{1,3}):)?(\d{1,6})(?:\.(\d{1,3}))?$/.exec(t);
+    if (!m) return null;
+    const parts = t.split(".")[0].split(":").map(Number);
+    if (parts.slice(1).some((n) => n >= 60)) return null;
+    let secs = parts.reduce((a, n) => a * 60 + n, 0);
+    if (m[4]) secs += Number("0." + m[4]);
+    return secs;
+  };
+  const clock = (s) => {
+    s = Math.max(0, Math.floor(Number(s) || 0));
+    const two = (n) => String(n).padStart(2, "0");
+    return s >= 3600 ? `${Math.floor(s / 3600)}:${two(Math.floor(s / 60) % 60)}:${two(s % 60)}` : `${two(Math.floor(s / 60))}:${two(s % 60)}`;
   };
   // the resolution in plain words (the app sends it; streams seen in the
   // player only have the height)
@@ -277,28 +312,34 @@
   }
   const STYLE = `
     :host { all: initial; }
-    .wrap { font: 11px/1.25 "Segoe UI", system-ui, sans-serif; color: #1f2733; display: inline-block; zoom: var(--z, 1); }
+    .wrap { font: 11px/1.25 "Segoe UI", system-ui, sans-serif; color: #1f2733; display: inline-block; zoom: var(--z, 1); position: relative; }
     .btn { display: inline-flex; align-items: stretch; color: #fff; border: 1px solid #0f4fb5;
            background: linear-gradient(#3f8cf5, #1d63d6); border-radius: 3px;
            box-shadow: 0 1px 6px rgba(0,0,0,.35); font: inherit; font-weight: 600;
            opacity: var(--o, .9); transition: opacity .15s; user-select: none; white-space: nowrap; }
     .btn:hover, .btn.open { opacity: 1; }
     .btn.drag { opacity: 1; }
-    .part { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; cursor: grab; }
+    .part { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; cursor: default; }
     .part:hover { background: rgba(255,255,255,.12); }
     .btn.drag .part { cursor: grabbing; }
-    .side { padding: 3px 6px; cursor: pointer; border-left: 1px solid rgba(255,255,255,.28); display: inline-flex; align-items: center; }
+    .side { padding: 3px 6px; cursor: default; border-left: 1px solid rgba(255,255,255,.28); display: inline-flex; align-items: center; }
     .side:hover { background: rgba(255,255,255,.18); }
     .ico { width: 13px; height: 13px; flex: none; }
     .caret { font-size: 9px; opacity: .9; }
     .spin { width: 9px; height: 9px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%;
             animation: r .8s linear infinite; flex: none; }
     @keyframes r { to { transform: rotate(360deg); } }
-    .list { width: 330px; margin-top: 4px; background: #fff; border-radius: 6px; box-shadow: 0 6px 22px rgba(0,0,0,.28);
-            overflow: hidden; max-height: 360px; overflow-y: auto; border: 1px solid #d5dbe4; }
+    /* the list floats under the button (the button never moves): to its
+       left when the button is on the right of the video, else to its right,
+       and above it when there is no room below */
+    .list { position: absolute; top: 100%; right: 0; width: 330px; margin-top: 4px; background: #fff; border-radius: 6px;
+            box-shadow: 0 6px 22px rgba(0,0,0,.28); overflow: hidden; max-height: 360px; overflow-y: auto; border: 1px solid #d5dbe4; }
+    .wrap.toright .list { right: auto; left: 0; }
+    .wrap.up .list { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 4px; }
+    .btn.locked { background: linear-gradient(#7b8794, #5b6573); border-color: #4a535f; }
     .head { padding: 7px 10px; background: #f4f6fa; border-bottom: 1px solid #e3e8ef; font-weight: 600; color: #334;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .item { padding: 6px 10px; cursor: pointer; border-bottom: 1px solid #eef1f5; display: flex; gap: 6px; }
+    .item { padding: 6px 10px; cursor: default; border-bottom: 1px solid #eef1f5; display: flex; gap: 6px; }
     .item:last-child { border-bottom: 0; }
     .item:hover { background: #e8f0fe; }
     .num { color: #6b7686; min-width: 16px; text-align: right; }
@@ -312,11 +353,26 @@
     .all { font-weight: 700; color: #1d63d6; }
     .msg { padding: 8px 10px; color: #1a9e5a; }
     .help { padding: 8px 10px; color: #334; background: #fffbe6; border-bottom: 1px solid #f0e2a8; }
-    .act { margin-top: 6px; display: inline-block; background: #1d63d6; color: #fff; border-radius: 4px; padding: 3px 9px; cursor: pointer; }
+    .act { margin-top: 6px; display: inline-block; background: #1d63d6; color: #fff; border-radius: 4px; padding: 3px 9px; cursor: default; }
     .act:hover { background: #1a56b8; }
     .off { cursor: default; opacity: .7; }
     .off:hover { background: #fff; }
     .err { color: #d1342f; }
+    /* "Download a part" */
+    .clip { padding: 8px 10px; border-bottom: 1px solid #e3e8ef; background: #fafbfd; }
+    .clip .row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .clip .row b { min-width: 34px; font-weight: 600; }
+    .clip input[type=text] { width: 76px; font: inherit; padding: 3px 5px; border: 1px solid #c9d1dc; border-radius: 4px; color: #1f2733; background: #fff; }
+    .clip input.bad { border-color: #d1342f; }
+    .clip .now, .clip .btn2 { background: #e8f0fe; color: #1d63d6; border-radius: 4px; padding: 3px 8px; cursor: default; white-space: nowrap; }
+    .clip .now:hover, .clip .btn2:hover { background: #d6e4fd; }
+    .clip .len { color: #334; margin-bottom: 6px; }
+    .clip label { display: flex; gap: 6px; align-items: flex-start; margin: 4px 0; cursor: default; }
+    .clip label input { margin: 2px 0 0; flex: none; }
+    .clip label small { display: block; color: #6b7686; font-size: 10.5px; }
+    .clip .acts { display: flex; gap: 6px; margin-top: 6px; }
+    .clip .pick { margin-top: 8px; font-weight: 600; color: #334; }
+    .cliprow .t { color: #1d63d6; }
     /* looks */
     .dark .btn { background: linear-gradient(#3a3f47, #23272e); border-color: #15181c; }
     .dark .btn:hover, .dark .btn.open { background: linear-gradient(#454b55, #2a2f37); }
@@ -372,6 +428,7 @@
   function makeBubble(video) {
     const host = document.createElement("div");
     host.style.all = "initial";
+    host.dir = LANG === "ar" ? "rtl" : "ltr";
     host.style.position = "fixed";
     host.style.zIndex = "2147483647";
     host.style.setProperty("--z", String(zoom));
@@ -399,9 +456,9 @@
         el(
           "div",
           { class: "btn", id: "main" },
-          el("span", { class: "part", id: "grab" }, svg, spin, el("span", { id: "label", text: "Download this video" }), el("span", { class: "caret", text: "▼" })),
-          el("span", { class: "side", id: "help", title: "Help", text: "?" }),
-          el("span", { class: "side", id: "close", title: "Hide", text: "✕" })
+          el("span", { class: "part", id: "grab" }, svg, spin, el("span", { id: "label", text: tr("Download this video") }), el("span", { class: "caret", text: "▼" })),
+          el("span", { class: "side", id: "help", title: tr("Help"), text: "?" }),
+          el("span", { class: "side", id: "close", title: tr("Hide"), text: "✕" })
         ),
         list
       )
@@ -449,6 +506,9 @@
     return b;
   }
 
+  // the part panel is switched off in the add-in (see renderOne)
+  const PARTS_IN_ADDIN = false;
+
   function itemsOf(b) {
     if (b.own) return b.own;
     return isMain(b.video) ? items : [];
@@ -458,7 +518,7 @@
     // another video on the page (or nothing found for it yet): look it up now
     b.loading = true;
     b.open = true;
-    renderOne(b, "Looking for the video qualities…");
+    renderOne(b, tr("Looking for the video qualities…"));
     chrome.runtime.sendMessage(
       // its own post / video link, or its own file; the page only when
       // neither is there
@@ -496,7 +556,7 @@
   function notRunning(b, retry) {
     b.open = true;
     renderOne(b, "Ezoo Download is not running.", true, {
-      text: "Open Ezoo Download",
+      text: tr("Open Ezoo Download"),
       run: () => {
         // the program registers "ezoo-download:" when it is installed
         const a = document.createElement("a");
@@ -545,6 +605,8 @@
       kbps ? `${kbps.toLocaleString("en")} kbps` : "",
       y.size ? (y.quality === "mp3" ? "about " : "") + fmtSize(y.size) : "",
       y.quality === "mp3" ? "made into MP3 after the download" : "",
+      // some players play only the sound of an AV1 video
+      codec === "AV1" ? "AV1: smaller file, needs a newer player" : "",
     ]
       .filter(Boolean)
       .join(" · ");
@@ -555,7 +617,7 @@
   // "Download all": the whole playlist (YouTube list), or every file found
   function downloadAllOf(b, usable) {
     if (TOP && /youtube\.com/i.test(location.hostname) && /[?&]list=/.test(location.search)) {
-      return { text: "Download all videos of this playlist", run: () => sendPlaylist(b) };
+      return { text: tr("Download all videos of this playlist"), run: () => sendPlaylist(b) };
     }
     const files = usable.filter((m) => !m.yt && m.url);
     if (files.length >= 2) {
@@ -574,11 +636,20 @@
     });
   }
 
+  // the list may open up or down: decided again after every change of it
   function renderOne(b, note, isError, action) {
+    renderBubble(b, note, isError, action);
+    // a protected (DRM) video: the button says so with a lock
+    const locked = /🔒/.test(note || "") || itemsOf(b).some((i) => i.drm);
+    b.root.getElementById("main").classList.toggle("locked", locked);
+    placeOne(b);
+  }
+
+  function renderBubble(b, note, isError, action) {
     const list = itemsOf(b);
     const usable = list.filter((i) => !i.disabled);
     const busy = b.loading || (!usable.length && list.some((i) => i.disabled && /Getting/.test(i.label)));
-    b.root.getElementById("label").textContent = usable.length > 1 ? `Download this video (${usable.length})` : "Download this video";
+    b.root.getElementById("label").textContent = usable.length > 1 ? `Download this video (${usable.length})` : tr("Download this video");
     b.root.getElementById("spin").hidden = !busy;
     b.root.querySelector("svg").style.display = busy ? "none" : "";
     b.root.getElementById("main").classList.toggle("open", b.open);
@@ -594,7 +665,8 @@
       );
     }
     if (note) {
-      const d = el("div", { class: "msg" + (isError ? " err" : ""), text: note });
+      // dir "auto": a note in Arabic reads right to left (its full stop at the end)
+      const d = el("div", { class: "msg" + (isError ? " err" : ""), dir: "auto", text: note });
       if (action) {
         const a = el("div", { class: "act", text: action.text });
         a.addEventListener("click", action.run);
@@ -604,19 +676,46 @@
       return;
     }
     if (!list.length) {
-      box.appendChild(el("div", { class: "msg", text: "Looking for the video qualities…" }));
+      box.appendChild(el("div", { class: "msg", text: tr("Looking for the video qualities…") }));
       return;
     }
     const title = (list.find((m) => m.yt && m.yt.title) || {}).yt;
-    box.appendChild(el("div", { class: "head", title: (title && title.title) || cleanTitle(), text: (title && title.title) || cleanTitle() }));
-    const all = downloadAllOf(b, usable);
-    if (all) {
-      const row = el("div", { class: "item" }, el("span", { class: "num", text: "⇊" }), el("div", { class: "body" }, el("div", { class: "t all", text: all.text })));
-      row.addEventListener("click", all.run);
-      box.appendChild(row);
+    box.appendChild(el("div", { class: "head", dir: "auto", title: (title && title.title) || cleanTitle(), text: (title && title.title) || cleanTitle() }));
+    // "Download a part of this video" stays in the program only for now
+    // (Tasks > Download a part of a video); the add-in offers whole videos
+    const partOk = PARTS_IN_ADDIN && usable.some(canCut);
+    if (b.clipMode && partOk) {
+      box.appendChild(clipPanel(b));
+    } else {
+      const all = downloadAllOf(b, usable);
+      if (all) {
+        const row = el("div", { class: "item" }, el("span", { class: "num", text: "⇊" }), el("div", { class: "body" }, el("div", { class: "t all", text: all.text })));
+        row.addEventListener("click", all.run);
+        box.appendChild(row);
+      }
+      if (partOk) {
+        const row = el(
+          "div",
+          { class: "item cliprow" },
+          el("span", { class: "num", text: "✂" }),
+          el("div", { class: "body" }, el("div", { class: "t", text: tr("Download a part of this video…") }), el("div", { class: "s", text: tr("Only the part you choose is downloaded") }))
+        );
+        row.addEventListener("click", () => {
+          b.clipMode = true;
+          if (!b.clip) {
+            const v = b.video;
+            const at = Math.floor(v.currentTime || 0);
+            const dur = Number.isFinite(v.duration) ? v.duration : 0;
+            b.clip = { from: at, to: dur ? Math.min(dur, at + 30) : at + 30, exact: false };
+          }
+          renderOne(b);
+        });
+        box.appendChild(row);
+      }
     }
     let n = 0;
     list.forEach((m) => {
+      if (b.clipMode && partOk && !canCut(m)) return;
       const d = describe(m);
       const t = el("div", { class: "t" }, el("span", { text: d.main }));
       if (d.tag) t.append(el("span", { class: "tag " + d.tag.replace(/\s/g, "").replace(/^(\d)K$/, "K$1"), text: d.tag }));
@@ -628,9 +727,128 @@
         el("span", { class: "num", text: m.disabled ? "" : `${++n}.` }),
         el("div", { class: "body" }, t, el("div", { class: "s", text: sub }))
       );
-      if (!m.disabled) row.addEventListener("click", () => download(b, m));
+      if (!m.disabled) row.addEventListener("click", () => (b.clipMode && partOk ? downloadPart(b, m) : download(b, m)));
       box.appendChild(row);
     });
+  }
+
+  // a quality that can be cut: a video / sound the app downloads itself
+  function canCut(m) {
+    if (m.disabled || m.drm || m.resolve) return false;
+    if (m.yt) return true;
+    return !!m.url && /\.(mp4|m4v|webm|mkv|mov|m3u8|mp3|m4a)(\?|$)/i.test(m.url);
+  }
+
+  // keys typed in our boxes stay ours (not the player's shortcuts)
+  function keepKeys(input) {
+    for (const t of ["keydown", "keyup", "keypress"]) input.addEventListener(t, (e) => e.stopPropagation());
+  }
+
+  // From / To, the kind of cut, a look at the part on the page's own player
+  function clipPanel(b) {
+    const c = b.clip;
+    const v = b.video;
+    const dur = Number.isFinite(v.duration) ? v.duration : 0;
+    const len = el("div", { class: "len" });
+    const showLen = () => {
+      const ok = c.to > c.from && (!dur || c.from < dur);
+      len.textContent = ok ? `Length of the part: ${clock(c.to - c.from)}` : "The end must come after the start.";
+      len.classList.toggle("err", !ok);
+    };
+    const timeRow = (label, key) => {
+      const input = el("input", { type: "text", value: clock(c[key]), "aria-label": label });
+      keepKeys(input);
+      input.addEventListener("input", () => {
+        const t = parseClock(input.value);
+        input.classList.toggle("bad", t == null);
+        if (t != null) {
+          c[key] = dur ? Math.min(t, dur) : t;
+          showLen();
+        }
+      });
+      const now = el("span", { class: "now", title: tr("The time the video is at now"), text: tr("⏱ Now") });
+      now.addEventListener("click", () => {
+        c[key] = Math.floor(v.currentTime || 0);
+        input.value = clock(c[key]);
+        input.classList.remove("bad");
+        showLen();
+      });
+      return el("div", { class: "row" }, el("b", { text: label }), input, now);
+    };
+    const kind = (exact, title, words) => {
+      const r = el("input", { type: "radio", name: "cut" });
+      r.checked = c.exact === exact;
+      r.addEventListener("change", () => (c.exact = exact));
+      return el("label", {}, r, el("span", {}, el("span", { text: title }), el("small", { text: words })));
+    };
+    const preview = el("span", { class: "btn2", text: tr("▶ Preview the part") });
+    preview.addEventListener("click", () => playPart(b));
+    const back = el("span", { class: "btn2", text: tr("← Back") });
+    back.addEventListener("click", () => {
+      b.clipMode = false;
+      stopPart(b);
+      renderOne(b);
+    });
+    const box = el(
+      "div",
+      { class: "clip" },
+      timeRow("From", "from"),
+      timeRow("To", "to"),
+      len,
+      kind(false, "Quick cut (recommended)", "Takes seconds, the quality stays as it is; the part may start a second or two before your time."),
+      kind(true, "Exact cut", "Starts on the very second you chose; the picture is made again, so it takes longer."),
+      el("div", { class: "acts" }, preview, back),
+      el("div", { class: "pick", text: tr("Choose the quality of the part:") })
+    );
+    showLen();
+    return box;
+  }
+
+  // the page's own player plays the part (nothing is downloaded)
+  function playPart(b) {
+    const v = b.video;
+    const c = b.clip;
+    if (!(c.to > c.from)) return;
+    stopPart(b);
+    const stop = () => {
+      if (v.currentTime >= c.to || v.currentTime < c.from - 1) {
+        v.pause();
+        stopPart(b);
+      }
+    };
+    b.partWatch = stop;
+    try {
+      v.currentTime = c.from;
+      v.addEventListener("timeupdate", stop);
+      const p = v.play();
+      if (p && p.catch) p.catch(() => {});
+    } catch (_) {
+      // a player that does not let us move it: nothing to show
+    }
+  }
+
+  function stopPart(b) {
+    if (b.partWatch) b.video.removeEventListener("timeupdate", b.partWatch);
+    b.partWatch = null;
+  }
+
+  function downloadPart(b, m) {
+    const c = b.clip;
+    const dur = Number.isFinite(b.video.duration) ? b.video.duration : 0;
+    if (!(c.to > c.from) || (dur && c.from >= dur)) return flashOne(b, "The end must come after the start.", true);
+    const clip = { start: c.from, end: dur ? Math.min(c.to, dur) : c.to, exact: !!c.exact };
+    const fileName = `${cleanTitle()}.${m.ext || "mp4"}`;
+    stopPart(b);
+    chrome.runtime.sendMessage(
+      { type: "swiftget-download", item: m, title: document.title, fileName, referrer: location.href, clip },
+      (res) => {
+        if (chrome.runtime.lastError || !res || !res.ok) notRunning(b, () => downloadPart(b, m));
+        else {
+          b.clipMode = false;
+          flashOne(b, `The part ${clock(clip.start)} → ${clock(clip.end)} was sent to Ezoo Download ✔`, false);
+        }
+      }
+    );
   }
 
   function placeOne(b) {
@@ -646,15 +864,27 @@
     b.host.style.display = onScreen ? "block" : "none";
     if (!onScreen) return;
     if (b.host.parentNode !== layer()) layer().appendChild(b.host);
-    // its real size (the user can make the button smaller or bigger)
-    const w = b.host.getBoundingClientRect().width || 170;
-    const h = b.root.getElementById("main").getBoundingClientRect().height || 22;
+    // the size of the button itself (the user can make it smaller or bigger);
+    // its list floats and never moves it
+    const mainRect = b.root.getElementById("main").getBoundingClientRect();
+    const w = mainRect.width || 62;
+    const h = mainRect.height || 22;
     let x = b.dx == null ? r.right - w - 8 : r.left + b.dx;
     let y = b.dy == null ? r.top + 8 : r.top + b.dy;
     x = Math.max(r.left, Math.min(x, r.right - 60));
     y = Math.max(r.top, Math.min(y, r.bottom - h));
-    b.host.style.left = `${Math.max(4, Math.min(x, innerWidth - w))}px`;
-    b.host.style.top = `${Math.max(4, Math.min(y, innerHeight - h - 4))}px`;
+    const left = Math.max(4, Math.min(x, innerWidth - w));
+    const top = Math.max(4, Math.min(y, innerHeight - h - 4));
+    b.host.style.left = `${left}px`;
+    b.host.style.top = `${top}px`;
+    // where the list opens: away from the near edge of the screen
+    const wrap = b.root.querySelector(".wrap");
+    if (wrap) {
+      const listW = 330 * zoom;
+      const listH = Math.min(380, (b.root.getElementById("list") || {}).scrollHeight || 380) * zoom;
+      wrap.classList.toggle("toright", left + w - listW < 4);
+      wrap.classList.toggle("up", top + h + listH > innerHeight - 4 && top - listH > 4);
+    }
   }
 
   let probedAt = 0;
@@ -742,7 +972,11 @@
   // and the top page asks again when they change
   if (TOP) setInterval(refreshLinkRules, 60000);
   // shown by the browser itself, not downloaded: never taken from a click
-  const VIEWED = /^(html?|xhtml|php\d?|aspx?|jsp|cgi|pl|cfm|do|action|json|xml|txt|css|js|jpe?g|png|gif|webp|svg|bmp|ico|avif|pdf)$/;
+  // pages and pictures open in the browser; a PDF too, unless PDF is one of
+  // the file types the app takes (then a click on its link goes to the app:
+  // once it is open in the browser's PDF viewer, the viewer's own download
+  // button always asks where to save, and that can't be stopped)
+  const VIEWED = /^(html?|xhtml|php\d?|aspx?|jsp|cgi|pl|cfm|do|action|json|xml|txt|css|js|jpe?g|png|gif|webp|svg|bmp|ico|avif)$/;
   const keyHeld = (e, k) => (k === "alt" ? e.altKey : k === "ctrl" ? e.ctrlKey : k === "shift" ? e.shiftKey : false);
   function wantedLink(e, href) {
     const r = linkRules;
@@ -765,6 +999,7 @@
     const dot = last.lastIndexOf(".");
     const ext = dot > 0 ? last.slice(dot + 1).toLowerCase() : "";
     if (!ext || VIEWED.test(ext)) return false;
+    if (ext === "pdf" && !(r.exts || []).some((x) => wildcard(x, ext))) return false;
     // a .torrent file opens in the program's torrent window
     if (forced || ext === "torrent") return true;
     return (r.exts || []).some((x) => wildcard(x, ext));

@@ -75,9 +75,28 @@ async function init() {
   chrome.runtime.sendMessage({ type: "swiftget-status" }, (res) => {
     const el = document.getElementById("status");
     const ok = res && res.ok;
-    el.textContent = ok ? "connected" : "app not running";
+    const nokey = res && res.state === "nokey";
+    el.textContent = ok ? "connected" : nokey ? "not connected" : "app not running";
     el.classList.toggle("on", !!ok);
-    if (!ok) {
+    if (nokey) {
+      // the program runs but does not know this add-in (yet): connect again
+      const again = document.createElement("button");
+      again.className = "act";
+      again.textContent = "Connect again";
+      again.addEventListener("click", () => {
+        again.textContent = "Connecting… (answer in Ezoo Download if it asks)";
+        again.disabled = true;
+        chrome.runtime.sendMessage({ type: "swiftget-reconnect" }, (r) => {
+          again.disabled = false;
+          again.textContent = r && r.ok ? "Connected ✔" : "Not connected - try again";
+          if (r && r.ok) {
+            el.textContent = "connected";
+            el.classList.add("on");
+          }
+        });
+      });
+      document.querySelector("section").appendChild(again);
+    } else if (!ok) {
       // the program registers "ezoo-download:" when it is installed
       const open = document.createElement("a");
       open.href = "ezoo-download://open";
