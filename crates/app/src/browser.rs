@@ -250,7 +250,18 @@ const MANIFEST_FIREFOX: &[u8] = include_bytes!("../../../extension/manifest.fire
 /// what differs is written). false = it could not be written there.
 pub(crate) fn put_extension(dir: &Path, firefox: bool) -> bool {
     let manifest = if firefox { MANIFEST_FIREFOX } else { MANIFEST };
-    let all = EXTENSION_FILES.iter().copied().chain(std::iter::once(("manifest.json", manifest)));
+    // the program's secret key: an add-in loaded from this folder reads it
+    // and shows it with every request (other programs don't get in)
+    let key = format!(
+        "{{\"token\":\"{}\",\"port\":{}}}\n",
+        crate::api::TOKEN.get().cloned().unwrap_or_default(),
+        crate::api::MAIN_PORT.load(std::sync::atomic::Ordering::Relaxed)
+    );
+    let mut all: Vec<(&str, &[u8])> = EXTENSION_FILES.to_vec();
+    all.push(("manifest.json", manifest));
+    if crate::api::TOKEN.get().is_some() {
+        all.push(("token.json", key.as_bytes()));
+    }
     let mut ok = true;
     for (name, data) in all {
         let path = dir.join(name);
@@ -270,13 +281,48 @@ pub(crate) fn put_extension(dir: &Path, firefox: bool) -> bool {
     ok
 }
 
-/// The extension's folder (Firefox has its own copy), complete.
-///
-/// On Linux the data folder is used even when the program's own folder is
-/// writable: Chrome, Opera and the others remember the folder the user picked
-/// once in "Load unpacked", so it must not move when the program is updated
-/// or installed another way (.deb, AppImage, portable). On Windows the folder
-/// next to the program keeps the old behaviour.
+/// At start: the add-in folders next to the program are complete and carry
+/// the key (an add-in loaded from them before gets the key at once).
+pub(crate) fn prepare_extension_folders() {
+    // right now (not later): an add-in that reloads after an update reads
+    // the key at once
+    for firefox in [false, true] {
+        let _ = extension_dir(firefox);
+    }
+}
+
+/// "Repair the browser add-in": every file of the add-in folders is written
+/// again as it came with the program, and the add-in (it sees the new
+/// number) forgets what it kept and starts again.
+pub(crate) fn repair_extension() -> bool {
+    let mut ok = true;
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+        for (name, firefox) in [("extension", false), ("extension-firefox", true)] {
+            let d = dir.join(name);
+            if d.is_dir() {
+                // what is not part of the add-in any more goes too
+                if let Ok(rd) = std::fs::read_dir(&d) {
+                    for e in rd.flatten() {
+                        let n = e.file_name().to_string_lossy().to_string();
+                        let known = n == "icons" || n == "manifest.json" || n == "token.json" || EXTENSION_FILES.iter().any(|(f, _)| *f == n);
+                        if !known {
+                            let p = e.path();
+                            let _ = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+                        }
+                    }
+                }
+                ok &= put_extension(&d, firefox);
+            }
+        }
+    }
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(1);
+    crate::api::REPAIR.store(now, std::sync::atomic::Ordering::Relaxed);
+    ok
+}
+
+/// The extension's folder next to the program (Firefox has its own copy),
+/// complete. Where the program's folder can't be written, a copy in the
+/// program's data folder is used.
 fn extension_dir(firefox: bool) -> Option<PathBuf> {
     let name = if firefox { "extension-firefox" } else { "extension" };
     #[cfg(not(windows))]
@@ -322,6 +368,19 @@ fn firefox_xpi() -> Option<PathBuf> {
     }
     candidates.push(swiftget_engine::default_data_dir().join(FIREFOX_XPI));
     candidates.into_iter().find(|p| p.exists())
+}
+
+/// "Update the Firefox add-on": Firefox opens the signed add-on of this
+/// program and asks "Add Ezoo Download?" (the new one takes the old one's
+/// place). Without the file (a build without it): the browsers window.
+pub(crate) fn update_firefox_addon(ui: &Ui) {
+    let firefox = detect().into_iter().find(|b| b.firefox).and_then(|b| b.exe);
+    match (firefox, firefox_xpi()) {
+        (Some(exe), Some(xpi)) => {
+            let _ = std::process::Command::new(&exe).arg(&xpi).spawn();
+        }
+        _ => open(ui),
+    }
 }
 
 pub(crate) fn open(ui: &Ui) {
@@ -435,6 +494,16 @@ pub(crate) fn wire(ui: &Ui) {
                     let _ = open::that_detached(f);
                 }
             }
+        });
+    }
+    {
+        d.on_repair(move || {
+            let ok = repair_extension();
+            crate::message(&if ok {
+                t("The add-in's files were put back. It starts again by itself within a minute (or click Reload on it in the browser's extensions page).")
+            } else {
+                t("Some files of the add-in could not be written. Close the browser and click \"Repair the add-in\" again.")
+            });
         });
     }
     {

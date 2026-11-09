@@ -27,13 +27,16 @@ jobs:
       FFMPEG_COMMIT: 8ae0b34901ba60a802f183ee75a250a9fc3e09a5
       LAME_URL: https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz
       LAME_SHA256: ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
+      # the exact cut of "Download a part of a video" makes the picture again with it
+      OPENH264_TAG: v2.6.0
+      OPENH264_COMMIT: 652bdb7719f30b52b08e506645a7322ff1b2cc6f
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ffmpeg-out
-          key: ffmpeg-${{ env.FFMPEG_COMMIT }}-lame-${{ env.LAME_SHA256 }}-${{ hashFiles('tools/ffmpeg/build.sh') }}
+          key: ffmpeg-${{ env.FFMPEG_COMMIT }}-lame-${{ env.LAME_SHA256 }}-h264-${{ env.OPENH264_COMMIT }}-${{ hashFiles('tools/ffmpeg/build.sh') }}
       - name: Build ffmpeg
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
@@ -44,8 +47,10 @@ jobs:
           curl -sSfL -o lame.tar.gz "$LAME_URL"
           echo "$LAME_SHA256  lame.tar.gz" | sha256sum -c -
           tar xzf lame.tar.gz
-          CC=x86_64-w64-mingw32-gcc tools/ffmpeg/build.sh ffmpeg-src lame-3.100 ffmpeg-out
-          echo "$FFMPEG_TAG ($FFMPEG_COMMIT), LAME 3.100" > ffmpeg-out/ffmpeg-version.txt
+          git clone -q --depth 1 --branch "$OPENH264_TAG" https://github.com/cisco/openh264 openh264-src
+          test "$(git -C openh264-src rev-parse HEAD)" = "$OPENH264_COMMIT" || { echo "::error::OpenH264 source is not the expected commit"; exit 1; }
+          CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ tools/ffmpeg/build.sh ffmpeg-src lame-3.100 openh264-src ffmpeg-out
+          echo "$FFMPEG_TAG ($FFMPEG_COMMIT), LAME 3.100, OpenH264 $OPENH264_TAG" > ffmpeg-out/ffmpeg-version.txt
       - name: Test files for our ffmpeg (made with the system's full ffmpeg)
         run: |
           sudo apt-get install -y -q ffmpeg >/dev/null
@@ -100,6 +105,12 @@ jobs:
           Run @("-f", "mpegts", "-i", "$t/s.ts", "-map", "0:v?", "-map", "0:a?", "-c", "copy", "-movflags", "+faststart", "-f", "mp4") "$t/o4.mp4"
           $n = (Get-Item "$t/v.mp4").Length / 2
           Run @("-protocol_whitelist", "file,subfile", "-i", "subfile,,start,0,end,$n,,:$((Resolve-Path "$t/v.mp4").Path)", "-c", "copy", "-f", "matroska") "$t/o5.mkv"
+          # "Download a part": the quick cut, the exact cut (the picture made
+          # again with OpenH264), and reading over plain http on this computer
+          Run @("-ss", "1.2", "-i", "$t/s.ts", "-t", "1.5", "-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", "-f", "mp4") "$t/o6.mp4"
+          Run @("-ss", "1.2", "-i", "$t/s.ts", "-t", "1.5", "-map", "0:v:0?", "-map", "0:a:0?", "-c:v", "libopenh264", "-b:v", "2000k", "-vf", "format=yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-f", "mp4") "$t/o7.mp4"
+          Run @("-ss", "1", "-i", "$t/v.webm", "-t", "1", "-c:v", "libopenh264", "-b:v", "1000k", "-vf", "format=yuv420p", "-an", "-f", "mp4") "$t/o8.mp4"
+          if (-not ((& $ff -hide_banner -protocols 2>&1) -match "http")) { throw "our ffmpeg can't read http" }
           Write-Host "our ffmpeg: $((Get-Item $ff).Length / 1MB) MB, all checks passed"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -158,6 +169,7 @@ jobs:
           New-Item -ItemType Directory -Force "$p/tools", "dist" | Out-Null
           Copy-Item target/release/EzooDownload.exe $p
           Copy-Item THIRD-PARTY-NOTICES.txt $p
+          Copy-Item LICENSE "$p/LICENSE.txt"
           Copy-Item -Recurse extension "$p/extension"
           Copy-Item -Recurse extension "$p/extension-firefox"
           Remove-Item -Recurse -Force "$p/extension/test", "$p/extension-firefox/test"
@@ -185,13 +197,11 @@ jobs:
             $fx = "{`n  ""addons"": {`n    ""ezoo-download-fork@users.noreply.github.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
             [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
           }
-          # not signed this time: the newest signed one kept in the project, so
-          # the setup still has an add-on that stays in Firefox (it updates
-          # itself later from the releases)
-          if (-not (Test-Path "$p/ezoo-download-firefox.xpi")) {
-            $newest = Get-ChildItem "extension-signed" -Filter "ezoo-download-firefox-*.xpi" -ErrorAction SilentlyContinue |
-              Sort-Object { [version]($_.BaseName -replace "^ezoo-download-firefox-", "") } -Descending | Select-Object -First 1
-            if ($newest) { Copy-Item $newest.FullName "$p/ezoo-download-firefox.xpi" }
+          # never an older add-on in the setup: installing it would put the
+          # old add-on back into Firefox. A release without the signed add-on
+          # of its own version is not published
+          if (-not (Test-Path "$p/ezoo-download-firefox.xpi") -and $env:IS_RELEASE -eq "true") {
+            throw "the Firefox add-on $extVersion was not signed: the release would carry no Firefox add-on"
           }
           # our own small ffmpeg (job "ffmpeg") and its licences
           Copy-Item ffmpeg-out/* "$p/tools/"

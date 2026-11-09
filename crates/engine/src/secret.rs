@@ -15,6 +15,41 @@
 
 const PREFIX: &str = "dpapi:";
 
+/// The signature of one request to the program: HMAC-SHA256 with the
+/// program's key over "METHOD\npath\ntime\nnonce" (hex). The key itself is
+/// never sent; a request seen once can't be sent again (the nonce).
+pub fn request_signature(key: &str, method: &str, path: &str, time: &str, nonce: &str) -> String {
+    let k = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, key.as_bytes());
+    let msg = format!("{method}\n{path}\n{time}\n{nonce}");
+    to_hex(ring::hmac::sign(&k, msg.as_bytes()).as_ref())
+}
+
+/// `sig` (hex) is the signature of this request (checked in constant time).
+pub fn signature_ok(key: &str, method: &str, path: &str, time: &str, nonce: &str, sig: &str) -> bool {
+    let Some(raw) = from_hex(sig.trim()) else { return false };
+    let k = ring::hmac::Key::new(ring::hmac::HMAC_SHA256, key.as_bytes());
+    let msg = format!("{method}\n{path}\n{time}\n{nonce}");
+    ring::hmac::verify(&k, msg.as_bytes(), &raw).is_ok()
+}
+
+/// A random nonce (32 hex characters).
+pub fn random_nonce() -> String {
+    random_token()[..32].to_string()
+}
+
+/// A new random secret (64 hex characters), e.g. the key the browser add-in
+/// shows the program with every request.
+pub fn random_token() -> String {
+    use ring::rand::SecureRandom;
+    let mut b = [0u8; 32];
+    if ring::rand::SystemRandom::new().fill(&mut b).is_err() {
+        // never seen; still unique per start
+        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        b[..16].copy_from_slice(&(t ^ u128::from(std::process::id())).to_le_bytes());
+    }
+    to_hex(&b)
+}
+
 fn to_hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
@@ -161,6 +196,20 @@ pub mod pair {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn request_signatures() {
+        let k = "k".repeat(64);
+        let sig = super::request_signature(&k, "POST", "/add", "1700000000000", "abc");
+        assert_eq!(sig.len(), 64);
+        // the same as the browser add-in makes (crypto.subtle HMAC-SHA256)
+        assert_eq!(sig, "7c71547e607fc59ffae12e99587c50ac1ac6db383cd4eacb3cd15becff7cef06");
+        assert!(super::signature_ok(&k, "POST", "/add", "1700000000000", "abc", &sig));
+        assert!(!super::signature_ok(&k, "POST", "/links", "1700000000000", "abc", &sig));
+        assert!(!super::signature_ok(&k, "POST", "/add", "1700000000001", "abc", &sig));
+        assert!(!super::signature_ok(&"x".repeat(64), "POST", "/add", "1700000000000", "abc", &sig));
+        assert!(!super::signature_ok(&k, "POST", "/add", "1700000000000", "abc", "zz"));
+    }
+
     use super::*;
 
     #[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]

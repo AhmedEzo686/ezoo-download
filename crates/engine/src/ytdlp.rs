@@ -587,6 +587,11 @@ fn needs_login(msg: &str) -> bool {
         .any(|k| m.contains(k))
 }
 
+/// Sites where much is seen only by friends / group members.
+fn members_site(url: &str) -> bool {
+    matches!(site_of(url).as_str(), "facebook.com" | "fb.watch" | "instagram.com" | "threads.net" | "x.com" | "twitter.com")
+}
+
 /// The site part of an address that cookies belong to ("www.youtube.com",
 /// "m.youtube.com" and "youtu.be" are all "youtube.com").
 fn site_of(url: &str) -> String {
@@ -652,7 +657,10 @@ fn with_cookies<T>(
     }
     match run(None) {
         Ok(v) => Ok(v),
-        Err(e) if needs_login(&e.to_string()) => {
+        // social sites hide what only friends / members see behind messages
+        // that say nothing of a login ("Cannot parse data", "No video
+        // formats found"): with the browser's cookies there, always
+        Err(e) if needs_login(&e.to_string()) || (members_site(page_url) && cookies.is_some_and(|c| !c.is_empty())) => {
             let list = cookies.map(<[BrowserCookie]>::to_vec).or_else(|| remembered_cookies(page_url));
             let Some(list) = list.filter(|c| !c.is_empty()) else {
                 return Err(if login_wall(&e.to_string()) { e.context(LOGIN_NEEDED) } else { e });

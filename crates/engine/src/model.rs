@@ -48,6 +48,122 @@ pub enum DownloadKind {
     Torrent,
 }
 
+/// What a download does after the data is all here (its second bar).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    /// the picture and the sound into one file
+    Join,
+    /// a stream into an MP4 file
+    ToMp4,
+    /// the sound into an MP3 file
+    ToMp3,
+    /// the file to its folder on another disk
+    Move,
+    /// the part of a video cut out
+    Cut,
+}
+
+impl Step {
+    pub fn from_code(c: u8) -> Option<Step> {
+        Some(match c {
+            1 => Step::Join,
+            2 => Step::ToMp4,
+            3 => Step::ToMp3,
+            4 => Step::Move,
+            5 => Step::Cut,
+            _ => return None,
+        })
+    }
+    pub fn code(self) -> u8 {
+        match self {
+            Step::Join => 1,
+            Step::ToMp4 => 2,
+            Step::ToMp3 => 3,
+            Step::Move => 4,
+            Step::Cut => 5,
+        }
+    }
+}
+
+/// "Download a part of a video": only from `start` to `end` (seconds).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Clip {
+    pub start: f64,
+    pub end: f64,
+    /// cut on the very second asked (the start of the picture is made
+    /// again: slower); otherwise the quick cut, which starts at the nearest
+    /// whole picture before `start` (a second or two earlier, as it is)
+    #[serde(default)]
+    pub exact: bool,
+}
+
+impl Clip {
+    /// The longest part (and video) taken: a day.
+    pub const MAX: f64 = 24.0 * 3600.0;
+
+    pub fn new(start: f64, end: f64, exact: bool) -> Option<Clip> {
+        let ok = start.is_finite() && end.is_finite() && start >= 0.0 && end <= Clip::MAX && end - start >= 0.5;
+        ok.then_some(Clip { start, end, exact })
+    }
+    pub fn len(&self) -> f64 {
+        (self.end - self.start).max(0.0)
+    }
+    /// What goes into the file name: "01-20 → 03-45" (Windows takes no ':')
+    pub fn label(&self) -> String {
+        format!("{} → {}", clock(self.start, '-'), clock(self.end, '-'))
+    }
+}
+
+/// 75.4 -> "01:15", 3725 -> "1:02:05" (`sep` between the numbers).
+pub fn clock(secs: f64, sep: char) -> String {
+    let t = secs.max(0.0).floor() as u64;
+    let (h, m, s) = (t / 3600, (t % 3600) / 60, t % 60);
+    if h > 0 {
+        format!("{h}{sep}{m:02}{sep}{s:02}")
+    } else {
+        format!("{m:02}{sep}{s:02}")
+    }
+}
+
+/// "1:02:05", "02:05", "125", "2:05.5" (Arabic digits too) -> seconds.
+pub fn parse_clock(text: &str) -> Option<f64> {
+    let t: String = text
+        .trim()
+        .chars()
+        .map(|c| match c {
+            '٠'..='٩' => char::from(b'0' + (c as u32 - '٠' as u32) as u8),
+            '۰'..='۹' => char::from(b'0' + (c as u32 - '۰' as u32) as u8),
+            '٫' | ',' => '.',
+            '-' | '：' => ':',
+            _ => c,
+        })
+        .collect();
+    let (whole, frac) = match t.split_once('.') {
+        Some((w, f)) => (w, Some(f)),
+        None => (t.as_str(), None),
+    };
+    let nums: Vec<&str> = whole.split(':').collect();
+    if whole.is_empty() || nums.len() > 3 || nums.iter().any(|n| n.is_empty() || n.len() > 6 || !n.bytes().all(|c| c.is_ascii_digit())) {
+        return None;
+    }
+    let mut total = 0.0;
+    for (i, n) in nums.iter().enumerate() {
+        let v: f64 = n.parse().ok()?;
+        // minutes and seconds after the first number stay under 60
+        if i > 0 && v >= 60.0 {
+            return None;
+        }
+        total = total * 60.0 + v;
+    }
+    if let Some(f) = frac {
+        if f.is_empty() || f.len() > 3 || !f.bytes().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        total += format!("0.{f}").parse::<f64>().ok()?;
+    }
+    Some(total)
+}
+
 /// Extra request data, usually handed over by the browser extension so that
 /// downloads behind a login work exactly like in the browser.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,6 +192,8 @@ pub struct ProbeResult {
     pub kind: DownloadKind,
     /// the server's "Last-Modified" date
     pub last_modified: Option<DateTime<Utc>>,
+    /// the server's name for this version of the file ("ETag")
+    pub etag: Option<String>,
     /// the server refused the request as it was (HTTP 403 and the like) and
     /// took it with these headers instead: the download uses them too
     pub headers_used: Option<RequestHeaders>,
@@ -118,6 +236,8 @@ pub struct NewDownload {
     pub start: bool,
     /// torrents: the files to get, 1-based ("1,3,4"); None = all
     pub torrent_select: Option<String>,
+    /// only this part of the video / sound
+    pub clip: Option<Clip>,
 }
 
 /// Persisted state of one download.
@@ -184,6 +304,10 @@ pub struct DownloadRecord {
     /// server's file date (Last-Modified)
     #[serde(default)]
     pub server_time: Option<DateTime<Utc>>,
+    /// the server's name for the version of the file being downloaded
+    /// ("ETag"): another one later = the file changed on the server
+    #[serde(default)]
+    pub etag: Option<String>,
     /// automatic retries done by its queue
     #[serde(default)]
     pub retry_count: u32,
@@ -202,6 +326,9 @@ pub struct DownloadRecord {
     /// it runs; a magnet link only knows them then)
     #[serde(default)]
     pub torrent_files: Vec<String>,
+    /// only this part of the video / sound ("Download a part")
+    #[serde(default)]
+    pub clip: Option<Clip>,
 }
 
 impl DownloadRecord {
@@ -228,7 +355,7 @@ impl DownloadRecord {
         }
     }
     /// base name of the temporary files (with the id when they share a temp folder)
-    fn temp_stem(&self) -> String {
+    pub fn temp_stem(&self) -> String {
         if let Some(stem) = &self.work_stem {
             return stem.clone();
         }
@@ -278,6 +405,18 @@ impl DownloadRecord {
         }
         vec![self.part_path(), self.hls_temp_dir(), self.video_part_path(), self.audio_part_path()]
     }
+    /// The file name of a part of a video: "name [01-20 → 03-45].mp4"
+    /// (a picture is always an MP4 file: it plays everywhere).
+    pub fn clip_name(name: &str, clip: &Clip) -> String {
+        let (stem, ext) = crate::filename::split_ext(name);
+        let ext = match ext.to_ascii_lowercase().as_str() {
+            "mp3" => "mp3",
+            "m4a" | "aac" => "m4a",
+            "opus" | "ogg" => "ogg",
+            _ => "mp4",
+        };
+        format!("{} [{}].{ext}", stem.trim(), clip.label())
+    }
     pub fn request_url(&self) -> &str {
         self.final_url.as_deref().unwrap_or(&self.url)
     }
@@ -300,6 +439,8 @@ pub struct DownloadView {
     pub speed: f64,
     pub eta_secs: Option<u64>,
     pub active_connections: u32,
+    /// torrents: connected people that have the whole file
+    pub seeders: u32,
     pub resumable: bool,
     pub parts_total: u32,
     pub parts_done: u32,
@@ -318,6 +459,10 @@ pub struct DownloadView {
     pub queue_pos: u64,
     /// the connection dropped: waiting for the internet to come back
     pub waiting: bool,
+    /// after the data: what it does now and how far (0..1)
+    pub step: Option<(Step, f32)>,
+    /// video pages: the quality chosen ("1080p|MP4 AV1")
+    pub source_key: Option<String>,
 }
 
 impl DownloadView {
@@ -360,5 +505,29 @@ pub fn fmt_duration(secs: u64) -> String {
         format!("{m}m {s:02}s")
     } else {
         format!("{s}s")
+    }
+}
+
+#[cfg(test)]
+mod clip_tests {
+    use super::*;
+
+    #[test]
+    fn times_of_a_part() {
+        assert_eq!(parse_clock("1:02:05"), Some(3725.0));
+        assert_eq!(parse_clock("02:05"), Some(125.0));
+        assert_eq!(parse_clock("125"), Some(125.0));
+        assert_eq!(parse_clock("2:05.5"), Some(125.5));
+        assert_eq!(parse_clock("٠١:٣٠"), Some(90.0));
+        assert_eq!(parse_clock("1:75"), None);
+        assert_eq!(parse_clock("abc"), None);
+        assert_eq!(parse_clock(""), None);
+        assert_eq!(clock(75.9, ':'), "01:15");
+        assert_eq!(clock(3725.0, '-'), "1-02-05");
+        assert!(Clip::new(5.0, 5.2, false).is_none());
+        assert!(Clip::new(-1.0, 5.0, false).is_none());
+        let c = Clip::new(80.0, 225.0, false).unwrap();
+        assert_eq!(DownloadRecord::clip_name("Trip [1080p].webm", &c), "Trip [1080p] [01-20 → 03-45].mp4");
+        assert_eq!(DownloadRecord::clip_name("Song.mp3", &c), "Song [01-20 → 03-45].mp3");
     }
 }

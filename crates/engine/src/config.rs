@@ -195,7 +195,7 @@ pub struct SiteLogin {
 pub const MAIN_QUEUE: u64 = 1;
 
 /// Bump when defaults change in a way old settings files should pick up.
-const SETTINGS_VERSION: u32 = 4;
+const SETTINGS_VERSION: u32 = 5;
 
 /// Columns of the download list that can be shown or hidden (View > Columns).
 pub const ALL_COLUMNS: [&str; 11] =
@@ -379,6 +379,19 @@ pub struct Settings {
     /// draw the windows with the graphics card (more memory; off = the
     /// processor draws them, works on every computer)
     pub gpu_drawing: bool,
+    /// the word about AV1 videos (sound without picture in older players) was shown
+    pub av1_tip_shown: bool,
+    /// downloads that finished well (for the word about supporting the program)
+    pub finished_count: u64,
+    /// when that word was shown last (seconds since 1970; 0 = never)
+    pub support_asked_at: u64,
+    /// the key the browser add-in sends with every request (made at the
+    /// first start; encrypted on the disk)
+    #[serde(with = "crate::secret::string")]
+    pub api_token: String,
+    /// the port the add-in really talks to (chosen at random on this
+    /// computer; `browser_port` only answers "are you there" and pairing)
+    pub api_port: u16,
 }
 
 impl Default for Settings {
@@ -395,7 +408,7 @@ impl Default for Settings {
             speed_limit_kb: 0,
             retries: 10,
             user_agent: DEFAULT_USER_AGENT.into(),
-            clipboard_monitor: true,
+            clipboard_monitor: false,
             show_complete_dialog: true,
             ask_before_remove: true,
             remove_deletes_files: false,
@@ -476,6 +489,11 @@ impl Default for Settings {
             main_maximized: false,
             progress_details: false,
             gpu_drawing: false,
+            av1_tip_shown: false,
+            finished_count: 0,
+            support_asked_at: 0,
+            api_token: String::new(),
+            api_port: 0,
         }
     }
 }
@@ -522,6 +540,11 @@ impl Settings {
                 }
             }
             s.schedule.enabled = false;
+        }
+        if s.version < 5 {
+            // v5: watching the clipboard is off until the user turns it on
+            // (it reads everything that is copied)
+            s.clipboard_monitor = false;
         }
         s.version = SETTINGS_VERSION;
         if !s.queues.iter().any(|q| q.id == MAIN_QUEUE) {
@@ -576,11 +599,14 @@ impl Settings {
             .ok()
             .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()))
             .unwrap_or_default();
-        self.server_limits
+        let set = self
+            .server_limits
             .iter()
             .find(|l| host_matches(&host, &l.host))
             .map(|l| wanted.min(l.connections.max(1)))
-            .unwrap_or(wanted)
+            .unwrap_or(wanted);
+        // a site that said "too many requests" before: as many as it took
+        crate::http_download::learned_limit(url).map(|n| set.min(n)).unwrap_or(set)
     }
 
     /// Saved login for this address (Options > Site Logins).

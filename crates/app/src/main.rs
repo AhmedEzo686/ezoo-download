@@ -8,6 +8,7 @@ mod api;
 mod autostart;
 mod browser;
 mod clipboard;
+mod clipui;
 mod extra;
 mod grab;
 mod i18n;
@@ -267,6 +268,17 @@ fn main() {
     if std::env::var_os("SLINT_BACKEND").is_none() && !gpu {
         std::env::set_var("SLINT_BACKEND", "winit-software");
     }
+    // every window is made away from the screen and comes in once drawn
+    // (no white box on the left before a window opens)
+    #[cfg(windows)]
+    {
+        let mut pick = slint::BackendSelector::new().with_winit_window_attributes_hook(winfx::made_away);
+        if std::env::var_os("SLINT_BACKEND").is_none() {
+            // drawn with the graphics card: still the winit windows
+            pick = pick.backend_name("winit".into());
+        }
+        let _ = pick.select();
+    }
     if let Err(e) = run() {
         let text = format!("{e:#}");
         note(&format!("could not start: {text}"));
@@ -320,7 +332,20 @@ fn run() -> anyhow::Result<()> {
     // started by Windows at sign-in: stay next to the clock, no window
     let background = std::env::args().any(|a| a == "--background");
     let data_dir = default_data_dir();
-    let port = Settings::load(&data_dir.join("settings.json")).browser_port;
+    // the secret key of the browser add-in: made once, kept (encrypted) in
+    // the settings; another program on the computer can't talk to the port
+    // without it
+    let (port, token) = {
+        let path = data_dir.join("settings.json");
+        let mut s = Settings::load(&path);
+        if s.api_token.len() < 32 {
+            s.api_token = swiftget_engine::secret::random_token();
+            let _ = std::fs::create_dir_all(&data_dir);
+            let _ = s.save(&path);
+        }
+        (s.browser_port, s.api_token)
+    };
+    let _ = api::TOKEN.set(token.clone());
     if std::env::args().any(|a| a == "--quit") {
         // run by the setup: the open copy closes (saving everything), this one too
         api::notify_quit(port);
@@ -392,6 +417,27 @@ fn run() -> anyhow::Result<()> {
             }
         }
     };
+    // the port the add-in really talks to: random on this computer (kept for
+    // the next start), and the add-in folders get it with the key before
+    // anything answers there (an add-in reloading right after an update
+    // finds both at once)
+    let main_server = if server.is_some() {
+        let path = data_dir.join("settings.json");
+        let mut s = Settings::load(&path);
+        let got = api::bind_main(s.api_port);
+        if let Some((_, p)) = &got {
+            api::MAIN_PORT.store(*p, std::sync::atomic::Ordering::Relaxed);
+            if s.api_port != *p {
+                s.api_port = *p;
+                let _ = s.save(&path);
+            }
+        }
+        browser::prepare_extension_folders();
+        got.map(|(srv, _)| srv)
+    } else {
+        None
+    };
+    let _ = &token;
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)
@@ -489,7 +535,14 @@ fn run() -> anyhow::Result<()> {
         // the API thread only sends; the UI thread owns the windows
         let (tx, rx) = std::sync::mpsc::channel::<api::ApiEvent>();
         let rx = Rc::new(rx);
-        api::serve(server, move || api::config_json(&cfg_mgr.settings()), move |event| {
+        if let Some(main_server) = main_server {
+            let (tx, cfg_mgr) = (tx.clone(), cfg_mgr.clone());
+            api::serve(main_server, api::Door::Main, move || api::config_json(&cfg_mgr.settings()), move |event| {
+                let _ = tx.send(event);
+                let _ = slint::invoke_from_event_loop(|| {});
+            });
+        }
+        api::serve(server, api::Door::Front, move || api::config_json(&cfg_mgr.settings()), move |event| {
             let _ = tx.send(event);
             let _ = slint::invoke_from_event_loop(|| {});
         });
@@ -597,7 +650,10 @@ fn run() -> anyhow::Result<()> {
             // the download behind an open "Download File Info" says nothing
             // until Start is pressed
             let early = early_download(&ui.ctx);
-            let finished: Vec<u64> = ui.ctx.mgr.take_completed().into_iter().filter(|id| Some(*id) != early).collect();
+            let completed = ui.ctx.mgr.take_completed();
+            extra::finished_well(&ui, completed.len());
+            extra::av1_tip(&ui, &completed);
+            let finished: Vec<u64> = completed.into_iter().filter(|id| Some(*id) != early).collect();
             if let Some(&last) = finished.last() {
                 if ui.ctx.mgr.settings().show_complete_dialog {
                     show_complete(&ui, last);
@@ -663,16 +719,16 @@ fn run() -> anyhow::Result<()> {
     let was_maximized = mgr.settings().main_maximized;
     if !(background && has_tray) {
         main.show()?;
-        // the main window: in the middle of the screen, and it can be maximized
-        winfx::place(main.as_weak(), true);
-        if was_maximized {
-            let w = main.as_weak();
-            Timer::single_shot(Duration::from_millis(60), move || {
+        // the main window: in the middle of the screen (once drawn), and it
+        // can be maximized; maximized there, so it comes back there
+        let w = main.as_weak();
+        winfx::place_then(main.as_weak(), true, move || {
+            if was_maximized {
                 if let Some(m) = w.upgrade() {
                     m.window().set_maximized(true);
                 }
-            });
-        }
+            }
+        });
         winfx::set_opacity(main.window(), mgr.settings().opacity);
         let mut s = mgr.settings();
         if !s.extension_prompted {
@@ -693,7 +749,7 @@ fn run() -> anyhow::Result<()> {
     }
     {
         // a .torrent file dropped on the window
-        winfx::on_files_dropped(main.window(), |path| {
+        winfx::keep_drawn_with_drop(&main, |path| {
             if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("torrent")) && path.is_file() {
                 torrent_ui::open_source(&path.display().to_string());
             }
@@ -1104,6 +1160,10 @@ fn wire_main(ui: &Ui) {
     }
     {
         let ui = ui.clone();
+        main.on_clip_part(move || clipui::open(&ui, None));
+    }
+    {
+        let ui = ui.clone();
         main.on_tips(move || extra::show_tip(&ui, true));
     }
     {
@@ -1306,6 +1366,13 @@ fn handle_events(ui: &Ui) {
     // a finished file: the preview names of it are not needed any more
     preview::clean_up();
     for ev in events {
+        // refused at once (the site lets only the browser in): the browser
+        // is asked for it, with the site's sign-in, and gives it back
+        if let Event::Failed(id) = ev {
+            if relay_refused(ui, id) {
+                continue;
+            }
+        }
         match ev {
             Event::Completed(id) | Event::Failed(id) if Some(id) == early => {}
             Event::Completed(_) if s.sounds_on => sound::play(&s.sound_complete),
@@ -1328,12 +1395,85 @@ fn handle_events(ui: &Ui) {
 
 thread_local! {
     static LAST_API_ADD: RefCell<Option<(String, std::time::Instant)>> = const { RefCell::new(None) };
+    // downloads the server refused (403 / 401) handed to the browser:
+    // address -> (download, when, times)
+    static RELAYED: RefCell<HashMap<String, (u64, std::time::Instant, u32)>> = RefCell::new(HashMap::new());
+}
+
+/// The server refused a download before its first byte (HTTP 403 / 401):
+/// many sites let only the browser in (its sign-in, its exact request).
+/// The first time, the address is opened in the browser: the add-in takes
+/// that download with everything the browser sent and it comes back to this
+/// same download. Refused again: the browser keeps it and downloads it
+/// itself. true = handled (no "failed" sound / message).
+fn relay_refused(ui: &Ui, id: u64) -> bool {
+    let Some(v) = ui.ctx.mgr.get(id) else { return false };
+    let err = v.error.clone().unwrap_or_default();
+    let refused = err.contains("HTTP 403") || err.contains("HTTP 401");
+    if v.kind != DownloadKind::Http || v.downloaded > 0 || !refused || !v.url.starts_with("http") {
+        return false;
+    }
+    let times = RELAYED.with(|r| {
+        let mut r = r.borrow_mut();
+        r.retain(|_, (_, at, _)| at.elapsed() < Duration::from_secs(1800));
+        let e = r.entry(v.url.clone()).or_insert((id, std::time::Instant::now(), 0));
+        e.0 = id;
+        e.1 = std::time::Instant::now();
+        e.2 += 1;
+        e.2
+    });
+    if times > 2 {
+        return false;
+    }
+    if times == 2 {
+        // refused with the browser's own request too: the browser downloads it
+        api::leave_to_browser(&v.url);
+        note(&format!("download {id}: refused again, left to the browser"));
+    } else {
+        note(&format!("download {id}: refused by the server, asking the browser"));
+    }
+    let _ = open::that_detached(&v.url);
+    true
+}
+
+/// The add-in sent a download we asked the browser for: it belongs to the
+/// refused one, which goes on with the browser's request.
+fn relayed_download(url: &str) -> Option<u64> {
+    RELAYED.with(|r| {
+        r.borrow()
+            .get(url)
+            .filter(|(_, at, times)| *times == 1 && at.elapsed() < Duration::from_secs(300))
+            .map(|(id, _, _)| *id)
+    })
 }
 
 /// A request from the browser extension.
 fn handle_api(ui: &Ui, event: api::ApiEvent) {
     match event {
         api::ApiEvent::Show => bring_to_front(&ui.ctx),
+        api::ApiEvent::Pair(answer) => {
+            bring_to_front(&ui.ctx);
+            confirm(
+                &ui.ctx,
+                &t("Connect a browser?"),
+                &t("A browser add-in asks to connect to Ezoo Download (to send it the downloads and videos of the browser).\n\nSay yes only if you just installed or updated the Ezoo Download add-in in your browser."),
+                move || {
+                    let _ = answer.send(true);
+                },
+            );
+        }
+        api::ApiEvent::OldFirefoxAddon => {
+            note("the Firefox add-on is older than the program");
+            confirm(
+                &ui.ctx,
+                &t("Update the Firefox add-on"),
+                &t("The Ezoo Download add-on in Firefox is an older version than the program, so videos and downloads may not work in Firefox.\n\nClick OK: Firefox opens the new add-on. Then click \"Add\" in the message Firefox shows."),
+                {
+                    let ui = ui.clone();
+                    move || browser::update_firefox_addon(&ui)
+                },
+            );
+        }
         api::ApiEvent::Quit => {
             note("closed for the setup");
             let _ = slint::quit_event_loop();
@@ -1374,12 +1514,41 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
                 torrent_ui::fetch_and_open(&ui.ctx, req.url, headers, req.file_name);
                 return;
             }
+            // a refused download we asked the browser for: it goes on with the
+            // browser's own request (headers, sign-in)
+            if let Some(id) = relayed_download(&req.url).filter(|id| ui.ctx.mgr.get(*id).is_some()) {
+                ui.ctx.mgr.set_url(id, &req.url, Some(headers));
+                ui.ctx.mgr.start(id);
+                refresh(ui);
+                return;
+            }
             // "Refresh download address": this is the new link we waited for
             if let Some(id) = ui.refresh_id.get() {
                 if req.audio_url.is_none() {
                     extra::refresh_received(ui, id, &req.url, headers);
                     return;
                 }
+            }
+            // a part of a video (the add-in's "Download a part"): straight to the list
+            if let Some(c) = req.clip.as_ref().and_then(|c| swiftget_engine::Clip::new(c.start, c.end, c.exact)) {
+                let key = req.source_key.clone().unwrap_or_default();
+                let name = req.file_name.clone().unwrap_or_else(|| "video.mp4".into());
+                let (stem, ext) = filename::split_ext(&name);
+                clipui::add_part(
+                    ui,
+                    NewDownload {
+                        url: req.url,
+                        file_name: Some(clipui::part_name(stem, &ext.to_ascii_lowercase(), &key)),
+                        headers,
+                        audio_url: req.audio_url,
+                        source_page: req.source_page,
+                        source_key: req.source_key,
+                        clip: Some(c),
+                        start: true,
+                        ..Default::default()
+                    },
+                );
+                return;
             }
             let extra = VideoExtra {
                 audio_url: req.audio_url,
@@ -1713,6 +1882,24 @@ fn wire_complete(ui: &Ui) {
         let ui = ui.clone();
         complete.on_close_window(move || close_complete(&ui));
     }
+    {
+        let ui = ui.clone();
+        complete.on_drag_out(move || {
+            // the finished file pulled out of the window: Windows takes it from here
+            let Some(v) = ui.complete_id.get().and_then(|i| ui.ctx.mgr.get(i)) else { return };
+            let Some(d) = ui.complete.upgrade() else { return };
+            if !v.save_path.is_file() {
+                return;
+            }
+            winfx::drag_file_out(d.window(), &v.save_path);
+            // the mouse was let go outside the window: the icon must know too
+            d.window().dispatch_event(slint::platform::WindowEvent::PointerReleased {
+                position: slint::LogicalPosition::new(0.0, 0.0),
+                button: slint::platform::PointerEventButton::Left,
+            });
+            d.window().dispatch_event(slint::platform::WindowEvent::PointerExited);
+        });
+    }
 }
 
 pub(crate) fn show_complete(ui: &Ui, id: u64) {
@@ -1838,6 +2025,11 @@ macro_rules! to_front {
     ($w:expr) => {{
         let w = &$w;
         w.window().set_minimized(false);
+        // drawn whole again: what Windows showed of it may be gone
+        {
+            use $crate::winfx::KeepDrawn as _;
+            w.keep_drawn();
+        }
         w.set_front(true);
         let weak = w.as_weak();
         slint::Timer::single_shot(std::time::Duration::from_millis(1800), move || {
@@ -1855,6 +2047,10 @@ pub(crate) use to_front;
 macro_rules! open_window {
     ($w:expr) => {{
         let was_open = $w.window().is_visible();
+        if !was_open {
+            // shown away from the screen, brought in once drawn
+            $crate::winfx::send_away($w.window());
+        }
         let _ = $w.show();
         if !was_open {
             $crate::winfx::place($w.as_weak(), false);
@@ -1950,6 +2146,9 @@ pub(crate) fn bring_to_front(ctx: &Ctx) {
     if let Some(w) = ctx.main.upgrade() {
         // the main window keeps its maximize button (open_window! is for the others)
         let was_open = w.window().is_visible();
+        if !was_open {
+            winfx::send_away(w.window());
+        }
         let _ = w.show();
         if !was_open {
             winfx::place(w.as_weak(), true);
@@ -2045,6 +2244,17 @@ pub(crate) fn change_language(ui: &Ui, lang: &str) {
             }
         });
     }
+}
+
+/// A setting needs a new start: asked (after the window that changed it
+/// is gone); yes = everything is saved, it closes and opens again.
+pub(crate) fn ask_restart(text: String) {
+    Timer::single_shot(Duration::from_millis(200), move || {
+        if ask(&text) {
+            RESTART.store(true, std::sync::atomic::Ordering::SeqCst);
+            let _ = slint::quit_event_loop();
+        }
+    });
 }
 
 /// Open the program again (after it saved everything and closed).
@@ -2399,11 +2609,12 @@ pub(crate) fn early_download(ctx: &Ctx) -> Option<u64> {
 /// Ask the server about the file in the background, then show the result.
 fn start_probe(ctx: &Ctx, url: String) {
     let Some(d) = ctx.add() else { return };
-    let (seq, mut headers) = {
+    let (seq, mut headers, audio_url) = {
         let mut st = ctx.add_state.lock().unwrap();
         st.probe_seq += 1;
         st.probe = None;
-        (st.probe_seq, st.headers.clone())
+        let audio = st.extra.audio_url.clone().filter(|_| st.origin_url == url);
+        (st.probe_seq, st.headers.clone(), audio)
     };
     if d.get_use_login() && !d.get_user().trim().is_empty() {
         headers.auth = Some((d.get_user().trim().to_string(), d.get_password().to_string()));
@@ -2412,7 +2623,15 @@ fn start_probe(ctx: &Ctx, url: String) {
     d.set_info_error(false);
     let ctx2 = ctx.clone();
     ctx.rt.spawn(async move {
-        let result = ctx2.mgr.probe(&url, &headers).await;
+        // picture and sound come apart: both sizes, so the window shows the
+        // whole size (as the browser add-in does)
+        let (result, audio_size) = match &audio_url {
+            Some(a) => {
+                let (v, s) = tokio::join!(ctx2.mgr.probe(&url, &headers), ctx2.mgr.probe(a, &headers));
+                (v, s.ok().and_then(|p| p.total_size))
+            }
+            None => (ctx2.mgr.probe(&url, &headers).await, None),
+        };
         let _ = slint::invoke_from_event_loop(move || {
             let Some(d) = ctx2.add() else { return };
             let mut st = ctx2.add_state.lock().unwrap();
@@ -2430,7 +2649,13 @@ fn start_probe(ctx: &Ctx, url: String) {
                     }
                     let has_audio = st.extra.audio_url.is_some() && st.origin_url == url;
                     let size = p.total_size.map(fmt_size).unwrap_or_else(|| t("Unknown size"));
-                    let size_text = if has_audio { format!("{size}\n{}", t("+ audio")) } else { size };
+                    let size_text = match (has_audio, p.total_size, audio_size) {
+                        (true, Some(v), Some(a)) => {
+                            format!("{}\n{}\n{}", fmt_size(v + a), tf("picture {}", &[&fmt_size(v)]), tf("sound {}", &[&fmt_size(a)]))
+                        }
+                        (true, _, _) => format!("{size}\n{}", t("+ audio")),
+                        _ => size,
+                    };
                     d.set_size_text(size_text.into());
                     let kind = match (p.kind, p.resumable) {
                         _ if has_audio => "Video + audio, joined after download",
@@ -2534,6 +2759,7 @@ fn confirm_add(ui: &Ui, start: bool) {
             early: false,
             start,
             torrent_select: None,
+            clip: None,
         }
     };
     let _ = d.hide();
@@ -2669,6 +2895,8 @@ fn row_action(ui: &Ui, id: u64, action: &str) {
         "folder" => reveal_in_folder(&v),
         "openwith" => open_with(&v.save_path),
         "preview" => play_while_downloading(ui, id),
+        // the page of the video (its links expire), else its address
+        "clip" => clipui::open(ui, Some(v.parent_page.clone().filter(|p| p.starts_with("http")).unwrap_or_else(|| v.url.clone()))),
         "resume" => {
             ui.ctx.mgr.start(id);
             show_progress_for_start(ui, id);
@@ -3024,8 +3252,32 @@ pub(crate) fn err_text(e: &str) -> String {
     } else if let Some(rest) = e.split("the link stopped working - getting a new one in ").nth(1) {
         let secs = rest.split(' ').next().unwrap_or("?");
         tf("The link stopped working. A new one is fetched in {} s and checked before the download goes on.", &[&secs])
+    } else if let Some(rest) = e.split("the server can't resume, starting again in ").nth(1) {
+        let secs = rest.split(' ').next().unwrap_or("?");
+        tf("The server had trouble and can't resume this file, so it starts again from the beginning in {} s.", &[&secs])
+    } else if e.contains("server answered HTTP 403") || e.contains("server answered HTTP 401") {
+        t("The server refused Ezoo Download (it lets only the browser in). The link was opened in the browser, which hands it back with the site's sign-in; if the site still refuses, the browser downloads it itself.")
+    } else if e.contains("DRM") {
+        t("This video is protected by its site (DRM): no download program can save it. It can only be watched on the site.")
+    } else if e.contains("nobody shares this torrent right now") {
+        t("Nobody shares this torrent right now. It keeps looking and starts by itself as soon as someone does. If it stays like this, the torrent has no sharers left, or your internet provider or firewall blocks torrents.")
     } else if e.contains("ffmpeg.exe is missing") {
         t("ffmpeg.exe (it joins the video and the sound) is missing and could not be downloaded again. Allow it in your antivirus or install Ezoo Download again, then click Resume: nothing downloaded is lost.")
+    } else if let Some(rest) = e.split("Not enough free space on the disk ").nth(1) {
+        // "C:: the file needs 148 GB more, only 83 GB free."
+        let (disk, rest) = rest.split_once(": the file needs ").unwrap_or(("", rest));
+        let (need, free) = rest.split_once(" more, only ").unwrap_or((rest, ""));
+        let free = free.trim_end_matches(" free.");
+        tf(
+            "Not enough free space on the disk {}: the file needs {} more, only {} is free. Choose a folder on another disk (right-click the download > Move / Rename), or free some space, then click Resume.",
+            &[&disk, &need, &free],
+        )
+    } else if e.contains("the downloaded data is gone") {
+        t("The downloaded data is gone: its temporary file was removed while it downloaded (an antivirus or a cleaning program?). Click Redownload; if it happens again, allow the download folder in the antivirus.")
+    } else if e.contains("ffmpeg could not cut the part") {
+        t("The part could not be cut. Try the quick cut, or another quality.")
+    } else if e.contains("the part asked for is after the end of the video") {
+        t("The part you chose is after the end of the video.")
     } else if e.contains("the new link is not the same file") {
         t("The new link gives another file, so nothing more was written. Right-click the download and use \"Refresh download address\".")
     } else if e.contains("the link has expired or the file was removed") {
@@ -3044,6 +3296,8 @@ fn row_of(v: &DownloadView, sel: bool) -> DownloadRow {
     };
     let status = match v.status {
         _ if v.waiting => t("Waiting for connection…"),
+        // after the data: joining, moving... with how far it is
+        _ if v.step.is_some() => v.step.map(|(st, f)| format!("{} {:.0}%", step_text(st), f * 100.0)).unwrap_or_default(),
         Status::Downloading if v.kind == DownloadKind::Torrent && v.total_size.is_none() => t("Getting the file list…"),
         Status::Downloading | Status::Paused if v.total_size.is_some() => format!("{:.2}%", pct * 100.0),
         Status::Downloading if v.parts_total > 0 => tf("{}/{} parts", &[&v.parts_done, &v.parts_total]),
@@ -3473,6 +3727,18 @@ fn taskbar_state(v: &DownloadView) -> winfx::TaskbarProgress {
     }
 }
 
+/// What a download does after its data is all here (its second bar).
+fn step_text(st: swiftget_engine::Step) -> String {
+    use swiftget_engine::Step;
+    t(match st {
+        Step::Join => "Joining the picture and the sound",
+        Step::ToMp4 => "Making the MP4 file",
+        Step::ToMp3 => "Making the MP3 file",
+        Step::Move => "Moving the file to its folder",
+        Step::Cut => "Cutting the part",
+    })
+}
+
 fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) {
     let pct = v.progress();
     d.set_name(v.file_name.clone().into());
@@ -3481,6 +3747,17 @@ fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) 
     d.set_url(v.url.clone().into());
     let status = match v.status {
         _ if v.waiting => t("No internet connection - it will continue by itself when it is back…"),
+        // a torrent: who it downloads from
+        Status::Downloading | Status::Connecting if v.kind == DownloadKind::Torrent => {
+            if v.active_connections == 0 {
+                t("Looking for people who share this torrent…")
+            } else {
+                tf(
+                    "Downloading from {} people ({} of them have the whole file)",
+                    &[&v.active_connections.to_string(), &v.seeders.to_string()],
+                )
+            }
+        }
         Status::Downloading => t("Receiving data…"),
         Status::Assembling => t("Joining the parts…"),
         Status::Failed => t("Error"),
@@ -3501,6 +3778,17 @@ fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) 
     d.set_resumable_ok(v.resumable);
     d.set_error(err_text(v.error.as_deref().unwrap_or_default()).into());
     d.set_progress(pct);
+    match v.step {
+        Some((st, f)) => {
+            d.set_step(format!("{}: {:.0}%", step_text(st), f * 100.0).into());
+            d.set_step_progress(f);
+            d.set_status(tf("{}…", &[&step_text(st)]).into());
+        }
+        None => {
+            d.set_step(SharedString::new());
+            d.set_step_progress(0.0);
+        }
+    }
     d.set_state(state_of(v.status));
 
     // connections, in file order

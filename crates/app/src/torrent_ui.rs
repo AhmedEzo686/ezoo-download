@@ -92,11 +92,31 @@ pub(crate) fn wire(ui: &Ui) {
             if torrent::is_magnet(&src) {
                 d.set_magnet(true);
                 d.set_name(torrent::magnet_name(&src).unwrap_or_else(|| t("Magnet link")).into());
-                d.set_info(t("The file list comes from the other computers when it starts").into());
+                d.set_info(t("Getting the list of files from the people who share it… (up to a minute and a half)").into());
                 d.set_checked_text(SharedString::new());
                 if d.get_folder().is_empty() {
                     d.set_folder(settings.dir_for("General").display().to_string().into());
                 }
+                // the file list first (only the torrent's description is
+                // fetched), so the files can be chosen like with a .torrent
+                let w2 = d.as_weak();
+                let asked = src.clone();
+                mgr.magnet_files(src.clone(), move |r| {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        let Some(d) = w2.upgrade() else { return };
+                        // another link was put in meanwhile
+                        if d.get_source().trim().trim_matches('"') != asked {
+                            return;
+                        }
+                        match r {
+                            Ok(file) => {
+                                d.set_source(file.display().to_string().into());
+                                d.invoke_load();
+                            }
+                            Err(_) => d.set_info(t("The file list did not come yet: all files will be downloaded (they show once it starts).").into()),
+                        }
+                    });
+                });
                 return;
             }
             d.set_name(SharedString::new());

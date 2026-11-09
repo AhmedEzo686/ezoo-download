@@ -455,6 +455,8 @@ pub(crate) fn wire(ui: &Ui) {
             match read(&ui2, &d, old.clone()) {
                 Ok(s) => {
                     let port_changed = s.browser_port != old.browser_port;
+                    // settings that only take effect at the next start
+                    let drawing_changed = s.gpu_drawing != old.gpu_drawing;
                     let theme = s.theme as i32;
                     let view = s.clone();
                     if let Err(e) = ui2.ctx.mgr.set_settings(s) {
@@ -466,8 +468,13 @@ pub(crate) fn wire(ui: &Ui) {
                     crate::change_language(&ui2, crate::i18n::effective(&view.language));
                     let _ = d.hide();
                     refresh(&ui2);
-                    if port_changed {
-                        message(&t("Restart Ezoo Download to use the new port. Set the same port in the browser extension."));
+                    if port_changed || drawing_changed {
+                        let text = if port_changed {
+                            t("Ezoo Download needs to restart to use the new port (set the same port in the browser add-in too). Downloads continue after it opens.\n\nRestart now?")
+                        } else {
+                            t("Ezoo Download needs to restart to draw its windows the new way. Downloads continue after it opens.\n\nRestart now?")
+                        };
+                        crate::ask_restart(text);
                     }
                 }
                 Err(msg) => d.set_message(msg.into()),

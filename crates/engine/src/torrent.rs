@@ -249,6 +249,22 @@ fn num(v: &Value) -> u64 {
     v.as_str().and_then(|s| s.parse().ok()).or_else(|| v.as_u64()).unwrap_or(0)
 }
 
+/// Public trackers added to every torrent (the torrent's own come first).
+/// Long-running, open ones that answer most torrents.
+const PUBLIC_TRACKERS: &[&str] = &[
+    "udp://tracker.opentrackr.org:1337/announce",
+    "udp://open.stealth.si:80/announce",
+    "udp://tracker.torrent.eu.org:451/announce",
+    "udp://exodus.desync.com:6969/announce",
+    "udp://explodie.org:6969/announce",
+    "udp://open.demonii.com:1337/announce",
+    "udp://tracker.dler.org:6969/announce",
+    "udp://tracker.tiny-vps.com:6969/announce",
+    "udp://tracker.openbittorrent.com:6969/announce",
+    "https://tracker.tamersunion.org:443/announce",
+    "http://tracker.opentrackr.org:1337/announce",
+];
+
 /// Options for one torrent.
 #[derive(Debug, Clone, Default)]
 pub struct AddOptions {
@@ -267,7 +283,7 @@ pub struct AddOptions {
 impl Aria2 {
     pub fn new(data_dir: &Path) -> Aria2 {
         // straight to 127.0.0.1, never through a proxy
-        let client = reqwest::Client::builder().no_proxy().timeout(Duration::from_secs(20)).build().unwrap_or_default();
+        let client = reqwest::Client::builder().no_proxy().http1_title_case_headers().timeout(Duration::from_secs(20)).build().unwrap_or_default();
         Aria2 { client, daemon: tokio::sync::Mutex::new(None), data_dir: data_dir.to_path_buf() }
     }
 
@@ -289,6 +305,12 @@ impl Aria2 {
         let secret = random_secret();
         let _ = std::fs::create_dir_all(&self.data_dir);
         let dht = self.data_dir.join("dht.dat");
+        // what aria2 says went wrong (a peer it can't reach, a full disk...),
+        // kept small: begun again when it gets big
+        let log = self.data_dir.join("aria2.log");
+        if std::fs::metadata(&log).map(|m| m.len() > 2 << 20).unwrap_or(false) {
+            let _ = std::fs::rename(&log, self.data_dir.join("aria2.old.log"));
+        }
         let mut cmd = std::process::Command::new(&tool);
         cmd.args([
             "--enable-rpc=true",
@@ -307,13 +329,23 @@ impl Aria2 {
             "--enable-dht=true",
             "--bt-enable-lpd=true",
             "--enable-peer-exchange=true",
-            "--bt-max-peers=80",
+            "--bt-max-peers=150",
+            // below this speed aria2 keeps looking for more people (its own
+            // 50K made a torrent stay slow with the first few it found)
+            "--bt-request-peer-speed-limit=20M",
             "--console-log-level=error",
             "--summary-interval=0",
             "--quiet=true",
             "--check-certificate=true",
             "--disk-cache=32M",
+            // many magnet links bring no working tracker (or none at all):
+            // well-known public trackers find the people who share it
+            "--bt-tracker-connect-timeout=10",
+            "--bt-tracker-timeout=20",
+            "--log-level=warn",
         ])
+        .arg(format!("--bt-tracker={}", PUBLIC_TRACKERS.join(",")))
+        .arg(format!("--log={}", log.display()))
         .arg(format!("--rpc-listen-port={port}"))
         .arg(format!("--rpc-secret={secret}"))
         .arg(format!("--stop-with-process={}", std::process::id()))
@@ -405,6 +437,49 @@ impl Aria2 {
             followed_by: r["followedBy"].as_array().and_then(|a| a.first()).and_then(|g| g.as_str()).map(String::from),
             error: r["errorMessage"].as_str().filter(|m| !m.is_empty()).map(String::from),
         })
+    }
+
+    /// The file list of a magnet link before it is downloaded: only the
+    /// torrent's own description is fetched from the people who share it,
+    /// into `dir` (a .torrent file, given back). Gives up after `wait`.
+    pub async fn metadata(&self, magnet: &str, dir: &Path, wait: Duration) -> anyhow::Result<PathBuf> {
+        if !is_magnet(magnet) {
+            bail!("not a magnet link");
+        }
+        std::fs::create_dir_all(dir)?;
+        let opts = json!({
+            "dir": dir.to_string_lossy(),
+            "bt-metadata-only": "true",
+            "bt-save-metadata": "true",
+            "follow-torrent": "false",
+            "seed-time": "0",
+        });
+        let gid = self.call("aria2.addUri", vec![json!([magnet.trim()]), opts]).await?;
+        let gid = gid.as_str().map(String::from).ok_or_else(|| anyhow!("aria2 did not take the link"))?;
+        let started = std::time::Instant::now();
+        let result = loop {
+            if started.elapsed() > wait {
+                break Err(anyhow!("nobody sent the file list in time"));
+            }
+            tokio::time::sleep(Duration::from_millis(700)).await;
+            let st = match self.status(&gid).await {
+                Ok(s) => s,
+                Err(e) => break Err(e),
+            };
+            match st.status.as_str() {
+                "complete" => {
+                    let found = std::fs::read_dir(dir)?
+                        .filter_map(|e| e.ok())
+                        .map(|e| e.path())
+                        .find(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("torrent")));
+                    break found.ok_or_else(|| anyhow!("the file list was not saved"));
+                }
+                "error" | "removed" => break Err(anyhow!("{}", st.error.unwrap_or_else(|| "the file list could not be fetched".into()))),
+                _ => {}
+            }
+        };
+        self.remove(&gid).await;
+        result
     }
 
     /// Stop it now (what is here stays, it goes on from there next time).

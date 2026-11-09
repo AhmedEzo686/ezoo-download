@@ -6,7 +6,7 @@ import { Button, LineEdit, SpinBox, ComboBox, ListView, TabWidget, TextEdit, Pal
 import { ToolTip, DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, CaptionButton, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph, HRow, CheckBox } from "common.slint";
 export { DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme }
 export { BrowserRow } from "dialogs.slint";
-export { ConfirmDialog, ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, TorrentDialog, BrowserDialog, AboutDialog, UpdateDialog, WhatsNewDialog } from "dialogs.slint";
+export { ConfirmDialog, ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, TorrentDialog, BrowserDialog, AboutDialog, UpdateDialog, WhatsNewDialog, SupportDialog, ClipDialog } from "dialogs.slint";
 
 component DownloadItem inherits Rectangle {
     in property <DownloadRow> data;
@@ -169,6 +169,13 @@ component DownloadItem inherits Rectangle {
                     glyph-color: #d6631d;
                     clicked => {
                         root.action("preview");
+                    }
+                }
+                if (root.data.kind == "video" || root.data.kind == "audio") && root.sel-count <= 1: MenuEntry {
+                    text: @tr("Download a part of it…");
+                    glyph: "video";
+                    clicked => {
+                        root.action("clip");
                     }
                 }
                 MenuEntry {
@@ -618,6 +625,7 @@ export component MainWindow inherits ThemedWindow {
     callback find-next();
     callback grabber();
     callback playlist();
+    callback clip-part();
     callback torrent();
     callback browsers();
     callback tips();
@@ -705,6 +713,12 @@ export component MainWindow inherits ThemedWindow {
                     text: @tr("Download a playlist…");
                     clicked => {
                         root.playlist();
+                    }
+                }
+                MenuEntry {
+                    text: @tr("Download a part of a video…");
+                    clicked => {
+                        root.clip-part();
                     }
                 }
                 MenuEntry {
@@ -2978,6 +2992,9 @@ export component DetailsDialog inherits ThemedWindow {
     in property <string> error;
     in property <string> kind: "general";
     in property <float> progress;
+    // after the data: what it does now ("Joining…: 45%") and how far
+    in property <string> step;
+    in property <float> step-progress;
     in property <int> state;
     in property <[SegView]> segs;
     in-out property <bool> show-details: false;
@@ -3315,6 +3332,35 @@ export component DetailsDialog inherits ThemedWindow {
                 }
             }
         }
+        // the second bar: joining the picture and the sound, moving the file...
+        if root.step != "": VerticalLayout {
+            padding-top: 6px;
+            spacing: 3px;
+            Text {
+                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                text: root.step;
+                font-size: 11px * Theme.font-scale;
+                color: Theme.text;
+            }
+            Rectangle {
+                height: 12px;
+                border-width: 1px;
+                border-color: Theme.line;
+                background: Theme.bar-bg;
+                clip: true;
+                Rectangle {
+                    x: Theme.rtl ? parent.width - 1px - self.width : 1px;
+                    y: 1px;
+                    height: parent.height - 2px;
+                    width: (parent.width - 2px) * root.step-progress;
+                    background: @linear-gradient(180deg, #5aa2ff 0%, #1d63d6 100%);
+                    animate width {
+                        duration: 250ms;
+                        easing: linear;
+                    }
+                }
+            }
+        }
         Rectangle {
             height: 8px;
         }
@@ -3450,6 +3496,70 @@ export component DetailsDialog inherits ThemedWindow {
     }
 }
 
+// The finished file's icon with "Drag me" under it: pulled with the mouse,
+// the file goes where it is let go (the desktop, a folder, a chat, an
+// editor…) as a copy; the file itself stays where it is.
+component DragFile inherits Rectangle {
+    in property <string> kind;
+    in property <string> ext;
+    callback drag-out();
+    property <bool> gone;
+    min-width: max(72px, col.min-width);
+    min-height: col.min-height;
+    border-radius: 6px;
+    background: ta.pressed ? Theme.select : ta.has-hover ? Theme.hover : transparent;
+    border-width: ta.has-hover ? 1px : 0px;
+    border-color: Theme.select-line;
+    col := VerticalLayout {
+        padding: 6px;
+        spacing: 4px;
+        alignment: start;
+        BigTypeIcon {
+            kind: root.kind;
+            ext: root.ext;
+        }
+        HRow {
+            alignment: center;
+            spacing: 4px;
+            // arrows to all four sides: "pull me"
+            Rectangle {
+                width: 14px;
+                height: 14px;
+                Path {
+                    width: 14px;
+                    height: 14px;
+                    viewbox-width: 14;
+                    viewbox-height: 14;
+                    stroke: Theme.accent;
+                    stroke-width: 1.4px;
+                    fill: transparent;
+                    commands: "M 7 1 L 7 13 M 1 7 L 13 7 M 5 3 L 7 1 L 9 3 M 5 11 L 7 13 L 9 11 M 3 5 L 1 7 L 3 9 M 11 5 L 13 7 L 11 9";
+                }
+            }
+            Text {
+                text: @tr("Drag me");
+                font-size: 11px * Theme.font-scale;
+                color: Theme.accent;
+                vertical-alignment: center;
+            }
+        }
+    }
+    ta := TouchArea {
+        mouse-cursor: MouseCursor.grab;
+        pointer-event(ev) => {
+            if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                root.gone = false;
+            }
+        }
+        moved => {
+            if (self.pressed && !root.gone && (abs(self.mouse-x - self.pressed-x) > 6px || abs(self.mouse-y - self.pressed-y) > 6px)) {
+                root.gone = true;
+                root.drag-out();
+            }
+        }
+    }
+}
+
 export component CompleteDialog inherits ThemedWindow {
     // set for a moment so the window comes in front of the browser
     in property <bool> front;
@@ -3471,6 +3581,8 @@ export component CompleteDialog inherits ThemedWindow {
     callback open-with();
     callback open-folder();
     callback close-window();
+    // the file pulled out of the window (onto the desktop, a folder, a chat…)
+    callback drag-out();
 
     VerticalLayout {
         padding: 16px;
@@ -3478,11 +3590,14 @@ export component CompleteDialog inherits ThemedWindow {
         GridLayout {
             // a row that reads from right to left in Arabic (wrapped text needs a grid)
             spacing: 16px;
-            BigTypeIcon {
+            DragFile {
                 col: Theme.rtl ? 1 : 0;
                 row: 0;
                 kind: root.kind;
                 ext: root.ext;
+                drag-out => {
+                    root.drag-out();
+                }
             }
             VerticalLayout {
                 col: Theme.rtl ? 0 : 1;

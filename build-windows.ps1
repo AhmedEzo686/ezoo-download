@@ -118,7 +118,7 @@ function Assert-Sha256($file, $sumsUrl, $name) {
 # the big public build of earlier versions is not used any more.
 $ours = Join-Path $PSScriptRoot "tools\ffmpeg\win64"
 if (Test-Path "$ours\ffmpeg.exe") {
-    foreach ($f in @("ffmpeg.exe", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "ffmpeg-version.txt")) {
+    foreach ($f in @("ffmpeg.exe", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "openh264-LICENSE.txt", "ffmpeg-version.txt")) {
         if (Test-Path "$ours\$f") { Copy-Item "$ours\$f" $cache -Force }
     }
 } elseif ((Test-Path "$cache\ffmpeg.exe") -and ((Get-Item "$cache\ffmpeg.exe").Length -gt 20MB)) {
@@ -159,29 +159,37 @@ $redist = Join-Path $cache "redist"
 New-Item -ItemType Directory -Force $redist | Out-Null
 if (Test-Path "$cache\vc_redist.x64.exe") { Copy-Item "$cache\vc_redist.x64.exe" $redist -Force }
 Copy-Item "THIRD-PARTY-NOTICES.txt" $stage -Force
+Copy-Item "LICENSE" (Join-Path $stage "LICENSE.txt") -Force
 # the Firefox add-on signed by Mozilla for this version (stays in Firefox for good)
 $extVersion = (Get-Content (Join-Path $PSScriptRoot "extension\manifest.firefox.json") -Raw | ConvertFrom-Json).version
 # Firefox keeps only add-ons signed by Mozilla (an unsigned one is gone
-# when Firefox closes). The signed one of this version; else the one of the
-# newest release (Firefox checks Mozilla's signature itself, and the add-on
-# updates itself from there); else the newest signed one kept here.
+# when Firefox closes). Only a signed add-on of exactly this version goes
+# into the setup: an older one would put the old add-on back into Firefox.
+# Kept here (extension-signed), or the one of the newest release when that
+# release is this version; otherwise the setup has none (a release signs it).
+function Get-XpiVersion([string]$path) {
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($path)
+        try {
+            $entry = $zip.GetEntry("manifest.json")
+            if (-not $entry) { return $null }
+            $reader = New-Object System.IO.StreamReader($entry.Open())
+            try { return ($reader.ReadToEnd() | ConvertFrom-Json).version } finally { $reader.Close() }
+        } finally { $zip.Dispose() }
+    } catch { return $null }
+}
 $signedXpi = "extension-signed\ezoo-download-firefox-$extVersion.xpi"
 $xpiOut = Join-Path $stage "ezoo-download-firefox.xpi"
-if (Test-Path $signedXpi) {
+Remove-Item $xpiOut -Force -ErrorAction SilentlyContinue
+if ((Test-Path $signedXpi) -and ((Get-XpiVersion $signedXpi) -eq $extVersion)) {
     Copy-Item $signedXpi $xpiOut -Force
 } else {
     try {
         Invoke-WebRequest "https://github.com/AhmedEzo686/ezoo-download/releases/latest/download/ezoo-download-firefox.xpi" -OutFile $xpiOut
-        # a real add-on is a zip file ("PK" at the start)
-        $head = [System.IO.File]::ReadAllBytes($xpiOut) | Select-Object -First 2
-        if (-not ($head.Count -eq 2 -and $head[0] -eq 0x50 -and $head[1] -eq 0x4B)) { Remove-Item $xpiOut -Force }
+        if ((Get-XpiVersion $xpiOut) -ne $extVersion) { Remove-Item $xpiOut -Force }
     } catch {
         Remove-Item $xpiOut -Force -ErrorAction SilentlyContinue
-    }
-    if (-not (Test-Path $xpiOut)) {
-        $newest = Get-ChildItem "extension-signed" -Filter "ezoo-download-firefox-*.xpi" -ErrorAction SilentlyContinue |
-            Sort-Object { [version]($_.BaseName -replace "^ezoo-download-firefox-", "") } -Descending | Select-Object -First 1
-        if ($newest) { Copy-Item $newest.FullName $xpiOut -Force }
     }
 }
 # A signed add-on of another version is a stop-gap, not the release: say so,
@@ -202,6 +210,10 @@ if (Test-Path $xpiOut) {
     }
 }
 foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "aria2c.exe", "aria2-COPYING.txt")) {
+if (-not (Test-Path $xpiOut)) {
+    Write-Warning "No signed Firefox add-on $extVersion yet: this setup has none (the release signs it). Firefox users of this build add it from the folder."
+}
+foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "openh264-LICENSE.txt", "aria2c.exe", "aria2-COPYING.txt")) {
     if (Test-Path "$cache\$f") { Copy-Item "$cache\$f" $tools -Force }
 }
 

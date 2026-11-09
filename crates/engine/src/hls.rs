@@ -4,6 +4,7 @@
 //! DRM protected streams (SAMPLE-AES, Widevine, FairPlay...) are refused on
 //! purpose. Live streams (no #EXT-X-ENDLIST) are refused too.
 
+use crate::http::SendOrdered;
 use crate::http::{request, ConnGuard, Progress, Shared};
 use crate::http_download::Cancelled;
 use crate::model::RequestHeaders;
@@ -29,6 +30,8 @@ pub struct HlsJob {
     pub connections: u32,
     pub retries: u32,
     pub limiter: Arc<crate::limiter::SpeedLimiter>,
+    /// only the parts that play between these seconds ("Download a part")
+    pub clip: Option<(f64, f64)>,
 }
 
 fn decrypt(key: &[u8], iv: &[u8; 16], data: &mut Vec<u8>) -> anyhow::Result<()> {
@@ -52,7 +55,7 @@ async fn fetch_full(shared: &Shared, job: &HlsJob, url: &str, range: Option<(u64
     if let Some((off, len)) = range {
         rb = rb.header(reqwest::header::RANGE, format!("bytes={}-{}", off, off + len.max(1) - 1));
     }
-    let resp = rb.send().await?;
+    let resp = rb.send_ordered().await?;
     if !resp.status().is_success() {
         return Err(crate::http::HttpStatus(resp.status().as_u16()).into());
     }
@@ -88,12 +91,15 @@ fn part_file(dir: &Path, i: usize) -> PathBuf {
     dir.join(format!("{i:06}.part"))
 }
 
+/// Gets the stream (or only the parts of `job.clip`) into `job.output`.
+/// Gives when the first part it took starts in the stream (seconds; 0
+/// without a clip): the clip starts that much later in the file.
 pub async fn run(
     shared: Arc<Shared>,
     job: HlsJob,
     progress: Arc<Progress>,
     cancel: CancellationToken,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<f64> {
     let job = Arc::new(job);
     // 1. playlist (follow a master playlist to its best quality)
     // the addresses in a list are relative to where it came from in the end
@@ -112,11 +118,22 @@ pub async fn run(
     if playlist.parts.is_empty() {
         bail!("the playlist has no parts");
     }
+    // a part of the video: only the parts that play then
+    let (chosen, first_at) = match job.clip {
+        Some((a, b)) => {
+            let (c, at) = playlist.parts_between(a, b);
+            if c.is_empty() {
+                bail!("the part asked for is after the end of the video");
+            }
+            (c, at)
+        }
+        None => ((0..playlist.parts.len()).collect(), 0.0),
+    };
     std::fs::create_dir_all(&job.temp_dir)?;
 
     // 2. keys (usually one for the whole stream)
     let mut keys: HashMap<String, Vec<u8>> = HashMap::new();
-    for p in &playlist.parts {
+    for p in chosen.iter().map(|&i| &playlist.parts[i]) {
         if let Some(k) = &p.key {
             if !keys.contains_key(&k.uri) {
                 let bytes = fetch_bytes(&shared, &job, &k.uri).await.context("could not load key")?;
@@ -126,13 +143,14 @@ pub async fn run(
     }
     let keys = Arc::new(keys);
     let parts = Arc::new(playlist.parts);
+    let chosen = Arc::new(chosen);
 
     // 3. parts, several at a time; finished parts survive pause/resume
-    let total = parts.len();
+    let total = chosen.len();
     progress.parts_total.store(total as u32, Ordering::Relaxed);
     let mut done_bytes = 0u64;
     let mut done = 0u32;
-    for i in 0..total {
+    for &i in chosen.iter() {
         if let Ok(m) = std::fs::metadata(part_file(&job.temp_dir, i)) {
             done += 1;
             done_bytes += m.len();
@@ -145,7 +163,7 @@ pub async fn run(
     let child = cancel.child_token();
     let mut set = JoinSet::new();
     for _ in 0..job.connections.clamp(1, 16) {
-        let (shared, job, progress, child, next, parts, keys) = (
+        let (shared, job, progress, child, next, parts, keys, chosen) = (
             shared.clone(),
             job.clone(),
             progress.clone(),
@@ -153,13 +171,15 @@ pub async fn run(
             next.clone(),
             parts.clone(),
             keys.clone(),
+            chosen.clone(),
         );
         set.spawn(async move {
             loop {
-                let i = next.fetch_add(1, Ordering::Relaxed);
-                if i >= parts.len() {
+                let n = next.fetch_add(1, Ordering::Relaxed);
+                if n >= chosen.len() {
                     return Ok::<(), anyhow::Error>(());
                 }
+                let i = chosen[n];
                 let path = part_file(&job.temp_dir, i);
                 if path.exists() {
                     continue;
@@ -235,7 +255,7 @@ pub async fn run(
         if let Some(init) = init {
             out.write_all(&init)?;
         }
-        for i in 0..total {
+        for &i in chosen.iter() {
             let mut f = std::fs::File::open(part_file(&temp_dir, i))?;
             std::io::copy(&mut f, &mut out)?;
         }
@@ -246,5 +266,5 @@ pub async fn run(
     })
     .await??;
     progress.assembling.store(false, Ordering::Relaxed);
-    Ok(())
+    Ok(first_at)
 }

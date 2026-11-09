@@ -70,6 +70,9 @@ msgstr "Öffnen mit…"
 msgid "Play while downloading"
 msgstr "Während des Downloads abspielen"
 
+msgid "Download a part of it…"
+msgstr "Einen Teil davon herunterladen…"
+
 msgid "Open folder"
 msgstr "Ordner öffnen"
 
@@ -180,6 +183,9 @@ msgstr "Website-Grabber starten…"
 
 msgid "Download a playlist…"
 msgstr "Playlist herunterladen…"
+
+msgid "Download a part of a video…"
+msgstr "Einen Teil eines Videos herunterladen…"
 
 msgid "Add a torrent / magnet link…"
 msgstr "Torrent / Magnet-Link hinzufügen…"
@@ -615,6 +621,9 @@ msgstr "Nr."
 
 msgid "Info"
 msgstr "Info"
+
+msgid "Drag me"
+msgstr "Zieh mich"
 
 msgid "Download complete"
 msgstr "Download abgeschlossen"
@@ -1411,6 +1420,9 @@ msgstr "Klicken Sie auf Ihren Browser:"
 msgid "Almost done:"
 msgstr "Fast fertig:"
 
+msgid "Repair the add-in"
+msgstr "Add-in reparieren"
+
 msgid "Copy folder path"
 msgstr "Ordnerpfad kopieren"
 
@@ -1419,6 +1431,15 @@ msgstr "Version {}"
 
 msgid "Coded by Ahmed Ezzat"
 msgstr "Programmiert von Ahmed Ezzat"
+
+msgid "Official download page (GitHub)"
+msgstr "Offizielle Download-Seite (GitHub)"
+
+msgid "Download Ezoo Download only from its official page."
+msgstr "Lade Ezoo Download nur von seiner offiziellen Seite herunter."
+
+msgid "© Ezoo Tech – All rights reserved"
+msgstr "© Ezoo Tech – Alle Rechte vorbehalten"
 
 msgid "Like Ezoo Download? You can support its development:"
 msgstr "Gefällt Ihnen Ezoo Download? Sie können die Entwicklung unterstützen:"
@@ -1431,6 +1452,69 @@ msgstr "Mit InstaPay unterstützen"
 
 msgid "InstaPay: a7medek@instapay (scan the code with your bank's app)"
 msgstr "InstaPay: a7medek@instapay (Code mit der App Ihrer Bank scannen)"
+
+msgid "Download a part of a video"
+msgstr "Einen Teil eines Videos herunterladen"
+
+msgid "Paste the address of the video (its page, or a link to the video or stream):"
+msgstr "Füge die Adresse des Videos ein (seine Seite oder einen Link zum Video oder Stream):"
+
+msgid "Looking…"
+msgstr "Wird gesucht…"
+
+msgid "Get the video"
+msgstr "Video holen"
+
+msgid "Quality:"
+msgstr "Qualität:"
+
+msgid "From:"
+msgstr "Von:"
+
+msgid "To:"
+msgstr "Bis:"
+
+msgid "Length:"
+msgstr "Länge:"
+
+msgid "Cut:"
+msgstr "Schnitt:"
+
+msgid "Quick cut (recommended)"
+msgstr "Schneller Schnitt (empfohlen)"
+
+msgid "Exact cut"
+msgstr "Genauer Schnitt"
+
+msgid "Quick cut"
+msgstr "Schneller Schnitt"
+
+msgid "Takes seconds and keeps the quality exactly as it is (nothing is made again). A video can only start on a whole picture, so the part may start a second or two before the time you chose."
+msgstr "Dauert Sekunden und behält die Qualität genau bei (nichts wird neu erstellt). Ein Video kann nur bei einem vollständigen Bild beginnen, daher kann der Teil ein bis zwei Sekunden vor der gewählten Zeit beginnen."
+
+msgid "Starts and ends on the very second you chose. The picture of the part is made again, so it takes longer (about as long as the part plays, or less) and works the processor. Sound alone is always cut exactly."
+msgstr "Beginnt und endet genau in der gewählten Sekunde. Das Bild des Teils wird neu erstellt, daher dauert es länger (etwa so lange wie der Teil läuft oder kürzer) und beansprucht den Prozessor. Ton allein wird immer genau geschnitten."
+
+msgid "Preparing the preview…"
+msgstr "Vorschau wird vorbereitet…"
+
+msgid "Preview the part"
+msgstr "Teil ansehen"
+
+msgid "Download the part"
+msgstr "Teil herunterladen"
+
+msgid "Support Ezoo Download"
+msgstr "Ezoo Download unterstützen"
+
+msgid "Did Ezoo Download save you time?"
+msgstr "Hat dir Ezoo Download Zeit gespart?"
+
+msgid "It is free and has no ads. If you like, you can support its development with any amount."
+msgstr "Es ist kostenlos und ohne Werbung. Wenn du möchtest, kannst du die Entwicklung mit einem beliebigen Betrag unterstützen."
+
+msgid "Not now"
+msgstr "Nicht jetzt"
 
 msgid "What's new in Ezoo Download"
 msgstr "Neu in Ezoo Download"

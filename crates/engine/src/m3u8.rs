@@ -16,6 +16,8 @@ pub struct Part {
     pub key: Option<Key>,
     /// only these bytes of the address (#EXT-X-BYTERANGE): (offset, length)
     pub range: Option<(u64, u64)>,
+    /// how long it plays, in seconds (#EXTINF)
+    pub duration: f64,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -108,6 +110,30 @@ fn parse_iv(s: &str) -> Option<[u8; 16]> {
 pub const MAX_PARTS: usize = 200_000;
 pub const MAX_PLAYLIST_BYTES: usize = 32 << 20;
 
+impl MediaPlaylist {
+    /// How long the whole stream plays (seconds).
+    pub fn duration(&self) -> f64 {
+        self.parts.iter().map(|p| p.duration).sum()
+    }
+
+    /// The parts that play between `start` and `end` (seconds): their
+    /// numbers, and when the first of them starts.
+    pub fn parts_between(&self, start: f64, end: f64) -> (Vec<usize>, f64) {
+        let mut at = 0.0;
+        let mut chosen = Vec::new();
+        let mut first_at = None;
+        for (i, p) in self.parts.iter().enumerate() {
+            let (a, b) = (at, at + p.duration);
+            at = b;
+            if b > start && a < end {
+                first_at.get_or_insert(a);
+                chosen.push(i);
+            }
+        }
+        (chosen, first_at.unwrap_or(0.0))
+    }
+}
+
 pub fn parse_media(base: &str, text: &str) -> anyhow::Result<MediaPlaylist> {
     if text.len() > MAX_PLAYLIST_BYTES {
         bail!("the stream's list is too big");
@@ -119,6 +145,7 @@ pub fn parse_media(base: &str, text: &str) -> anyhow::Result<MediaPlaylist> {
     // address ended (a range without "@offset" goes on from there)
     let mut next_range: Option<(u64, Option<u64>)> = None;
     let mut range_end: HashMap<String, u64> = HashMap::new();
+    let mut next_duration = 0.0f64;
     for line in text.lines().map(str::trim) {
         if line.is_empty() {
             continue;
@@ -145,6 +172,9 @@ pub fn parse_media(base: &str, text: &str) -> anyhow::Result<MediaPlaylist> {
                 pl.init_url = Some(resolve(base, uri)?);
                 pl.init_range = a.get("BYTERANGE").and_then(|r| parse_byterange(r)).map(|(len, off)| (off.unwrap_or(0), len));
             }
+        } else if let Some(v) = line.strip_prefix("#EXTINF:") {
+            let n = v.split(',').next().unwrap_or("").trim();
+            next_duration = n.parse::<f64>().ok().filter(|d| d.is_finite() && *d >= 0.0 && *d < 86_400.0).unwrap_or(0.0);
         } else if let Some(v) = line.strip_prefix("#EXT-X-BYTERANGE:") {
             next_range = Some(parse_byterange(v).ok_or_else(|| anyhow!("the stream's list has a broken byte range"))?);
         } else if line.starts_with("#EXT-X-ENDLIST") {
@@ -164,6 +194,7 @@ pub fn parse_media(base: &str, text: &str) -> anyhow::Result<MediaPlaylist> {
                 sequence: seq,
                 key: key.clone(),
                 range,
+                duration: std::mem::take(&mut next_duration),
             });
             seq = seq.wrapping_add(1);
         }
@@ -174,6 +205,16 @@ pub fn parse_media(base: &str, text: &str) -> anyhow::Result<MediaPlaylist> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_parts_of_a_clip() {
+        let t = "#EXTM3U\n#EXTINF:4.0,\na.ts\n#EXTINF:4.0,\nb.ts\n#EXTINF:4.0,\nc.ts\n#EXTINF:4.0,\nd.ts\n#EXT-X-ENDLIST\n";
+        let pl = parse_media("https://x.test/v/list.m3u8", t).unwrap();
+        assert_eq!(pl.duration(), 16.0);
+        assert_eq!(pl.parts_between(5.0, 9.0), (vec![1, 2], 4.0));
+        assert_eq!(pl.parts_between(0.0, 4.0), (vec![0], 0.0));
+        assert_eq!(pl.parts_between(15.0, 30.0), (vec![3], 12.0));
+    }
 
     #[test]
     fn oversized_lists_are_refused() {
