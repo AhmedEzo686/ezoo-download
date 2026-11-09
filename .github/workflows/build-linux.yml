@@ -1,0 +1,67 @@
+name: Build Ezoo Download for Linux
+
+# Every push that touches the program: build the .deb and the portable
+# folder, and keep them as an artifact (no release is published here).
+on:
+  push:
+    paths:
+      - "crates/**"
+      - "packaging/linux/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "extension/**"
+      - "extension-signed/**"
+      - ".github/workflows/build-linux.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: The libraries Slint and the program are built against
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config perl imagemagick \
+            libfontconfig1-dev libfreetype-dev libexpat1-dev \
+            libxkbcommon-dev libwayland-dev wayland-protocols \
+            libx11-dev libxcb1-dev libegl-dev libgl1-mesa-dev \
+            libdbus-1-dev libssl-dev
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: appimagetool (pinned, checksummed)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
+            https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  $RUNNER_TEMP/appimagetool" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/appimagetool"
+
+      - name: Build the .deb, the AppImage and the portable folder
+        env:
+          APPIMAGETOOL: ${{ runner.temp }}/appimagetool
+        run: ./packaging/linux/build-linux.sh
+
+      - name: Check the packages
+        run: |
+          dpkg-deb -I dist/ezoodownload_*.deb
+          dpkg-deb -c dist/ezoodownload_*.deb | head -40
+          # the AppImage must contain the program and its icon
+          ./dist/EzooDownload-*-x86_64.AppImage --appimage-extract 'usr/bin/EzooDownload' >/dev/null
+          ./dist/EzooDownload-*-x86_64.AppImage --appimage-extract 'ezoodownload.png' >/dev/null
+          rm -rf squashfs-root
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ezoodownload-linux
+          path: |
+            dist/*.deb
+            dist/*.AppImage
+            dist/*.tar.gz
+          retention-days: 14

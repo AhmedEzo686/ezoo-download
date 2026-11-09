@@ -34,6 +34,12 @@ winresource = "0.1"
 name = "EzooDownload"
 path = "src/main.rs"
 
+# the icon next to the clock on Linux: a StatusNotifierItem over D-Bus
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+# the same runtime choice as Slint's own copy (feature unification), plus the
+# blocking API for the UI thread
+ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"] }
+
 [target.'cfg(windows)'.dependencies]
 tray-icon = "0.19"
 raw-window-handle = "0.6"

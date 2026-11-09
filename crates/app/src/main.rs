@@ -84,8 +84,16 @@ pub(crate) struct Ctx {
     mgr: Arc<Manager>,
     rt: tokio::runtime::Handle,
     main: Weak<MainWindow>,
-    add: Weak<AddDialog>,
+    /// the "Download File Info" window: made the first time a download is
+    /// added (Arc+Mutex so every copy of Ctx sees it being made)
+    add: Arc<Mutex<Weak<AddDialog>>>,
     add_state: Arc<Mutex<AddState>>,
+}
+
+impl Ctx {
+    pub(crate) fn add(&self) -> Option<AddDialog> {
+        self.add.lock().unwrap_or_else(|p| p.into_inner()).upgrade()
+    }
 }
 
 /// A progress window and its connections list (updated in place, so it
@@ -115,41 +123,78 @@ pub(crate) struct Ui {
     cats: Rc<VecModel<CatRow>>,
     /// one progress window per download
     progress: Rc<RefCell<HashMap<u64, ProgressWin>>>,
-    batch: Weak<BatchDialog>,
-    settings_dlg: Weak<SettingsDialog>,
-    complete: Weak<CompleteDialog>,
+    batch: Lazy<BatchDialog>,
+    settings_dlg: Lazy<SettingsDialog>,
+    complete: Lazy<CompleteDialog>,
     complete_id: Rc<Cell<Option<u64>>>,
-    columns: Weak<ColumnsDialog>,
-    category: Weak<CategoryDialog>,
+    columns: Lazy<ColumnsDialog>,
+    category: Lazy<CategoryDialog>,
     /// category being edited (None = a new one)
     editing_category: Rc<RefCell<Option<String>>>,
-    find: Weak<FindDialog>,
-    props: Weak<PropertiesDialog>,
+    find: Lazy<FindDialog>,
+    props: Lazy<PropertiesDialog>,
     props_id: Rc<Cell<Option<u64>>>,
-    dup: Weak<DuplicateDialog>,
+    dup: Lazy<DuplicateDialog>,
     pending: Rc<RefCell<Option<PendingAdd>>>,
-    countdown: Weak<CountdownDialog>,
+    countdown: Lazy<CountdownDialog>,
     /// (action, seconds left)
     power: Rc<RefCell<Option<(AfterDone, i32)>>>,
-    sched: Weak<SchedulerDialog>,
+    sched: Lazy<SchedulerDialog>,
     sched_state: Rc<RefCell<scheduler::SchedState>>,
-    grabber: Weak<GrabberDialog>,
+    grabber: Lazy<GrabberDialog>,
     grab_state: Rc<RefCell<grab::GrabUi>>,
-    tips: Weak<TipDialog>,
-    refresh_dlg: Weak<RefreshDialog>,
+    tips: Lazy<TipDialog>,
+    refresh_dlg: Lazy<RefreshDialog>,
     /// download waiting for a new address from the browser
     refresh_id: Rc<Cell<Option<u64>>>,
     options_lists: Rc<RefCell<options::Lists>>,
     sel: Rc<RefCell<Selection>>,
-    playlist: Weak<PlaylistDialog>,
+    playlist: Lazy<PlaylistDialog>,
     playlist_rows: Rc<VecModel<LinkRow>>,
-    torrent: Weak<TorrentDialog>,
+    torrent: Lazy<TorrentDialog>,
     torrent_rows: Rc<VecModel<LinkRow>>,
-    browsers: Weak<BrowserDialog>,
-    updater: Weak<UpdateDialog>,
+    browsers: Lazy<BrowserDialog>,
+    updater: Lazy<UpdateDialog>,
+    about: Lazy<AboutDialog>,
     /// the download list's columns (order + widths) as the header shows them
     columns_model: Rc<VecModel<ColDef>>,
     browser_list: Rc<RefCell<Vec<browser::Browser>>>,
+}
+
+/// A dialog window that is made only when it is first used.
+///
+/// Linux window lists (GNOME's own among them) show every window a program
+/// owns, even the ones that were never shown; Slint creates the native window
+/// with the component, so making all dialogs at startup filled the window
+/// list with eighteen windows nobody opened.
+thread_local! {
+    /// The Ui, for the few calls that only have a Ctx (the clipboard hands
+    /// the link over from a thread, and the window is made on this one).
+    static UI: RefCell<Option<Ui>> = const { RefCell::new(None) };
+}
+
+pub(crate) struct Lazy<T: slint::StrongHandle + 'static> {
+    cell: Rc<RefCell<Weak<T>>>,
+}
+
+impl<T: slint::StrongHandle + 'static> Clone for Lazy<T> {
+    fn clone(&self) -> Self {
+        Self { cell: self.cell.clone() }
+    }
+}
+
+impl<T: slint::StrongHandle + 'static> Lazy<T> {
+    pub(crate) fn new() -> Self {
+        Self { cell: Rc::new(RefCell::new(Weak::default())) }
+    }
+
+    pub(crate) fn upgrade(&self) -> Option<T> {
+        self.cell.borrow().upgrade()
+    }
+
+    pub(crate) fn set(&self, w: Weak<T>) {
+        *self.cell.borrow_mut() = w;
+    }
 }
 
 /// One line in a small log next to the downloads list (data\events.log):
@@ -203,6 +248,15 @@ fn install_crash_log() {
 }
 
 fn main() {
+    // The title bar is the desktop's own. On Wayland winit draws that bar
+    // itself, a character at a time (no shaping, no font fallback): Arabic and
+    // Cyrillic come out as boxes and the minimize button never tells the
+    // program that the window was minimized. Through X11 the window manager
+    // draws it instead - the same bar every GTK and Electron app gets.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("DISPLAY").is_some() && std::env::var_os("EZOO_WAYLAND").is_none() {
+        std::env::remove_var("WAYLAND_DISPLAY");
+    }
     install_crash_log();
     let data_dir = default_data_dir();
     let gpu = Settings::load(&data_dir.join("settings.json")).gpu_drawing;
@@ -394,45 +448,13 @@ fn run() -> anyhow::Result<()> {
     swiftget_engine::tools::spawn_updater(rt.handle(), mgr.client(), data_dir.clone());
 
     let main = MainWindow::new()?;
-    let add = AddDialog::new()?;
-    let batch = BatchDialog::new()?;
-    let settings_dlg = SettingsDialog::new()?;
-    let complete = CompleteDialog::new()?;
-    let columns = ColumnsDialog::new()?;
-    let category = CategoryDialog::new()?;
-    let find = FindDialog::new()?;
-    let props = PropertiesDialog::new()?;
-    let dup = DuplicateDialog::new()?;
-    let countdown = CountdownDialog::new()?;
-    let sched = SchedulerDialog::new()?;
-    let grabber = GrabberDialog::new()?;
-    let tips = TipDialog::new()?;
-    let refresh_dlg = RefreshDialog::new()?;
-    let playlist_dlg = PlaylistDialog::new()?;
-    let torrent_dlg = TorrentDialog::new()?;
-    let browsers_dlg = BrowserDialog::new()?;
-    let updater_dlg = UpdateDialog::new()?;
-    let about_dlg = AboutDialog::new()?;
-    {
-        about_dlg.on_open_link(|u| {
-            if u.starts_with("https://") {
-                let _ = open::that_detached(u.as_str());
-            }
-        });
-        let w = about_dlg.as_weak();
-        about_dlg.on_close_window(move || {
-            if let Some(d) = w.upgrade() {
-                let _ = d.hide();
-            }
-        });
-        ABOUT.with(|a| *a.borrow_mut() = Some(about_dlg.as_weak()));
-    }
+    // every other window is made when it is first opened (see Lazy)
 
     let ctx = Ctx {
         mgr: mgr.clone(),
         rt: rt.handle().clone(),
         main: main.as_weak(),
-        add: add.as_weak(),
+        add: Arc::new(Mutex::new(Weak::default())),
         add_state: Arc::new(Mutex::new(AddState::default())),
     };
     let ctx_exit = ctx.clone();
@@ -442,35 +464,36 @@ fn run() -> anyhow::Result<()> {
         queues: Rc::new(VecModel::default()),
         cats: Rc::new(VecModel::default()),
         progress: Rc::new(RefCell::new(HashMap::new())),
-        batch: batch.as_weak(),
-        settings_dlg: settings_dlg.as_weak(),
-        complete: complete.as_weak(),
+        batch: Lazy::new(),
+        settings_dlg: Lazy::new(),
+        complete: Lazy::new(),
         complete_id: Rc::new(Cell::new(None)),
-        columns: columns.as_weak(),
-        category: category.as_weak(),
+        columns: Lazy::new(),
+        category: Lazy::new(),
         editing_category: Rc::new(RefCell::new(None)),
-        find: find.as_weak(),
-        props: props.as_weak(),
+        find: Lazy::new(),
+        props: Lazy::new(),
         props_id: Rc::new(Cell::new(None)),
-        dup: dup.as_weak(),
+        dup: Lazy::new(),
         pending: Rc::new(RefCell::new(None)),
-        countdown: countdown.as_weak(),
+        countdown: Lazy::new(),
         power: Rc::new(RefCell::new(None)),
-        sched: sched.as_weak(),
+        sched: Lazy::new(),
         sched_state: Rc::new(RefCell::new(scheduler::SchedState::default())),
-        grabber: grabber.as_weak(),
+        grabber: Lazy::new(),
         grab_state: Rc::new(RefCell::new(grab::GrabUi::default())),
-        tips: tips.as_weak(),
-        refresh_dlg: refresh_dlg.as_weak(),
+        tips: Lazy::new(),
+        refresh_dlg: Lazy::new(),
         refresh_id: Rc::new(Cell::new(None)),
         options_lists: Rc::new(RefCell::new(options::Lists::default())),
         sel: Rc::new(RefCell::new(Selection::default())),
-        playlist: playlist_dlg.as_weak(),
+        playlist: Lazy::new(),
         playlist_rows: Rc::new(VecModel::default()),
-        torrent: torrent_dlg.as_weak(),
+        torrent: Lazy::new(),
         torrent_rows: Rc::new(VecModel::default()),
-        browsers: browsers_dlg.as_weak(),
-        updater: updater_dlg.as_weak(),
+        browsers: Lazy::new(),
+        updater: Lazy::new(),
+        about: Lazy::new(),
         columns_model: Rc::new(VecModel::default()),
         browser_list: Rc::new(RefCell::new(Vec::new())),
     };
@@ -500,19 +523,10 @@ fn run() -> anyhow::Result<()> {
         apply_view_settings(&ui, &s);
     }
 
+    UI.with(|u| *u.borrow_mut() = Some(ui.clone()));
     wire_main(&ui);
     // a new version of the program itself: from GitHub, installed silently
     update::spawn(&ui.ctx);
-    wire_add(&ui);
-    wire_batch(&ui);
-    wire_complete(&ui);
-    options::wire(&ui);
-    scheduler::wire(&ui);
-    grab::wire(&ui);
-    extra::wire(&ui);
-    playlist::wire(&ui);
-    torrent_ui::wire(&ui);
-    browser::wire(&ui);
 
     // ------------------------------------------------------------ browser + clipboard
     if let Some(server) = server {
@@ -570,7 +584,7 @@ fn run() -> anyhow::Result<()> {
                         }
                         return;
                     }
-                    let busy = ctx.add.upgrade().map(|d| d.window().is_visible()).unwrap_or(true);
+                    let busy = ctx.add().map(|d| d.window().is_visible()).unwrap_or(true);
                     if !busy {
                         open_add_dialog(&ctx, url, RequestHeaders::default(), None, VideoExtra::default());
                     }
@@ -1184,15 +1198,10 @@ fn wire_main(ui: &Ui) {
         let ui2 = ui.clone();
         main.on_check_app_update(move || update::check_now(&ui2));
     }
-    if let Some(d) = ui.updater.upgrade() {
-        let w = d.as_weak();
-        d.on_close_window(move || {
-            if let Some(d) = w.upgrade() {
-                let _ = d.hide();
-            }
-        });
+    {
+        let ui = ui.clone();
+        main.on_about(move || about(&ui));
     }
-    main.on_about(about);
     main.on_quit(|| {
         let _ = slint::quit_event_loop();
     });
@@ -1309,17 +1318,11 @@ fn multi_action(ui: &Ui, ids: &[u64], action: &str) {
     }
 }
 
-fn about() {
-    ABOUT.with(|a| {
-        if let Some(d) = a.borrow().as_ref().and_then(|w| w.upgrade()) {
-            d.set_version(env!("CARGO_PKG_VERSION").into());
-            open_window!(d);
-        }
-    });
-}
-
-thread_local! {
-    static ABOUT: RefCell<Option<Weak<AboutDialog>>> = const { RefCell::new(None) };
+fn about(ui: &Ui) {
+    if let Some(d) = ensure_about(ui) {
+        d.set_version(env!("CARGO_PKG_VERSION").into());
+        open_window!(d);
+    }
 }
 
 fn tray_action(ui: &Ui, action: tray::TrayAction) {
@@ -1335,7 +1338,7 @@ fn tray_action(ui: &Ui, action: tray::TrayAction) {
         T::ToggleLimiter => toggle_limiter(ui),
         T::Scheduler => scheduler::open(ui, None),
         T::Options => options::open(ui, 0),
-        T::About => about(),
+        T::About => about(ui),
         T::Exit => {
             let _ = slint::quit_event_loop();
         }
@@ -1577,11 +1580,11 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
 // ===================================================================== download file info
 
 fn wire_add(ui: &Ui) {
-    let Some(add) = ui.ctx.add.upgrade() else { return };
+    let Some(add) = ui.ctx.add() else { return };
     {
         let ctx = ui.ctx.clone();
         add.on_check_url(move || {
-            if let Some(d) = ctx.add.upgrade() {
+            if let Some(d) = ctx.add() {
                 let url = d.get_url().trim().to_string();
                 // another address: the download started for the old one stops
                 if url != ctx.add_state.lock().unwrap().origin_url {
@@ -1602,7 +1605,7 @@ fn wire_add(ui: &Ui) {
     {
         let ctx = ui.ctx.clone();
         add.on_category_changed(move |i| {
-            let Some(d) = ctx.add.upgrade() else { return };
+            let Some(d) = ctx.add() else { return };
             let cat = ctx
                 .add_state
                 .lock()
@@ -1654,7 +1657,7 @@ fn wire_add(ui: &Ui) {
         // the server refused us: give the address back to the browser
         let ctx = ui.ctx.clone();
         add.on_use_browser(move || {
-            let Some(d) = ctx.add.upgrade() else { return };
+            let Some(d) = ctx.add() else { return };
             let url = d.get_url().trim().to_string();
             ctx.add_state.lock().unwrap().probe_seq += 1;
             cancel_early(&ctx);
@@ -1675,7 +1678,7 @@ fn wire_add(ui: &Ui) {
         add.on_cancel(move || {
             ctx.add_state.lock().unwrap().probe_seq += 1; // ignore a check still running
             cancel_early(&ctx);
-            if let Some(d) = ctx.add.upgrade() {
+            if let Some(d) = ctx.add() {
                 let _ = d.hide();
             }
             open_next(&ctx);
@@ -1900,7 +1903,7 @@ fn wire_complete(ui: &Ui) {
 }
 
 pub(crate) fn show_complete(ui: &Ui, id: u64) {
-    if let (Some(v), Some(d)) = (ui.ctx.mgr.get(id), ui.complete.upgrade()) {
+    if let (Some(v), Some(d)) = (ui.ctx.mgr.get(id), ensure_complete(ui)) {
         ui.complete_id.set(Some(id));
         d.set_name(v.file_name.clone().into());
         d.set_url(v.url.clone().into());
@@ -2056,6 +2059,88 @@ macro_rules! open_window {
     }};
 }
 pub(crate) use open_window;
+
+// ------------------------------------------------------------ dialog windows
+// Every dialog is made the first time it is opened; at startup only the main
+// window exists (see Lazy).
+macro_rules! ensure_dialog {
+    ($name:ident, $field:ident, $ty:path, $wire:path) => {
+        pub(crate) fn $name(ui: &Ui) -> Option<$ty> {
+            if let Some(d) = ui.$field.upgrade() {
+                return Some(d);
+            }
+            let d = <$ty>::new().ok()?;
+            ui.$field.set(d.as_weak());
+            $wire(ui);
+            Some(d)
+        }
+    };
+}
+
+ensure_dialog!(ensure_batch, batch, BatchDialog, wire_batch);
+ensure_dialog!(ensure_complete, complete, CompleteDialog, wire_complete);
+ensure_dialog!(ensure_settings, settings_dlg, SettingsDialog, options::wire);
+ensure_dialog!(ensure_sched, sched, SchedulerDialog, scheduler::wire);
+ensure_dialog!(ensure_grabber, grabber, GrabberDialog, grab::wire);
+ensure_dialog!(ensure_playlist, playlist, PlaylistDialog, playlist::wire);
+ensure_dialog!(ensure_browsers, browsers, BrowserDialog, browser::wire);
+ensure_dialog!(ensure_columns, columns, ColumnsDialog, extra::wire);
+ensure_dialog!(ensure_category, category, CategoryDialog, extra::wire);
+ensure_dialog!(ensure_find, find, FindDialog, extra::wire);
+ensure_dialog!(ensure_props, props, PropertiesDialog, extra::wire);
+ensure_dialog!(ensure_dup, dup, DuplicateDialog, extra::wire);
+ensure_dialog!(ensure_countdown, countdown, CountdownDialog, extra::wire);
+ensure_dialog!(ensure_tips, tips, TipDialog, extra::wire);
+ensure_dialog!(ensure_refresh, refresh_dlg, RefreshDialog, extra::wire);
+ensure_dialog!(ensure_torrent, torrent, TorrentDialog, torrent_ui::wire);
+
+/// The "Download File Info" window (it is not in Ui: the clipboard and the
+/// browser port reach it through Ctx).
+fn ensure_add(ctx: &Ctx) -> Option<AddDialog> {
+    if let Some(d) = ctx.add() {
+        return Some(d);
+    }
+    let ui = UI.with(|u| u.borrow().clone())?;
+    let d = AddDialog::new().ok()?;
+    *ctx.add.lock().unwrap_or_else(|p| p.into_inner()) = d.as_weak();
+    wire_add(&ui);
+    Some(d)
+}
+
+fn ensure_updater(ui: &Ui) -> Option<UpdateDialog> {
+    if let Some(d) = ui.updater.upgrade() {
+        return Some(d);
+    }
+    let d = UpdateDialog::new().ok()?;
+    ui.updater.set(d.as_weak());
+    let w = d.as_weak();
+    d.on_close_window(move || {
+        if let Some(d) = w.upgrade() {
+            let _ = d.hide();
+        }
+    });
+    Some(d)
+}
+
+fn ensure_about(ui: &Ui) -> Option<AboutDialog> {
+    if let Some(d) = ui.about.upgrade() {
+        return Some(d);
+    }
+    let d = AboutDialog::new().ok()?;
+    ui.about.set(d.as_weak());
+    d.on_open_link(|u| {
+        if u.starts_with("https://") {
+            let _ = open::that_detached(u.as_str());
+        }
+    });
+    let w = d.as_weak();
+    d.on_close_window(move || {
+        if let Some(d) = w.upgrade() {
+            let _ = d.hide();
+        }
+    });
+    Some(d)
+}
 
 pub(crate) fn bring_to_front(ctx: &Ctx) {
     if let Some(w) = ctx.main.upgrade() {
@@ -2256,7 +2341,6 @@ pub(crate) fn apply_look(ui: &Ui, look: &Look) {
     }
     set!(
         ui.ctx.main,
-        ui.ctx.add,
         ui.batch,
         ui.settings_dlg,
         ui.complete,
@@ -2275,11 +2359,12 @@ pub(crate) fn apply_look(ui: &Ui, look: &Look) {
         ui.browsers,
         ui.updater
     );
-    ABOUT.with(|a| {
-        if let Some(d) = a.borrow().as_ref().and_then(|w| w.upgrade()) {
-            set_theme_of(d.global::<Theme>(), look);
-        }
-    });
+    if let Some(d) = ui.about.upgrade() {
+        set_theme_of(d.global::<Theme>(), look);
+    }
+    if let Some(d) = ui.ctx.add() {
+        set_theme_of(d.global::<Theme>(), look);
+    }
     for (d, _) in ui.progress.borrow().values() {
         set_theme_of(d.global::<Theme>(), look);
     }
@@ -2364,7 +2449,7 @@ pub(crate) fn apply_view_settings(ui: &Ui, s: &Settings) {
 }
 
 fn open_batch(ui: &Ui, text: String) {
-    let Some(d) = ui.batch.upgrade() else { return };
+    let Some(d) = ensure_batch(ui) else { return };
     let s = ui.ctx.mgr.settings();
     d.set_queue_names(queue_names(&s));
     let current = ui.ctx.main.upgrade().map(|m| m.get_current_queue() as u64).unwrap_or(MAIN_QUEUE);
@@ -2409,7 +2494,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
         torrent_ui::open_source(&url);
         return;
     }
-    let Some(d) = ctx.add.upgrade() else { return };
+    let Some(d) = ensure_add(ctx) else { return };
     let s = ctx.mgr.settings();
     if d.window().is_visible() {
         let mut st = ctx.add_state.lock().unwrap();
@@ -2523,7 +2608,7 @@ pub(crate) fn early_download(ctx: &Ctx) -> Option<u64> {
 
 /// Ask the server about the file in the background, then show the result.
 fn start_probe(ctx: &Ctx, url: String) {
-    let Some(d) = ctx.add.upgrade() else { return };
+    let Some(d) = ctx.add() else { return };
     let (seq, mut headers, audio_url) = {
         let mut st = ctx.add_state.lock().unwrap();
         st.probe_seq += 1;
@@ -2548,7 +2633,7 @@ fn start_probe(ctx: &Ctx, url: String) {
             None => (ctx2.mgr.probe(&url, &headers).await, None),
         };
         let _ = slint::invoke_from_event_loop(move || {
-            let Some(d) = ctx2.add.upgrade() else { return };
+            let Some(d) = ctx2.add() else { return };
             let mut st = ctx2.add_state.lock().unwrap();
             if st.probe_seq != seq {
                 return; // the window was reused for something else meanwhile
@@ -2606,7 +2691,7 @@ fn start_probe(ctx: &Ctx, url: String) {
 /// Add the download from the "Download File Info" window.
 fn confirm_add(ui: &Ui, start: bool) {
     let ctx = &ui.ctx;
-    let Some(d) = ctx.add.upgrade() else { return };
+    let Some(d) = ctx.add() else { return };
     let url = d.get_url().trim().to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) || url::Url::parse(&url).is_err() {
         d.set_info(t("Please enter a valid http:// or https:// address").into());
@@ -3066,6 +3151,11 @@ pub(crate) fn reveal_in_folder(v: &DownloadView) {
                 .spawn();
             return;
         }
+    }
+    #[cfg(target_os = "macos")]
+    if v.status == Status::Completed && v.save_path.exists() {
+        let _ = std::process::Command::new("/usr/bin/open").arg("-R").arg(&v.save_path).spawn();
+        return;
     }
     let _ = std::fs::create_dir_all(&dir);
     let _ = open::that_detached(&dir);

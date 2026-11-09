@@ -185,7 +185,7 @@ jobs:
             if ($xpi) {
               Copy-Item $xpi.FullName "$p/ezoo-download-firefox.xpi"
               Copy-Item $xpi.FullName "dist/ezoo-download-firefox.xpi"
-              $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
+              $fx = "{`n  ""addons"": {`n    ""ezoo-download-fork@users.noreply.github.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
               [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
             } else { Write-Host "::warning::the Firefox add-on was not signed" }
           } elseif ($env:IS_RELEASE -eq "true") { Write-Host "::warning::AMO_JWT_ISSUER / AMO_JWT_SECRET are not set: the Firefox add-on is not signed" }
@@ -194,7 +194,7 @@ jobs:
           if (-not (Test-Path "$p/ezoo-download-firefox.xpi") -and (Test-Path $signed)) {
             Copy-Item $signed "$p/ezoo-download-firefox.xpi"
             Copy-Item $signed "dist/ezoo-download-firefox.xpi"
-            $fx = "{`n  ""addons"": {`n    ""ezoo-download@ezoo-tech.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
+            $fx = "{`n  ""addons"": {`n    ""ezoo-download-fork@users.noreply.github.com"": {`n      ""updates"": [`n        { ""version"": ""$extVersion"", ""update_link"": ""https://github.com/${{ github.repository }}/releases/download/v$version/ezoo-download-firefox.xpi"" }`n      ]`n    }`n  }`n}`n"
             [IO.File]::WriteAllText("$PWD/dist/firefox-updates.json", $fx)
           }
           # never an older add-on in the setup: installing it would put the

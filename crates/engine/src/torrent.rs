@@ -295,7 +295,11 @@ impl Aria2 {
             }
         }
         let tool = crate::mux::find_tool("aria2c").ok_or_else(|| {
-            anyhow!("aria2c.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again")
+            anyhow!(if cfg!(windows) {
+                "aria2c.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again"
+            } else {
+                "aria2c is missing: install it with your package manager (for example \"sudo apt install aria2\" or \"sudo dnf install aria2\"), then try again"
+            })
         })?;
         let port = std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
         let secret = random_secret();

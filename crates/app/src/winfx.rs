@@ -444,8 +444,7 @@ fn hook_window<C>(c: &C, dropped: Option<Box<dyn Fn(std::path::PathBuf)>>)
 where
     C: ComponentHandle + 'static,
     for<'a> crate::Theme<'a>: slint::Global<'a, C>,
-{
-    use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
+{    use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
     use winit::event::WindowEvent;
     // one handler per window (a new one replaces the old): the one that
     // also takes dropped files stays
@@ -509,7 +508,6 @@ where
     let _ = c;
     let _ = &WITH_DROP;
 }
-
 /// A file / folder picker that belongs to `w`: it stays on top of it and
 /// `w` waits for it.
 #[cfg(windows)]

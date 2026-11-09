@@ -252,7 +252,113 @@ mod imp {
     }
 }
 
-#[cfg(not(windows))]
+/// Linux: statvfs, the mount table, and logind (systemctl).
+#[cfg(all(unix, not(target_os = "macos")))]
+mod imp {
+    use super::AfterDone;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::{Path, PathBuf};
+
+    pub fn free_space(dir: &Path) -> Option<u64> {
+        let c = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
+        // SAFETY: `c` is a valid NUL-terminated path; `st` is written by the call
+        unsafe {
+            let mut st: libc::statvfs = std::mem::zeroed();
+            if libc::statvfs(c.as_ptr(), &mut st) != 0 {
+                return None;
+            }
+            // the space left for this user, not the whole disk
+            let block = if st.f_frsize > 0 { st.f_frsize } else { st.f_bsize };
+            Some((st.f_bavail as u64).saturating_mul(block as u64))
+        }
+    }
+
+    /// The longest mount point that holds `dir` comes from /proc/self/mounts
+    /// (Linux) or from mount(8) elsewhere; the type is the 3rd column of the
+    /// same line ("ext4", "btrfs", "vfat"...).
+    pub fn file_system(dir: &Path) -> Option<String> {
+        let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+        let table = std::fs::read_to_string("/proc/self/mounts")
+            .or_else(|_| std::fs::read_to_string("/proc/mounts"))
+            .ok()?;
+        let mut best: Option<(usize, String)> = None;
+        for line in table.lines() {
+            let mut it = line.split_whitespace();
+            let (Some(_dev), Some(point), Some(fs)) = (it.next(), it.next(), it.next()) else { continue };
+            let point = unescape(point);
+            let point = PathBuf::from(point);
+            if dir.starts_with(&point) {
+                let len = point.as_os_str().len();
+                if best.as_ref().map(|(l, _)| len > *l).unwrap_or(true) {
+                    best = Some((len, fs.to_string()));
+                }
+            }
+        }
+        best.map(|(_, fs)| fs)
+    }
+
+    /// /proc/mounts writes spaces as "\040" and so on.
+    fn unescape(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut chars = s.chars().peekable();
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                let mut oct = String::new();
+                for _ in 0..3 {
+                    if let Some(d) = chars.peek().copied().filter(|d| d.is_ascii_digit() && *d <= '7') {
+                        oct.push(d);
+                        chars.next();
+                    }
+                }
+                if oct.len() == 3 {
+                    if let Ok(b) = u8::from_str_radix(&oct, 8) {
+                        out.push(b as char);
+                        continue;
+                    }
+                }
+                out.push('\\');
+                out.push_str(&oct);
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
+    /// The desktop's own tools: systemctl (logind) with loginctl as a
+    /// fallback, never something that needs a password by itself.
+    pub fn power(action: AfterDone, force: bool) {
+        let try_run = |program: &str, args: &[&str]| -> bool {
+            std::process::Command::new(program)
+                .args(args)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        };
+        let try_both = |args: &[&str]| try_run("systemctl", args) || try_run("loginctl", args);
+        match action {
+            AfterDone::Shutdown => {
+                if force {
+                    try_both(&["poweroff", "-i"]);
+                } else {
+                    try_both(&["poweroff"]);
+                }
+            }
+            AfterDone::Hibernate => {
+                try_both(&["hibernate"]);
+            }
+            AfterDone::Sleep => {
+                try_both(&["suspend"]);
+            }
+            _ => {}
+        }
+    }
+}
+
+#[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
 mod imp {
     use super::AfterDone;
     use std::path::Path;

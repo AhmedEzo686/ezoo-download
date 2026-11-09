@@ -192,6 +192,24 @@ if ((Test-Path $signedXpi) -and ((Get-XpiVersion $signedXpi) -eq $extVersion)) {
         Remove-Item $xpiOut -Force -ErrorAction SilentlyContinue
     }
 }
+# A signed add-on of another version is a stop-gap, not the release: say so,
+# so a build is not shipped with an add-on that lacks the fixes in extension\.
+if (Test-Path $xpiOut) {
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $xpiOut))
+        $entry = $zip.Entries | Where-Object { $_.FullName -eq "manifest.json" } | Select-Object -First 1
+        $reader = New-Object IO.StreamReader($entry.Open())
+        $xpiVersion = ($reader.ReadToEnd() | ConvertFrom-Json).version
+        $reader.Close(); $zip.Dispose()
+        if ($xpiVersion -ne $extVersion) {
+            Write-Warning "The signed add-on is $xpiVersion, extension\ is $extVersion - run 'web-ext sign' for $extVersion before releasing"
+        }
+    } catch {
+        Write-Warning "Could not read the version of $xpiOut"
+    }
+}
+foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "aria2c.exe", "aria2-COPYING.txt")) {
 if (-not (Test-Path $xpiOut)) {
     Write-Warning "No signed Firefox add-on $extVersion yet: this setup has none (the release signs it). Firefox users of this build add it from the folder."
 }

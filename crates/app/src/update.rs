@@ -158,7 +158,7 @@ fn size_text(n: u64) -> String {
 /// Help > Check for updates: look now instead of waiting for the next check,
 /// in the update window.
 pub fn check_now(ui: &Ui) {
-    let Some(d) = ui.updater.upgrade() else { return };
+    let Some(d) = crate::ensure_updater(ui) else { return };
     open_window!(d);
     let set = |state: i32, heading: String, detail: String| {
         d.set_state(state);
@@ -220,13 +220,17 @@ pub fn check_now(ui: &Ui) {
             Ok(Some(rel)) => rel,
         };
         if !selfupdate::installed() {
-            tell(
-                &shared,
-                4,
-                tf("Version {} is available", &[&rel.version]),
-                t("This copy was not installed with the setup, so it cannot update itself."),
-                -1.0,
-            );
+            // Linux / macOS: the new version comes from the releases page
+            // (or the package manager), never from the Windows setup
+            let detail = if cfg!(windows) {
+                t("This copy was not installed with the setup, so it cannot update itself.")
+            } else {
+                tf(
+                    "Download it from https://github.com/{}/releases/latest (or install the new version with your package manager).",
+                    &[&selfupdate::REPO],
+                )
+            };
+            tell(&shared, 4, tf("Version {} is available", &[&rel.version]), detail, -1.0);
             return finish(&shared);
         }
         let heading = tf("Downloading version {}…", &[&rel.version]);

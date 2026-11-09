@@ -10,7 +10,19 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
-const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+/// The file of yt-dlp's release for this system.
+fn ytdlp_file() -> &'static str {
+    if cfg!(windows) {
+        "yt-dlp.exe"
+    } else if cfg!(target_os = "macos") {
+        "yt-dlp_macos"
+    } else if cfg!(target_arch = "aarch64") {
+        "yt-dlp_linux_aarch64"
+    } else {
+        "yt-dlp_linux"
+    }
+}
+
 /// the SHA-256 of every file of that release, published by yt-dlp
 const YTDLP_SUMS_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
 /// none of the helpers is anywhere near this big
@@ -28,6 +40,17 @@ fn exe(name: &str) -> String {
         name.to_string()
     }
 }
+
+/// A downloaded helper must be runnable (Linux / macOS keep the file mode
+/// of what we write, and that is not "x").
+#[cfg(unix)]
+fn make_executable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755));
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) {}
 
 /// Folders searched for the tools, best first.
 pub fn tool_dirs() -> Vec<PathBuf> {
@@ -161,11 +184,19 @@ fn replace(new: &Path, target: &Path) -> anyhow::Result<()> {
 /// yt-dlp missing: get it. Present: `yt-dlp -U` (at most once a day).
 async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
     if bundled("yt-dlp").is_none() {
-        if cfg!(windows) {
-            if let Some(dir) = writable_dir("yt-dlp") {
-                if let Ok(sums) = get_text(client, YTDLP_SUMS_URL).await {
-                    if let Some(sum) = sum_for(&sums, "yt-dlp.exe") {
-                        let _ = download(client, YTDLP_URL, &dir.join(exe("yt-dlp")), &sum).await;
+        // Linux and macOS: a copy from the distribution (apt, pacman,
+        // homebrew...) does the job as well as ours
+        if !cfg!(windows) && crate::mux::find_tool("yt-dlp").is_some() {
+            return;
+        }
+        if let Some(dir) = writable_dir("yt-dlp") {
+            let name = ytdlp_file();
+            if let Ok(sums) = get_text(client, YTDLP_SUMS_URL).await {
+                if let Some(sum) = sum_for(&sums, name) {
+                    let url = format!("https://github.com/yt-dlp/yt-dlp/releases/latest/download/{name}");
+                    let target = dir.join(exe("yt-dlp"));
+                    if download(client, &url, &target, &sum).await.is_ok() {
+                        make_executable(&target);
                     }
                 }
             }

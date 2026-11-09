@@ -513,5 +513,7 @@
  "Official download page (GitHub)": "Официальная страница загрузки (GitHub)",
  "Download Ezoo Download only from its official page.": "Скачивайте Ezoo Download только с официальной страницы.",
  "© Ezoo Tech – All rights reserved": "© Ezoo Tech – Все права защищены",
- "Drag me": "Перетащи меня"
+ "Drag me": "Перетащи меня",
+ "Start Ezoo Download when you sign in": "Запускать Ezoo Download при входе в систему",
+ "Saved in the settings file of your user account.": "Хранится в файле настроек вашей учётной записи."
 }

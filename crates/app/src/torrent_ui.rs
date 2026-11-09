@@ -45,7 +45,7 @@ pub(crate) fn fetch_and_open(ctx: &Ctx, url: String, headers: RequestHeaders, fi
 }
 
 pub(crate) fn open(ui: &Ui, source: Option<&str>) {
-    let Some(d) = ui.torrent.upgrade() else { return };
+    let Some(d) = crate::ensure_torrent(ui) else { return };
     match source {
         Some(s) => d.set_source(s.into()),
         None if !d.window().is_visible() => {

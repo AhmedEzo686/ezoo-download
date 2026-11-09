@@ -29,6 +29,24 @@ function apiUrl(port, path) {
 // when the Firefox add-on is older than the program and must be updated
 // (Firefox keeps its own copy of the add-on)
 const IS_FIREFOX = typeof navigator !== "undefined" && /Firefox\//.test(navigator.userAgent || "");
+// Windows ships the tools with .exe; every other system uses the plain name
+const IS_WINDOWS = /Windows/i.test(navigator.userAgent || "");
+const toolName = (name) => (IS_WINDOWS ? `${name}.exe` : name);
+// The panel's own words, in the browser's language (the app itself follows
+// its own setting; this is what the add-in adds to a page).
+const LANG = String(navigator.language || "en").slice(0, 2).toLowerCase();
+const AR = {
+  "Can't get this video": "مش قادر أجيب الفيديو ده",
+  "Getting video qualities…": "بنجيب جودات الفيديو…",
+  "This takes a few seconds": "بياخد ثواني",
+  "This video needs Ezoo Download": "الفيديو ده محتاج Ezoo Download",
+  "Other qualities of this stream…": "جودات تانية للبث ده…",
+  "Play the video for a moment": "شغّل الفيديو لحظة",
+  "Video file": "ملف فيديو",
+  "Video stream (DASH) · choose a quality": "بث فيديو (DASH) · اختار جودة",
+};
+const tr = (s) => (LANG === "ar" ? AR[s] || s : s);
+
 const ADDIN_HEADERS = { "X-Ezoo-Ext": chrome.runtime.getManifest().version, "X-Ezoo-Browser": IS_FIREFOX ? "firefox" : "chromium" };
 
 async function plainFetch(url, opts = {}, ms = 1500) {
@@ -692,9 +710,11 @@ async function justTaken(url) {
 // Chrome, Edge, Brave, Opera: decided before the browser asks where to
 // save it, so its own "Save as" window never shows up for files the app
 // takes. Firefox has no such moment: there it is decided when it starts.
-const DECIDE_EARLY = !!(chrome.downloads.onDeterminingFilename && chrome.downloads.onDeterminingFilename.addListener);
+const DETERMINING = "onDeterminingFilename";
+const onDetermining = chrome.downloads[DETERMINING];
+const DECIDE_EARLY = !!(onDetermining && onDetermining.addListener);
 if (DECIDE_EARLY) {
-  chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  onDetermining.addListener((item, suggest) => {
     let answered = false;
     const keep = () => {
       if (!answered) {
@@ -757,7 +777,7 @@ async function itemsForTab(tabId) {
     if (res.resolved && res.resolved.options.length) {
       items.push(...optionItems(res.resolved, res.page));
     } else if (res.resolving) {
-      items.push({ label: "Getting video qualities…", sub: "This takes a few seconds", disabled: true });
+      items.push({ label: tr("Getting video qualities…"), sub: tr("This takes a few seconds"), disabled: true });
     } else if (res.resolveError && !media.length) {
       // the page itself is no video page the app knows: the streams the
       // player opens show up here as soon as it plays
@@ -767,7 +787,7 @@ async function itemsForTab(tabId) {
           ? { label: drmText(), sub: "", disabled: true, drm: true }
           : unknown
             ? { label: "Play the video for a moment", sub: "Its qualities appear here as soon as it plays", disabled: true }
-            : { label: "Can't get this video", sub: res.resolveError, disabled: true }
+            : { label: tr("Can't get this video"), sub: res.resolveError, disabled: true }
       );
     }
   }
@@ -780,13 +800,13 @@ async function itemsForTab(tabId) {
       for (const o of buildOptions(yt.streams, appConfig && appConfig.mp3Kbps)) items.push({ label: o.label, sub: o.sub, yt: o });
       if (!items.length) {
         if (yt.resolving) {
-          items.push({ label: "Getting video qualities…", sub: "This takes a few seconds", disabled: true });
+          items.push({ label: tr("Getting video qualities…"), sub: tr("This takes a few seconds"), disabled: true });
         } else if (yt.resolveError) {
-          items.push({ label: "Can't get this video", sub: yt.resolveError, disabled: true });
+          items.push({ label: tr("Can't get this video"), sub: yt.resolveError, disabled: true });
         } else if (yt.sabr) {
           items.push({
-            label: "This video needs Ezoo Download",
-            sub: "Open Ezoo Download (with yt-dlp.exe next to it) and reload the page",
+            label: tr("This video needs Ezoo Download"),
+            sub: `Open Ezoo Download (${IS_WINDOWS ? `with ${toolName("yt-dlp")} next to it` : "yt-dlp is set up automatically"}) and reload the page`,
             disabled: true,
           });
         }
@@ -800,7 +820,7 @@ async function itemsForTab(tabId) {
     if (resolvedFound && /HLS|DASH|video/i.test(m.type)) continue;
     if (m.dash) {
       // its qualities are read by the app when it is clicked
-      items.push({ label: "Video stream (DASH) · choose a quality", sub: m.url, resolve: m.url, ext: "mp4" });
+      items.push({ label: tr("Video stream (DASH) · choose a quality"), sub: m.url, resolve: m.url, ext: "mp4" });
       continue;
     }
     if (m.type === "HLS stream") {
@@ -827,7 +847,7 @@ async function itemsForTab(tabId) {
       items.push({ label: `${qualityOf(m.url) || "Video"} · MP4 · stream`, sub: m.url, url: m.url, ext: "ts" });
       if (!hlsAsked && !m.media) {
         hlsAsked = true;
-        items.push({ label: "Other qualities of this stream…", sub: m.url, resolve: m.url, ext: "mp4" });
+        items.push({ label: tr("Other qualities of this stream…"), sub: m.url, resolve: m.url, ext: "mp4" });
       }
       continue;
     }
@@ -1013,7 +1033,10 @@ chrome.webRequest.onHeadersReceived.addListener(
       ext: isHls ? "ts" : (type.split("/")[1] || "mp4").split(";")[0].replace("x-matroska", "mkv").replace("mpeg", "mp3"),
     });
   },
-  { urls: ["<all_urls>"] },
+  {
+    urls: ["<all_urls>"],
+    types: ["main_frame", "sub_frame", "media", "object", "other", "xmlhttprequest"],
+  },
   ["responseHeaders"]
 );
 
@@ -1216,7 +1239,7 @@ async function resolveOneVideo(msg, tab) {
     return { error: "Open the video first (click the time next to the name above the video), then press the button again." };
   }
   if (msg.src && /^https?:/i.test(msg.src)) {
-    items.push({ label: "Video file", sub: msg.src, url: msg.src, ext: (/\.(\w{2,4})(\?|$)/.exec(msg.src) || [])[1] || "mp4" });
+    items.push({ label: tr("Video file"), sub: msg.src, url: msg.src, ext: (/\.(\w{2,4})(\?|$)/.exec(msg.src) || [])[1] || "mp4" });
   }
   const page = msg.page || (msg.src && !msg.frame ? "" : tab && tab.url);
   let problem = "";

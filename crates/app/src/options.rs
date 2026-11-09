@@ -19,7 +19,7 @@ fn key_index(k: &str) -> i32 {
 }
 
 pub(crate) fn open(ui: &Ui, tab: i32) {
-    let Some(d) = ui.settings_dlg.upgrade() else { return };
+    let Some(d) = crate::ensure_settings(ui) else { return };
     let s = ui.ctx.mgr.settings();
     {
         let mut l = ui.options_lists.borrow_mut();

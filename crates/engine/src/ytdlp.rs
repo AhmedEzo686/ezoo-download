@@ -15,6 +15,15 @@ use std::path::Path;
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
+/// What "yt-dlp is not there" says, on each system.
+fn missing_ytdlp() -> anyhow::Error {
+    anyhow!(if cfg!(windows) {
+        "yt-dlp.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again"
+    } else {
+        "yt-dlp is missing: install it with your package manager (for example \"sudo apt install yt-dlp\"), or wait a minute - Ezoo Download gets it by itself (internet needed)"
+    })
+}
+
 /// One choice in the "Download this video" menu.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -669,7 +678,7 @@ fn with_cookies<T>(
 /// the video as "<name>.<language>.<ext>". `langs`: "ar en" (yt-dlp's own
 /// automatic translations are used when there are no real ones). Blocking.
 pub fn fetch_subtitles(page_url: &str, dir: &Path, stem: &str, langs: &str) -> anyhow::Result<()> {
-    let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe is missing"))?;
+    let tool = find_tool("yt-dlp").ok_or_else(missing_ytdlp)?;
     let langs: Vec<String> = langs
         .split(|c: char| c == ',' || c.is_whitespace())
         .map(|l| l.trim().to_ascii_lowercase())
@@ -753,7 +762,7 @@ pub fn forget(page_url: &str) {
 
 fn resolve_now(page_url: &str, cookies: Option<&[BrowserCookie]>, referer: Option<&str>) -> anyhow::Result<YtInfo> {
     let tool = find_tool("yt-dlp")
-        .ok_or_else(|| anyhow!("yt-dlp.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again"))?;
+        .ok_or_else(missing_ytdlp)?;
     let cookies = cookies.filter(|c| !c.is_empty());
     let json = with_cookies(page_url, cookies, |file| run_ytdlp(&tool, page_url, file, referer))?;
     let info = build_options(&json);
@@ -795,7 +804,7 @@ pub struct PlaylistInfo {
 /// The videos of a playlist (or channel page), without looking at each
 /// video yet (`--flat-playlist`, fast). Blocking.
 pub fn playlist(url: &str) -> anyhow::Result<PlaylistInfo> {
-    let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe was not found next to EzooDownload.exe"))?;
+    let tool = find_tool("yt-dlp").ok_or_else(missing_ytdlp)?;
     let json = with_cookies(url, None, |file| {
         let mut cmd = ytdlp_command(&tool);
         cmd.args(playlist_args(url, file));
@@ -874,7 +883,7 @@ pub fn pick_option(options: &[YtOption], wanted: &str) -> Option<YtOption> {
 
 /// Update yt-dlp right now ("Help > Update video downloader"). Blocking.
 pub fn update_now() -> anyhow::Result<String> {
-    let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe was not found next to EzooDownload.exe"))?;
+    let tool = find_tool("yt-dlp").ok_or_else(missing_ytdlp)?;
     let mut cmd = ytdlp_command(&tool);
     cmd.args(["--ignore-config", "-U"]);
     let out = cmd.output().context("could not start yt-dlp")?;

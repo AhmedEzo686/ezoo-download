@@ -6,6 +6,25 @@
   if (window.__ezooDownload) return;
   window.__ezooDownload = true;
   const TOP = window.top === window;
+  // The add-in's own words. The program's window follows the program's own
+  // language setting; these are what the add-in draws on a page.
+  const LANG = String(navigator.language || "en").slice(0, 2).toLowerCase();
+  const AR = {
+    "Download this video": "تحميل هذا الفيديو",
+    "Download all videos of this playlist": "تحميل كل فيديوهات قائمة التشغيل",
+    "Download a part of this video…": "تحميل جزء من هذا الفيديو…",
+    "Looking for the video qualities…": "بندور على جودات الفيديو…",
+    "Only the part you choose is downloaded": "بيتنزّل الجزء اللي تختاره بس",
+    "Choose the quality of the part:": "اختار جودة الجزء:",
+    "Open Ezoo Download": "افتح Ezoo Download",
+    "▶ Preview the part": "▶ معاينة الجزء",
+    "← Back": "→ رجوع",
+    "⏱ Now": "⏱ دلوقتي",
+    "Help": "مساعدة",
+    "Hide": "إخفاء",
+    "The time the video is at now": "الوقت اللي الفيديو واقف عنده",
+  };
+  const tr = (s) => (LANG === "ar" ? AR[s] || s : s);
 
   let items = [];
   // Options > File Types > "Download panel for web players"
@@ -64,9 +83,11 @@
 
   // --------------------------------------------------------------- videos
   // Videos of the page, also those inside shadow DOM (players built as web
-  // components). The deep search is slower, so it runs every few rounds.
+  // components). The deep search walks every element, so it runs on a timer:
+  // often on a page without a video (the player may be a web component),
+  // rarely on one that already has a video (it adds nothing there).
   let shadowVideos = [];
-  let deepRound = 0;
+  let deepAt = 0;
   function collectShadow(root, out, depth) {
     if (depth > 6) return;
     for (const el of root.querySelectorAll("*")) {
@@ -78,7 +99,9 @@
   }
   function allVideos() {
     const list = [...document.querySelectorAll("video")];
-    if (deepRound++ % 4 === 0) {
+    const every = list.length ? 30000 : 3000;
+    if (Date.now() - deepAt >= every) {
+      deepAt = Date.now();
       const found = [];
       try {
         collectShadow(document, found, 0);
@@ -190,6 +213,10 @@
 
   let lastPage = "";
   function watchVideos() {
+    // A page with no video at all is the common case: do not walk its DOM
+    // every 1.5 s just to find that out again (place() still looks now and
+    // then for players that appear later).
+    if (!document.querySelector("video") && !shadowVideos.length) return;
     const v = biggestVideo();
     if (!v) return;
     // ignore tiny muted background loops that never play for long
@@ -401,6 +428,7 @@
   function makeBubble(video) {
     const host = document.createElement("div");
     host.style.all = "initial";
+    host.dir = LANG === "ar" ? "rtl" : "ltr";
     host.style.position = "fixed";
     host.style.zIndex = "2147483647";
     host.style.setProperty("--z", String(zoom));
@@ -428,9 +456,9 @@
         el(
           "div",
           { class: "btn", id: "main" },
-          el("span", { class: "part", id: "grab" }, svg, spin, el("span", { id: "label", text: "Download this video" }), el("span", { class: "caret", text: "▼" })),
-          el("span", { class: "side", id: "help", title: "Help", text: "?" }),
-          el("span", { class: "side", id: "close", title: "Hide", text: "✕" })
+          el("span", { class: "part", id: "grab" }, svg, spin, el("span", { id: "label", text: tr("Download this video") }), el("span", { class: "caret", text: "▼" })),
+          el("span", { class: "side", id: "help", title: tr("Help"), text: "?" }),
+          el("span", { class: "side", id: "close", title: tr("Hide"), text: "✕" })
         ),
         list
       )
@@ -490,7 +518,7 @@
     // another video on the page (or nothing found for it yet): look it up now
     b.loading = true;
     b.open = true;
-    renderOne(b, "Looking for the video qualities…");
+    renderOne(b, tr("Looking for the video qualities…"));
     chrome.runtime.sendMessage(
       // its own post / video link, or its own file; the page only when
       // neither is there
@@ -528,7 +556,7 @@
   function notRunning(b, retry) {
     b.open = true;
     renderOne(b, "Ezoo Download is not running.", true, {
-      text: "Open Ezoo Download",
+      text: tr("Open Ezoo Download"),
       run: () => {
         // the program registers "ezoo-download:" when it is installed
         const a = document.createElement("a");
@@ -589,7 +617,7 @@
   // "Download all": the whole playlist (YouTube list), or every file found
   function downloadAllOf(b, usable) {
     if (TOP && /youtube\.com/i.test(location.hostname) && /[?&]list=/.test(location.search)) {
-      return { text: "Download all videos of this playlist", run: () => sendPlaylist(b) };
+      return { text: tr("Download all videos of this playlist"), run: () => sendPlaylist(b) };
     }
     const files = usable.filter((m) => !m.yt && m.url);
     if (files.length >= 2) {
@@ -621,7 +649,7 @@
     const list = itemsOf(b);
     const usable = list.filter((i) => !i.disabled);
     const busy = b.loading || (!usable.length && list.some((i) => i.disabled && /Getting/.test(i.label)));
-    b.root.getElementById("label").textContent = usable.length > 1 ? `Download this video (${usable.length})` : "Download this video";
+    b.root.getElementById("label").textContent = usable.length > 1 ? `Download this video (${usable.length})` : tr("Download this video");
     b.root.getElementById("spin").hidden = !busy;
     b.root.querySelector("svg").style.display = busy ? "none" : "";
     b.root.getElementById("main").classList.toggle("open", b.open);
@@ -648,7 +676,7 @@
       return;
     }
     if (!list.length) {
-      box.appendChild(el("div", { class: "msg", text: "Looking for the video qualities…" }));
+      box.appendChild(el("div", { class: "msg", text: tr("Looking for the video qualities…") }));
       return;
     }
     const title = (list.find((m) => m.yt && m.yt.title) || {}).yt;
@@ -670,7 +698,7 @@
           "div",
           { class: "item cliprow" },
           el("span", { class: "num", text: "✂" }),
-          el("div", { class: "body" }, el("div", { class: "t", text: "Download a part of this video…" }), el("div", { class: "s", text: "Only the part you choose is downloaded" }))
+          el("div", { class: "body" }, el("div", { class: "t", text: tr("Download a part of this video…") }), el("div", { class: "s", text: tr("Only the part you choose is downloaded") }))
         );
         row.addEventListener("click", () => {
           b.clipMode = true;
@@ -738,7 +766,7 @@
           showLen();
         }
       });
-      const now = el("span", { class: "now", title: "The time the video is at now", text: "⏱ Now" });
+      const now = el("span", { class: "now", title: tr("The time the video is at now"), text: tr("⏱ Now") });
       now.addEventListener("click", () => {
         c[key] = Math.floor(v.currentTime || 0);
         input.value = clock(c[key]);
@@ -753,9 +781,9 @@
       r.addEventListener("change", () => (c.exact = exact));
       return el("label", {}, r, el("span", {}, el("span", { text: title }), el("small", { text: words })));
     };
-    const preview = el("span", { class: "btn2", text: "▶ Preview the part" });
+    const preview = el("span", { class: "btn2", text: tr("▶ Preview the part") });
     preview.addEventListener("click", () => playPart(b));
-    const back = el("span", { class: "btn2", text: "← Back" });
+    const back = el("span", { class: "btn2", text: tr("← Back") });
     back.addEventListener("click", () => {
       b.clipMode = false;
       stopPart(b);
@@ -770,7 +798,7 @@
       kind(false, "Quick cut (recommended)", "Takes seconds, the quality stays as it is; the part may start a second or two before your time."),
       kind(true, "Exact cut", "Starts on the very second you chose; the picture is made again, so it takes longer."),
       el("div", { class: "acts" }, preview, back),
-      el("div", { class: "pick", text: "Choose the quality of the part:" })
+      el("div", { class: "pick", text: tr("Choose the quality of the part:") })
     );
     showLen();
     return box;
@@ -859,8 +887,14 @@
     }
   }
 
+  let probedAt = 0;
   function place() {
     if (!panelAllowed()) return;
+    // This runs in every frame of every tab, several times a second. A page
+    // with no video and no panel has nothing to place, so it is only looked
+    // at now and then (a player built later is still found).
+    if (!bubbles.size && !items.length && !document.querySelector("video") && Date.now() - probedAt < 4000) return;
+    probedAt = Date.now();
     const vids = allVideos().filter((v) => {
       const r = v.getBoundingClientRect();
       return r.width >= 200 && r.height >= 100;
@@ -934,7 +968,9 @@
       linkRules = chrome.runtime.lastError ? null : res || null;
     });
   refreshLinkRules();
-  setInterval(refreshLinkRules, 60000);
+  // every frame asked the add-in for the rules once a minute; once is enough,
+  // and the top page asks again when they change
+  if (TOP) setInterval(refreshLinkRules, 60000);
   // shown by the browser itself, not downloaded: never taken from a click
   // pages and pictures open in the browser; a PDF too, unless PDF is one of
   // the file types the app takes (then a click on its link goes to the app:

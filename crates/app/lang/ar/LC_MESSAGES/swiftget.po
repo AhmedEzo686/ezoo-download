@@ -1039,8 +1039,8 @@ msgstr "استعراض…"
 msgid "Picture visibility"
 msgstr "وضوح الصورة"
 
-msgid "Launch Ezoo Download on Windows startup"
-msgstr "تشغيل Ezoo Download مع بدء ويندوز"
+msgid "Start Ezoo Download when you sign in"
+msgstr "تشغيل Ezoo Download عند تسجيل الدخول"
 
 msgid "Keep running next to the clock when the window is closed"
 msgstr "الاستمرار بجانب الساعة عند إغلاق النافذة"
@@ -1288,8 +1288,8 @@ msgstr "example.com/members"
 msgid "Add / Update"
 msgstr "إضافة / تحديث"
 
-msgid "Saved in the settings file of your Windows user account."
-msgstr "تُحفظ في ملف إعدادات حساب ويندوز الخاص بك."
+msgid "Saved in the settings file of your user account."
+msgstr "تُحفظ في ملف إعدادات حسابك."
 
 msgid "Play sounds"
 msgstr "تشغيل الأصوات"

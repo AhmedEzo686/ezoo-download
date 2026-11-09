@@ -14,6 +14,18 @@ pub fn find_tool(name: &str) -> Option<PathBuf> {
         return Some(p);
     }
     if let Ok(me) = std::env::current_exe() {
+        // The Linux packages keep it in <prefix>/lib/ezoodownload: a copy in
+        // /usr/bin next to the program would collide with the system's own
+        // ffmpeg. This is /usr/lib/ezoodownload for /usr/bin/EzooDownload and
+        // /app/lib/ezoodownload inside a Flatpak.
+        if let Some(dir) = me.parent() {
+            if let Some(prefix) = dir.parent() {
+                let packaged = prefix.join("lib").join("ezoodownload").join(&exe_name);
+                if packaged.exists() {
+                    return Some(packaged);
+                }
+            }
+        }
         let local = me.with_file_name(&exe_name);
         if local.exists() {
             return Some(local);
@@ -141,8 +153,11 @@ pub fn merge(
 }
 
 /// What to say when our ffmpeg.exe is not there (it comes with the setup).
-pub const MISSING: &str = "ffmpeg.exe is missing from the \"tools\" folder of Ezoo Download and could not be downloaded again (no internet, or an antivirus removes it): install Ezoo Download again, or allow ffmpeg.exe in the antivirus";
-
+pub const MISSING: &str = if cfg!(windows) {
+    "ffmpeg.exe is missing from the \"tools\" folder of Ezoo Download and could not be downloaded again (no internet, or an antivirus removes it): install Ezoo Download again, or allow ffmpeg.exe in the antivirus"
+} else {
+    "ffmpeg is missing: install it with your package manager (for example \"sudo apt install ffmpeg\" or \"sudo dnf install ffmpeg\"), then try again"
+};
 /// A joined stream (HLS, a .ts file) into an ordinary MP4 file: plays in
 /// every player, with seeking. Nothing is re-encoded.
 pub fn ts_to_mp4(input: &Path, output: &Path, on: &dyn Fn(f64), cancel: Option<&tokio_util::sync::CancellationToken>) -> anyhow::Result<()> {

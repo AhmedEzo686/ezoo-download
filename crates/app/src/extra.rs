@@ -12,7 +12,7 @@ use crate::i18n::{t, tf};
 // ---------------------------------------------------------------- columns
 
 pub(crate) fn open_columns(ui: &Ui) {
-    let Some(d) = ui.columns.upgrade() else { return };
+    let Some(d) = crate::ensure_columns(ui) else { return };
     d.set_cols(cols_from(&ui.ctx.mgr.settings()));
     open_window!(d);
 }
@@ -25,7 +25,7 @@ fn cols_to_list(c: &Cols) -> Vec<String> {
 // ---------------------------------------------------------------- categories
 
 pub(crate) fn open_category(ui: &Ui, name: Option<String>) {
-    let Some(d) = ui.category.upgrade() else { return };
+    let Some(d) = crate::ensure_category(ui) else { return };
     let s = ui.ctx.mgr.settings();
     *ui.editing_category.borrow_mut() = name.clone();
     d.set_message(SharedString::new());
@@ -144,7 +144,7 @@ pub(crate) fn delete_category(ui: &Ui, name: &str) {
 // ---------------------------------------------------------------- find
 
 pub(crate) fn open_find(ui: &Ui) {
-    if let Some(d) = ui.find.upgrade() {
+    if let Some(d) = crate::ensure_find(ui) {
         d.set_message(SharedString::new());
         open_window!(d);
     }
@@ -197,7 +197,7 @@ pub(crate) fn find_next(ui: &Ui) {
 // ---------------------------------------------------------------- properties
 
 pub(crate) fn open_properties(ui: &Ui, id: u64) {
-    let (Some(d), Some(v)) = (ui.props.upgrade(), ui.ctx.mgr.get(id)) else { return };
+    let (Some(d), Some(v)) = (crate::ensure_props(ui), ui.ctx.mgr.get(id)) else { return };
     ui.props_id.set(Some(id));
     let done = v.status == Status::Completed;
     d.set_file_name(v.file_name.clone().into());
@@ -302,7 +302,7 @@ fn save_properties(ui: &Ui) {
 // ---------------------------------------------------------------- duplicate link
 
 pub(crate) fn ask_duplicate(ui: &Ui, p: PendingAdd) {
-    let Some(d) = ui.dup.upgrade() else { return };
+    let Some(d) = crate::ensure_dup(ui) else { return };
     let v = ui.ctx.mgr.get(p.existing);
     d.set_file_name(v.as_ref().map(|v| v.file_name.clone()).unwrap_or_default().into());
     d.set_existing_status(v.as_ref().map(|v| v.status.label()).unwrap_or("").into());
@@ -317,7 +317,7 @@ pub(crate) fn ask_duplicate(ui: &Ui, p: PendingAdd) {
 const COUNTDOWN: i32 = 30;
 
 pub(crate) fn start_countdown(ui: &Ui, action: AfterDone) {
-    let Some(d) = ui.countdown.upgrade() else { return };
+    let Some(d) = crate::ensure_countdown(ui) else { return };
     let text = match action {
         AfterDone::Shutdown => "shut down the computer",
         AfterDone::Hibernate => "hibernate the computer",
@@ -527,7 +527,7 @@ pub(crate) fn show_tip_when_free(ui: Ui) {
 }
 
 pub(crate) fn show_tip(ui: &Ui, from_menu: bool) {
-    let Some(d) = ui.tips.upgrade() else { return };
+    let Some(d) = crate::ensure_tips(ui) else { return };
     let mut s = ui.ctx.mgr.settings();
     let i = s.tip_index as usize % TIPS.len();
     d.set_tip(t(TIPS[i]).into());
@@ -544,7 +544,7 @@ pub(crate) fn show_tip(ui: &Ui, from_menu: bool) {
 // ---------------------------------------------------------------- refresh download address
 
 pub(crate) fn open_refresh(ui: &Ui, id: u64) {
-    let (Some(d), Some(v)) = (ui.refresh_dlg.upgrade(), ui.ctx.mgr.get(id)) else { return };
+    let (Some(d), Some(v)) = (crate::ensure_refresh(ui), ui.ctx.mgr.get(id)) else { return };
     if v.status == Status::Completed {
         return;
     }

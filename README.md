@@ -51,6 +51,17 @@
 
 شغّل الملف **`BUILD.bat`**، وستجد ملف الإعداد `EzooDownload-Setup` في مجلد **`dist`**.
 
+### 🐧 لينكس
+
+يوجد الآن بناء كامل للينكس (نفس الشيفرة، واجهة Slint أصلية):
+
+```bash
+./packaging/linux/build-linux.sh     # dist/ezoodownload_*.deb و dist/*.AppImage و dist/*.tar.gz
+sudo apt install ./dist/ezoodownload_*.deb
+```
+
+التفاصيل وما يعمل وما يختلف عن ويندوز في **[README-LINUX.md](README-LINUX.md)**.
+
 ---
 
 ## ⚙️ متطلبات التشغيل
