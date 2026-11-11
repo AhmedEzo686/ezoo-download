@@ -78,8 +78,10 @@ fn call(method: &str, path: &str, body: Option<serde_json::Value>) -> Result<ser
     serde_json::from_str(body).context("unexpected JSON from the program")
 }
 
-fn cmd_add(url: &str) -> Result<()> {
-    let r = call("POST", "/add", Some(serde_json::json!({ "url": url, "quiet": true })))?;
+fn cmd_add(url: &str, open: bool) -> Result<()> {
+    // quiet by default: a terminal add does not open a window; --open shows
+    // the program's own "Download File Info" (and then the progress window)
+    let r = call("POST", "/add", Some(serde_json::json!({ "url": url, "quiet": !open })))?;
     if r["ok"].as_bool() != Some(true) {
         bail!("the program did not take the link: {r}");
     }
@@ -347,7 +349,7 @@ fn usage() -> ! {
     eprintln!(
         "ezoo — Ezoo Download from the terminal
 
-  ezoo add <url>
+  ezoo add <url> [--open]
   ezoo list [--json]
   ezoo pause <id> | --all
   ezoo resume <id> | --all
@@ -366,7 +368,8 @@ fn main() -> Result<()> {
     match cmd {
         "add" => {
             let url = rest.iter().find(|a| !a.starts_with("--")).context("give a link")?;
-            cmd_add(url)
+            let open = rest.iter().any(|a| a == "--open");
+            cmd_add(url, open)
         }
         "list" => cmd_list(rest.iter().any(|a| a == "--json")),
         "status" => cmd_status(rest.iter().any(|a| a == "--json")),

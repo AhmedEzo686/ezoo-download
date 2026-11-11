@@ -7,7 +7,7 @@
 //! file first, so the download is created there, waited for, and then its
 //! direct link is asked for (see `torbox_fetch`).
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use std::time::Duration;
 
 /// The providers this program knows: the settings store one of these names.
@@ -128,6 +128,25 @@ pub async fn unrestrict(client: &reqwest::Client, provider: &str, token: &str, u
 /// TorBox: its servers fetch the file first. Create the download there, wait
 /// until it is ready, then ask for the direct link.
 pub async fn torbox_fetch(client: &reqwest::Client, token: &str, url: &str, wait: Duration) -> Result<String> {
+    match torbox_one(client, token, url, wait).await {
+        Ok(link) => Ok(link),
+        Err(first) => {
+            // Some hosts' links carry a tracking part ("?short_domain=...")
+            // that breaks TorBox's own fetcher: the bare address works.
+            let bare = url.split(['?', '#']).next().unwrap_or(url);
+            if bare == url || bare.is_empty() {
+                return Err(first);
+            }
+            match torbox_one(client, token, bare, wait).await {
+                Ok(link) => Ok(link),
+                Err(second) => Err(anyhow!("{second:#} (and without the query: {first:#})")),
+            }
+        }
+    }
+}
+
+/// One TorBox web download: create, wait, direct link.
+async fn torbox_one(client: &reqwest::Client, token: &str, url: &str, wait: Duration) -> Result<String> {
     let auth = format!("Bearer {token}");
     let r = client
         .post("https://api.torbox.app/v1/api/webdl/createwebdownload")
@@ -175,11 +194,13 @@ pub async fn torbox_fetch(client: &reqwest::Client, token: &str, url: &str, wait
         };
         if let Some(item) = item {
             let state = item["download_state"].as_str().unwrap_or("");
-            if state == "completed" {
+            // TorBox writes more after the word: "failed (Turbobit Download)"
+            let lower = state.to_ascii_lowercase();
+            if lower.starts_with("completed") {
                 let file = item["files"].as_array().and_then(|f| f.first()).context("TorBox returned no file")?;
                 break file["id"].as_u64().context("TorBox returned no file id")?;
             }
-            if matches!(state, "error" | "failed" | "cancelled") {
+            if lower.starts_with("failed") || lower.starts_with("error") || lower.starts_with("cancelled") {
                 bail!("TorBox could not fetch this link ({state})");
             }
         }
