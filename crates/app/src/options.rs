@@ -68,10 +68,15 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_skip_key(key_index(&s.skip_key));
     d.set_force_key(key_index(&s.force_key));
     // Debrid account
-    d.set_debrid_provider(if s.debrid_provider == "alldebrid" { 1 } else { 0 });
+    d.set_debrid_provider(match s.debrid_provider.as_str() {
+        "alldebrid" => 1,
+        "torbox" => 2,
+        _ => 0,
+    });
     d.set_debrid_token(s.debrid_token.clone().into());
     let provider_name: String = match s.debrid_provider.as_str() {
         "alldebrid" => t("AllDebrid").to_string(),
+        "torbox" => "TorBox".to_string(),
         "realdebrid" => t("Real-Debrid").to_string(),
         _ => String::new(),
     };
@@ -501,7 +506,11 @@ pub(crate) fn wire(ui: &Ui) {
         let ui = ui.clone();
         d.on_debrid_connect(move || {
             let Some(d) = ui.settings_dlg.upgrade() else { return };
-            let provider = if d.get_debrid_provider() == 1 { "alldebrid" } else { "realdebrid" };
+            let provider = match d.get_debrid_provider() {
+                1 => "alldebrid",
+                2 => "torbox",
+                _ => "realdebrid",
+            };
             let token = d.get_debrid_token().trim().to_string();
             if token.is_empty() {
                 d.set_debrid_state(t("Give the API token first").into());

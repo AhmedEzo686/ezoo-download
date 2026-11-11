@@ -3084,7 +3084,7 @@ export component SettingsDialog inherits ThemedWindow {
                         spacing: 8px;
                         ComboBox {
                             width: 180px;
-                            model: [@tr("Real-Debrid"), @tr("AllDebrid")];
+                            model: [@tr("Real-Debrid"), @tr("AllDebrid"), "TorBox"];
                             current-index <=> root.debrid-provider;
                         }
                         LineEdit {

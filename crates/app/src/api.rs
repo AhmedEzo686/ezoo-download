@@ -726,6 +726,43 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
                     // a debrid account: the direct link behind this host link
                     if let Some(mgr) = manager() {
                         let s = mgr.settings();
+                        if s.debrid_provider == "torbox" && !s.debrid_token.is_empty() && is_http(&add.url) {
+                            // TorBox fetches the file itself first: answer now,
+                            // add the download when its direct link is ready
+                            let token = s.debrid_token.clone();
+                            let url = add.url.clone();
+                            let file_name = add.file_name.clone();
+                            let headers = swiftget_engine::model::RequestHeaders {
+                                referer: add.referrer.clone(),
+                                cookies: add.cookies.clone(),
+                                user_agent: add.user_agent.clone(),
+                                extra: Vec::new(),
+                                auth: None,
+                            };
+                            let mgr2 = mgr.clone();
+                            mgr.runtime().spawn(async move {
+                                match swiftget_engine::debrid::torbox_fetch(
+                                    &mgr2.client(),
+                                    &token,
+                                    &url,
+                                    std::time::Duration::from_secs(900),
+                                )
+                                .await
+                                {
+                                    Ok(direct) => {
+                                        mgr2.add(swiftget_engine::model::NewDownload {
+                                            url: direct,
+                                            file_name,
+                                            headers,
+                                            start: true,
+                                            ..Default::default()
+                                        });
+                                    }
+                                    Err(e) => eprintln!("TorBox: {e:#}"),
+                                }
+                            });
+                            return reply(req, 200, r#"{"ok":true,"queued":true}"#);
+                        }
                         if !s.debrid_provider.is_empty() && !s.debrid_token.is_empty() && is_http(&add.url) {
                             let rt = mgr.runtime().clone();
                             let client = mgr.client();
