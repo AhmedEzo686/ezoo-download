@@ -16,6 +16,7 @@ mod options;
 mod playlist;
 mod preview;
 mod torrent_ui;
+mod awake;
 mod scheduler;
 mod sound;
 mod tray;
@@ -677,6 +678,7 @@ fn run() -> anyhow::Result<()> {
         let ui = ui.clone();
         power_timer.start(TimerMode::Repeated, Duration::from_secs(1), move || {
             extra::tick_countdown(&ui);
+            awake::update(&ui);
             follow_sizes(&ui);
             // the window may have been shown again from the icon next to the clock
             if let Some(m) = ui.ctx.main.upgrade() {

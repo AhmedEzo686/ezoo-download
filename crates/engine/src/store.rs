@@ -18,8 +18,15 @@ pub fn load_downloads(path: &Path) -> Vec<DownloadRecord> {
     let Ok(text) = std::fs::read_to_string(path) else {
         return Vec::new();
     };
-    match serde_json::from_str(&text) {
-        Ok(list) => list,
+    match serde_json::from_str::<Vec<DownloadRecord>>(&text) {
+        Ok(list) => {
+            // keep the list of the last good start: if a later version ever
+            // reads or saves it wrong, the history is not gone for good
+            if !list.is_empty() {
+                let _ = std::fs::copy(path, path.with_extension("bak.json"));
+            }
+            list
+        }
         Err(_) => {
             // a broken list (the computer went off while it was written...):
             // kept aside, never overwritten by the empty one
