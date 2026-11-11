@@ -2102,7 +2102,7 @@ export component SettingsDialog inherits ThemedWindow {
                 VerticalLayout {
                     padding: 3px;
                     alignment: start;
-                    for t[i] in [@tr("General"), @tr("File Types"), @tr("Save To"), @tr("Downloads"), @tr("Connection"), @tr("Proxy / Server"), @tr("Site Logins"), @tr("Sounds"), @tr("Speed Limiter"), @tr("Appearance"), @tr("Torrents")]: SideTab {
+                    for t[i] in [@tr("General"), @tr("File Types"), @tr("Save To"), @tr("Downloads"), @tr("Connection"), @tr("Proxy / Server"), @tr("Site Logins"), @tr("Sounds"), @tr("Speed Limiter"), @tr("Appearance"), @tr("Torrents"), @tr("Debrid")]: SideTab {
                         text: t;
                         active: root.tab == i;
                         clicked => {
@@ -2775,46 +2775,6 @@ export component SettingsDialog inherits ThemedWindow {
                         text: root.quota-used;
                     }
 
-                    // ---- debrid account
-                    Rectangle {
-                        height: 1px;
-                        background: Theme.line;
-                    }
-                    Label {
-                        text: @tr("Debrid account (host links through your own account):");
-                    }
-                    HRow {
-                        spacing: 8px;
-                        ComboBox {
-                            width: 170px;
-                            model: [@tr("Real-Debrid"), @tr("AllDebrid")];
-                            current-index <=> root.debrid-provider;
-                        }
-                        LineEdit {
-                            horizontal-stretch: 1;
-                            text <=> root.debrid-token;
-                            input-type: InputType.password;
-                            placeholder-text: @tr("API token");
-                        }
-                        Button {
-                            text: @tr("Connect");
-                            clicked => {
-                                root.debrid-connect();
-                            }
-                        }
-                        Button {
-                            text: @tr("Remove");
-                            clicked => {
-                                root.debrid-remove();
-                            }
-                        }
-                    }
-                    Text {
-                        text: root.debrid-state;
-                        color: Theme.muted;
-                        font-size: 12px * Theme.font-scale;
-                        wrap: word-wrap;
-                    }
                 }
 
                 // ---------------- Proxy
@@ -3109,6 +3069,55 @@ export component SettingsDialog inherits ThemedWindow {
                     }
                     Hint {
                         text: @tr("While a torrent downloads it also sends pieces to others (that is how torrents work). A limit keeps your internet free for other things.");
+                    }
+                }
+
+                // ---------------- Debrid
+                if root.tab == 11: VerticalLayout {
+                    padding: 14px;
+                    spacing: 10px;
+                    alignment: start;
+                    Label {
+                        text: @tr("Host links (Rapidgator, 1fichier, Turbobit...) through your own debrid account:");
+                    }
+                    HRow {
+                        spacing: 8px;
+                        ComboBox {
+                            width: 180px;
+                            model: [@tr("Real-Debrid"), @tr("AllDebrid")];
+                            current-index <=> root.debrid-provider;
+                        }
+                        LineEdit {
+                            horizontal-stretch: 1;
+                            text <=> root.debrid-token;
+                            input-type: InputType.password;
+                            placeholder-text: @tr("API token");
+                        }
+                    }
+                    HRow {
+                        spacing: 8px;
+                        Button {
+                            text: @tr("Connect");
+                            primary: true;
+                            clicked => {
+                                root.debrid-connect();
+                            }
+                        }
+                        Button {
+                            text: @tr("Remove");
+                            clicked => {
+                                root.debrid-remove();
+                            }
+                        }
+                    }
+                    Text {
+                        text: root.debrid-state;
+                        color: Theme.muted;
+                        font-size: 12px * Theme.font-scale;
+                        wrap: word-wrap;
+                    }
+                    Hint {
+                        text: @tr("Where the token is: real-debrid.com/apitoken (private token) or alldebrid.com/apikeys. It is kept encrypted on this computer.");
                     }
                 }
             }
