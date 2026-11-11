@@ -2047,8 +2047,12 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <int> debrid-provider;
     in-out property <string> debrid-token;
     in-out property <string> debrid-state;
+    changed debrid-provider => {
+        root.debrid-provider-changed();
+    }
     callback debrid-connect();
     callback debrid-remove();
+    callback debrid-provider-changed();
     in-out property <int> proxy-port;
     in-out property <string> proxy-user;
     in-out property <string> proxy-password;
@@ -3076,7 +3080,6 @@ export component SettingsDialog inherits ThemedWindow {
                 if root.tab == 11: VerticalLayout {
                     padding: 14px;
                     spacing: 10px;
-                    alignment: start;
                     Label {
                         text: @tr("Host links (Rapidgator, 1fichier, Turbobit...) through your own debrid account:");
                     }
@@ -3089,6 +3092,7 @@ export component SettingsDialog inherits ThemedWindow {
                         }
                         LineEdit {
                             horizontal-stretch: 1;
+                            min-width: 240px;
                             text <=> root.debrid-token;
                             input-type: InputType.password;
                             placeholder-text: @tr("API token");

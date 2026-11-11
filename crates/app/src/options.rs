@@ -48,6 +48,15 @@ fn show_lists(ui: &Ui, d: &SettingsDialog) {
     d.set_login_rows(ModelRc::new(VecModel::from(logins)));
 }
 
+fn debrid_name(provider: &str) -> String {
+    match provider {
+        "alldebrid" => t("AllDebrid").to_string(),
+        "torbox" => "TorBox".to_string(),
+        "realdebrid" => t("Real-Debrid").to_string(),
+        _ => String::new(),
+    }
+}
+
 fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     // General
     d.set_language(crate::i18n::index_of(crate::i18n::effective(&s.language)) as i32);
@@ -73,18 +82,17 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
         "torbox" => 2,
         _ => 0,
     });
-    d.set_debrid_token(s.debrid_token.clone().into());
-    let provider_name: String = match s.debrid_provider.as_str() {
-        "alldebrid" => t("AllDebrid").to_string(),
-        "torbox" => "TorBox".to_string(),
-        "realdebrid" => t("Real-Debrid").to_string(),
-        _ => String::new(),
-    };
+    let shown_provider = if s.debrid_provider.is_empty() { "realdebrid" } else { s.debrid_provider.as_str() };
+    let shown_token = s.debrid_token(shown_provider);
+    d.set_debrid_token(shown_token.clone().into());
+    let provider_name = debrid_name(shown_provider);
     d.set_debrid_state(
-        if s.debrid_token.is_empty() {
-            t("No debrid account")
-        } else {
+        if shown_token.is_empty() {
+            t("No account for this provider yet")
+        } else if s.debrid_provider == shown_provider {
             tf("Connected: {}", &[&provider_name])
+        } else {
+            tf("Saved, but {} is not the provider in use", &[&provider_name])
         }
         .into(),
     );
@@ -524,8 +532,8 @@ pub(crate) fn wire(ui: &Ui) {
                 let result = swiftget_engine::debrid::check(&mgr.client(), provider, &token).await;
                 if result.is_ok() {
                     let mut s = mgr.settings();
-                    s.debrid_provider = provider_saved;
-                    s.debrid_token = token;
+                    s.debrid_tokens.insert(provider_saved.clone(), token);
+                    s.debrid_provider = provider_saved.clone();
                     let _ = mgr.set_settings(s);
                 }
                 let _ = slint::invoke_from_event_loop(move || {
@@ -540,14 +548,45 @@ pub(crate) fn wire(ui: &Ui) {
     }
     {
         let ui = ui.clone();
+        d.on_debrid_provider_changed(move || {
+            let Some(d) = ui.settings_dlg.upgrade() else { return };
+            let provider = match d.get_debrid_provider() {
+                1 => "alldebrid",
+                2 => "torbox",
+                _ => "realdebrid",
+            };
+            let s = ui.ctx.mgr.settings();
+            let token = s.debrid_token(provider);
+            d.set_debrid_token(token.clone().into());
+            d.set_debrid_state(
+                if token.is_empty() {
+                    t("No account for this provider yet")
+                } else if s.debrid_provider == provider {
+                    tf("Connected: {}", &[&debrid_name(provider)])
+                } else {
+                    tf("Saved, but {} is not the provider in use", &[&debrid_name(provider)])
+                }
+                .into(),
+            );
+        });
+    }
+    {
+        let ui = ui.clone();
         d.on_debrid_remove(move || {
             let Some(d) = ui.settings_dlg.upgrade() else { return };
+            let provider = match d.get_debrid_provider() {
+                1 => "alldebrid",
+                2 => "torbox",
+                _ => "realdebrid",
+            };
             let mut s = ui.ctx.mgr.settings();
-            s.debrid_provider.clear();
-            s.debrid_token.clear();
+            s.debrid_tokens.remove(provider);
+            if s.debrid_provider == provider {
+                s.debrid_provider.clear();
+            }
             let _ = ui.ctx.mgr.set_settings(s);
             d.set_debrid_token(Default::default());
-            d.set_debrid_state(t("No debrid account").into());
+            d.set_debrid_state(t("No account for this provider yet").into());
         });
     }
     {

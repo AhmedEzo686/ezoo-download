@@ -162,11 +162,23 @@ fn cmd_debrid(args: &[String]) -> Result<()> {
     match args.first().map(String::as_str) {
         None | Some("status") => {
             let r = call("GET", "/v1/debrid", None)?;
+            let empty = Vec::new();
+            let accounts: Vec<&str> = r["accounts"]
+                .as_array()
+                .unwrap_or(&empty)
+                .iter()
+                .filter_map(|x| x.as_str())
+                .collect();
+            let provider = r["provider"].as_str().unwrap_or("");
             if r["configured"].as_bool() == Some(true) {
-                println!("{} account is set", r["provider"].as_str().unwrap_or("?"));
+                println!("{} is the provider in use", provider);
+            } else if provider.is_empty() {
+                println!("no provider in use");
             } else {
-                println!("no debrid account (providers: {})", r["providers"]);
+                println!("{provider} is in use, but has no token");
             }
+            println!("accounts: {}", if accounts.is_empty() { "none".to_string() } else { accounts.join(", ") });
+            println!("providers: {}", r["providers"]);
             Ok(())
         }
         Some("set") => {
@@ -181,7 +193,9 @@ fn cmd_debrid(args: &[String]) -> Result<()> {
             Ok(())
         }
         Some("off") => {
-            call("POST", "/v1/debrid", Some(serde_json::json!({ "provider": "", "token": "" })))?;
+            // with a provider name: that one; without: the one in use
+            let provider = args.get(1).map(String::as_str).unwrap_or("");
+            call("POST", "/v1/debrid", Some(serde_json::json!({ "provider": provider, "token": "" })))?;
             println!("debrid account removed");
             Ok(())
         }

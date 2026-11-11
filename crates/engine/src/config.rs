@@ -1,6 +1,7 @@
 //! User settings, stored as JSON in the app data folder.
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub const DEFAULT_PORT: u16 = 9614;
@@ -396,9 +397,10 @@ pub struct Settings {
     /// resolved through it before the download starts.
     #[serde(default)]
     pub debrid_provider: String,
-    /// the account's token, encrypted on the disk like the other secrets
-    #[serde(default, with = "crate::secret::string")]
-    pub debrid_token: String,
+    /// the token of every provider the user connected (each sealed on the
+    /// disk); `debrid_provider` says which one is in use
+    #[serde(default, with = "crate::secret::map")]
+    pub debrid_tokens: BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -502,17 +504,39 @@ impl Default for Settings {
             api_token: String::new(),
             api_port: 0,
             debrid_provider: String::new(),
-            debrid_token: String::new(),
+            debrid_tokens: BTreeMap::new(),
         }
     }
 }
 
 impl Settings {
+    /// The token of this provider ("" when there is none).
+    pub fn debrid_token(&self, provider: &str) -> String {
+        self.debrid_tokens.get(provider).cloned().unwrap_or_default()
+    }
+
     pub fn load(path: &Path) -> Settings {
-        let mut s: Settings = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+        let text = std::fs::read_to_string(path).unwrap_or_default();
+        let mut s: Settings = serde_json::from_str(&text).unwrap_or_default();
+        // before 1.1.7 there was one token for every provider: it belonged to
+        // the provider that was chosen then
+        if s.debrid_tokens.is_empty() {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                if let (Some(p), Some(t)) = (v["debrid_provider"].as_str(), v["debrid_token"].as_str()) {
+                    let token = crate::secret::open(t);
+                    if !p.is_empty() && !token.is_empty() {
+                        s.debrid_tokens.insert(p.to_string(), token);
+                    }
+                }
+            }
+        }
+        // an account is saved but none is chosen (the one in use was removed):
+        // use the first one that has a token
+        if s.debrid_provider.is_empty() {
+            if let Some(first) = s.debrid_tokens.keys().next() {
+                s.debrid_provider = first.clone();
+            }
+        }
         if s.version < 2 {
             // v2: full speed by default (32 connections, no limit on downloads)
             s.connections = 32;
