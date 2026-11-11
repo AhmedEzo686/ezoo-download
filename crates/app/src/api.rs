@@ -768,7 +768,13 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
                                             ..Default::default()
                                         });
                                     }
-                                    Err(e) => eprintln!("TorBox: {e:#}"),
+                                    Err(e) => {
+                                        // the browser/CLI asked and got "ok":
+                                        // say in the window why nothing appeared
+                                        let text = format!("TorBox: {e:#}");
+                                        eprintln!("{text}");
+                                        let _ = slint::invoke_from_event_loop(move || crate::message(&text));
+                                    }
                                 }
                             });
                             return reply(req, 200, r#"{"ok":true,"queued":true}"#);
