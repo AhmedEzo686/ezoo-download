@@ -3518,7 +3518,12 @@ pub(crate) fn refresh(ui: &Ui) {
     w.set_status_text(text.into());
     w.set_limiter_on(settings.speed_limit_on);
     let limiter_text = if settings.speed_limit_on {
-        tf("Speed limiter: on ({} KB/s)", &[&settings.speed_limit_kb])
+        let kb = settings.speed_limit_kb;
+        if kb >= 1024 {
+            tf("Speed limiter: on ({} MB/s)", &[&format!("{:.1}", kb as f64 / 1024.0)])
+        } else {
+            tf("Speed limiter: on ({} KB/s)", &[&kb])
+        }
     } else {
         t("Speed limiter: off")
     };
@@ -3553,7 +3558,7 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
     }
     // the tabs' controls are set once, so typing in them isn't overwritten
     d.set_limit_on(v.speed_limit_kb.is_some());
-    d.set_limit_kb(v.speed_limit_kb.unwrap_or(500).min(1_000_000) as i32);
+    d.set_limit_mb(((v.speed_limit_kb.unwrap_or(1024).min(1_000_000) as f64 / 1024.0).round().max(1.0)) as i32);
     d.set_when_done(completion_index(v.on_complete));
     d.set_complete_dialog(settings.show_complete_dialog);
     d.set_force_close(settings.force_shutdown);
@@ -3561,7 +3566,7 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
         let (mgr, w) = (ui.ctx.mgr.clone(), d.as_weak());
         d.on_limit_changed(move || {
             if let Some(d) = w.upgrade() {
-                let kb = d.get_limit_kb().max(1) as u64;
+                let kb = d.get_limit_mb().max(1) as u64 * 1024;
                 mgr.set_download_limit(id, d.get_limit_on().then_some(kb));
             }
         });

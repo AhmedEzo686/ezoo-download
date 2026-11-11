@@ -138,6 +138,8 @@ const AR: &[(&str, &str)] = &[
     ("{} downloading  ·  {}/s", "{} قيد التحميل  ·  {}/ث"),
     ("Ready  ·  {} files in the list", "جاهز  ·  {} ملف في القائمة"),
     ("Speed limiter: on ({} KB/s)", "محدد السرعة: يعمل ({} كيلو/ث)"),
+    ("Speed limiter: on ({} MB/s)", "محدد السرعة: يعمل ({} ميجا/ث)"),
+    ("Maximum download speed (MB/s)", "أقصى سرعة تحميل (ميجابايت/ث)"),
     ("Speed limiter: off", "محدد السرعة: متوقف"),
     // categories (shown names)
     ("Compressed", "مضغوطة"),

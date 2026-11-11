@@ -3001,7 +3001,8 @@ export component DetailsDialog inherits ThemedWindow {
     in-out property <int> tab: 0;
     // speed limiter tab
     in-out property <bool> limit-on;
-    in-out property <int> limit-kb: 500;
+    // megabytes per second (the settings keep KB/s)
+    in-out property <int> limit-mb: 1;
     // options on completion tab
     in-out property <int> when-done: 0;
     in-out property <bool> complete-dialog: true;
@@ -3233,7 +3234,7 @@ export component DetailsDialog inherits ThemedWindow {
                     spacing: 8px;
                     Text {
                         horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
-                        text: @tr("Maximum download speed (KB/s)");
+                        text: @tr("Maximum download speed (MB/s)");
                         color: root.limit-on ? Theme.text : Theme.muted;
                         vertical-alignment: center;
                     }
@@ -3241,9 +3242,8 @@ export component DetailsDialog inherits ThemedWindow {
                         width: 140px;
                         enabled: root.limit-on;
                         minimum: 1;
-                        maximum: 1000000;
-                        step-size: 50;
-                        value <=> root.limit-kb;
+                        maximum: 1000;
+                        value <=> root.limit-mb;
                         edited(v) => {
                             root.limit-changed();
                         }
@@ -3254,11 +3254,16 @@ export component DetailsDialog inherits ThemedWindow {
                 }
                 HRow {
                     spacing: 6px;
-                    for kb in [128, 256, 512, 1024, 2048, 5120]: Button {
-                        text: kb >= 1024 ? @tr("{} MB/s", kb / 1024) : @tr("{} KB/s", kb);
+                    for preset in [
+                        { text: @tr("1 MB/s"), mb: 1 },
+                        { text: @tr("2 MB/s"), mb: 2 },
+                        { text: @tr("5 MB/s"), mb: 5 },
+                        { text: @tr("10 MB/s"), mb: 10 }
+                    ]: Button {
+                        text: preset.text;
                         clicked => {
                             root.limit-on = true;
-                            root.limit-kb = kb;
+                            root.limit-mb = preset.mb;
                             root.limit-changed();
                         }
                     }

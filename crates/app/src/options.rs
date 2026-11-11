@@ -148,7 +148,7 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_sound_qdone(s.sound_queue_done.clone().into());
     // Speed limiter
     d.set_limiter_on(s.speed_limit_on);
-    d.set_speed_limit(s.speed_limit_kb.clamp(1, 1_000_000) as i32);
+    d.set_speed_limit(((s.speed_limit_kb.clamp(1, 1_000_000) as f64 / 1024.0).round().max(1.0)) as i32);
     d.set_limiter_startup(s.limiter_on_startup);
     d.set_seed_minutes(s.torrent_seed_minutes.min(10080) as i32);
     d.set_torrent_upload(s.torrent_upload_kb.min(1_000_000) as i32);
@@ -249,7 +249,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.sound_queue_done = d.get_sound_qdone().trim().to_string();
     // Speed limiter
     s.speed_limit_on = d.get_limiter_on();
-    s.speed_limit_kb = d.get_speed_limit().max(1) as u64;
+    s.speed_limit_kb = d.get_speed_limit().max(1) as u64 * 1024;
     s.limiter_on_startup = d.get_limiter_startup();
     s.torrent_seed_minutes = d.get_seed_minutes().max(0) as u32;
     s.torrent_upload_kb = d.get_torrent_upload().max(0) as u64;

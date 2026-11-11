@@ -2067,6 +2067,7 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <string> sound-qdone;
     // Speed limiter
     in-out property <bool> limiter-on;
+    // megabytes per second (the settings keep KB/s)
     in-out property <int> speed-limit;
     in-out property <bool> limiter-startup;
     // Torrents tab
@@ -3052,11 +3053,11 @@ export component SettingsDialog inherits ThemedWindow {
                     HRow {
                         spacing: 8px;
                         Label {
-                            text: @tr("Maximum download speed (KB/s)");
+                            text: @tr("Maximum download speed (MB/s)");
                         }
                         SpinBox {
                             minimum: 1;
-                            maximum: 1000000;
+                            maximum: 1000;
                             value <=> root.speed-limit;
                         }
                         Rectangle {
