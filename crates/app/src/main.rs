@@ -444,6 +444,9 @@ fn run() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
     let mgr = Manager::new(rt.handle().clone(), data_dir.clone())?;
+    // the command line (`ezoo`) and the MCP server read the list through the
+    // local API: they get it from the same manager the windows use
+    api::set_manager(mgr.clone());
     // yt-dlp and ffmpeg: put back if missing, update silently once a day
     swiftget_engine::tools::spawn_updater(rt.handle(), mgr.client(), data_dir.clone());
 
@@ -1494,6 +1497,7 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
             if repeat {
                 return;
             }
+            let quiet = req.quiet;
             let mut headers = RequestHeaders {
                 referer: req.referrer,
                 cookies: req.cookies,
@@ -1556,7 +1560,7 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
                 source_key: req.source_key,
             };
             let s = ui.ctx.mgr.settings();
-            if !s.show_start_dialog && ui.ctx.mgr.find_url(&req.url).is_none() {
+            if (quiet || !s.show_start_dialog) && ui.ctx.mgr.find_url(&req.url).is_none() {
                 // straight to the list, without the "Download File Info" window
                 let id = ui.ctx.mgr.add(NewDownload {
                     url: req.url,
@@ -1568,7 +1572,9 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
                     start: true,
                     ..Default::default()
                 });
-                show_progress_for_start(ui, id);
+                if !quiet {
+                    show_progress_for_start(ui, id);
+                }
                 refresh(ui);
                 return;
             }

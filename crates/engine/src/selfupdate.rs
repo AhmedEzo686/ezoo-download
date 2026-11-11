@@ -20,7 +20,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
-pub const REPO: &str = "AhmedEzo686/ezoo-download";
+pub const REPO: &str = "aelrased/ezoo-download";
 pub const SETUP_NAME: &str = "EzooDownload-Setup.exe";
 
 pub fn version_url() -> String {

@@ -63,6 +63,12 @@ Write-Host "Version $version"
 # ---------------------------------------------------------------- 3. build
 # a running copy would lock the files we replace
 Get-Process EzooDownload, SwiftGet -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# the program can fetch this very ffmpeg.exe again when it goes missing
+# (an antivirus deleted it...): it accepts only this SHA-256
+if (Test-Path "tools\ffmpeg\win64\ffmpeg.exe") {
+    $env:EZOO_FFMPEG_SHA256 = (Get-FileHash "tools\ffmpeg\win64\ffmpeg.exe" -Algorithm SHA256).Hash.ToLower()
+    Write-Host "ffmpeg SHA-256: $env:EZOO_FFMPEG_SHA256"
+}
 Step "Building EzooDownload.exe (first time: 5-15 minutes)"
 cargo build --release
 if ($LASTEXITCODE -ne 0) { Fail "The build failed. Scroll up to see the first red 'error' lines." }
@@ -135,6 +141,7 @@ if (-not (Test-Path "$cache\yt-dlp.exe")) {
         Assert-Sha256 "$cache\yt-dlp.exe" $ytSums.browser_download_url "yt-dlp.exe"
     } catch {
         Write-Host "Could not download yt-dlp now. Ezoo Download gets it by itself later." -ForegroundColor Yellow
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor DarkYellow
     }
 }
 if (-not (Test-Path "$cache\aria2c.exe")) {
@@ -150,6 +157,7 @@ if (-not (Test-Path "$cache\aria2c.exe")) {
         Remove-Item $tmp -Recurse -Force
     } catch {
         Write-Host "Could not download aria2 now. Ezoo Download gets it by itself later." -ForegroundColor Yellow
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor DarkYellow
     }
 }
 # Visual C++ runtime: the program already carries it (static CRT, see
@@ -186,7 +194,7 @@ if ((Test-Path $signedXpi) -and ((Get-XpiVersion $signedXpi) -eq $extVersion)) {
     Copy-Item $signedXpi $xpiOut -Force
 } else {
     try {
-        Invoke-WebRequest "https://github.com/AhmedEzo686/ezoo-download/releases/latest/download/ezoo-download-firefox.xpi" -OutFile $xpiOut
+        Invoke-WebRequest "https://github.com/aelrased/ezoo-download/releases/latest/download/ezoo-download-firefox.xpi" -OutFile $xpiOut
         if ((Get-XpiVersion $xpiOut) -ne $extVersion) { Remove-Item $xpiOut -Force }
     } catch {
         Remove-Item $xpiOut -Force -ErrorAction SilentlyContinue
@@ -209,7 +217,6 @@ if (Test-Path $xpiOut) {
         Write-Warning "Could not read the version of $xpiOut"
     }
 }
-foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "aria2c.exe", "aria2-COPYING.txt")) {
 if (-not (Test-Path $xpiOut)) {
     Write-Warning "No signed Firefox add-on $extVersion yet: this setup has none (the release signs it). Firefox users of this build add it from the folder."
 }
@@ -277,7 +284,25 @@ if ($iscc) {
         # version.json: the program reads it from the latest GitHub release
         # to update itself (version + SHA-256 of the installer)
         $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
-        $json = "{`n  ""version"": ""$version"",`n  ""url"": ""https://github.com/AhmedEzo686/ezoo-download/releases/download/v$version/EzooDownload-Setup.exe"",`n  ""sha256"": ""$hash""`n}`n"
+        # the Ed25519 signature the program checks before it installs an
+        # update: UPDATE_SIGNING_KEY (BUILD-WINDOWS.cmd reads signing-key.txt)
+        # or signing-key.txt next to this script; without it the setup is
+        # complete but installed copies refuse it as an update
+        $key = $env:UPDATE_SIGNING_KEY
+        if (-not $key) {
+            $keyFile = Join-Path $PSScriptRoot "signing-key.txt"
+            if (Test-Path $keyFile) { $key = (Get-Content $keyFile -Raw).Trim() }
+        }
+        $sig = ""
+        if ($key) {
+            $env:UPDATE_SIGNING_KEY = $key
+            $sig = (cargo run --quiet --release -p swiftget-engine --example sign_update -- $version $hash).Trim()
+            if ($LASTEXITCODE -ne 0 -or $sig.Length -ne 128) { Fail "Could not sign version.json. Is signing-key.txt the right key?" }
+            Write-Host "Signed version.json"
+        } else {
+            Write-Warning "No signing-key.txt: version.json has no signature and the self-updater refuses it."
+        }
+        $json = "{`n  ""version"": ""$version"",`n  ""url"": ""https://github.com/aelrased/ezoo-download/releases/download/v$version/EzooDownload-Setup.exe"",`n  ""sha256"": ""$hash"",`n  ""sig"": ""$sig""`n}`n"
         [IO.File]::WriteAllText((Join-Path $dist "version.json"), $json)
     } else {
         Fail "Could not create the setup. Tip: move this folder out of Desktop/OneDrive (e.g. to C:\Ezoo) and run BUILD.bat again."

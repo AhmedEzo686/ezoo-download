@@ -16,6 +16,39 @@ use tiny_http::{Header, Method, Request, Response, Server};
 /// refused Ezoo Download): the extension leaves them to the browser once.
 static FOR_BROWSER: std::sync::Mutex<Vec<(String, std::time::Instant)>> = std::sync::Mutex::new(Vec::new());
 
+/// The download list, set once at start: the command line (`ezoo`) and the
+/// MCP server read and drive it through the local API.
+static MANAGER: std::sync::OnceLock<std::sync::Arc<swiftget_engine::manager::Manager>> = std::sync::OnceLock::new();
+
+pub fn set_manager(m: std::sync::Arc<swiftget_engine::manager::Manager>) {
+    let _ = MANAGER.set(m);
+}
+
+fn manager() -> Option<std::sync::Arc<swiftget_engine::manager::Manager>> {
+    MANAGER.get().cloned()
+}
+
+fn download_json(v: &swiftget_engine::model::DownloadView) -> serde_json::Value {
+    serde_json::json!({
+        "id": v.id,
+        "name": v.file_name,
+        "url": v.url,
+        "path": v.save_path.display().to_string(),
+        "status": format!("{:?}", v.status),
+        "size": v.total_size,
+        "downloaded": v.downloaded,
+        "speed": v.speed,
+        "eta": v.eta_secs,
+        "error": v.error,
+    })
+}
+
+fn read_body_json(req: &mut Request) -> Option<serde_json::Value> {
+    let mut body = String::new();
+    req.as_reader().take(1 << 20).read_to_string(&mut body).ok()?;
+    serde_json::from_str(&body).ok()
+}
+
 /// Version of the browser add-in that ships with this program.
 pub fn bundled_extension_version() -> String {
     serde_json::from_str::<serde_json::Value>(include_str!("../../../extension/manifest.json"))
@@ -57,6 +90,9 @@ pub struct AddRequest {
     pub user_agent: Option<String>,
     #[serde(default)]
     pub file_name: Option<String>,
+    /// the command line: add it and start, without asking in a window
+    #[serde(default)]
+    pub quiet: bool,
     /// YouTube style: separate audio stream to merge with `url`
     #[serde(default)]
     pub audio_url: Option<String>,
@@ -523,6 +559,58 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
             reply(req, 200, &body)
         }
         (Method::Get, "/config") => reply(req, 200, &config()),
+        // ---- the command line and MCP (signed requests only, like the rest)
+        (Method::Get, "/v1/list") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let items: Vec<_> = mgr.snapshot().iter().map(download_json).collect();
+            reply(req, 200, &serde_json::json!({ "ok": true, "downloads": items }).to_string())
+        }
+        (Method::Get, "/v1/status") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let all = mgr.snapshot();
+            let active = all
+                .iter()
+                .filter(|v| matches!(format!("{:?}", v.status).as_str(), "Connecting" | "Downloading" | "Assembling"))
+                .count();
+            let body = serde_json::json!({
+                "ok": true,
+                "version": env!("CARGO_PKG_VERSION"),
+                "downloads": all.len(),
+                "active": active,
+            });
+            reply(req, 200, &body.to_string())
+        }
+        (Method::Post, "/v1/pause") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let Some(v) = read_body_json(&mut req) else { return reply(req, 400, r#"{"error":"bad body"}"#) };
+            if v["all"].as_bool() == Some(true) {
+                mgr.pause_all();
+            } else if let Some(id) = v["id"].as_u64() {
+                mgr.pause(id);
+            } else {
+                return reply(req, 400, r#"{"error":"id or all"}"#);
+            }
+            reply(req, 200, r#"{"ok":true}"#)
+        }
+        (Method::Post, "/v1/resume") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let Some(v) = read_body_json(&mut req) else { return reply(req, 400, r#"{"error":"bad body"}"#) };
+            if v["all"].as_bool() == Some(true) {
+                mgr.start_all();
+            } else if let Some(id) = v["id"].as_u64() {
+                mgr.start(id);
+            } else {
+                return reply(req, 400, r#"{"error":"id or all"}"#);
+            }
+            reply(req, 200, r#"{"ok":true}"#)
+        }
+        (Method::Post, "/v1/remove") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let Some(v) = read_body_json(&mut req) else { return reply(req, 400, r#"{"error":"bad body"}"#) };
+            let Some(id) = v["id"].as_u64() else { return reply(req, 400, r#"{"error":"id"}"#) };
+            mgr.remove(id, v["deleteFile"].as_bool().unwrap_or(false));
+            reply(req, 200, r#"{"ok":true}"#)
+        }
         (Method::Post, "/links") => {
             let mut body = String::new();
             if req.as_reader().take(16 << 20).read_to_string(&mut body).is_err() {
