@@ -158,6 +158,37 @@ fn cmd_remove(id: u64, delete_file: bool) -> Result<()> {
     Ok(())
 }
 
+fn cmd_debrid(args: &[String]) -> Result<()> {
+    match args.first().map(String::as_str) {
+        None | Some("status") => {
+            let r = call("GET", "/v1/debrid", None)?;
+            if r["configured"].as_bool() == Some(true) {
+                println!("{} account is set", r["provider"].as_str().unwrap_or("?"));
+            } else {
+                println!("no debrid account (providers: {})", r["providers"]);
+            }
+            Ok(())
+        }
+        Some("set") => {
+            let provider = args.get(1).context("usage: ezoo debrid set realdebrid <token>")?;
+            let token = args.get(2).context("give the token")?;
+            let r = call(
+                "POST",
+                "/v1/debrid",
+                Some(serde_json::json!({ "provider": provider, "token": token })),
+            )?;
+            println!("connected: {}", r["user"].as_str().unwrap_or("account"));
+            Ok(())
+        }
+        Some("off") => {
+            call("POST", "/v1/debrid", Some(serde_json::json!({ "provider": "", "token": "" })))?;
+            println!("debrid account removed");
+            Ok(())
+        }
+        other => bail!("unknown debrid command: {}", other.unwrap_or("")),
+    }
+}
+
 // ---------------------------------------------------------------- MCP
 
 fn mcp_tools() -> serde_json::Value {
@@ -308,6 +339,7 @@ fn usage() -> ! {
   ezoo resume <id> | --all
   ezoo remove <id> [--delete-file]
   ezoo status [--json]
+  ezoo debrid status | set realdebrid <token> | off
   ezoo mcp            (for Claude, Cursor, VS Code: MCP over stdin/stdout)"
     );
     std::process::exit(2);
@@ -324,6 +356,7 @@ fn main() -> Result<()> {
         }
         "list" => cmd_list(rest.iter().any(|a| a == "--json")),
         "status" => cmd_status(rest.iter().any(|a| a == "--json")),
+        "debrid" => cmd_debrid(rest),
         "pause" => {
             let all = rest.iter().any(|a| a == "--all");
             let id = rest.iter().find_map(|a| a.parse::<u64>().ok());

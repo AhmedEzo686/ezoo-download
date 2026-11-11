@@ -392,6 +392,13 @@ pub struct Settings {
     /// the port the add-in really talks to (chosen at random on this
     /// computer; `browser_port` only answers "are you there" and pairing)
     pub api_port: u16,
+    /// a debrid account (Real-Debrid): "" = none. The file hosts' links are
+    /// resolved through it before the download starts.
+    #[serde(default)]
+    pub debrid_provider: String,
+    /// the account's token, encrypted on the disk like the other secrets
+    #[serde(default, with = "crate::secret::string")]
+    pub debrid_token: String,
 }
 
 impl Default for Settings {
@@ -494,6 +501,8 @@ impl Default for Settings {
             support_asked_at: 0,
             api_token: String::new(),
             api_port: 0,
+            debrid_provider: String::new(),
+            debrid_token: String::new(),
         }
     }
 }

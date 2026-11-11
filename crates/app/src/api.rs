@@ -604,6 +604,47 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
             }
             reply(req, 200, r#"{"ok":true}"#)
         }
+        (Method::Get, "/v1/debrid") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let s = mgr.settings();
+            let body = serde_json::json!({
+                "ok": true,
+                "providers": swiftget_engine::debrid::PROVIDERS,
+                "provider": s.debrid_provider,
+                "configured": !s.debrid_token.is_empty(),
+            });
+            reply(req, 200, &body.to_string())
+        }
+        (Method::Post, "/v1/debrid") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let Some(v) = read_body_json(&mut req) else { return reply(req, 400, r#"{"error":"bad body"}"#) };
+            let provider = v["provider"].as_str().unwrap_or("").trim().to_string();
+            let token = v["token"].as_str().unwrap_or("").trim().to_string();
+            let mut s = mgr.settings();
+            if provider.is_empty() || token.is_empty() {
+                s.debrid_provider.clear();
+                s.debrid_token.clear();
+                let _ = mgr.set_settings(s);
+                return reply(req, 200, r#"{"ok":true,"configured":false}"#);
+            }
+            if !swiftget_engine::debrid::known(&provider) {
+                return reply(req, 400, r#"{"error":"unknown provider"}"#);
+            }
+            let rt = mgr.runtime().clone();
+            match rt.block_on(swiftget_engine::debrid::check(&mgr.client(), &provider, &token)) {
+                Ok(user) => {
+                    s.debrid_provider = provider;
+                    s.debrid_token = token;
+                    let _ = mgr.set_settings(s);
+                    let body = serde_json::json!({ "ok": true, "configured": true, "user": user });
+                    reply(req, 200, &body.to_string())
+                }
+                Err(e) => {
+                    let body = serde_json::json!({ "error": format!("{e:#}") });
+                    reply(req, 400, &body.to_string())
+                }
+            }
+        }
         (Method::Post, "/v1/remove") => {
             let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
             let Some(v) = read_body_json(&mut req) else { return reply(req, 400, r#"{"error":"bad body"}"#) };
@@ -678,10 +719,23 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
                 return reply(req, 400, r#"{"error":"bad body"}"#);
             }
             match serde_json::from_str::<AddRequest>(&body) {
-                Ok(add)
+                Ok(mut add)
                     if (is_http(&add.url) || swiftget_engine::torrent::is_magnet(&add.url))
                         && add.audio_url.as_deref().map(is_http).unwrap_or(true) =>
                 {
+                    // a debrid account: the direct link behind this host link
+                    if let Some(mgr) = manager() {
+                        let s = mgr.settings();
+                        if !s.debrid_provider.is_empty() && !s.debrid_token.is_empty() && is_http(&add.url) {
+                            let rt = mgr.runtime().clone();
+                            let client = mgr.client();
+                            if let Ok(direct) =
+                                rt.block_on(swiftget_engine::debrid::unrestrict(&client, &s.debrid_provider, &s.debrid_token, &add.url))
+                            {
+                                add.url = direct;
+                            }
+                        }
+                    }
                     on_event(ApiEvent::Add(add));
                     reply(req, 200, r#"{"ok":true}"#)
                 }
