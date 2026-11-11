@@ -3080,6 +3080,7 @@ export component SettingsDialog inherits ThemedWindow {
                 if root.tab == 11: VerticalLayout {
                     padding: 14px;
                     spacing: 10px;
+                    alignment: start;
                     Label {
                         text: @tr("Host links (Rapidgator, 1fichier, Turbobit...) through your own debrid account:");
                     }
@@ -3091,8 +3092,7 @@ export component SettingsDialog inherits ThemedWindow {
                             current-index <=> root.debrid-provider;
                         }
                         LineEdit {
-                            horizontal-stretch: 1;
-                            min-width: 240px;
+                            width: 380px;
                             text <=> root.debrid-token;
                             input-type: InputType.password;
                             placeholder-text: @tr("API token");

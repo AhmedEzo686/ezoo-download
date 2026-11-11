@@ -26,6 +26,9 @@ pub(crate) fn open(ui: &Ui, tab: i32) {
         l.servers = s.server_limits.clone();
         l.logins = s.logins.clone();
     }
+    // made now: the theme of this window is set here (it did not exist when
+    // the theme was last applied, so it stayed light in a dark program)
+    crate::set_theme_of(d.global::<crate::Theme>(), &crate::Look::of(&s));
     fill(ui, &d, &s);
     d.set_tab(tab);
     d.set_message(SharedString::new());
