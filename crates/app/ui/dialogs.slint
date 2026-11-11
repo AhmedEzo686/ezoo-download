@@ -2053,6 +2053,7 @@ export component SettingsDialog inherits ThemedWindow {
     callback debrid-connect();
     callback debrid-remove();
     callback debrid-provider-changed();
+    callback debrid-paste();
     in-out property <int> proxy-port;
     in-out property <string> proxy-user;
     in-out property <string> proxy-password;
@@ -3096,6 +3097,12 @@ export component SettingsDialog inherits ThemedWindow {
                             text <=> root.debrid-token;
                             input-type: InputType.password;
                             placeholder-text: @tr("API token");
+                        }
+                        Button {
+                            text: @tr("Paste");
+                            clicked => {
+                                root.debrid-paste();
+                            }
                         }
                     }
                     HRow {

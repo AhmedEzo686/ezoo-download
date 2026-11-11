@@ -575,6 +575,22 @@ pub(crate) fn wire(ui: &Ui) {
     }
     {
         let ui = ui.clone();
+        d.on_debrid_paste(move || {
+            let Some(d) = ui.settings_dlg.upgrade() else { return };
+            // the same clipboard the monitor already reads with (works under
+            // X11 and Wayland, whatever the keyboard shortcut does)
+            let text = arboard::Clipboard::new().and_then(|mut c| c.get_text()).unwrap_or_default();
+            let text = text.trim().to_string();
+            if text.is_empty() {
+                d.set_debrid_state(t("The clipboard is empty").into());
+            } else {
+                d.set_debrid_token(text.into());
+                d.set_debrid_state(t("Pasted: press Connect").into());
+            }
+        });
+    }
+    {
+        let ui = ui.clone();
         d.on_debrid_remove(move || {
             let Some(d) = ui.settings_dlg.upgrade() else { return };
             let provider = match d.get_debrid_provider() {
