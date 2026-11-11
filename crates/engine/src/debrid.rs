@@ -1,12 +1,16 @@
 //! Debrid accounts: a file host link is resolved through the user's own
-//! account (Real-Debrid today), so the download comes from the debrid
-//! server at full speed, without the host's free-user limits.
+//! account, so the download comes from the debrid server at full speed,
+//! without the host's free-user limits.
+//!
+//! Real-Debrid and AllDebrid share the same shape: ask who the token is,
+//! then unlock the link. TorBox is a different model (the file is fetched by
+//! their servers first), so it is not here yet.
 
 use anyhow::{bail, Context, Result};
 use std::time::Duration;
 
 /// The providers this program knows: the settings store one of these names.
-pub const PROVIDERS: &[&str] = &["realdebrid"];
+pub const PROVIDERS: &[&str] = &["realdebrid", "alldebrid"];
 
 pub fn known(provider: &str) -> bool {
     PROVIDERS.contains(&provider)
@@ -29,6 +33,23 @@ pub async fn check(client: &reqwest::Client, provider: &str, token: &str) -> Res
             let text = r.text().await.unwrap_or_default();
             let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
             Ok(v["username"].as_str().unwrap_or("account").to_string())
+        }
+        "alldebrid" => {
+            let r = client
+                .get("https://api.alldebrid.com/v4.1/user?agent=ezoo")
+                .header("Authorization", format!("Bearer {token}"))
+                .timeout(Duration::from_secs(15))
+                .send()
+                .await
+                .context("AllDebrid did not answer")?;
+            let status = r.status();
+            let text = r.text().await.unwrap_or_default();
+            let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+            if !status.is_success() || v["status"].as_str() == Some("error") {
+                let why = v["error"]["message"].as_str().unwrap_or("token refused");
+                bail!("AllDebrid refused the token: {why}");
+            }
+            Ok(v["data"]["user"]["username"].as_str().unwrap_or("account").to_string())
         }
         other => bail!("unknown provider: {other}"),
     }
@@ -58,6 +79,28 @@ pub async fn unrestrict(client: &reqwest::Client, provider: &str, token: &str, u
                 .filter(|d| d.starts_with("http"))
                 .map(str::to_string)
                 .context("Real-Debrid returned no download link")
+        }
+        "alldebrid" => {
+            let r = client
+                .post("https://api.alldebrid.com/v4.1/link/unlock?agent=ezoo")
+                .header("Authorization", format!("Bearer {token}"))
+                .form(&[("link", url)])
+                .timeout(Duration::from_secs(20))
+                .send()
+                .await
+                .context("AllDebrid did not answer")?;
+            let status = r.status();
+            let text = r.text().await.unwrap_or_default();
+            let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+            if !status.is_success() || v["status"].as_str() == Some("error") {
+                let why = v["error"]["message"].as_str().unwrap_or("refused");
+                bail!("AllDebrid refused the link: {why}");
+            }
+            v["data"]["link"]
+                .as_str()
+                .filter(|d| d.starts_with("http"))
+                .map(str::to_string)
+                .context("AllDebrid returned no download link")
         }
         other => bail!("unknown provider: {other}"),
     }
