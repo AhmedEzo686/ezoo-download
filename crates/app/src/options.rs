@@ -67,6 +67,22 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_port(s.browser_port as i32);
     d.set_skip_key(key_index(&s.skip_key));
     d.set_force_key(key_index(&s.force_key));
+    // Debrid account
+    d.set_debrid_provider(if s.debrid_provider == "alldebrid" { 1 } else { 0 });
+    d.set_debrid_token(s.debrid_token.clone().into());
+    let provider_name: String = match s.debrid_provider.as_str() {
+        "alldebrid" => t("AllDebrid").to_string(),
+        "realdebrid" => t("Real-Debrid").to_string(),
+        _ => String::new(),
+    };
+    d.set_debrid_state(
+        if s.debrid_token.is_empty() {
+            t("No debrid account")
+        } else {
+            tf("Connected: {}", &[&provider_name])
+        }
+        .into(),
+    );
     // File types
     d.set_capture_exts(s.capture_exts.clone().into());
     d.set_skip_sites(s.skip_sites.clone().into());
@@ -479,6 +495,50 @@ pub(crate) fn wire(ui: &Ui) {
                 }
                 Err(msg) => d.set_message(msg.into()),
             }
+        });
+    }
+    {
+        let ui = ui.clone();
+        d.on_debrid_connect(move || {
+            let Some(d) = ui.settings_dlg.upgrade() else { return };
+            let provider = if d.get_debrid_provider() == 1 { "alldebrid" } else { "realdebrid" };
+            let token = d.get_debrid_token().trim().to_string();
+            if token.is_empty() {
+                d.set_debrid_state(t("Give the API token first").into());
+                return;
+            }
+            d.set_debrid_state(t("Checking…").into());
+            let w = d.as_weak();
+            let mgr = ui.ctx.mgr.clone();
+            let provider_saved = provider.to_string();
+            ui.ctx.rt.spawn(async move {
+                let result = swiftget_engine::debrid::check(&mgr.client(), provider, &token).await;
+                if result.is_ok() {
+                    let mut s = mgr.settings();
+                    s.debrid_provider = provider_saved;
+                    s.debrid_token = token;
+                    let _ = mgr.set_settings(s);
+                }
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(d) = w.upgrade() else { return };
+                    match result {
+                        Ok(user) => d.set_debrid_state(tf("Connected: {}", &[&user]).into()),
+                        Err(e) => d.set_debrid_state(tf("Could not connect: {}", &[&format!("{e:#}")]).into()),
+                    }
+                });
+            });
+        });
+    }
+    {
+        let ui = ui.clone();
+        d.on_debrid_remove(move || {
+            let Some(d) = ui.settings_dlg.upgrade() else { return };
+            let mut s = ui.ctx.mgr.settings();
+            s.debrid_provider.clear();
+            s.debrid_token.clear();
+            let _ = ui.ctx.mgr.set_settings(s);
+            d.set_debrid_token(Default::default());
+            d.set_debrid_state(t("No debrid account").into());
         });
     }
     {

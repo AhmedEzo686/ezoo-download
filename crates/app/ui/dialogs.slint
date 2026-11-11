@@ -2043,6 +2043,12 @@ export component SettingsDialog inherits ThemedWindow {
     // Proxy
     in-out property <int> proxy-mode;
     in-out property <string> proxy-host;
+    // Debrid account: host links are resolved through it before downloading
+    in-out property <int> debrid-provider;
+    in-out property <string> debrid-token;
+    in-out property <string> debrid-state;
+    callback debrid-connect();
+    callback debrid-remove();
     in-out property <int> proxy-port;
     in-out property <string> proxy-user;
     in-out property <string> proxy-password;
@@ -2766,6 +2772,47 @@ export component SettingsDialog inherits ThemedWindow {
                     }
                     Hint {
                         text: root.quota-used;
+                    }
+
+                    // ---- debrid account
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.line;
+                    }
+                    Label {
+                        text: @tr("Debrid account (host links through your own account):");
+                    }
+                    HRow {
+                        spacing: 8px;
+                        ComboBox {
+                            width: 170px;
+                            model: [@tr("Real-Debrid"), @tr("AllDebrid")];
+                            current-index <=> root.debrid-provider;
+                        }
+                        LineEdit {
+                            horizontal-stretch: 1;
+                            text <=> root.debrid-token;
+                            input-type: InputType.password;
+                            placeholder-text: @tr("API token");
+                        }
+                        Button {
+                            text: @tr("Connect");
+                            clicked => {
+                                root.debrid-connect();
+                            }
+                        }
+                        Button {
+                            text: @tr("Remove");
+                            clicked => {
+                                root.debrid-remove();
+                            }
+                        }
+                    }
+                    Text {
+                        text: root.debrid-state;
+                        color: Theme.muted;
+                        font-size: 12px * Theme.font-scale;
+                        wrap: word-wrap;
                     }
                 }
 
