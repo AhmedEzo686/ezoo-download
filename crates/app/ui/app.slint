@@ -1768,8 +1768,8 @@ export component MainWindow inherits ThemedWindow {
                             clip: true;
                             // scrolls sideways together with the list (wide columns)
                             hdr := HRow {
-                                x: lv.viewport-x;
-                                width: max(parent.width, lv.viewport-width);
+                                x: lv.content-x;
+                                width: max(parent.width, lv.content-width);
                                 padding-left: Theme.rtl ? (0px) : (6px);
                                 padding-right: Theme.rtl ? (6px) : (0px);
                                 HeaderCell {
@@ -1814,12 +1814,12 @@ export component MainWindow inherits ThemedWindow {
                             vertical-stretch: 1;
                             // Arabic: wide columns start at the right edge, so
                             // the list first shows its right side
-                            property <length> rtl-start: Theme.rtl ? min(0px, self.visible-width - self.viewport-width) : 0px;
+                            property <length> rtl-start: Theme.rtl ? min(0px, self.visible-width - self.content-width) : 0px;
                             changed rtl-start => {
-                                self.viewport-x = self.rtl-start;
+                                self.content-x = self.rtl-start;
                             }
                             init => {
-                                self.viewport-x = self.rtl-start;
+                                self.content-x = self.rtl-start;
                             }
                             for r in root.rows: DownloadItem {
                                 // every row as wide as its columns: the mouse and
