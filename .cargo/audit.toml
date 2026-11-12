@@ -1,0 +1,9 @@
+# cargo audit (the release build stops on a published vulnerability)
+[advisories]
+ignore = [
+    # ringbuf 0.4: a double free only when an element's Drop panics. It comes
+    # with librqbit's uTP, which keeps plain bytes (u8, no Drop) in it, and
+    # the program runs its torrents over TCP only (bt.rs, ListenerMode::TcpOnly).
+    # Drop this line when librqbit moves to ringbuf 0.5.2 or later.
+    "RUSTSEC-2026-0293",
+]
