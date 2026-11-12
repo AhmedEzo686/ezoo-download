@@ -1,5 +1,6 @@
 //! HTTP client, request building and probing a URL.
 
+use crate::sync::{LockOk, RwOk};
 use crate::filename;
 use crate::limiter::SpeedLimiter;
 use crate::model::{DownloadKind, ProbeResult, RequestHeaders};
@@ -220,10 +221,10 @@ impl Shared {
     }
     /// The HTTP client (cheap to clone: it is shared inside).
     pub fn client(&self) -> Client {
-        self.client.read().unwrap().clone()
+        self.client.read_ok().clone()
     }
     pub fn set_client(&self, c: Client) {
-        *self.client.write().unwrap() = c;
+        *self.client.write_ok() = c;
     }
 }
 
@@ -263,10 +264,10 @@ pub fn build_client() -> anyhow::Result<Client> {
 pub fn build_client_with(proxy: &ProxyConfig) -> anyhow::Result<Client> {
     // the IPv4 copy (see `client_for`) follows the same proxy
     {
-        let mut last = LAST_PROXY.lock().unwrap();
+        let mut last = LAST_PROXY.lock_ok();
         if *last != *proxy {
             *last = proxy.clone();
-            *V4_CLIENT.lock().unwrap() = None;
+            *V4_CLIENT.lock_ok() = None;
         }
     }
     build_client_family(proxy, false)
@@ -288,9 +289,9 @@ fn host_of(url: &str) -> Option<String> {
 }
 
 fn v4_client() -> Option<Client> {
-    let mut c = V4_CLIENT.lock().unwrap();
+    let mut c = V4_CLIENT.lock_ok();
     if c.is_none() {
-        let proxy = LAST_PROXY.lock().unwrap().clone();
+        let proxy = LAST_PROXY.lock_ok().clone();
         // through a proxy of one's own: the proxy decides
         if proxy.mode == 2 && !proxy.host.is_empty() {
             return None;
@@ -302,7 +303,7 @@ fn v4_client() -> Option<Client> {
 
 /// The client to ask `url` with: IPv4 only for servers that need it.
 pub fn client_for(client: &Client, url: &str) -> Client {
-    let v4 = host_of(url).is_some_and(|h| V4_HOSTS.lock().unwrap().contains(&h));
+    let v4 = host_of(url).is_some_and(|h| V4_HOSTS.lock_ok().contains(&h));
     if v4 {
         if let Some(c) = v4_client() {
             return c;
@@ -321,7 +322,7 @@ const PROXY_VARS: [&str; 6] = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_p
 /// The surroundings a helper program is started with so that it uses the
 /// proxy of Options: (name, value), None = taken away.
 pub fn proxy_env() -> Vec<(&'static str, Option<String>)> {
-    let p = TOOL_PROXY.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let p = TOOL_PROXY.lock_ok().clone();
     env_for(&p)
 }
 
@@ -352,7 +353,7 @@ fn env_for(p: &ProxyConfig) -> Vec<(&'static str, Option<String>)> {
 
 /// The proxy of Options, as the last client was made with it.
 pub fn current_proxy() -> ProxyConfig {
-    TOOL_PROXY.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    TOOL_PROXY.lock_ok().clone()
 }
 
 /// `cmd` started with the proxy of Options.
@@ -367,7 +368,7 @@ pub fn with_proxy(cmd: &mut std::process::Command) {
 
 fn build_client_family(proxy: &ProxyConfig, ipv4_only: bool) -> anyhow::Result<Client> {
     if !ipv4_only {
-        *TOOL_PROXY.lock().unwrap_or_else(|e| e.into_inner()) = proxy.clone();
+        *TOOL_PROXY.lock_ok() = proxy.clone();
     }
     let mut b = Client::builder()
         // Real separate TCP connections. With HTTP/2 all our
@@ -614,9 +615,9 @@ async fn probe_patient(
         let answer = match probe_once(client, url, headers, default_ua).await {
             // refused: over IPv4 (a link for the IP the page saw)
             Err(e) if matches!(http_status_of(&e), Some(403)) && !wants_captcha(&e) => match (host_of(url), v4_client()) {
-                (Some(host), Some(v4)) if !V4_HOSTS.lock().unwrap().contains(&host) => match probe_once(&v4, url, headers, default_ua).await {
+                (Some(host), Some(v4)) if !V4_HOSTS.lock_ok().contains(&host) => match probe_once(&v4, url, headers, default_ua).await {
                     Ok(p) => {
-                        V4_HOSTS.lock().unwrap().insert(host);
+                        V4_HOSTS.lock_ok().insert(host);
                         Ok(p)
                     }
                     Err(_) => Err(e),
@@ -655,7 +656,7 @@ struct Kept {
 static KEPT: std::sync::LazyLock<Mutex<Vec<Kept>>> = std::sync::LazyLock::new(Default::default);
 
 fn kept_list() -> std::sync::MutexGuard<'static, Vec<Kept>> {
-    let mut k = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+    let mut k = KEPT.lock_ok();
     k.retain(|x| x.at.elapsed() < KEEP_FOR);
     k
 }
@@ -1066,7 +1067,7 @@ mod refused_tests {
         let p = probe_patient(&client, &url, &RequestHeaders::default(), "UA", &[]).await.unwrap();
         assert_eq!(p.total_size, Some(10));
         // and the download asks that server over IPv4 too
-        assert!(V4_HOSTS.lock().unwrap().contains("localhost") || p.total_size == Some(10));
+        assert!(V4_HOSTS.lock_ok().contains("localhost") || p.total_size == Some(10));
     }
 
     /// A site that refuses a fresh link for a moment (403), then gives it.

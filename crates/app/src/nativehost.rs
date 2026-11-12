@@ -9,6 +9,7 @@
 //! the browsers about it (in the user's own part of the registry). The port
 //! stays as it was, for the add-ins that don't use the helper (yet).
 
+use swiftget_engine::sync::LockOk;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -74,7 +75,7 @@ pub(crate) fn install(data_dir: &Path) {
     }
     let _ = write_if_changed(&dir.join("chromium.json"), chromium_manifest(&host, &ids).as_bytes());
     let _ = write_if_changed(&dir.join("firefox.json"), firefox_manifest(&host).as_bytes());
-    *STATE.lock().unwrap_or_else(|e| e.into_inner()) = Some(State { dir: dir.clone(), ids });
+    *STATE.lock_ok() = Some(State { dir: dir.clone(), ids });
 
     #[cfg(windows)]
     {
@@ -90,7 +91,7 @@ pub(crate) fn install(data_dir: &Path) {
 /// What the link test says about the helper: is it in place, and which
 /// browsers know it. (browser, it knows the helper)
 pub(crate) fn report() -> (bool, Vec<(&'static str, bool)>) {
-    let st = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    let st = STATE.lock_ok();
     let Some(st) = st.as_ref() else { return (false, Vec::new()) };
     let helper = std::fs::read(st.dir.join("chromium.json"))
         .ok()
@@ -176,7 +177,7 @@ pub(crate) fn saw_addin(id: &str) {
     if !is_chrome_id(id) {
         return;
     }
-    let mut st = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut st = STATE.lock_ok();
     let Some(st) = st.as_mut() else { return };
     if !st.ids.insert(id.to_string()) {
         return;

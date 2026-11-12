@@ -29,6 +29,7 @@ pub mod secret;
 pub mod segments;
 pub mod selfupdate;
 pub mod store;
+pub mod sync;
 pub mod system;
 pub mod tools;
 pub mod torrent;

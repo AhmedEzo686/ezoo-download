@@ -11,6 +11,7 @@
 //!
 //! Sound alone is always cut on the very second.
 
+use crate::sync::LockOk;
 use anyhow::{anyhow, bail, Context};
 use std::path::Path;
 use std::process::Stdio;
@@ -169,15 +170,15 @@ async fn run_ffmpeg(ffmpeg: &Path, args: Vec<String>, output: &Path, done: &(dyn
                 None => break,
             },
             _ = cancel.cancelled() => {
-                let _ = child.lock().unwrap().kill();
-                let _ = child.lock().unwrap().wait();
+                let _ = child.lock_ok().kill();
+                let _ = child.lock_ok().wait();
                 return Err(crate::http_download::Cancelled.into());
             }
         }
     }
     let _ = reader.join();
     let c2 = child.clone();
-    let status = tokio::task::spawn_blocking(move || c2.lock().unwrap().wait()).await??;
+    let status = tokio::task::spawn_blocking(move || c2.lock_ok().wait()).await??;
     let said = errors.join().unwrap_or_default();
     let made = std::fs::metadata(output).map(|m| m.len() > 0).unwrap_or(false);
     if !status.success() || !made {

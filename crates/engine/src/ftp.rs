@@ -6,6 +6,7 @@
 //! ("AUTH TLS"). ftps:// is TLS from the first byte (port 990), or "AUTH TLS"
 //! when the address names port 21.
 
+use crate::sync::LockOk;
 use crate::http::{reconnect_delay, ConnGuard, NetDrop, Progress, Shared};
 use crate::segments::{self, Segment};
 use anyhow::{anyhow, bail, Context};
@@ -367,7 +368,7 @@ pub async fn run(
     let segmented = job.rest && job.total_size.is_some();
     let file = OpenOptions::new().create(true).read(true).write(true).truncate(false).open(&job.part_path)?;
     {
-        let mut table = segs.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = segs.lock_ok();
         if segmented {
             let total = job.total_size.unwrap_or(0);
             if table.is_empty() {
@@ -425,10 +426,10 @@ pub async fn run(
                 }
             }
             _ = to_disk.tick() => {
-                let seen: Vec<u64> = segs.lock().unwrap_or_else(|e| e.into_inner()).iter().map(|s| s.pos).collect();
+                let seen: Vec<u64> = segs.lock_ok().iter().map(|s| s.pos).collect();
                 let f = file.clone();
                 if tokio::task::spawn_blocking(move || f.sync_data().is_ok()).await.unwrap_or(false) {
-                    for (s, pos) in segs.lock().unwrap_or_else(|e| e.into_inner()).iter_mut().zip(seen) {
+                    for (s, pos) in segs.lock_ok().iter_mut().zip(seen) {
                         s.on_disk = Some(pos.min(s.pos));
                     }
                 }
@@ -436,7 +437,7 @@ pub async fn run(
         }
     }
     if file.sync_all().is_ok() {
-        for s in segs.lock().unwrap_or_else(|e| e.into_inner()).iter_mut() {
+        for s in segs.lock_ok().iter_mut() {
             s.on_disk = None;
         }
     }
@@ -446,7 +447,7 @@ pub async fn run(
     if let Some(e) = first_error {
         return Err(e);
     }
-    let table = segs.lock().unwrap_or_else(|e| e.into_inner());
+    let table = segs.lock_ok();
     if segmented && !segments::all_finished(&table) {
         bail!("download ended before all parts were received");
     }
@@ -478,7 +479,7 @@ struct Worker {
 
 impl Worker {
     fn table(&self) -> std::sync::MutexGuard<'_, Vec<Segment>> {
-        self.segs.lock().unwrap_or_else(|e| e.into_inner())
+        self.segs.lock_ok()
     }
 
     async fn work(self) -> anyhow::Result<()> {

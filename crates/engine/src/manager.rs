@@ -1,6 +1,7 @@
 //! The download manager: owns every download, runs the queue, the scheduler,
 //! speed measurement and persistence. The UI only talks to this type.
 
+use crate::sync::{LockOk, RwOk};
 use crate::http::SendOrdered;
 use crate::config::{parse_hhmm, AfterDone, QueueDef, Settings, MAIN_QUEUE};
 use crate::{clip, clipserve};
@@ -267,15 +268,15 @@ impl Manager {
     // ---------------------------------------------------------------- settings
 
     pub fn settings(&self) -> Settings {
-        self.settings.read().unwrap().clone()
+        self.settings.read_ok().clone()
     }
 
     pub fn set_settings(self: &Arc<Self>, s: Settings) -> anyhow::Result<()> {
-        let before = self.settings.read().unwrap().connections();
+        let before = self.settings.read_ok().connections();
         if s.connections() != before {
             // Options > connections: every download that is not finished takes
             // the new number, a running one at once (no restart)
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             for e in inner.entries.values_mut() {
                 if e.rec.status == Status::Completed || e.rec.kind == DownloadKind::Torrent {
                     continue;
@@ -293,13 +294,13 @@ impl Manager {
         self.shared.limiter.set_rate(limit);
         ytdlp::set_mp3_kbps(s.mp3_kbps);
         let proxy = ProxyConfig::from_settings(&s);
-        if *self.proxy.lock().unwrap() != proxy {
+        if *self.proxy.lock_ok() != proxy {
             self.shared.set_client(build_client_with(&proxy)?);
-            *self.proxy.lock().unwrap() = proxy;
+            *self.proxy.lock_ok() = proxy;
         }
         s.save(&self.data_dir.join("settings.json"))?;
         s.create_folders();
-        *self.settings.write().unwrap() = s;
+        *self.settings.write_ok() = s;
         self.pump();
         Ok(())
     }
@@ -313,7 +314,7 @@ impl Manager {
     /// Look at a URL without downloading it (for the "add" dialog).
     pub async fn probe(&self, url: &str, headers: &RequestHeaders) -> anyhow::Result<ProbeResult> {
         let (ua, headers) = {
-            let s = self.settings.read().unwrap();
+            let s = self.settings.read_ok();
             (s.user_agent.clone(), with_login(&s, url, headers))
         };
         if crate::ftp::is_ftp(url) {
@@ -431,7 +432,7 @@ impl Manager {
             Some(c) => DownloadRecord::clip_name(&wanted, c),
             None => wanted,
         };
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         // a torrent keeps its own name: that is the folder / file it makes
         let file_name = if is_torrent { wanted.clone() } else { free_name(&inner, &dir, &wanted) };
         let id = inner.next_id;
@@ -535,7 +536,7 @@ impl Manager {
     /// Resume / start one download (it waits in the queue if too many run).
     pub fn start(self: &Arc<Self>, id: DownloadId) {
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             if let Some(e) = inner.entries.get_mut(&id) {
                 if matches!(e.rec.status, Status::Paused | Status::Failed) {
                     e.rec.status = Status::Queued;
@@ -548,7 +549,7 @@ impl Manager {
     }
 
     pub fn pause(&self, id: DownloadId) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         if let Some(e) = inner.entries.get_mut(&id) {
             if e.rec.status.is_running() || e.rec.status == Status::Queued {
                 e.rec.status = Status::Paused;
@@ -562,7 +563,7 @@ impl Manager {
 
     pub fn start_all(self: &Arc<Self>) {
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             for e in inner.entries.values_mut() {
                 if matches!(e.rec.status, Status::Paused | Status::Failed) {
                     e.rec.status = Status::Queued;
@@ -575,7 +576,7 @@ impl Manager {
     }
 
     pub fn pause_all(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         for e in inner.entries.values_mut() {
             if e.rec.status.is_running() || e.rec.status == Status::Queued {
                 e.rec.status = Status::Paused;
@@ -591,7 +592,7 @@ impl Manager {
     /// file only when `delete_file` is true.
     pub fn remove(self: &Arc<Self>, id: DownloadId, delete_file: bool) {
         let entry = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             inner.dirty = true;
             inner.entries.remove(&id)
         };
@@ -628,7 +629,7 @@ impl Manager {
     /// unfinished parts are cleaned up): one lock, one background clean-up.
     pub fn remove_many(self: &Arc<Self>, ids: &[DownloadId]) {
         let gone: Vec<Entry> = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             inner.dirty = true;
             ids.iter().filter_map(|id| inner.entries.remove(id)).collect()
         };
@@ -672,7 +673,7 @@ impl Manager {
     /// never started. Used when "Download File Info" is cancelled.
     pub fn discard(self: &Arc<Self>, id: DownloadId) {
         let entry = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             inner.dirty = true;
             inner.entries.remove(&id)
         };
@@ -707,7 +708,7 @@ impl Manager {
         // the list is not held while the file moves: a copy to another disk
         // can take minutes and everything else must go on meanwhile
         let from = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.lock_ok();
             let e = inner.entries.get(&id).ok_or_else(|| anyhow!("download not found"))?;
             if e.rec.status != Status::Completed {
                 anyhow::bail!("only finished downloads can be moved");
@@ -753,13 +754,13 @@ impl Manager {
             }
             let _ = std::fs::remove_file(&from);
         }
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         if let Some(e) = inner.entries.get_mut(&id) {
             e.rec.save_dir = new_path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
             if let Some(n) = new_path.file_name() {
                 e.rec.file_name = n.to_string_lossy().into_owned();
             }
-            e.rec.category = self.settings.read().unwrap().category_of(&e.rec.file_name, &e.rec.url);
+            e.rec.category = self.settings.read_ok().category_of(&e.rec.file_name, &e.rec.url);
         }
         inner.dirty = true;
         Ok(())
@@ -770,7 +771,7 @@ impl Manager {
     pub fn recategorize(&self) {
         let s = self.settings();
         let names = s.category_names();
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         for e in inner.entries.values_mut() {
             let wanted = s.category_of(&e.rec.file_name, &e.rec.url);
             if !names.contains(&e.rec.category) || wanted != "General" {
@@ -783,7 +784,7 @@ impl Manager {
     /// "Refresh download address": continue an unfinished download from a
     /// new link (the old one expired).
     pub fn set_url(self: &Arc<Self>, id: DownloadId, url: &str, headers: Option<RequestHeaders>) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         if let Some(e) = inner.entries.get_mut(&id) {
             if let Some(t) = &e.task {
                 t.cancel();
@@ -807,7 +808,7 @@ impl Manager {
 
     /// Changes from the File Properties window.
     pub fn update_details(&self, id: DownloadId, d: DetailsEdit) -> anyhow::Result<()> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         let e = inner.entries.get_mut(&id).ok_or_else(|| anyhow!("download not found"))?;
         if let Some(u) = d.url.filter(|u| !u.trim().is_empty() && *u != e.rec.url) {
             if e.rec.status == Status::Completed {
@@ -829,7 +830,7 @@ impl Manager {
     /// Unfinished download: save to another folder / name (nothing written yet,
     /// or the temporary file moves along).
     pub fn change_target(&self, id: DownloadId, dir: &Path, name: &str) -> anyhow::Result<()> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         let e = inner.entries.get_mut(&id).ok_or_else(|| anyhow!("download not found"))?;
         if e.task.is_some() {
             anyhow::bail!("stop the download first");
@@ -858,7 +859,7 @@ impl Manager {
     /// note and login. Works while it downloads.
     /// What a running torrent's window shows.
     pub fn torrent_live(&self, id: DownloadId) -> Option<TorrentLive> {
-        self.torrent_live.lock().unwrap().get(&id).cloned()
+        self.torrent_live.lock_ok().get(&id).cloned()
     }
 
     /// The torrent's files to get ("1,3"; None: all), while it runs too.
@@ -882,7 +883,7 @@ impl Manager {
 
     /// "First and last pieces first" of this torrent.
     pub fn torrent_first_last(&self, id: DownloadId) -> bool {
-        self.inner.lock().unwrap().entries.get(&id).map(|e| e.rec.torrent_first_last).unwrap_or(false)
+        self.inner.lock_ok().entries.get(&id).map(|e| e.rec.torrent_first_last).unwrap_or(false)
     }
 
     /// The first and last pieces of each file first (a video plays sooner).
@@ -900,7 +901,7 @@ impl Manager {
     /// The torrent's magnet link (to give to someone).
     pub fn magnet_link(&self, id: DownloadId) -> Option<String> {
         let url = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.lock_ok();
             inner.entries.get(&id).filter(|e| e.rec.kind == DownloadKind::Torrent).map(|e| e.rec.url.clone())?
         };
         if torrent::is_magnet(&url) {
@@ -930,7 +931,7 @@ impl Manager {
         let mut first_dir = None;
         let mut first_stem = String::new();
         let (done, running) = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             let e = inner.entries.get_mut(&id).ok_or_else(|| anyhow!("download not found"))?;
             e.rec.description = description.filter(|d| !d.trim().is_empty());
             if auth.is_some() || e.rec.headers.auth.is_some() {
@@ -953,7 +954,7 @@ impl Manager {
                     first_stem = e.rec.temp_stem();
                     e.rec.save_dir = dir.to_path_buf();
                     e.rec.file_name = name;
-                    e.rec.category = self.settings.read().unwrap().category_of(&e.rec.file_name, &e.rec.url);
+                    e.rec.category = self.settings.read_ok().category_of(&e.rec.file_name, &e.rec.url);
                     if e.rec.work_stem.is_some() && !own_temp {
                         e.rec.temp_dir = Some(dir.to_path_buf());
                     }
@@ -980,11 +981,11 @@ impl Manager {
         }
         // the files are closed first: it stops for a moment
         if running {
-            if let Some(t) = self.inner.lock().unwrap().entries.get(&id).and_then(|e| e.task.clone()) {
+            if let Some(t) = self.inner.lock_ok().entries.get(&id).and_then(|e| e.task.clone()) {
                 t.cancel();
             }
             for _ in 0..250 {
-                if self.inner.lock().unwrap().entries.get(&id).map(|e| e.task.is_none()).unwrap_or(true) {
+                if self.inner.lock_ok().entries.get(&id).map(|e| e.task.is_none()).unwrap_or(true) {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(20));
@@ -1028,7 +1029,7 @@ impl Manager {
 
     /// Files of a queue in their download order.
     pub fn queue_files(&self, queue: u64) -> Vec<DownloadView> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock_ok();
         let mut v: Vec<DownloadView> =
             inner.entries.values().filter(|e| e.rec.queue == Some(queue)).map(make_view).collect();
         v.sort_by_key(|x| (x.queue_pos, x.id));
@@ -1037,7 +1038,7 @@ impl Manager {
 
     /// Move a file up (-1) or down (+1) inside its queue.
     pub fn move_in_queue(&self, id: DownloadId, delta: i32) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         let Some(q) = inner.entries.get(&id).and_then(|e| e.rec.queue) else { return };
         let mut order: Vec<(u64, DownloadId)> = inner
             .entries
@@ -1063,17 +1064,17 @@ impl Manager {
 
     /// Sounds, messages: what happened since the last call.
     pub fn take_events(&self) -> Vec<Event> {
-        std::mem::take(&mut self.inner.lock().unwrap().events)
+        std::mem::take(&mut self.inner.lock_ok().events)
     }
 
     /// Shut down / sleep / hibernate asked for (the app shows a countdown first).
     pub fn take_power_request(&self) -> Option<AfterDone> {
-        self.inner.lock().unwrap().power_request.take()
+        self.inner.lock_ok().power_request.take()
     }
 
     /// Speed limit for one download (None = no limit). Takes effect at once.
     pub fn set_download_limit(&self, id: DownloadId, kb: Option<u64>) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         if let Some(e) = inner.entries.get_mut(&id) {
             e.rec.speed_limit_kb = kb.filter(|k| *k > 0);
             e.limiter.set_rate(e.rec.speed_limit_kb.unwrap_or(0) * 1024);
@@ -1083,7 +1084,7 @@ impl Manager {
 
     /// What to do when this download finishes (shut down, sleep...).
     pub fn set_on_complete(&self, id: DownloadId, action: AfterDone) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         if let Some(e) = inner.entries.get_mut(&id) {
             e.rec.on_complete = action;
         }
@@ -1092,18 +1093,18 @@ impl Manager {
 
     /// What to do once every running and waiting download has finished.
     pub fn set_when_all_done(&self, action: AfterDone) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         inner.when_all_done = action;
         inner.all_done_seen_active = false;
     }
 
     pub fn when_all_done(&self) -> AfterDone {
-        self.inner.lock().unwrap().when_all_done
+        self.inner.lock_ok().when_all_done
     }
 
     /// Every address in the list (for "Export").
     pub fn all_urls(&self) -> Vec<String> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock_ok();
         inner
             .entries
             .values()
@@ -1113,7 +1114,7 @@ impl Manager {
 
     /// Is this address already in the list? Returns its id.
     pub fn find_url(&self, url: &str) -> Option<DownloadId> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock_ok();
         inner
             .entries
             .values()
@@ -1122,7 +1123,7 @@ impl Manager {
     }
 
     pub fn remove_completed(&self) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         inner.entries.retain(|_, e| e.rec.status != Status::Completed);
         inner.dirty = true;
     }
@@ -1130,7 +1131,7 @@ impl Manager {
     /// Start a failed/finished download again from zero.
     pub fn restart(self: &Arc<Self>, id: DownloadId) {
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             let Some(e) = inner.entries.get_mut(&id) else { return };
             if e.task.is_some() {
                 return;
@@ -1139,8 +1140,8 @@ impl Manager {
             let in_use = paths_in_use_but(&inner, id);
             remove_temp_files(&rec, &in_use);
             let Some(e) = inner.entries.get_mut(&id) else { return };
-            e.segs.lock().unwrap().clear();
-            e.audio_segs.lock().unwrap().clear();
+            e.segs.lock_ok().clear();
+            e.audio_segs.lock_ok().clear();
             e.progress.bytes.store(0, Ordering::Relaxed);
             e.progress.parts_done.store(0, Ordering::Relaxed);
             e.rec.downloaded = 0;
@@ -1157,7 +1158,7 @@ impl Manager {
     /// Every download, for the list (without the part tables: the list does
     /// not show them, and copying them several times a second costs).
     pub fn snapshot(&self) -> Vec<DownloadView> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock_ok();
         inner.entries.values().map(|e| view_of(e, false)).collect()
     }
 
@@ -1167,14 +1168,14 @@ impl Manager {
     /// stop at the first gap). `None`: nothing yet, or a kind that can't be
     /// played before it is done (streams joined at the end, torrents).
     pub fn preview_source(&self, id: DownloadId) -> Option<PreviewSource> {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock_ok();
         let e = inner.entries.get(&id)?;
         if e.rec.status == Status::Completed {
             return None;
         }
         match e.rec.kind {
             DownloadKind::Http => {
-                let segs = e.segs.lock().unwrap().clone();
+                let segs = e.segs.lock_ok().clone();
                 let ready = if segs.is_empty() { e.progress.bytes.load(Ordering::Relaxed) } else { ready_from_start(&segs) };
                 let path = e.rec.part_path();
                 (ready > 0 && path.exists()).then_some(PreviewSource::File { path, ready })
@@ -1182,8 +1183,8 @@ impl Manager {
             // picture and sound come as two files (YouTube): both are needed
             DownloadKind::Dash => {
                 let (video, audio) = (e.rec.video_part_path(), e.rec.audio_part_path());
-                let video_ready = ready_from_start(&e.segs.lock().unwrap());
-                let audio_ready = ready_from_start(&e.audio_segs.lock().unwrap());
+                let video_ready = ready_from_start(&e.segs.lock_ok());
+                let audio_ready = ready_from_start(&e.audio_segs.lock_ok());
                 (video_ready > 0 && video.exists()).then(|| PreviewSource::Pair {
                     video,
                     video_ready,
@@ -1196,23 +1197,23 @@ impl Manager {
     }
 
     pub fn get(&self, id: DownloadId) -> Option<DownloadView> {
-        self.inner.lock().unwrap().entries.get(&id).map(make_view)
+        self.inner.lock_ok().entries.get(&id).map(make_view)
     }
 
     /// Downloads that finished since the last call (for the "complete" popup).
     pub fn take_completed(&self) -> Vec<DownloadId> {
-        std::mem::take(&mut self.inner.lock().unwrap().completed)
+        std::mem::take(&mut self.inner.lock_ok().completed)
     }
 
     /// The scheduler asked the app to close.
     pub fn take_exit_request(&self) -> bool {
-        std::mem::take(&mut self.inner.lock().unwrap().exit_requested)
+        std::mem::take(&mut self.inner.lock_ok().exit_requested)
     }
 
     /// Stop everything and write the state to disk (call before exiting).
     pub fn shutdown(&self) {
         let records = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             for e in inner.entries.values_mut() {
                 if let Some(t) = &e.task {
                     t.cancel();
@@ -1232,10 +1233,10 @@ impl Manager {
     /// unless set in options, and each queue runs its own number of files at
     /// a time (1 = one after another).
     fn pump(self: &Arc<Self>) {
-        let settings = self.settings.read().unwrap().clone();
+        let settings = self.settings.read_ok().clone();
         let mut launch = Vec::new();
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             if inner.quota_blocked {
                 return;
             }
@@ -1269,8 +1270,8 @@ impl Manager {
                 // its data is all here (only the joining / moving is left,
                 // after the program was closed): it does not wait for a free place
                 let ready = {
-                    let segs = e.segs.lock().unwrap();
-                    let audio = e.audio_segs.lock().unwrap();
+                    let segs = e.segs.lock_ok();
+                    let audio = e.audio_segs.lock_ok();
                     e.rec.kind != DownloadKind::Torrent
                         && e.rec.clip.is_none()
                         && !segs.is_empty()
@@ -1313,7 +1314,7 @@ impl Manager {
     /// or as many at a time as the queue allows).
     pub fn start_queue(self: &Arc<Self>, queue: u64) {
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             let mut any = false;
             for e in inner.entries.values_mut() {
                 if e.rec.queue == Some(queue) && matches!(e.rec.status, Status::Paused | Status::Failed) {
@@ -1334,7 +1335,7 @@ impl Manager {
 
     /// Is any file of this queue running or waiting?
     pub fn queue_running(&self, queue: u64) -> bool {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock_ok();
         inner
             .entries
             .values()
@@ -1342,7 +1343,7 @@ impl Manager {
     }
 
     pub fn stop_queue(&self, queue: u64) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         inner.queue_armed.remove(&queue);
         for e in inner.entries.values_mut() {
             if e.rec.queue != Some(queue) {
@@ -1361,7 +1362,7 @@ impl Manager {
     /// Put a download into a queue (None = take it out of any queue).
     pub fn set_queue(self: &Arc<Self>, id: DownloadId, queue: Option<u64>) {
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             let last = inner
                 .entries
                 .values()
@@ -1404,7 +1405,7 @@ impl Manager {
             anyhow::bail!("the main queue can't be deleted");
         }
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             for e in inner.entries.values_mut() {
                 if e.rec.queue == Some(id) {
                     e.rec.queue = Some(MAIN_QUEUE);
@@ -1418,7 +1419,7 @@ impl Manager {
     }
 
     async fn run_entry(self: Arc<Self>, id: DownloadId, cancel: CancellationToken) {
-        let progress = self.inner.lock().unwrap().entries.get(&id).map(|e| e.progress.clone());
+        let progress = self.inner.lock_ok().entries.get(&id).map(|e| e.progress.clone());
         let mut tries = 0u32;
         // server trouble: tries without anything new downloaded in between
         let mut stuck = 0u32;
@@ -1462,7 +1463,7 @@ impl Manager {
                     }
                     relink_bytes = now;
                     relinks += 1;
-                    self.relink.lock().unwrap().insert(id);
+                    self.relink.lock_ok().insert(id);
                     let wait = http::relink_delay(relinks);
                     let note = format!("the link stopped working - getting a new one in {} s (try {relinks})", wait.as_secs());
                     self.update(id, move |x| x.error = Some(note));
@@ -1505,9 +1506,9 @@ impl Manager {
         if let Some(p) = &progress {
             p.waiting.store(false, Ordering::Relaxed);
         }
-        self.relink.lock().unwrap().remove(&id);
+        self.relink.lock_ok().remove(&id);
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             let mut finished = false;
             let mut failed = false;
             let mut open_file = false;
@@ -1516,8 +1517,8 @@ impl Manager {
             let settings = self.settings();
             if let Some(e) = inner.entries.get_mut(&id) {
                 e.task = None;
-                e.rec.segments = e.segs.lock().unwrap().clone();
-                e.rec.audio_segments = e.audio_segs.lock().unwrap().clone();
+                e.rec.segments = e.segs.lock_ok().clone();
+                e.rec.audio_segments = e.audio_segs.lock_ok().clone();
                 e.rec.downloaded = e.progress.bytes.load(Ordering::Relaxed);
                 e.rec.parts_total = e.progress.parts_total.load(Ordering::Relaxed);
                 e.rec.parts_done = e.progress.parts_done.load(Ordering::Relaxed);
@@ -1532,8 +1533,8 @@ impl Manager {
                         if e.rec.total_size.is_none() {
                             e.rec.total_size = Some(e.rec.downloaded);
                         }
-                        e.segs.lock().unwrap().clear();
-                        e.audio_segs.lock().unwrap().clear();
+                        e.segs.lock_ok().clear();
+                        e.audio_segs.lock_ok().clear();
                         finished = true;
                         mark = Some((
                             e.rec.target_path(),
@@ -1603,12 +1604,12 @@ impl Manager {
 
     /// It can go on from where it stopped (a later try keeps what it has).
     fn resumable(&self, id: DownloadId) -> bool {
-        let inner = self.inner.lock().unwrap();
+        let inner = self.inner.lock_ok();
         inner.entries.get(&id).map(|e| e.rec.resumable || e.rec.kind != DownloadKind::Http || e.rec.clip.is_some()).unwrap_or(false)
     }
 
     fn update(&self, id: DownloadId, f: impl FnOnce(&mut DownloadRecord)) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock_ok();
         if let Some(e) = inner.entries.get_mut(&id) {
             f(&mut e.rec);
         }
@@ -1618,7 +1619,7 @@ impl Manager {
     async fn run_download(self: &Arc<Self>, id: DownloadId, cancel: CancellationToken) -> anyhow::Result<()> {
         let settings = self.settings();
         let (mut rec, segs, audio_segs, progress, limiter) = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.lock_ok();
             let e = inner.entries.get(&id).ok_or_else(|| anyhow!("download was removed"))?;
             (e.rec.clone(), e.segs.clone(), e.audio_segs.clone(), e.progress.clone(), e.limiter.clone())
         };
@@ -1646,7 +1647,7 @@ impl Manager {
         let client = self.shared.client();
         // nothing on the disk yet: the answer the look got a moment ago (kept
         // open) is where the file comes from, not a new request
-        let fresh = rec.downloaded == 0 && segs.lock().unwrap().is_empty() && !self.relink.lock().unwrap().contains(&id);
+        let fresh = rec.downloaded == 0 && segs.lock_ok().is_empty() && !self.relink.lock_ok().contains(&id);
         let kept = if fresh { http::take_kept(&rec.url) } else { None };
         if kept.is_none() {
             http::drop_kept(&rec.url);
@@ -1663,19 +1664,19 @@ impl Manager {
                 (p, answer)
             }
         };
-        if p.is_web_page() && rec.downloaded == 0 && segs.lock().unwrap().is_empty() {
+        if p.is_web_page() && rec.downloaded == 0 && segs.lock_ok().is_empty() {
             anyhow::bail!(
                 "the address opens a web page, not a file (the link may have expired - use \"Refresh download address\")"
             );
         }
         // a new link after the old one stopped working: only the same file
         // (same size, parts can be asked for) goes on from where it was
-        if self.relink.lock().unwrap().contains(&id) && !segs.lock().unwrap().is_empty() {
+        if self.relink.lock_ok().contains(&id) && !segs.lock_ok().is_empty() {
             same_file(&p, rec.total_size)?;
-            self.relink.lock().unwrap().remove(&id);
+            self.relink.lock_ok().remove(&id);
         }
         {
-            let mut table = segs.lock().unwrap();
+            let mut table = segs.lock_ok();
             let changed = rec.total_size.is_some() && p.total_size != rec.total_size;
             // the same address now gives another version of the file (its
             // "ETag" or date changed): the parts already there are of the
@@ -1711,7 +1712,7 @@ impl Manager {
         let (was_dir, was_name) = (rec.save_dir.clone(), rec.file_name.clone());
         // added without a name (batch, clipboard): use the server's real name
         // and the matching category folder before the first byte is written
-        if rec.auto_name && segs.lock().unwrap().is_empty() && rec.downloaded == 0 && p.file_name != rec.file_name {
+        if rec.auto_name && segs.lock_ok().is_empty() && rec.downloaded == 0 && p.file_name != rec.file_name {
             let new_cat = settings.category_of(&p.file_name, &rec.url);
             let dir = if rec.save_dir == settings.dir_for(&rec.category) {
                 settings.dir_for(&new_cat)
@@ -1719,7 +1720,7 @@ impl Manager {
                 rec.save_dir.clone()
             };
             let _ = std::fs::create_dir_all(&dir);
-            let name = free_name(&self.inner.lock().unwrap(), &dir, &p.file_name);
+            let name = free_name(&self.inner.lock_ok(), &dir, &p.file_name);
             rec.file_name = name;
             rec.save_dir = dir;
             rec.category = new_cat;
@@ -1750,7 +1751,7 @@ impl Manager {
             });
         }
         if let Some(total) = rec.total_size {
-            let have = segments::downloaded(&segs.lock().unwrap());
+            let have = segments::downloaded(&segs.lock_ok());
             system::check_room(&rec.work_dir(), total.saturating_sub(have), Some(total)).map_err(|m| anyhow!(m))?;
             if rec.work_dir() != rec.save_dir {
                 // the finished file is copied over to the other disk
@@ -1788,7 +1789,7 @@ impl Manager {
                     if !holes.is_empty() {
                         let missing: u64 = holes.iter().map(|(a, b)| b - a).sum();
                         eprintln!("{}: {} empty parts ({missing} bytes): fetched again", rec.file_name, holes.len());
-                        *segs.lock().unwrap() = segments_for_holes(total, &holes);
+                        *segs.lock_ok() = segments_for_holes(total, &holes);
                         progress.bytes.fetch_sub(missing.min(progress.bytes.load(Ordering::Relaxed)), Ordering::Relaxed);
                         http_download::run(self.shared.clone(), job, segs, progress.clone(), cancel.clone()).await?;
                     }
@@ -1875,7 +1876,7 @@ impl Manager {
             _ = cancel.cancelled() => return Err(Cancelled.into()),
         };
         {
-            let mut table = segs.lock().unwrap();
+            let mut table = segs.lock_ok();
             let changed = rec.total_size.is_some() && look.size != rec.total_size;
             let other_version = !table.is_empty() && rec.server_time.is_some() && look.modified.is_some() && rec.server_time != look.modified;
             if changed || other_version || !look.rest {
@@ -1899,7 +1900,7 @@ impl Manager {
             });
         }
         if let Some(total) = rec.total_size {
-            let have = segments::downloaded(&segs.lock().unwrap());
+            let have = segments::downloaded(&segs.lock_ok());
             system::check_room(&rec.work_dir(), total.saturating_sub(have), Some(total)).map_err(|m| anyhow!(m))?;
         }
         let job = crate::ftp::FtpJob {
@@ -2065,7 +2066,7 @@ impl Manager {
             }
             // the user changed its files, trackers or "first and last pieces"
             let wanted = {
-                let inner = self.inner.lock().unwrap();
+                let inner = self.inner.lock_ok();
                 inner.entries.get(&id).map(|e| (e.rec.torrent_select.clone(), e.rec.torrent_trackers.clone(), e.rec.torrent_first_last))
             };
             if let Some(w) = wanted.filter(|w| *w != applied && !files.is_empty()) {
@@ -2078,7 +2079,7 @@ impl Manager {
             // what its window shows
             {
                 let peers = if rounds % 3 == 1 { self.torrents.peers(&gid).await.ok() } else { None };
-                let mut live = self.torrent_live.lock().unwrap();
+                let mut live = self.torrent_live.lock_ok();
                 let l = live.entry(id).or_default();
                 l.files = files.clone();
                 l.trackers = st.trackers.clone();
@@ -2224,10 +2225,10 @@ impl Manager {
         let stem = playlist_stem(stem, &info.title);
         if !ext.eq_ignore_ascii_case(&opt.ext) || stem != filename::split_ext(&rec.file_name).0 {
             let wanted = filename::sanitize(&format!("{stem}.{}", opt.ext));
-            rec.file_name = free_name(&self.inner.lock().unwrap(), &rec.save_dir, &wanted);
+            rec.file_name = free_name(&self.inner.lock_ok(), &rec.save_dir, &wanted);
         }
         rec.pick_quality = None;
-        rec.category = self.settings.read().unwrap().category_of(&rec.file_name, &page);
+        rec.category = self.settings.read_ok().category_of(&rec.file_name, &page);
         let r = rec.clone();
         self.update(id, move |x| {
             x.url = r.url;
@@ -2287,7 +2288,7 @@ impl Manager {
     async fn finish_file(&self, id: DownloadId, rec: &DownloadRecord, progress: &Arc<Progress>, cancel: &CancellationToken) -> anyhow::Result<()> {
         // name and folder may have changed while it was downloading
         let (save_dir, file_name) = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.lock_ok();
             inner
                 .entries
                 .get(&id)
@@ -2310,7 +2311,7 @@ impl Manager {
         }
         // the checksum it must have (the user's, or the server's)
         let want = {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.lock_ok();
             inner.entries.get(&id).and_then(|e| e.rec.checksum.clone()).or_else(|| rec.checksum.clone())
         };
         if let Some(want) = want.as_deref().filter(|_| rec.kind == DownloadKind::Http && rec.clip.is_none()).and_then(crate::checksum::Expected::parse) {
@@ -2379,7 +2380,7 @@ impl Manager {
             .clone()
             .ok_or_else(|| anyhow!("this download has no audio stream"))?;
         let finished = |t: &SegTable| {
-            let t = t.lock().unwrap();
+            let t = t.lock_ok();
             !t.is_empty() && segments::all_finished(&t)
         };
         // both parts already on disk (e.g. ffmpeg was missing last time):
@@ -2405,27 +2406,27 @@ impl Manager {
                 _ = cancel.cancelled() => return Err(Cancelled.into()),
             };
             let old_audio = rec.total_size.zip(rec.video_size).map(|(t, v)| t.saturating_sub(v));
-            if self.relink.lock().unwrap().contains(&id) {
-                if !segs.lock().unwrap().is_empty() {
+            if self.relink.lock_ok().contains(&id) {
+                if !segs.lock_ok().is_empty() {
                     same_file(&vp, rec.video_size)?;
                 }
-                if !audio_segs.lock().unwrap().is_empty() {
+                if !audio_segs.lock_ok().is_empty() {
                     same_file(&ap, old_audio)?;
                 }
-                self.relink.lock().unwrap().remove(&id);
+                self.relink.lock_ok().remove(&id);
             }
             if vp.total_size != rec.video_size || !vp.resumable {
-                segs.lock().unwrap().clear();
+                segs.lock_ok().clear();
             }
             if ap.total_size != old_audio || !ap.resumable {
-                audio_segs.lock().unwrap().clear();
+                audio_segs.lock_ok().clear();
             }
             rec.video_size = vp.total_size;
             rec.total_size = vp.total_size.zip(ap.total_size).map(|(v, a)| v + a);
             rec.resumable = vp.resumable && ap.resumable;
             rec.final_url = Some(vp.final_url.clone());
             if let Some(total) = rec.total_size {
-                let have = segments::downloaded(&segs.lock().unwrap()) + segments::downloaded(&audio_segs.lock().unwrap());
+                let have = segments::downloaded(&segs.lock_ok()) + segments::downloaded(&audio_segs.lock_ok());
                 // video + audio parts, then the merged file next to them
                 system::check_room(&rec.work_dir(), (total * 2).saturating_sub(have), Some(total)).map_err(|m| anyhow!(m))?;
             }
@@ -2503,7 +2504,7 @@ impl Manager {
 
     /// Once a second: the limit for "only while the computer is used".
     fn follow_use(&self) {
-        let s = self.settings.read().unwrap();
+        let s = self.settings.read_ok();
         if !s.limit_only_active || !s.speed_limit_on {
             return;
         }
@@ -2524,7 +2525,7 @@ impl Manager {
             .filter_map(|q| q.schedule.next_start(now))
             .min()
             .map(|t| t.with_timezone(&Utc) - chrono::Duration::seconds(60));
-        let mut w = self.waker.lock().unwrap();
+        let mut w = self.waker.lock_ok();
         match next {
             None => *w = None,
             Some(t) if w.as_ref().map(|(at, _)| *at) != Some(t.timestamp()) => {
@@ -2539,12 +2540,12 @@ impl Manager {
             self.follow_use();
         }
         // a queue file waits to be tried again: its time may have come
-        let again = self.inner.lock().unwrap().retry_waiting;
+        let again = self.inner.lock_ok().retry_waiting;
         if again {
             self.pump();
         }
         let to_save = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             let now = Instant::now();
             let mut any_running = false;
             let mut fresh_bytes = 0u64;
@@ -2608,7 +2609,7 @@ impl Manager {
 
     /// Options > Connection > "Download no more than X MB every Y hours".
     fn track_quota(&self, inner: &mut Inner, now: Instant, fresh: u64) {
-        let s = self.settings.read().unwrap();
+        let s = self.settings.read_ok();
         if !s.quota_on || s.quota_mb == 0 {
             inner.quota_log.clear();
             if inner.quota_blocked {
@@ -2662,14 +2663,14 @@ impl Manager {
 
     /// Bytes downloaded inside the current quota window (for Options).
     pub fn quota_used(&self) -> u64 {
-        self.inner.lock().unwrap().quota_log.iter().map(|(_, b)| *b).sum()
+        self.inner.lock_ok().quota_log.iter().map(|(_, b)| *b).sum()
     }
 
     /// Downloads > "When all downloads finish": fire once everything that was
     /// running or waiting is done.
     fn check_all_done(self: &Arc<Self>) {
         let action = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             if inner.when_all_done == AfterDone::Nothing {
                 return;
             }
@@ -2693,13 +2694,13 @@ impl Manager {
     /// Every queue's own schedule (start / stop times, days, once on a date),
     /// and its "when done" action once all its files are finished.
     fn check_schedule(self: &Arc<Self>) {
-        let queues = self.settings.read().unwrap().queues.clone();
+        let queues = self.settings.read_ok().queues.clone();
         let now = chrono::Local::now();
         let key = (now.ordinal(), now.hour(), now.minute());
         let day = now.weekday().num_days_from_monday() as usize;
         let today = now.format("%Y-%m-%d").to_string();
         let new_minute = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             if inner.sched_minute == Some(key) {
                 false
             } else {
@@ -2724,7 +2725,7 @@ impl Manager {
         // queues that finished all their files
         let mut done = Vec::new();
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock_ok();
             let armed: Vec<u64> = inner.queue_armed.iter().copied().collect();
             for q in armed {
                 let busy = inner
@@ -2750,9 +2751,9 @@ impl Manager {
     fn after_done(&self, action: AfterDone) {
         match action {
             AfterDone::Nothing => {}
-            AfterDone::Exit => self.inner.lock().unwrap().exit_requested = true,
+            AfterDone::Exit => self.inner.lock_ok().exit_requested = true,
             AfterDone::Sleep | AfterDone::Shutdown | AfterDone::Hibernate => {
-                self.inner.lock().unwrap().power_request = Some(action);
+                self.inner.lock_ok().power_request = Some(action);
             }
         }
     }
@@ -2839,7 +2840,7 @@ fn paths_in_use_but(inner: &Inner, except: DownloadId) -> HashSet<PathBuf> {
 impl Manager {
     /// Every file a download of the list uses now.
     fn paths_in_use(&self) -> HashSet<PathBuf> {
-        paths_in_use_but(&self.inner.lock().unwrap(), DownloadId::MAX)
+        paths_in_use_but(&self.inner.lock_ok(), DownloadId::MAX)
     }
 }
 
@@ -2889,7 +2890,7 @@ fn view_of(e: &Entry, with_parts: bool) -> DownloadView {
     let segments = if status == Status::Completed || !with_parts {
         Vec::new()
     } else {
-        e.segs.lock().unwrap().iter().map(|s| (s.start, s.pos, s.end, s.active)).collect()
+        e.segs.lock_ok().iter().map(|s| (s.start, s.pos, s.end, s.active)).collect()
     };
     DownloadView {
         id: e.rec.id,
@@ -3289,8 +3290,8 @@ fn collect_records(inner: &Inner) -> Vec<DownloadRecord> {
             let mut r = e.rec.clone();
             if r.status != Status::Completed {
                 // only what is surely on the disk (a power cut loses the rest)
-                r.segments = segments::as_on_disk(&e.segs.lock().unwrap());
-                r.audio_segments = segments::as_on_disk(&e.audio_segs.lock().unwrap());
+                r.segments = segments::as_on_disk(&e.segs.lock_ok());
+                r.audio_segments = segments::as_on_disk(&e.audio_segs.lock_ok());
                 r.downloaded = e.progress.bytes.load(Ordering::Relaxed);
                 r.parts_total = e.progress.parts_total.load(Ordering::Relaxed);
                 r.parts_done = e.progress.parts_done.load(Ordering::Relaxed);

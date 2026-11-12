@@ -1,5 +1,6 @@
 //! Global speed limiter (token bucket) shared by every connection.
 
+use crate::sync::LockOk;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -34,7 +35,7 @@ impl SpeedLimiter {
             return;
         }
         let wait = {
-            let mut b = self.bucket.lock().unwrap();
+            let mut b = self.bucket.lock_ok();
             let now = Instant::now();
             let elapsed = now.duration_since(b.1).as_secs_f64();
             b.1 = now;

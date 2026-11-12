@@ -1,5 +1,6 @@
 //! Site Grabber and "Download all links" (both use the same window).
 
+use swiftget_engine::sync::LockOk;
 use crate::open_window;
 use crate::*;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -168,7 +169,7 @@ pub(crate) fn poll(ui: &Ui) {
         if !g.exploring {
             return;
         }
-        let new: Vec<FoundFile> = std::mem::take(&mut *g.incoming.lock().unwrap());
+        let new: Vec<FoundFile> = std::mem::take(&mut *g.incoming.lock_ok());
         (new, g.progress.clone(), g.finished.load(Ordering::Relaxed))
     };
     let Some(d) = ui.grabber.upgrade() else { return };
@@ -257,7 +258,7 @@ pub(crate) fn wire(ui: &Ui) {
             let client = ui.ctx.mgr.client();
             ui.ctx.rt.spawn(async move {
                 let sink = incoming.clone();
-                grabber::crawl(client, opts, progress, cancel, move |f| sink.lock().unwrap().push(f)).await;
+                grabber::crawl(client, opts, progress, cancel, move |f| sink.lock_ok().push(f)).await;
                 finished.store(true, Ordering::Relaxed);
             });
         });

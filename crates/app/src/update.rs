@@ -7,6 +7,7 @@
 //! "checking…", "this is the newest version", or the download of
 //! the new one with its progress, then its setup runs in front of the user.
 
+use swiftget_engine::sync::LockOk;
 use crate::i18n::{t, tf};
 use crate::message;
 use crate::{open_window, Ctx, Ui};
@@ -177,7 +178,7 @@ pub fn check_now(ui: &Ui) {
         let (shared, weak) = (shared.clone(), d.as_weak());
         WINDOW_TIMER.with(|timer| {
             timer.start(slint::TimerMode::Repeated, Duration::from_millis(100), move || {
-                let now = shared.lock().unwrap().clone();
+                let now = shared.lock_ok().clone();
                 if let Some(d) = weak.upgrade() {
                     if now.state != 0 || !now.heading.is_empty() {
                         d.set_state(now.state);
@@ -186,7 +187,7 @@ pub fn check_now(ui: &Ui) {
                         d.set_progress(now.progress);
                     }
                 }
-                if let Some((setup, sha)) = shared.lock().unwrap().install.take() {
+                if let Some((setup, sha)) = shared.lock_ok().install.take() {
                     apply_as(setup, sha, true);
                 }
                 if now.done {
@@ -196,7 +197,7 @@ pub fn check_now(ui: &Ui) {
         });
     }
     let tell = move |shared: &std::sync::Mutex<Shown>, state: i32, heading: String, detail: String, progress: f32| {
-        let mut s = shared.lock().unwrap();
+        let mut s = shared.lock_ok();
         s.state = state;
         s.heading = heading;
         // a long address in an error has no place to break: the window
@@ -208,7 +209,7 @@ pub fn check_now(ui: &Ui) {
     ui.ctx.rt.spawn(async move {
         let finish = |shared: &std::sync::Mutex<Shown>| {
             BUSY.store(false, Ordering::SeqCst);
-            shared.lock().unwrap().done = true;
+            shared.lock_ok().done = true;
         };
         let rel = match selfupdate::check(&client).await {
             Err(e) => {
@@ -252,7 +253,7 @@ pub fn check_now(ui: &Ui) {
                 );
                 // a moment to read it, then the setup runs in front of the user
                 tokio::time::sleep(Duration::from_millis(1200)).await;
-                shared.lock().unwrap().install = Some((setup, rel.sha256.clone()));
+                shared.lock_ok().install = Some((setup, rel.sha256.clone()));
                 finish(&shared);
             }
             Err(e) => {

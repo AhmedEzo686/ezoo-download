@@ -5,6 +5,7 @@
 //! offset of the `.sgpart` file. When a worker finishes it steals half of the
 //! biggest remaining segment, so all connections stay busy until the end.
 
+use crate::sync::LockOk;
 use crate::http::SendOrdered;
 use crate::fileio::{make_sparse, set_hidden, write_at};
 use crate::http::{http_status_of, is_network_error, reconnect_delay, request, ConnGuard, HttpStatus, NetDrop, Progress, Shared};
@@ -208,7 +209,7 @@ async fn run_hidden(
     set_hidden(&job.part_path, true);
 
     {
-        let mut table = segs.lock().unwrap();
+        let mut table = segs.lock_ok();
         if segmented {
             let total = job.total_size.unwrap_or(0);
             let fresh = table.is_empty() || file.metadata()?.len() == 0 && segments::downloaded(&table) > 0;
@@ -253,7 +254,7 @@ async fn run_hidden(
     };
     let mut set = JoinSet::new();
     let spawn = |set: &mut JoinSet<anyhow::Result<()>>| {
-        crew.lock().unwrap().running += 1;
+        crew.lock_ok().running += 1;
         let ctx = Worker {
             shared: shared.clone(),
             job: job.clone(),
@@ -290,7 +291,7 @@ async fn run_hidden(
                     // every connection is done: more work left (fewer were
                     // wanted for a moment, then more again)? then on
                     if first_error.is_none() && !cancel.is_cancelled() && segmented && wanted() > 0 {
-                        let more = !segments::all_finished(&segs.lock().unwrap());
+                        let more = !segments::all_finished(&segs.lock_ok());
                         if more {
                             spawn(&mut set);
                             continue;
@@ -307,11 +308,11 @@ async fn run_hidden(
                 }
             }
             _ = to_disk.tick() => {
-                let seen: Vec<u64> = segs.lock().unwrap().iter().map(|s| s.pos).collect();
+                let seen: Vec<u64> = segs.lock_ok().iter().map(|s| s.pos).collect();
                 let f = file.clone();
                 let synced = tokio::task::spawn_blocking(move || f.sync_data().is_ok()).await.unwrap_or(false);
                 if synced {
-                    let mut table = segs.lock().unwrap();
+                    let mut table = segs.lock_ok();
                     for (s, pos) in table.iter_mut().zip(seen) {
                         s.on_disk = Some(pos.min(s.pos));
                     }
@@ -323,7 +324,7 @@ async fn run_hidden(
                     let now = progress.bytes.load(Ordering::Relaxed);
                     let conns = progress.connections.load(Ordering::Relaxed).max(1) as u64;
                     let per = now.saturating_sub(sample.1) * 1000 / (spent.as_millis().max(1) as u64) / conns;
-                    let mut c = crew.lock().unwrap();
+                    let mut c = crew.lock_ok();
                     c.best = c.best.max(per);
                     drop(c);
                     sample = (std::time::Instant::now(), now);
@@ -343,7 +344,7 @@ async fn run_hidden(
                 // parts worth sharing
                 if first_error.is_none() && segmented && !child.is_cancelled() {
                     let (running, leaving) = {
-                        let c = crew.lock().unwrap();
+                        let c = crew.lock_ok();
                         (c.running, c.leaving)
                     };
                     let missing = wanted().saturating_sub(running.saturating_sub(leaving));
@@ -358,7 +359,7 @@ async fn run_hidden(
         }
     }
     if file.sync_all().is_ok() {
-        for s in segs.lock().unwrap().iter_mut() {
+        for s in segs.lock_ok().iter_mut() {
             s.on_disk = None;
         }
     }
@@ -369,7 +370,7 @@ async fn run_hidden(
     if let Some(e) = first_error {
         return Err(e);
     }
-    let table = segs.lock().unwrap();
+    let table = segs.lock_ok();
     if segmented && !segments::all_finished(&table) {
         bail!("download ended before all parts were received");
     }
@@ -414,13 +415,13 @@ pub fn site_of(url: &str) -> Option<String> {
 /// How many connections the site of `url` took (None: no limit seen lately).
 pub fn learned_limit(url: &str) -> Option<u32> {
     let site = site_of(url)?;
-    let l = LEARNED.lock().unwrap();
+    let l = LEARNED.lock_ok();
     l.0.get(&site).filter(|(_, at)| now_secs().saturating_sub(*at) < LEARNED_FOR).map(|(n, _)| *n)
 }
 
 fn learn(url: &str, n: u32) {
     let Some(site) = site_of(url) else { return };
-    let mut l = LEARNED.lock().unwrap();
+    let mut l = LEARNED.lock_ok();
     let n = n.max(1);
     let now = now_secs();
     let lower = match l.0.get(&site) {
@@ -438,7 +439,7 @@ fn learn(url: &str, n: u32) {
 /// their limits were kept for ever, and are let go now.
 pub fn set_learned(map: std::collections::BTreeMap<String, serde_json::Value>) {
     let now = now_secs();
-    let mut l = LEARNED.lock().unwrap();
+    let mut l = LEARNED.lock_ok();
     l.0 = map
         .into_iter()
         .filter_map(|(site, v)| {
@@ -452,7 +453,7 @@ pub fn set_learned(map: std::collections::BTreeMap<String, serde_json::Value>) {
 
 /// The limits, when new ones were seen since the last call (to be kept).
 pub fn take_learned_changes() -> Option<std::collections::BTreeMap<String, (u32, u64)>> {
-    let mut l = LEARNED.lock().unwrap();
+    let mut l = LEARNED.lock_ok();
     if !l.1 {
         return None;
     }
@@ -479,7 +480,7 @@ fn retry_after_of(resp: &reqwest::Response) -> Option<u64> {
 /// A part could be taken by one more connection: one nobody works on, or
 /// one big enough to be shared.
 fn has_work(segs: &SegTable, min_split: u64) -> bool {
-    let t = segs.lock().unwrap();
+    let t = segs.lock_ok();
     let min = min_split.clamp(1, TAIL_SPLIT) * 2;
     t.iter().any(|s| !s.is_finished() && (!s.active || s.remaining() >= min))
 }
@@ -502,7 +503,7 @@ struct Worker {
 struct OutOfCrew(Arc<Mutex<Crew>>, bool);
 impl Drop for OutOfCrew {
     fn drop(&mut self) {
-        let mut c = self.0.lock().unwrap();
+        let mut c = self.0.lock_ok();
         c.running = c.running.saturating_sub(1);
         if self.1 {
             c.leaving = c.leaving.saturating_sub(1);
@@ -517,7 +518,7 @@ impl Worker {
     fn server_drops_too_many(&self) -> bool {
         let now = std::time::Instant::now();
         let bytes = self.progress.bytes.load(Ordering::Relaxed);
-        let mut c = self.crew.lock().unwrap();
+        let mut c = self.crew.lock_ok();
         c.drops.push_back((now, bytes));
         while c.drops.front().is_some_and(|(t, _)| now.duration_since(*t) > Duration::from_secs(60)) {
             c.drops.pop_front();
@@ -542,7 +543,7 @@ impl Worker {
     /// link works, this connection alone was refused.
     async fn others_bring_data(&self) -> bool {
         let others = {
-            let c = self.crew.lock().unwrap();
+            let c = self.crew.lock_ok();
             c.running.saturating_sub(c.leaving)
         };
         if others < 2 {
@@ -558,7 +559,7 @@ impl Worker {
 
     fn should_leave(&self) -> bool {
         let want = (self.wanted)();
-        let mut c = self.crew.lock().unwrap();
+        let mut c = self.crew.lock_ok();
         if c.running.saturating_sub(c.leaving) > want {
             c.leaving += 1;
             true
@@ -585,7 +586,7 @@ impl Worker {
                 return Err(Leave.into());
             }
             let idx = {
-                let mut table = self.segs.lock().unwrap();
+                let mut table = self.segs.lock_ok();
                 if self.segmented {
                     // the last parts too are shared, in smaller pieces
                     segments::claim_work(&mut table, self.job.min_split)
@@ -603,7 +604,7 @@ impl Worker {
             let Some(idx) = idx else { return Ok(()) };
             let result = self.download_segment(idx).await;
             {
-                let mut table = self.segs.lock().unwrap();
+                let mut table = self.segs.lock_ok();
                 if let Some(s) = table.get_mut(idx) {
                     s.active = false;
                 }
@@ -622,14 +623,14 @@ impl Worker {
             if self.cancel.is_cancelled() {
                 return Err(Cancelled.into());
             }
-            let before = self.segs.lock().unwrap()[idx].pos;
+            let before = self.segs.lock_ok()[idx].pos;
             let outcome = tokio::select! {
                 r = self.fetch_once(idx) => r,
                 _ = self.cancel.cancelled() => return Err(Cancelled.into()),
             };
             match outcome {
                 Ok(()) => {
-                    if self.segs.lock().unwrap()[idx].is_finished() {
+                    if self.segs.lock_ok()[idx].is_finished() {
                         return Ok(());
                     }
                     attempt = 0; // one request done, ask for the next piece
@@ -639,7 +640,7 @@ impl Worker {
                 // another file now: no try brings this one back
                 Err(e) if e.is::<FileChanged>() => return Err(e),
                 Err(e) => {
-                    let after = self.segs.lock().unwrap()[idx].pos;
+                    let after = self.segs.lock_ok()[idx].pos;
                     if after > before {
                         attempt = 0; // it was making progress, don't give up yet
                         net_tries = 0;
@@ -654,7 +655,7 @@ impl Worker {
                         // as long as the site asks and go on.
                         if self.segmented {
                             let now = {
-                                let c = self.crew.lock().unwrap();
+                                let c = self.crew.lock_ok();
                                 c.running.saturating_sub(c.leaving)
                             };
                             let fewer = now.saturating_sub(1).max(1);
@@ -683,7 +684,7 @@ impl Worker {
                         // 429). One less from now on, as for 429; this one
                         // goes and its part stays for the others
                         let now = {
-                            let c = self.crew.lock().unwrap();
+                            let c = self.crew.lock_ok();
                             c.running.saturating_sub(c.leaving)
                         };
                         let fewer = now.saturating_sub(1).max(1);
@@ -727,7 +728,7 @@ impl Worker {
                     }
                     if !self.segmented {
                         // can't resume without ranges: restart from zero
-                        let mut table = self.segs.lock().unwrap();
+                        let mut table = self.segs.lock_ok();
                         let s = &mut table[idx];
                         self.progress.bytes.fetch_sub(s.done(), Ordering::Relaxed);
                         s.pos = s.start;
@@ -755,7 +756,7 @@ impl Worker {
 
     async fn fetch_once(&self, idx: usize) -> anyhow::Result<()> {
         let (start, pos, end) = {
-            let table = self.segs.lock().unwrap();
+            let table = self.segs.lock_ok();
             (table[idx].start, table[idx].pos, table[idx].end)
         };
         if pos >= end {
@@ -767,12 +768,12 @@ impl Worker {
             _ => end,
         };
         // the first part of a new download: from the answer kept since the look
-        let opened = if pos == 0 { self.job.check.opening.lock().unwrap_or_else(|e| e.into_inner()).take() } else { None };
+        let opened = if pos == 0 { self.job.check.opening.lock_ok().take() } else { None };
         let was_opened = opened.is_some();
         // going on inside a part: the last bytes before are asked again and
         // compared with what is on the disk
         let back = if self.segmented && !was_opened { pos.saturating_sub(start).min(OVERLAP) } else { 0 };
-        let version = self.job.check.version.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let version = self.job.check.version.lock_ok().clone();
         let mut resp = match opened {
             Some(r) => r,
             None => {
@@ -821,7 +822,7 @@ impl Worker {
                     if same_size && theirs != version {
                         // each server of the site names it its own way: asked
                         // again without the name (the bytes before are still compared)
-                        *self.job.check.version.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                        *self.job.check.version.lock_ok() = None;
                         return Err(Again("asked again without the version check").into());
                     }
                     if !same_size {
@@ -895,9 +896,9 @@ impl Worker {
                 // alone (the others are done): held to the best the
                 // connections brought before (a slow last connection kept
                 // the download at 90-99 % for ever)
-                let best = self.crew.lock().unwrap().best;
+                let best = self.crew.lock_ok().best;
                 // (only near the end: a slow line is not made again and again)
-                let near_end = self.job.total_size.is_some_and(|t| segments::downloaded(&self.segs.lock().unwrap()) >= t / 10 * 8);
+                let near_end = self.job.total_size.is_some_and(|t| segments::downloaded(&self.segs.lock_ok()) >= t / 10 * 8);
                 let compare = if conns >= 2 { average } else if near_end && self.job.connections >= 2 { best } else { u64::MAX };
                 if !limited && my_rate < SLOW_BYTES_PER_SEC && my_rate.saturating_mul(SLOW_SHARE) < compare && compare != u64::MAX {
                     slow_windows += 1;
@@ -914,7 +915,7 @@ impl Worker {
             self.shared.limiter.acquire(chunk.len()).await;
             self.job.limiter.acquire(chunk.len()).await;
             let finished = {
-                let mut table = self.segs.lock().unwrap();
+                let mut table = self.segs.lock_ok();
                 let s = &mut table[idx];
                 // `end` may have moved down because another worker split us
                 let stop = s.end.min(req_end);
@@ -934,7 +935,7 @@ impl Worker {
         }
 
         // the server closed the stream
-        let mut table = self.segs.lock().unwrap();
+        let mut table = self.segs.lock_ok();
         let s = &mut table[idx];
         if !self.segmented && (self.job.total_size.is_none() || s.end == u64::MAX) {
             s.end = s.pos; // unknown size: end of stream means done

@@ -26,6 +26,7 @@ mod tray;
 mod update;
 mod winfx;
 
+use swiftget_engine::sync::LockOk;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -1785,7 +1786,7 @@ fn wire_add(ui: &Ui) {
             if let Some(d) = ctx.add.upgrade() {
                 let url = d.get_url().trim().to_string();
                 // another address: the download started for the old one stops
-                if url != ctx.add_state.lock().unwrap().origin_url {
+                if url != ctx.add_state.lock_ok().origin_url {
                     cancel_early(&ctx);
                 }
                 if swiftget_engine::torrent::is_magnet(&url) {
@@ -1822,7 +1823,7 @@ fn wire_add(ui: &Ui) {
             d.set_save_as(path.clone().into());
             d.set_category_name(t(&cat).into());
             d.set_remember_path(s.category_dirs.contains_key(&cat));
-            ctx.add_state.lock().unwrap().auto_path = path;
+            ctx.add_state.lock_ok().auto_path = path;
         });
     }
     {
@@ -1859,7 +1860,7 @@ fn wire_add(ui: &Ui) {
         add.on_use_browser(move || {
             let Some(d) = ctx.add.upgrade() else { return };
             let url = d.get_url().trim().to_string();
-            ctx.add_state.lock().unwrap().probe_seq += 1;
+            ctx.add_state.lock_ok().probe_seq += 1;
             cancel_early(&ctx);
             let _ = d.hide();
             if url.starts_with("http://") || url.starts_with("https://") {
@@ -1876,7 +1877,7 @@ fn wire_add(ui: &Ui) {
     {
         let ctx = ui.ctx.clone();
         add.on_cancel(move || {
-            ctx.add_state.lock().unwrap().probe_seq += 1; // ignore a check still running
+            ctx.add_state.lock_ok().probe_seq += 1; // ignore a check still running
             forget_look(&ctx);
             cancel_early(&ctx);
             if let Some(d) = ctx.add.upgrade() {
@@ -1888,7 +1889,7 @@ fn wire_add(ui: &Ui) {
     {
         let ctx = ui.ctx.clone();
         add.window().on_close_requested(move || {
-            ctx.add_state.lock().unwrap().probe_seq += 1;
+            ctx.add_state.lock_ok().probe_seq += 1;
             forget_look(&ctx);
             cancel_early(&ctx);
             open_next(&ctx);
@@ -2655,7 +2656,7 @@ fn show_name_in_dialog(ctx: &Ctx, d: &AddDialog, name: &str, url: &str) -> Strin
     let cat = s.category_of(name, url);
     let path = s.dir_for(&cat).join(name).display().to_string();
     d.set_save_as(path.clone().into());
-    let cats = ctx.add_state.lock().unwrap().categories.clone();
+    let cats = ctx.add_state.lock_ok().categories.clone();
     d.set_category_index(cats.iter().position(|c| *c == cat).unwrap_or(0) as i32);
     d.set_category_name(t(&cat).into());
     // a category with a remembered folder: the box stays ticked (shows it is
@@ -2675,7 +2676,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     let Some(d) = ctx.add.upgrade() else { return };
     let s = ctx.mgr.settings();
     if d.window().is_visible() {
-        let mut st = ctx.add_state.lock().unwrap();
+        let mut st = ctx.add_state.lock_ok();
         // the same link again (a page can send it twice): nothing new to show;
         // another link waits until this one is started or cancelled
         if !url.is_empty() && st.origin_url != url && !st.waiting.iter().any(|p| p.url == url) {
@@ -2692,7 +2693,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     cats.extend(s.categories.iter().map(|c| c.name.clone()));
     let names: Vec<SharedString> = cats.iter().map(|c| t(c).into()).collect();
     d.set_category_names(ModelRc::new(VecModel::from(names)));
-    ctx.add_state.lock().unwrap().categories = cats;
+    ctx.add_state.lock_ok().categories = cats;
     let name = name_hint
         .clone()
         .filter(|n| !n.trim().is_empty())
@@ -2702,7 +2703,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     let path = show_name_in_dialog(ctx, &d, &name, &url);
     let login = headers.auth.clone().or_else(|| s.login_for(&url));
     {
-        let mut st = ctx.add_state.lock().unwrap();
+        let mut st = ctx.add_state.lock_ok();
         st.headers = headers;
         st.extra = extra;
         st.origin_url = url.clone();
@@ -2738,7 +2739,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     // it already downloads while the window is open
     if !url.is_empty() && s.start_while_info && ctx.mgr.find_url(&url).is_none() {
         let path = PathBuf::from(d.get_save_as().as_str());
-        let st = ctx.add_state.lock().unwrap();
+        let st = ctx.add_state.lock_ok();
         let req = NewDownload {
             url: url.clone(),
             file_name: path.file_name().map(|n| n.to_string_lossy().into_owned()),
@@ -2753,7 +2754,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
         };
         drop(st);
         let id = ctx.mgr.add(req);
-        ctx.add_state.lock().unwrap().early_id = Some(id);
+        ctx.add_state.lock_ok().early_id = Some(id);
     }
     if !url.is_empty() {
         start_probe(ctx, url);
@@ -2763,14 +2764,14 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
 /// "Cancel" in Download File Info: the download that started meanwhile goes
 /// away completely, with its temporary files and the file itself.
 fn cancel_early(ctx: &Ctx) {
-    if let Some(id) = ctx.add_state.lock().unwrap().early_id.take() {
+    if let Some(id) = ctx.add_state.lock_ok().early_id.take() {
         ctx.mgr.discard(id);
     }
 }
 
 /// The window is free again: show the next link that came in meanwhile.
 fn open_next(ctx: &Ctx) {
-    let next = ctx.add_state.lock().unwrap().waiting.pop_front();
+    let next = ctx.add_state.lock_ok().waiting.pop_front();
     if let Some(p) = next {
         let ctx = ctx.clone();
         Timer::single_shot(Duration::from_millis(300), move || {
@@ -2782,7 +2783,7 @@ fn open_next(ctx: &Ctx) {
 /// The window was closed without downloading: the server's answer kept for
 /// the download is let go (its connection is not held any longer).
 fn forget_look(ctx: &Ctx) {
-    let url = ctx.add_state.lock().unwrap().origin_url.clone();
+    let url = ctx.add_state.lock_ok().origin_url.clone();
     if !url.is_empty() {
         swiftget_engine::http::drop_kept(&url);
     }
@@ -2790,14 +2791,14 @@ fn forget_look(ctx: &Ctx) {
 
 /// The download started in the background for the open window, if any.
 pub(crate) fn early_download(ctx: &Ctx) -> Option<u64> {
-    ctx.add_state.lock().unwrap().early_id
+    ctx.add_state.lock_ok().early_id
 }
 
 /// Ask the server about the file in the background, then show the result.
 fn start_probe(ctx: &Ctx, url: String) {
     let Some(d) = ctx.add.upgrade() else { return };
     let (seq, mut headers, audio_url) = {
-        let mut st = ctx.add_state.lock().unwrap();
+        let mut st = ctx.add_state.lock_ok();
         st.probe_seq += 1;
         st.probe = None;
         let audio = st.extra.audio_url.clone().filter(|_| st.origin_url == url);
@@ -2821,7 +2822,7 @@ fn start_probe(ctx: &Ctx, url: String) {
         };
         let _ = slint::invoke_from_event_loop(move || {
             let Some(d) = ctx2.add.upgrade() else { return };
-            let mut st = ctx2.add_state.lock().unwrap();
+            let mut st = ctx2.add_state.lock_ok();
             if st.probe_seq != seq {
                 return; // the window was reused for something else meanwhile
             }
@@ -2831,7 +2832,7 @@ fn start_probe(ctx: &Ctx, url: String) {
                     if d.get_save_as().as_str() == st.auto_path && !st.auto_path.is_empty() {
                         drop(st);
                         let path = show_name_in_dialog(&ctx2, &d, &p.file_name, &url);
-                        st = ctx2.add_state.lock().unwrap();
+                        st = ctx2.add_state.lock_ok();
                         st.auto_path = path;
                     }
                     let has_audio = st.extra.audio_url.is_some() && st.origin_url == url;
@@ -2896,7 +2897,7 @@ fn confirm_add(ui: &Ui, start: bool) {
     let save_as = PathBuf::from(d.get_save_as().trim());
     // the name as the program suggested it (its extension is the real one)
     let suggested = {
-        let st = ctx.add_state.lock().unwrap();
+        let st = ctx.add_state.lock_ok();
         let early = st.early_id.and_then(|id| ctx.mgr.get(id)).map(|v| v.file_name);
         let auto = Path::new(&st.auto_path).file_name().map(|n| n.to_string_lossy().into_owned());
         early.or(auto).or_else(|| st.probe.as_ref().map(|p| p.file_name.clone())).unwrap_or_default()
@@ -2949,7 +2950,7 @@ fn confirm_add(ui: &Ui, start: bool) {
     }
     let settings = ctx.mgr.settings();
     let req = {
-        let mut st = ctx.add_state.lock().unwrap();
+        let mut st = ctx.add_state.lock_ok();
         st.probe_seq += 1;
         let probe = if st.probe_url == url { st.probe.clone() } else { None };
         // the video extras belong to the original link only
@@ -2986,10 +2987,10 @@ fn confirm_add(ui: &Ui, start: bool) {
     };
     let _ = d.hide();
     open_next(ctx);
-    let early = ctx.add_state.lock().unwrap().early_id.take();
+    let early = ctx.add_state.lock_ok().early_id.take();
     if let Some(id) = early {
         if ctx.mgr.get(id).map(|v| v.url == url || v.parent_page.as_deref() == Some(url.as_str())).unwrap_or(false)
-            || ctx.add_state.lock().unwrap().origin_url == url
+            || ctx.add_state.lock_ok().origin_url == url
         {
             let dir = req.save_dir.clone().unwrap_or_else(|| settings.dir_for("General"));
             let name = req.file_name.clone().unwrap_or_default();

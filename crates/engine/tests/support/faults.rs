@@ -149,7 +149,7 @@ pub async fn start(data: Vec<u8>, faults: Faults) -> FaultServer {
                         headers.push(format!("Content-Range: bytes {a2}-{b}/{}", body_of.len()));
                         ("206 Partial Content", &body_of[a2..=b])
                     }
-                    _ => ("200 OK", &body_of[..]),
+                    _ => ("200 OK", body_of),
                 };
                 let head = send(status, headers, slice);
                 if w.write_all(head.as_bytes()).await.is_err() {
@@ -169,8 +169,8 @@ pub async fn start(data: Vec<u8>, faults: Faults) -> FaultServer {
                     if cut_now.is_some_and(|c| sent >= c) {
                         return; // cut off
                     }
-                    if f.rate > 0 {
-                        tokio::time::sleep(Duration::from_millis((chunk.len() as u64 * 1000 / f.rate).max(1))).await;
+                    if let Some(ms) = (chunk.len() as u64 * 1000).checked_div(f.rate) {
+                        tokio::time::sleep(Duration::from_millis(ms.max(1))).await;
                     }
                 }
             });

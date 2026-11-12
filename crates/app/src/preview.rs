@@ -8,6 +8,8 @@
 //! name of the same file with the real extension is made (a hard link, no
 //! copy, it grows with the download) and opened; it goes away by itself.
 
+#[cfg(any(windows, test))]
+use swiftget_engine::sync::LockOk;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -146,7 +148,7 @@ mod tests {
         // the same file: what the download writes is seen through the link
         std::fs::write(&part, b"more data").unwrap();
         assert_eq!(std::fs::read(&link).unwrap(), b"more data");
-        LINKS.lock().unwrap().push((link.clone(), std::time::Instant::now()));
+        LINKS.lock_ok().push((link.clone(), std::time::Instant::now()));
         clean_up();
         assert!(link.exists(), "a player that is still starting keeps it");
         clean_all();
