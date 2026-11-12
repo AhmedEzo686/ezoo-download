@@ -1,10 +1,10 @@
-//! Torrents end to end with the real aria2c (skipped when it isn't
-//! installed): one aria2 shares a file, a second one downloads it, a tiny
-//! tracker on 127.0.0.1 introduces them to each other.
+//! Torrents end to end: one session of librqbit shares a file, a second one
+//! downloads it, a tiny tracker on 127.0.0.1 introduces them to each other.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use swiftget_engine::torrent::{parse_torrent, AddOptions, Aria2};
+use swiftget_engine::bt::{Live, Torrents};
+use swiftget_engine::torrent::{parse_torrent, AddOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -86,13 +86,23 @@ async fn tracker() -> u16 {
     port
 }
 
-/// A folder, a file, its .torrent, and a first aria2 that shares it.
-async fn shared_file(tag: &str) -> Option<(std::path::PathBuf, Vec<u8>, std::path::PathBuf, Aria2, String, u16)> {
-    if swiftget_engine::mux::find_tool("aria2c").is_none() {
-        eprintln!("aria2c not installed: skipped");
-        return None;
+/// Wait until the torrent `g` of `t` has all its chosen files.
+async fn complete(t: &Torrents, g: &str, secs: u64) -> bool {
+    for _ in 0..secs * 10 {
+        let st = t.status(g).await.unwrap();
+        assert_ne!(st.status, "error", "{:?}", st.error);
+        if st.seeding && st.total > 0 && st.done == st.total {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
+    false
+}
+
+/// A folder, a file, its .torrent, and a first session that shares it.
+async fn shared_file(tag: &str) -> Option<(std::path::PathBuf, Vec<u8>, std::path::PathBuf, Arc<Torrents>, String, u16)> {
     let root = std::env::temp_dir().join(format!("ezoo-torrent-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
     let seed_dir = root.join("seed");
     std::fs::create_dir_all(&seed_dir).unwrap();
     // different bytes for every test: different torrents, no mix-ups
@@ -107,43 +117,50 @@ async fn shared_file(tag: &str) -> Option<(std::path::PathBuf, Vec<u8>, std::pat
     assert_eq!(info.total, data.len() as u64);
 
     // the computer that has it: checks its copy, then shares
-    let seeder = Aria2::new(&root.join("a"));
-    let opts = AddOptions { dir: seed_dir.clone(), seed_minutes: 30, check: true, ..Default::default() };
+    let seeder = Arc::new(Torrents::new(&root.join("a")));
+    let opts = AddOptions { dir: seed_dir.clone(), ..Default::default() };
     let sg = seeder.add(file.to_str().unwrap(), &opts).await.unwrap();
-    for _ in 0..100 {
-        let st = seeder.status(&sg).await.unwrap();
-        if st.seeding && st.done == data.len() as u64 {
-            return Some((root, data, file, seeder, sg, port));
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    panic!("the first aria2 should share the file");
+    assert!(complete(&seeder, &sg, 30).await, "the first session should share the file");
+    Some((root, data, file, seeder, sg, port))
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn downloads_a_torrent_with_aria2() {
+async fn downloads_a_torrent_and_goes_on_after_a_restart() {
     let Some((root, data, file, seeder, sg, _)) = shared_file("rpc").await else { return };
     let get_dir = root.join("get");
-    let getter = Aria2::new(&root.join("b"));
-    let opts = AddOptions { dir: get_dir.clone(), seed_minutes: 0, ..Default::default() };
+    let getter = Torrents::new(&root.join("b"));
+    let opts = AddOptions { dir: get_dir.clone(), ..Default::default() };
     let gg = getter.add(file.to_str().unwrap(), &opts).await.unwrap();
-    let mut done = false;
-    for _ in 0..600 {
-        let st = getter.status(&gg).await.unwrap();
-        assert_ne!(st.status, "error", "{:?}", st.error);
-        if st.status == "complete" {
-            done = true;
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    assert!(done, "the torrent should finish");
+    assert!(complete(&getter, &gg, 60).await, "the torrent should finish");
     assert_eq!(std::fs::read(get_dir.join("song.bin")).unwrap(), data);
     let files = getter.files(&gg).await.unwrap();
     assert_eq!(files[0].path, get_dir.join("song.bin"));
     assert_eq!(files[0].done, data.len() as u64);
+    let st = getter.status(&gg).await.unwrap();
+    assert!(st.pieces > 0 && swiftget_engine::torrent::piece_runs(&st.bitfield, st.pieces, 100).iter().all(|r| r.2), "{st:?}");
+    // the people: the one that shares it
+    let _ = getter.peers(&gg).await.unwrap();
+    // a new tracker while it runs: started again, nothing checked from nothing
+    let live = Live { trackers: vec!["udp://tracker.test:1/announce".into()], ..Default::default() };
+    getter.change(&gg, &live).await.unwrap();
+    assert!(getter.status(&gg).await.unwrap().trackers.iter().any(|t| t == "udp://tracker.test:1/announce"));
+    assert!(complete(&getter, &gg, 30).await);
+    // stopped, the program closed and opened again: it goes on from its notes
     getter.remove(&gg).await;
-    seeder.remove(&sg).await;
+    drop(getter);
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let getter = Torrents::new(&root.join("b"));
+    let gg2 = getter.add(file.to_str().unwrap(), &opts).await.unwrap();
+    assert_eq!(gg, gg2);
+    assert!(complete(&getter, &gg2, 30).await);
+    // its file deleted while it was stopped: downloaded again, not taken as there
+    getter.remove(&gg2).await;
+    std::fs::remove_file(get_dir.join("song.bin")).unwrap();
+    let gg3 = getter.add(file.to_str().unwrap(), &opts).await.unwrap();
+    assert!(complete(&getter, &gg3, 60).await);
+    assert_eq!(std::fs::read(get_dir.join("song.bin")).unwrap(), data);
+    getter.forget(&gg3).await;
+    seeder.forget(&sg).await;
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -196,7 +213,7 @@ async fn torrent_in_the_download_list() {
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert!(!list_dir.join("song.bin").exists());
     assert!(list_dir.join("mine.txt").exists());
-    seeder.remove(&sg).await;
+    seeder.forget(&sg).await;
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -225,7 +242,7 @@ async fn magnet_link_learns_its_name() {
     assert_eq!(status, swiftget_engine::Status::Completed, "{:?}", v.error);
     assert_eq!(v.file_name, "song.bin", "the real name once the file list came");
     assert_eq!(std::fs::read(list_dir.join("song.bin")).unwrap(), data);
-    seeder.remove(&sg).await;
+    seeder.forget(&sg).await;
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -263,9 +280,6 @@ fn make_multi(a: &[u8], b: &[u8], tracker: &str) -> (Vec<u8>, Vec<u8>) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn only_the_checked_files_of_a_torrent() {
-    if swiftget_engine::mux::find_tool("aria2c").is_none() {
-        return;
-    }
     let root = std::env::temp_dir().join(format!("ezoo-torrent-multi-{}", std::process::id()));
     let seed = root.join("seed");
     std::fs::create_dir_all(seed.join("pack")).unwrap();
@@ -280,8 +294,9 @@ async fn only_the_checked_files_of_a_torrent() {
     let info = parse_torrent(&std::fs::read(&file).unwrap()).unwrap();
     assert_eq!(info.files.iter().map(|f| f.index).collect::<Vec<_>>(), [1, 2]);
 
-    let seeder = Aria2::new(&root.join("a"));
-    let sg = seeder.add(file.to_str().unwrap(), &AddOptions { dir: seed.clone(), seed_minutes: 30, check: true, ..Default::default() }).await.unwrap();
+    let seeder = Torrents::new(&root.join("a"));
+    let sg = seeder.add(file.to_str().unwrap(), &AddOptions { dir: seed.clone(), ..Default::default() }).await.unwrap();
+    assert!(complete(&seeder, &sg, 30).await);
     let mgr = swiftget_engine::Manager::new(tokio::runtime::Handle::current(), root.join("app")).unwrap();
     let get = root.join("get");
     let id = mgr.add(swiftget_engine::NewDownload {
@@ -307,7 +322,7 @@ async fn only_the_checked_files_of_a_torrent() {
     assert_eq!(total, Some(b.len() as u64));
     assert_eq!(std::fs::read(get.join("pack/b.bin")).unwrap(), b);
     assert!(!get.join("pack/a.bin").exists(), "the unchecked file is not kept");
-    seeder.remove(&sg).await;
+    seeder.forget(&sg).await;
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -322,14 +337,14 @@ async fn magnet_link_file_list_first() {
         .map(|b| format!("{b:02x}"))
         .collect();
     let magnet = format!("magnet:?xt=urn:btih:{hash}&tr=http%3A%2F%2F127.0.0.1%3A{port}%2Fannounce");
-    let getter = Aria2::new(&root.join("m"));
+    let getter = Torrents::new(&root.join("m"));
     let file = getter.metadata(&magnet, &root.join("listdir"), Duration::from_secs(60)).await.unwrap();
     let info = swiftget_engine::torrent::parse_torrent(&std::fs::read(&file).unwrap()).unwrap();
     assert_eq!(info.name, "song.bin");
     assert_eq!(info.total, data.len() as u64);
     // nothing of the file itself was downloaded
     assert!(!root.join("listdir").join("song.bin").exists());
-    seeder.remove(&sg).await;
+    seeder.forget(&sg).await;
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -338,9 +353,6 @@ async fn magnet_link_file_list_first() {
 /// while it runs; its magnet link can be given.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn unsafe_names_files_changed_while_running_and_its_magnet() {
-    if swiftget_engine::mux::find_tool("aria2c").is_none() {
-        return;
-    }
     let root = std::env::temp_dir().join(format!("ezoo-torrent-safe-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let seed = root.join("seed");
@@ -387,11 +399,11 @@ async fn unsafe_names_files_changed_while_running_and_its_magnet() {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(&p, data).unwrap();
     }
-    let seeder = Aria2::new(&root.join("a"));
-    let sg = seeder
-        .add(tfile.to_str().unwrap(), &AddOptions { dir: seed.clone(), seed_minutes: 30, check: true, index_out: safe.clone(), ..Default::default() })
-        .await
-        .unwrap();
+    let seeder = Torrents::new(&root.join("a"));
+    let sg = seeder.add(tfile.to_str().unwrap(), &AddOptions { dir: seed.clone(), ..Default::default() }).await.unwrap();
+    assert!(complete(&seeder, &sg, 30).await, "the safe names are the ones it reads too");
+    // slowly, so the change below comes while it runs
+    seeder.set_limits(0, 40 * 1024).await;
     let mgr = swiftget_engine::Manager::new(tokio::runtime::Handle::current(), root.join("app")).unwrap();
     let get = root.join("get");
     let id = mgr.add(swiftget_engine::NewDownload {
@@ -407,6 +419,7 @@ async fn unsafe_names_files_changed_while_running_and_its_magnet() {
     // while it runs: both files wanted after all
     tokio::time::sleep(Duration::from_millis(1500)).await;
     mgr.set_torrent_files(id, None);
+    mgr.set_torrent_first_last(id, true);
     let mut v = mgr.get(id).unwrap();
     for _ in 0..900 {
         v = mgr.get(id).unwrap();
@@ -422,6 +435,74 @@ async fn unsafe_names_files_changed_while_running_and_its_magnet() {
     assert!(!get.join("pack/CON").exists() && !get.join("pack/a:b?.bin").exists());
     let live = mgr.torrent_live(id).unwrap();
     assert!(!live.pieces.is_empty());
-    seeder.remove(&sg).await;
+    seeder.forget(&sg).await;
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Complete with no sharing wanted: it is let go of at once, and the bits
+/// of files that were not chosen go with it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn no_sharing_lets_go_and_cleans_up() {
+    let Some((root, _data, file, seeder, sg, _)) = shared_file("share").await else { return };
+    let left = root.join("seed").join("left.bin");
+    std::fs::write(&left, b"bits").unwrap();
+    seeder.share_then_forget(&sg, 0, 0.0, vec![left.clone()]);
+    let mut gone = false;
+    for _ in 0..50 {
+        if seeder.status(&sg).await.is_err() {
+            gone = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(gone, "forgotten");
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(!left.exists(), "the leftover is deleted");
+    assert!(root.join("seed").join("song.bin").exists(), "the file itself stays");
+    // a later start of the same torrent is not ended by an older sharing
+    let sg2 = seeder.add(file.to_str().unwrap(), &AddOptions { dir: root.join("seed"), ..Default::default() }).await.unwrap();
+    seeder.share_then_forget(&sg2, 30, 0.0, Vec::new());
+    let sg3 = seeder.add(file.to_str().unwrap(), &AddOptions { dir: root.join("seed"), first_last: true, ..Default::default() }).await.unwrap();
+    assert!(complete(&seeder, &sg3, 30).await);
+    seeder.forget(&sg3).await;
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A torrent whose names lead out of its folder ("..") is refused, with words
+/// that say why.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_way_out_of_the_folder_is_refused() {
+    let root = std::env::temp_dir().join(format!("ezoo-torrent-out-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let data = vec![7u8; 1000];
+    let pieces = ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, &data);
+    let mut info = b"d5:filesld6:lengthi1000e4:pathl2:..8:evil.exeeee4:name4:pack12:piece lengthi16384e6:pieces".to_vec();
+    info.extend(ben(pieces.as_ref()));
+    info.extend(b"e");
+    let mut t = b"d4:info".to_vec();
+    t.extend(info);
+    t.extend(b"e");
+    let tfile = root.join("out.torrent");
+    std::fs::write(&tfile, &t).unwrap();
+    let mgr = swiftget_engine::Manager::new(tokio::runtime::Handle::current(), root.join("app")).unwrap();
+    let id = mgr.add(swiftget_engine::NewDownload {
+        url: tfile.to_string_lossy().into_owned(),
+        save_dir: Some(root.join("get")),
+        start: true,
+        ..Default::default()
+    });
+    let mut v = mgr.get(id).unwrap();
+    for _ in 0..100 {
+        v = mgr.get(id).unwrap();
+        if matches!(v.status, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(v.status, swiftget_engine::Status::Failed);
+    let e = v.error.unwrap_or_default();
+    assert!(e.contains("lead out of its folder"), "{e}");
+    assert!(!root.join("evil.exe").exists());
     let _ = std::fs::remove_dir_all(&root);
 }

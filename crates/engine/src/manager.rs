@@ -14,6 +14,7 @@ use crate::model::*;
 use crate::mux;
 use crate::ytdlp;
 use crate::torrent;
+use crate::bt;
 use crate::segments;
 use crate::store;
 use crate::system;
@@ -97,7 +98,7 @@ pub struct Manager {
     rt: Handle,
     data_dir: PathBuf,
     /// the hidden torrent program (started when the first torrent runs)
-    torrents: Arc<torrent::Aria2>,
+    torrents: Arc<bt::Torrents>,
     /// downloads whose link stopped working: the next start gets a new link
     /// and goes on only when it is the same file (size, ranges)
     relink: Mutex<HashSet<DownloadId>>,
@@ -242,7 +243,7 @@ impl Manager {
             shared,
             proxy: Mutex::new(proxy),
             rt: rt.clone(),
-            torrents: Arc::new(torrent::Aria2::new(&data_dir.join("torrents"))),
+            torrents: Arc::new(bt::Torrents::new(&data_dir.join("torrents"))),
             data_dir,
             relink: Mutex::new(HashSet::new()),
             waker: Mutex::new(None),
@@ -604,7 +605,12 @@ impl Manager {
         let data_dir = self.data_dir.clone();
         let me = self.clone();
         self.torrent_live.lock_ok().remove(&id);
+        let hash = (rec.kind == DownloadKind::Torrent).then(|| bt::hash_of(&rec.url)).flatten();
         self.rt.spawn(async move {
+            // a torrent is let go of (it stops sharing, its files are closed)
+            if let Some(h) = hash {
+                me.torrents.forget(&h).await;
+            }
             // give running connections a moment to close their file handles
             tokio::time::sleep(Duration::from_millis(800)).await;
             // (a torrent's last round may have filled it again meanwhile)
@@ -640,19 +646,27 @@ impl Manager {
             return;
         }
         let mut recs = Vec::with_capacity(gone.len());
+        let mut hashes = Vec::new();
         for e in gone {
             if let Some(t) = &e.task {
                 t.cancel();
+            }
+            self.torrent_live.lock_ok().remove(&e.rec.id);
+            if e.rec.kind == DownloadKind::Torrent {
+                hashes.extend(bt::hash_of(&e.rec.url));
             }
             if e.rec.status != Status::Completed {
                 recs.push(e.rec);
             }
         }
-        if recs.is_empty() {
+        if recs.is_empty() && hashes.is_empty() {
             return;
         }
         let me = self.clone();
         self.rt.spawn(async move {
+            for h in hashes {
+                me.torrents.forget(&h).await;
+            }
             tokio::time::sleep(Duration::from_millis(800)).await;
             for _ in 0..5 {
                 let mut left = Vec::new();
@@ -1976,7 +1990,15 @@ impl Manager {
         self.finish_file(id, &rec, &progress, &cancel).await
     }
 
-    /// A torrent: aria2 gets it, we watch and show its progress.
+    /// The speed limits of all torrents together: the one of every download
+    /// (it changes with "only while I use the computer") and the upload one.
+    async fn torrent_limits(&self) {
+        let up = self.settings.read_ok().torrent_upload_kb.saturating_mul(1024);
+        let down = self.limit_now.load(Ordering::Relaxed);
+        self.torrents.set_limits(if down == u64::MAX { 0 } else { down }, up).await;
+    }
+
+    /// A torrent: librqbit gets it, we watch and show its progress.
     async fn run_torrent(
         self: &Arc<Self>,
         id: DownloadId,
@@ -1986,36 +2008,29 @@ impl Manager {
         settings: &Settings,
     ) -> anyhow::Result<()> {
         let _ = std::fs::create_dir_all(&rec.save_dir);
-        let target = rec.target_path();
-        let control = rec.save_dir.join(format!("{}.aria2", rec.file_name));
-        let limit_kb = rec.speed_limit_kb.unwrap_or(settings.effective_limit() / 1024);
-        // file names Windows can't keep safely (".." , "CON"...): written
-        // under safe names
-        let index_out = if torrent::is_magnet(&rec.url) {
-            Vec::new()
-        } else {
-            std::fs::read(&rec.url).ok().and_then(|d| torrent::parse_torrent(&d).ok()).map(|i| torrent::safe_paths(&i)).unwrap_or_default()
-        };
         let opts = torrent::AddOptions {
             dir: rec.save_dir.clone(),
             select: rec.torrent_select.clone(),
-            seed_minutes: settings.torrent_seed_minutes,
-            download_limit_kb: limit_kb,
-            upload_limit_kb: settings.torrent_upload_kb,
-            // all there already (no notes of aria2 about it), or asked for: check it
-            check: (target.exists() && !control.exists()) || rec.torrent_recheck,
-            seed_ratio: settings.torrent_seed_ratio,
+            download_limit_kb: rec.speed_limit_kb.unwrap_or(0),
+            check: rec.torrent_recheck,
             first_last: rec.torrent_first_last,
             trackers: rec.torrent_trackers.clone(),
-            index_out,
         };
         if rec.torrent_recheck {
             self.update(id, |x| x.torrent_recheck = false);
         }
         // files that were there before: never removed by us
         let existed: HashSet<PathBuf> = rec.torrent_data_paths().into_iter().filter(|p| p.exists()).collect();
-        let mut gid = tokio::select! {
-            r = self.torrents.add(&rec.url, &opts) => r?,
+        self.torrent_limits().await;
+        let gid = tokio::select! {
+            r = self.torrents.add(&rec.url, &opts) => r.map_err(|e| {
+                // librqbit refuses names with ".." itself
+                if format!("{e:#}").contains("path traversal") {
+                    anyhow!("this torrent has file names that lead out of its folder: it was stopped")
+                } else {
+                    e
+                }
+            })?,
             _ = cancel.cancelled() => return Err(Cancelled.into()),
         };
         self.update(id, |x| {
@@ -2031,8 +2046,13 @@ impl Manager {
         // since when people are connected but none of them sends anything
         let mut dry_since: Option<Instant> = None;
         let mut said_dry = false;
-        // what was asked of aria2 last (files, trackers, first / last pieces)
-        let mut applied = (rec.torrent_select.clone(), rec.torrent_trackers.clone(), rec.torrent_first_last);
+        // what was asked last (files, trackers, first / last pieces)
+        // (a magnet link's chosen files: given once its file list is here)
+        let mut applied = (
+            if torrent::is_magnet(&rec.url) && rec.torrent_select.is_some() { Some(String::new()) } else { rec.torrent_select.clone() },
+            rec.torrent_trackers.clone(),
+            rec.torrent_first_last,
+        );
         let mut rounds = 0u64;
         let mut checked_paths = false;
         loop {
@@ -2044,6 +2064,9 @@ impl Manager {
                     return Err(Cancelled.into());
                 }
             }
+            if rounds.is_multiple_of(5) {
+                self.torrent_limits().await;
+            }
             let st = match self.torrents.status(&gid).await {
                 Ok(st) => st,
                 Err(e) => {
@@ -2051,13 +2074,8 @@ impl Manager {
                     return Err(e.context("the torrent program stopped"));
                 }
             };
-            // a magnet link found its file list: the torrent goes on under a new id
-            if let Some(next) = st.followed_by.clone() {
-                gid = next;
-                continue;
-            }
-            // the chosen files only: aria2's own total also counts the
-            // pieces they share with files that were left out
+            // the chosen files only (the total also counts the pieces they
+            // share with files that were left out)
             let files = if st.total > 0 { self.torrents.files(&gid).await.unwrap_or_default() } else { Vec::new() };
             // a magnet link's files (known only now): every one inside the folder
             if !checked_paths && !files.is_empty() {
@@ -2073,9 +2091,8 @@ impl Manager {
                 inner.entries.get(&id).map(|e| (e.rec.torrent_select.clone(), e.rec.torrent_trackers.clone(), e.rec.torrent_first_last))
             };
             if let Some(w) = wanted.filter(|w| *w != applied && !files.is_empty()) {
-                let all = format!("1-{}", files.iter().map(|f| f.index).max().unwrap_or(1));
-                let sel = w.0.clone().filter(|s| !s.is_empty()).unwrap_or(all);
-                if self.torrents.change(&gid, torrent::live_options(&sel, &w.1, w.2)).await.is_ok() {
+                let live = bt::Live { select: w.0.clone(), trackers: w.1.clone(), first_last: w.2 };
+                if self.torrents.change(&gid, &live).await.is_ok() {
                     applied = w;
                 }
             }
@@ -2175,21 +2192,17 @@ impl Manager {
                 _ => st.seeding && total > 0 && done >= total,
             };
             if finished {
-                // no sharing wanted (or its time is over): aria2 forgets it,
-                // so the same torrent can be added again
-                if st.status == "complete" || (settings.torrent_seed_minutes == 0 && settings.torrent_seed_ratio <= 0.0) {
-                    self.torrents.remove(&gid).await;
-                }
                 // the bits of the files that were left out (pieces are shared
-                // between files): not wanted, and not the user's own
-                for f in files.iter().filter(|f| !f.selected) {
-                    if inside(&f.path, &rec.save_dir) && f.path.is_file() && !existed.contains(&f.path) {
-                        let _ = std::fs::remove_file(&f.path);
-                        if let Some(dir) = f.path.parent() {
-                            let _ = std::fs::remove_dir(dir); // only when empty
-                        }
-                    }
-                }
+                // between files): not wanted, and not the user's own; deleted
+                // once the torrent lets go of them
+                let leftovers: Vec<PathBuf> = files
+                    .iter()
+                    .filter(|f| !f.selected && inside(&f.path, &rec.save_dir) && f.path.is_file() && !existed.contains(&f.path))
+                    .map(|f| f.path.clone())
+                    .collect();
+                // it shares for the time (or the ratio) of Options, then it
+                // is forgotten (no sharing wanted: forgotten now)
+                self.torrents.share_then_forget(&gid, settings.torrent_seed_minutes, settings.torrent_seed_ratio, leftovers);
                 return Ok(());
             }
         }

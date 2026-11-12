@@ -713,7 +713,7 @@ const AR: &[(&str, &str)] = &[
     ("Everything works.", "كل شيء يعمل."),
     ("Please enter a valid http://, https:// or ftp:// address", "من فضلك أدخل رابطًا صحيحًا يبدأ بـ http:// أو https:// أو ftp://"),
     ("This is not a checksum: paste its MD5, SHA-1, SHA-256, SHA-384 or SHA-512 value", "هذا ليس رمز تحقق: الصق قيمة MD5 أو SHA-1 أو SHA-256 أو SHA-384 أو SHA-512"),
-    ("The torrent goes on with the files checked (it starts again for a moment).", "التورنت يكمل بالملفات المحددة (يتوقف لحظة ثم يبدأ من جديد)."),
+    ("The torrent goes on with the files checked.", "التورنت يكمل بالملفات المحددة."),
     ("Tracker added.", "تمت إضافة المتتبع."),
     ("This is not a tracker address (udp://, http:// or https://).", "هذا ليس عنوان متتبع (udp:// أو http:// أو https://)."),
     ("Every piece on the disk is checked again, then it goes on.", "يُعاد فحص كل جزء على القرص، ثم يكمل."),
@@ -733,6 +733,7 @@ const AR: &[(&str, &str)] = &[
     ("The speed limit can work only while you use the computer, and a scheduled queue can wake the computer from sleep to start.", "حد السرعة يمكن أن يعمل فقط أثناء استخدامك للكمبيوتر، وقائمة الانتظار المجدولة يمكنها إيقاظ الكمبيوتر من وضع السكون لتبدأ."),
     ("Keyboard shortcuts for the list (F1 shows them), a command line for other programs and scripts, and Help > Add Ezoo Download to my browser > Test the link checks the add-in step by step.", "اختصارات لوحة المفاتيح للقائمة (F1 يعرضها)، وسطر أوامر للبرامج والسكربتات الأخرى، ومساعدة > إضافة Ezoo Download إلى متصفحي > اختبار الربط يفحص الإضافة خطوة بخطوة."),
     ("The add-in works in private windows too (allow it there in the browser), keeps the browser's own download when the program is closed, and its video button can be moved or hidden on a site.", "الإضافة تعمل في النوافذ الخاصة أيضًا (اسمح لها بذلك من المتصفح)، وتترك التحميل للمتصفح نفسه إذا كان البرنامج مغلقًا، وزر الفيديو يمكن نقله أو إخفاؤه في أي موقع."),
+    ("Torrents are shared by the program itself now, with no helper program: they start sooner, use less of the computer, and a stopped torrent goes on after a restart without checking all its pieces again.", "التورنت أصبح يعمل من داخل البرنامج نفسه دون برنامج مساعد: يبدأ أسرع، ويستهلك موارد أقل من الكمبيوتر، والتورنت المتوقف يكمل بعد إعادة التشغيل دون إعادة فحص كل أجزائه."),
 ];
 
 #[cfg(test)]

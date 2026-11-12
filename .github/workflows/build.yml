@@ -217,14 +217,6 @@ jobs:
           $yWant = ($ySumText -split "`n" | Where-Object { $_ -match "^([0-9a-fA-F]{64})\s+\*?yt-dlp\.exe\s*$" } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
           $yGot = (Get-FileHash "$p/tools/yt-dlp.exe" -Algorithm SHA256).Hash
           if (-not $yWant -or $yGot -ne $yWant.ToUpper()) { throw "yt-dlp.exe does not match its published SHA-256" }
-          # aria2 (torrents): one fixed build, checked against its known SHA-256
-          Invoke-WebRequest "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" -OutFile aria2.zip
-          if ((Get-FileHash aria2.zip -Algorithm SHA256).Hash -ne "67D015301EEF0B612191212D564C5BB0A14B5B9C4796B76454276A4D28D9B288") { throw "aria2.zip does not match its SHA-256" }
-          Expand-Archive aria2.zip -DestinationPath aria2-tmp
-          $a2 = Get-ChildItem aria2-tmp -Recurse -Filter aria2c.exe | Select-Object -First 1
-          if ((Get-FileHash $a2.FullName -Algorithm SHA256).Hash -ne "BE2099C214F63A3CB4954B09A0BECD6E2E34660B886D4C898D260FEBFE9D70C2") { throw "aria2c.exe does not match its SHA-256" }
-          Copy-Item $a2.FullName "$p/tools/"
-          Copy-Item (Get-ChildItem aria2-tmp -Recurse -Filter COPYING | Select-Object -First 1).FullName "$p/tools/aria2-COPYING.txt"
           choco install innosetup -y --no-progress
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DMyAppVersion=$version" installer\ezoo.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }

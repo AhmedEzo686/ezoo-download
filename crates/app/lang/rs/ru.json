@@ -390,7 +390,6 @@
  "Everything works.": "Всё работает.",
  "Please enter a valid http://, https:// or ftp:// address": "Введите правильный адрес http://, https:// или ftp://",
  "This is not a checksum: paste its MD5, SHA-1, SHA-256, SHA-384 or SHA-512 value": "Это не контрольная сумма: вставьте значение MD5, SHA-1, SHA-256, SHA-384 или SHA-512",
- "The torrent goes on with the files checked (it starts again for a moment).": "Торрент продолжается с отмеченными файлами (на миг перезапускается).",
  "Tracker added.": "Трекер добавлен.",
  "This is not a tracker address (udp://, http:// or https://).": "Это не адрес трекера (udp://, http:// или https://).",
  "Every piece on the disk is checked again, then it goes on.": "Каждый фрагмент на диске проверяется заново, затем загрузка продолжается.",
@@ -409,5 +408,7 @@
  "Safer resume: a file that changed on the server is noticed instead of being joined with the old parts, links that lead through a few pages to the file are followed, and downloads that need a form sent from the browser work.": "Более надёжное продолжение: изменившийся на сервере файл обнаруживается, а не склеивается со старыми частями, ссылки, ведущие к файлу через несколько страниц, отслеживаются, и работают загрузки, которым нужна отправка формы из браузера.",
  "The speed limit can work only while you use the computer, and a scheduled queue can wake the computer from sleep to start.": "Ограничение скорости может действовать только пока вы пользуетесь компьютером, а очередь по расписанию может вывести компьютер из сна для запуска.",
  "Keyboard shortcuts for the list (F1 shows them), a command line for other programs and scripts, and Help > Add Ezoo Download to my browser > Test the link checks the add-in step by step.": "Сочетания клавиш для списка (F1 показывает их), командная строка для других программ и скриптов, а Справка > Добавить Ezoo Download в мой браузер > Проверить связь проверяет дополнение шаг за шагом.",
- "The add-in works in private windows too (allow it there in the browser), keeps the browser's own download when the program is closed, and its video button can be moved or hidden on a site.": "Дополнение работает и в приватных окнах (разрешите это в браузере), оставляет загрузку браузеру, когда программа закрыта, а его кнопку видео можно переместить или скрыть на сайте."
+ "The add-in works in private windows too (allow it there in the browser), keeps the browser's own download when the program is closed, and its video button can be moved or hidden on a site.": "Дополнение работает и в приватных окнах (разрешите это в браузере), оставляет загрузку браузеру, когда программа закрыта, а его кнопку видео можно переместить или скрыть на сайте.",
+ "The torrent goes on with the files checked.": "Торрент продолжается с отмеченными файлами.",
+ "Torrents are shared by the program itself now, with no helper program: they start sooner, use less of the computer, and a stopped torrent goes on after a restart without checking all its pieces again.": "Торренты теперь раздаёт сама программа, без вспомогательной: они запускаются быстрее, меньше нагружают компьютер, а остановленный торрент продолжается после перезапуска без повторной проверки всех фрагментов."
 }

@@ -1,6 +1,5 @@
 //! The helper programs that come with Ezoo Download: yt-dlp (finds the video
-//! links) and aria2 (torrents) from their GitHub releases, and our own small
-//! ffmpeg build (joins video + audio, MP3; built by tools/ffmpeg/build.sh). They live in the "tools" folder
+//! links) from its GitHub releases, and our own small ffmpeg build (joins video + audio, MP3; built by tools/ffmpeg/build.sh). They live in the "tools" folder
 //! of the install folder. Once a day, silently, Ezoo Download checks for new
 //! versions and updates them, and puts them back if one went missing.
 
@@ -15,11 +14,6 @@ const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/downlo
 const YTDLP_SUMS_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
 /// none of the helpers is anywhere near this big
 const MAX_TOOL_BYTES: u64 = 400 << 20;
-/// aria2 for torrents: one fixed, known build (it changes rarely), checked
-/// against this SHA-256 before use
-pub const ARIA2_URL: &str = "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip";
-pub const ARIA2_ZIP_SHA256: &str = "67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288";
-pub const ARIA2_EXE_SHA256: &str = "be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2";
 
 fn exe(name: &str) -> String {
     if cfg!(windows) {
@@ -212,58 +206,14 @@ fn ffmpeg_cleanup() {
     }
 }
 
-/// aria2c missing (an older install): get the known build.
-async fn aria2(client: &reqwest::Client) -> anyhow::Result<()> {
-    if !cfg!(windows) || bundled("aria2c").is_some() {
-        return Ok(());
-    }
-    let Some(dir) = writable_dir("aria2c") else { return Ok(()) };
-    let work = std::env::temp_dir().join(format!("ezoo-aria2-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&work);
-    std::fs::create_dir_all(&work)?;
-    let zip = work.join("aria2.zip");
-    download(client, ARIA2_URL, &zip, ARIA2_ZIP_SHA256).await?;
-    let (zip2, work2) = (zip.clone(), work.clone());
-    let unpacked = tokio::task::spawn_blocking(move || {
-        let mut cmd = Command::new(crate::system::windows_tool("tar.exe"));
-        cmd.arg("-xf").arg(&zip2).arg("-C").arg(&work2);
-        hide_window(&mut cmd);
-        cmd.output().map(|o| o.status.success()).unwrap_or(false)
-    })
-    .await
-    .unwrap_or(false);
-    let found = unpacked.then(|| find_file(&work, &exe("aria2c"))).flatten();
-    let result = match found {
-        Some(f) if sha256_of(&f).as_deref() == Some(ARIA2_EXE_SHA256) => {
-            let staged = dir.join("aria2c.new");
-            std::fs::copy(&f, &staged)?;
-            replace(&staged, &dir.join(exe("aria2c")))
-        }
-        Some(_) => Err(anyhow::anyhow!("aria2c.exe does not match its known SHA-256")),
-        None => Err(anyhow::anyhow!("aria2c.exe was not found in the download")),
-    };
-    let _ = std::fs::remove_dir_all(&work);
-    result
-}
-
-fn sha256_of(path: &Path) -> Option<String> {
-    use sha2::{Digest, Sha256};
-    let data = std::fs::read(path).ok()?;
-    Some(Sha256::digest(&data).iter().map(|b| format!("{b:02x}")).collect())
-}
-
-fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
-    for entry in std::fs::read_dir(dir).ok()?.flatten() {
-        let p = entry.path();
-        if p.is_dir() {
-            if let Some(f) = find_file(&p, name) {
-                return Some(f);
-            }
-        } else if p.file_name().map(|n| n.eq_ignore_ascii_case(name)).unwrap_or(false) {
-            return Some(p);
+/// The torrent helper of older versions: torrents are shared by the program
+/// itself now.
+fn aria2_cleanup() {
+    for dir in tool_dirs() {
+        for f in [exe("aria2c"), "aria2-COPYING.txt".into(), "aria2c.new".into()] {
+            let _ = std::fs::remove_file(dir.join(f));
         }
     }
-    None
 }
 
 /// The SHA-256 of the ffmpeg.exe that GitHub built together with this very
@@ -303,10 +253,10 @@ pub async fn update_all(client: reqwest::Client, data_dir: PathBuf) {
     yt_dlp(&client, &data_dir).await;
     restore_ffmpeg(&client).await;
     ffmpeg_cleanup();
-    let _ = aria2(&client).await;
+    aria2_cleanup();
     // leftovers of earlier updates
     for dir in tool_dirs() {
-        for name in ["yt-dlp", "ffmpeg", "aria2c"] {
+        for name in ["yt-dlp", "ffmpeg"] {
             let _ = std::fs::remove_file(dir.join(exe(name)).with_extension("old"));
         }
     }
@@ -328,12 +278,10 @@ pub fn spawn_updater(rt: &tokio::runtime::Handle, client: reqwest::Client, data_
 mod tests {
     use super::*;
     #[test]
-    fn replace_and_find() {
+    fn replace_a_tool() {
         let dir = std::env::temp_dir().join(format!("ezoo-tools-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("a/b")).unwrap();
-        std::fs::write(dir.join("a/b/ffmpeg.exe"), b"new").unwrap();
-        assert!(find_file(&dir, "FFMPEG.EXE").is_some());
+        std::fs::create_dir_all(&dir).unwrap();
         let target = dir.join("tool.exe");
         std::fs::write(&target, b"old").unwrap();
         let new = dir.join("tool.new");

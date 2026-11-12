@@ -373,7 +373,8 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-pub(crate) const WHATS_NEW: [&str; 17] = [
+pub(crate) const WHATS_NEW: [&str; 18] = [
+    "Torrents are shared by the program itself now, with no helper program: they start sooner, use less of the computer, and a stopped torrent goes on after a restart without checking all its pieces again.",
     "FTP and FTPS links download like web links: in parts, with resume, and with the user name and password kept apart from the address.",
     "Checksum: paste an MD5, SHA-1 or SHA-256 value in Download File Info (or the site gives one) and the file is checked when it finishes.",
     "Torrents have their own tab in Properties: the files (choose them while it runs), the people, the trackers and the pieces. Add a tracker, check the files again, copy the magnet link, first and last pieces first, and stop sharing at a ratio you choose.",

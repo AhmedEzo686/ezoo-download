@@ -3998,7 +3998,7 @@ fn wire_torrent_tab(ui: &Ui, d: &DetailsDialog, id: u64, v: &DownloadView) {
             let select = (!rows.iter().all(|r| r.selected))
                 .then(|| rows.iter().filter(|r| r.selected).map(|r| r.index.to_string()).collect::<Vec<_>>().join(","));
             mgr.set_torrent_files(id, select);
-            d.set_t_note(t("The torrent goes on with the files checked (it starts again for a moment).").into());
+            d.set_t_note(t("The torrent goes on with the files checked.").into());
         });
     }
     {
@@ -4084,7 +4084,8 @@ fn fill_torrent_tab(d: &DetailsDialog, mgr: &Manager, v: &DownloadView) {
             address: p.address.clone().into(),
             down: format!("{}/s", fmt_size(p.down)).into(),
             up: format!("{}/s", fmt_size(p.up)).into(),
-            have: format!("{:.0}%", p.have * 100.0).into(),
+            // (not known of every person: not shown)
+            have: if p.have < 0.0 { SharedString::new() } else { format!("{:.0}%", p.have * 100.0).into() },
             seeder: p.seeder,
         })
         .collect();

@@ -172,6 +172,9 @@ Source: "..\build-cache\redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: dont
 ; older versions kept the helpers next to the program
 Type: files; Name: "{app}\yt-dlp.exe"
 Type: files; Name: "{app}\ffmpeg.exe"
+; torrents are shared by the program itself now: the old helper goes
+Type: files; Name: "{app}\tools\aria2c.exe"
+Type: files; Name: "{app}\tools\aria2-COPYING.txt"
 ; the browser add-in is put in again whole: nothing of an older version
 ; stays behind to clash with the new one (the folder is the same, so the
 ; browser keeps the add-in; the program writes its key in again at start)
@@ -277,16 +280,16 @@ begin
 #endif
 end;
 
-{ the torrent helper may take people's connections: Windows' firewall lets
-  it (needs administrator rights: Windows asks once; refused = torrents still
-  work, a little slower) }
+{ the program takes people's connections for torrents: Windows' firewall
+  lets it (needs administrator rights: Windows asks once; refused = torrents
+  still work, a little slower) }
 procedure AllowTorrents;
 var
   Code: Integer;
   Tool: String;
 begin
   if WizardSilent then exit;
-  Tool := ExpandConstant('{app}\tools\aria2c.exe');
+  Tool := ExpandConstant('{app}\{#MyAppExe}');
   ShellExec('runas', ExpandConstant('{sys}\cmd.exe'),
     '/C netsh advfirewall firewall delete rule name="Ezoo Download torrents" >nul 2>&1 & ' +
     'netsh advfirewall firewall add rule name="Ezoo Download torrents" dir=in action=allow program="' + Tool + '" enable=yes profile=any >nul 2>&1',

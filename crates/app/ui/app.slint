@@ -3314,7 +3314,7 @@ export component DetailsDialog inherits ThemedWindow {
                         Text {
                             text: p.have;
                             color: Theme.muted;
-                            width: 44px;
+                            width: p.have == "" ? 0px : 44px;
                         }
                     }
                 }

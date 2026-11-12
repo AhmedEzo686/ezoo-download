@@ -44,7 +44,7 @@ pub enum DownloadKind {
     /// Separate video and audio streams (YouTube style, "DASH"):
     /// both are downloaded, then merged into one file with ffmpeg
     Dash,
-    /// a .torrent file or a magnet link, shared with other computers (aria2)
+    /// a .torrent file or a magnet link, shared with other computers
     Torrent,
 }
 
@@ -428,7 +428,7 @@ impl DownloadRecord {
     /// Every temporary file/folder this download may leave behind.
     pub fn temp_paths(&self) -> Vec<PathBuf> {
         if self.kind == DownloadKind::Torrent {
-            // aria2's notes of what it has
+            // the notes an older version (aria2) kept of what it has
             return vec![self.save_dir.join(format!("{}.aria2", self.file_name))];
         }
         vec![self.part_path(), self.hls_temp_dir(), self.video_part_path(), self.audio_part_path()]

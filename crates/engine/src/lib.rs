@@ -15,6 +15,7 @@ pub mod config;
 pub mod ef2;
 pub mod fileio;
 pub mod filename;
+pub mod bt;
 pub mod ftp;
 pub mod grabber;
 pub mod hls;
