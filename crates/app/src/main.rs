@@ -1783,6 +1783,7 @@ fn wire_add(ui: &Ui) {
         let ctx = ui.ctx.clone();
         add.on_cancel(move || {
             ctx.add_state.lock().unwrap().probe_seq += 1; // ignore a check still running
+            forget_look(&ctx);
             cancel_early(&ctx);
             if let Some(d) = ctx.add.upgrade() {
                 let _ = d.hide();
@@ -1794,6 +1795,7 @@ fn wire_add(ui: &Ui) {
         let ctx = ui.ctx.clone();
         add.window().on_close_requested(move || {
             ctx.add_state.lock().unwrap().probe_seq += 1;
+            forget_look(&ctx);
             cancel_early(&ctx);
             open_next(&ctx);
             slint::CloseRequestResponse::HideWindow
@@ -2675,6 +2677,15 @@ fn open_next(ctx: &Ctx) {
         Timer::single_shot(Duration::from_millis(300), move || {
             open_add_dialog(&ctx, p.url, p.headers, p.name_hint, p.extra);
         });
+    }
+}
+
+/// The window was closed without downloading: the server's answer kept for
+/// the download is let go (its connection is not held any longer).
+fn forget_look(ctx: &Ctx) {
+    let url = ctx.add_state.lock().unwrap().origin_url.clone();
+    if !url.is_empty() {
+        swiftget_engine::http::drop_kept(&url);
     }
 }
 

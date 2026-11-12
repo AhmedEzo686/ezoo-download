@@ -26,6 +26,30 @@ pub fn write_at(file: &File, buf: &[u8], mut offset: u64) -> io::Result<()> {
     }
 }
 
+/// Fill `buf` from `offset` of the file (all of it, or an error).
+#[allow(unused_mut)]
+pub fn read_at(file: &File, buf: &mut [u8], mut offset: u64) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileExt;
+        file.read_exact_at(buf, offset)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileExt;
+        let mut got = 0;
+        while got < buf.len() {
+            let n = file.seek_read(&mut buf[got..], offset)?;
+            if n == 0 {
+                return Err(io::ErrorKind::UnexpectedEof.into());
+            }
+            got += n;
+            offset += n as u64;
+        }
+        Ok(())
+    }
+}
+
 /// On NTFS, writing far into a freshly sized file forces Windows to zero-fill
 /// everything before it, which stalls big downloads. Marking the file sparse
 /// avoids that. Best effort: failures are ignored.

@@ -1516,9 +1516,24 @@ impl Manager {
         // Fresh look at the server every time: links behind redirects often
         // expire, and the file may have changed since we paused.
         let client = self.shared.client();
-        let p = tokio::select! {
-            r = http::probe(&client, &rec.url, &rec.headers, &settings.user_agent) => r?,
-            _ = cancel.cancelled() => return Err(Cancelled.into()),
+        // nothing on the disk yet: the answer the look got a moment ago (kept
+        // open) is where the file comes from, not a new request
+        let fresh = rec.downloaded == 0 && segs.lock().unwrap().is_empty() && !self.relink.lock().unwrap().contains(&id);
+        let kept = if fresh { http::take_kept(&rec.url) } else { None };
+        if kept.is_none() {
+            http::drop_kept(&rec.url);
+        }
+        let (p, mut opening) = match kept {
+            Some((p, answer)) => (p, Some(answer)),
+            None => {
+                let p = tokio::select! {
+                    r = http::probe(&client, &rec.url, &rec.headers, &settings.user_agent) => r?,
+                    _ = cancel.cancelled() => return Err(Cancelled.into()),
+                };
+                // the look itself kept its answer: taken too
+                let answer = if fresh { http::take_kept(&rec.url).map(|(_, a)| a) } else { http::drop_kept(&rec.url); None };
+                (p, answer)
+            }
         };
         if p.is_web_page() && rec.downloaded == 0 && segs.lock().unwrap().is_empty() {
             anyhow::bail!(
@@ -1625,6 +1640,7 @@ impl Manager {
                     progress_base: 0,
                     max_request: http_download::max_request_for(rec.request_url()),
                     limiter: limiter.clone(),
+                    check: http_download::FileCheck::new(rec.etag.clone(), opening.take()),
                 };
                 http_download::run(self.shared.clone(), job.clone(), segs.clone(), progress.clone(), cancel.clone()).await?;
                 // a packed file (RAR, ZIP, 7z...) never has long runs of empty
@@ -2171,6 +2187,7 @@ impl Manager {
                 progress_base: 0,
                 max_request: http_download::max_request_for(&vp.final_url),
                 limiter: limiter.clone(),
+                check: Default::default(),
             };
             http_download::run(self.shared.clone(), video_job.clone(), segs.clone(), progress.clone(), cancel.clone())
                 .await?;

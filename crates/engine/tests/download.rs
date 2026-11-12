@@ -96,6 +96,7 @@ async fn segmented_download_with_pause_and_resume() {
         progress_base: 0,
         max_request: None,
         limiter: Arc::new(SpeedLimiter::new(0)),
+        check: Default::default(),
     };
     let segs = Arc::new(Mutex::new(Vec::new()));
     let progress = Arc::new(Progress::default());
@@ -154,6 +155,7 @@ async fn chunked_requests_with_32_connections() {
         progress_base: 0,
         max_request: Some(40 * 1024),
         limiter: Arc::new(SpeedLimiter::new(0)),
+        check: Default::default(),
     };
     let segs = Arc::new(Mutex::new(Vec::new()));
     let progress = Arc::new(Progress::default());
@@ -244,6 +246,7 @@ async fn waits_through_a_long_outage_and_resumes() {
         progress_base: 0,
         max_request: None,
         limiter: Arc::new(SpeedLimiter::new(0)),
+        check: Default::default(),
     };
     let segs = Arc::new(Mutex::new(Vec::new()));
     let progress = Arc::new(Progress::default());
@@ -499,6 +502,7 @@ async fn connections_changed_while_downloading() {
         progress_base: 0,
         max_request: None,
         limiter: Arc::new(SpeedLimiter::new(0)),
+        check: Default::default(),
     };
     let segs = Arc::new(Mutex::new(Vec::new()));
     let progress = Arc::new(Progress::default());
@@ -1440,6 +1444,7 @@ async fn a_slow_last_connection_does_not_hold_the_end() {
         progress_base: 0,
         max_request: None,
         limiter: Arc::new(SpeedLimiter::new(0)),
+        check: Default::default(),
     };
     let shared = Arc::new(Shared::new(build_client().unwrap(), SpeedLimiter::new(0)));
     let started = std::time::Instant::now();

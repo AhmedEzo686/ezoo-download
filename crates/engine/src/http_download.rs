@@ -93,7 +93,45 @@ pub struct HttpJob {
     pub max_request: Option<u64>,
     /// this download's own speed limit (shared with its other parts)
     pub limiter: Arc<crate::limiter::SpeedLimiter>,
+    /// what makes sure every part is of the same file
+    pub check: FileCheck,
 }
+
+/// What makes sure every part written is of the same file.
+#[derive(Clone, Default)]
+pub struct FileCheck {
+    /// the server's name for this version of the file (a strong ETag): sent
+    /// with every part ("If-Range"), so a file changed on the server comes
+    /// back whole instead of as a part of the new one
+    pub version: Arc<Mutex<Option<String>>>,
+    /// the first answer, kept open since the look: the first part is read
+    /// from it (a link that works for one request only)
+    pub opening: Arc<Mutex<Option<reqwest::Response>>>,
+}
+
+impl FileCheck {
+    pub fn new(version: Option<String>, opening: Option<reqwest::Response>) -> FileCheck {
+        FileCheck { version: Arc::new(Mutex::new(version)), opening: Arc::new(Mutex::new(opening)) }
+    }
+}
+
+/// A connection that goes on from where it was re-reads this many bytes
+/// before it and compares them with the disk: a file changed on the server
+/// (a server that names no version) is caught instead of mixed in.
+const OVERLAP: u64 = 64;
+
+/// Asked again at once (not a failure of the connection).
+#[derive(Debug)]
+struct Again(&'static str);
+impl std::fmt::Display for Again {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+impl std::error::Error for Again {}
+
+/// The file on the server is not the one the download began with.
+pub const FILE_CHANGED: &str = "the file on the server changed since the download began - start the download again";
 
 /// Request size limit for servers known to throttle big range requests.
 pub fn max_request_for(url: &str) -> Option<u64> {
@@ -586,6 +624,7 @@ impl Worker {
                     attempt = 0; // one request done, ask for the next piece
                 }
                 Err(e) if e.is::<Leave>() => return Err(e),
+                Err(e) if e.is::<Again>() && attempt < 3 => attempt += 1,
                 Err(e) => {
                     let after = self.segs.lock().unwrap()[idx].pos;
                     if after > before {
@@ -702,9 +741,9 @@ impl Worker {
     }
 
     async fn fetch_once(&self, idx: usize) -> anyhow::Result<()> {
-        let (pos, end) = {
+        let (start, pos, end) = {
             let table = self.segs.lock().unwrap();
-            (table[idx].pos, table[idx].end)
+            (table[idx].start, table[idx].pos, table[idx].end)
         };
         if pos >= end {
             return Ok(());
@@ -714,19 +753,37 @@ impl Worker {
             Some(limit) if self.segmented => end.min(pos + limit.max(1)),
             _ => end,
         };
-        let mut rb = request(&crate::http::client_for(&self.shared.client(), &self.job.url), &self.job.url, &self.job.headers, &self.job.user_agent);
-        if self.segmented {
-            rb = rb.header(RANGE, format!("bytes={}-{}", pos, req_end - 1));
-        }
-        // the answer (its headers) must come: a server that keeps quiet does
-        // not hold this connection for ever
-        let mut resp = match tokio::time::timeout(HEADERS_TIMEOUT, rb.send_ordered()).await {
-            Ok(r) => r?,
-            Err(_) => return Err(NetDrop("the server did not answer (timed out)").into()),
+        // the first part of a new download: from the answer kept since the look
+        let opened = if pos == 0 { self.job.check.opening.lock().unwrap_or_else(|e| e.into_inner()).take() } else { None };
+        let was_opened = opened.is_some();
+        // going on inside a part: the last bytes before are asked again and
+        // compared with what is on the disk
+        let back = if self.segmented && !was_opened { pos.saturating_sub(start).min(OVERLAP) } else { 0 };
+        let version = self.job.check.version.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let mut resp = match opened {
+            Some(r) => r,
+            None => {
+                let mut rb = request(&crate::http::client_for(&self.shared.client(), &self.job.url), &self.job.url, &self.job.headers, &self.job.user_agent);
+                if self.segmented {
+                    rb = rb.header(RANGE, format!("bytes={}-{}", pos - back, req_end - 1));
+                    if let Some(v) = &version {
+                        rb = rb.header(reqwest::header::IF_RANGE, v.as_str());
+                    }
+                }
+                // the answer (its headers) must come: a server that keeps quiet does
+                // not hold this connection for ever
+                match tokio::time::timeout(HEADERS_TIMEOUT, rb.send_ordered()).await {
+                    Ok(r) => r?,
+                    Err(_) => return Err(NetDrop("the server did not answer (timed out)").into()),
+                }
+            }
         };
         let status = resp.status();
         if status == StatusCode::TOO_MANY_REQUESTS {
             self.retry_after.store(retry_after_of(&resp).unwrap_or(0), Ordering::Relaxed);
+        }
+        if crate::http::is_bot_check(&resp) {
+            return Err(anyhow!(HttpStatus(403)).context(crate::http::CAPTCHA));
         }
         if status == StatusCode::FORBIDDEN {
             // a site that wants a "not a robot" check (pixeldrain and others
@@ -742,6 +799,22 @@ impl Worker {
                 if status.is_client_error() || status.is_server_error() {
                     return Err(HttpStatus(status.as_u16()).into());
                 }
+                // asked "only if it is still this version": the whole file
+                // came back, so it is another version - or the same file
+                // under another name on another server of the same site
+                if status == StatusCode::OK && version.is_some() {
+                    let theirs = resp.headers().get(reqwest::header::ETAG).and_then(|v| v.to_str().ok()).map(|s| s.trim().to_string());
+                    let same_size = resp.content_length().is_some() && resp.content_length() == self.job.total_size;
+                    if same_size && theirs != version {
+                        // each server of the site names it its own way: asked
+                        // again without the name (the bytes before are still compared)
+                        *self.job.check.version.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                        return Err(Again("asked again without the version check").into());
+                    }
+                    if !same_size {
+                        bail!(FILE_CHANGED);
+                    }
+                }
                 bail!("server did not accept the byte range (HTTP {})", status.as_u16());
             }
             // the part must be the one asked for (and of the same file):
@@ -752,7 +825,7 @@ impl Worker {
                 .and_then(|v| v.to_str().ok())
                 .and_then(parse_content_range)
             {
-                if start != pos {
+                if start != pos - back {
                     return Err(NetDrop("the server sent another part of the file").into());
                 }
                 if let (Some(total), Some(known)) = (total, self.job.total_size) {
@@ -769,13 +842,29 @@ impl Worker {
         let mut window = std::time::Instant::now();
         let (mut mine, mut all_before) = (0u64, self.progress.bytes.load(Ordering::Relaxed));
         let mut slow_windows = 0u32;
+        // bytes before `pos` still to compare with the disk
+        let mut compare = back;
 
         loop {
             let chunk = match tokio::time::timeout(STALL_TIMEOUT, resp.chunk()).await {
                 Ok(r) => r?,
                 Err(_) => return Err(NetDrop("connection timed out").into()),
             };
-            let Some(chunk) = chunk else { break };
+            let Some(mut chunk) = chunk else { break };
+            if compare > 0 {
+                let k = compare.min(chunk.len() as u64);
+                let at = pos - compare;
+                let mut disk = vec![0u8; k as usize];
+                crate::fileio::read_at(&self.file, &mut disk, at)?;
+                if disk[..] != chunk[..k as usize] {
+                    bail!(FILE_CHANGED);
+                }
+                compare -= k;
+                chunk = chunk.slice(k as usize..);
+                if chunk.is_empty() {
+                    continue;
+                }
+            }
             if self.segmented && self.should_leave() {
                 // fewer connections wanted: this one goes, its part stays for the others
                 return Err(Leave.into());

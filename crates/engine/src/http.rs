@@ -133,7 +133,7 @@ pub fn is_passing_error(e: &anyhow::Error) -> bool {
     let lasting = [
         "expired", "removed", "login", "age check", "not enough", "no room", "disk", "space",
         "access is denied", "permission", "bitlocker", "not found", "did not accept the byte range",
-        "web page", "missing", "cannot", "can't", "invalid",
+        "web page", "missing", "cannot", "can't", "invalid", "changed since",
     ];
     if lasting.iter().any(|w| text.contains(w)) {
         return false;
@@ -413,7 +413,9 @@ impl SendOrdered for RequestBuilder {
             }
             // another site never gets this site's sign-in
             let prev = resp.url();
-            if next.host_str() != prev.host_str() || next.port_or_known_default() != prev.port_or_known_default() {
+            // nor does a plain (http) address, where anyone on the way could read it
+            let downgraded = prev.scheme() == "https" && next.scheme() != "https";
+            if downgraded || next.host_str() != prev.host_str() || next.port_or_known_default() != prev.port_or_known_default() {
                 for h in [reqwest::header::AUTHORIZATION, COOKIE, reqwest::header::PROXY_AUTHORIZATION, reqwest::header::WWW_AUTHENTICATE] {
                     n.headers_mut().remove(h);
                 }
@@ -536,12 +538,17 @@ async fn probe_patient(
     default_ua: &str,
     waits: &[Duration],
 ) -> anyhow::Result<ProbeResult> {
+    // asked a moment ago and its answer kept: not asked again (a link that
+    // works only once is not spent by looking at it)
+    if let Some(look) = kept_look(url) {
+        return Ok(look);
+    }
     let mut waits = waits.iter();
     loop {
         let client = &client_for(client, url);
         let answer = match probe_once(client, url, headers, default_ua).await {
             // refused: over IPv4 (a link for the IP the page saw)
-            Err(e) if matches!(http_status_of(&e), Some(403)) => match (host_of(url), v4_client()) {
+            Err(e) if matches!(http_status_of(&e), Some(403)) && !wants_captcha(&e) => match (host_of(url), v4_client()) {
                 (Some(host), Some(v4)) if !V4_HOSTS.lock().unwrap().contains(&host) => match probe_once(&v4, url, headers, default_ua).await {
                     Ok(p) => {
                         V4_HOSTS.lock().unwrap().insert(host);
@@ -554,7 +561,7 @@ async fn probe_patient(
             other => other,
         };
         match answer {
-            Err(e) if matches!(http_status_of(&e), Some(403 | 429)) => match waits.next() {
+            Err(e) if matches!(http_status_of(&e), Some(403 | 429)) && !wants_captcha(&e) => match waits.next() {
                 Some(w) => tokio::time::sleep(*w).await,
                 None => return Err(e),
             },
@@ -563,12 +570,229 @@ async fn probe_patient(
     }
 }
 
-async fn probe_once(
+// ---------------------------------------------------------------- answers kept for the download
+
+/// The first answer about a file is kept open (its data not read yet) for a
+/// while: the download goes on from it instead of asking again. A link that
+/// works only once (or for one request) was spent by the look of "Download
+/// File Info", and the download itself got "403" or a web page.
+pub const KEEP_FOR: Duration = Duration::from_secs(600);
+/// At most this many answers are kept at once (each holds a connection).
+const KEEP_MAX: usize = 6;
+
+struct Kept {
+    url: String,
+    at: std::time::Instant,
+    look: ProbeResult,
+    answer: reqwest::Response,
+}
+
+static KEPT: std::sync::LazyLock<Mutex<Vec<Kept>>> = std::sync::LazyLock::new(Default::default);
+
+fn kept_list() -> std::sync::MutexGuard<'static, Vec<Kept>> {
+    let mut k = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+    k.retain(|x| x.at.elapsed() < KEEP_FOR);
+    k
+}
+
+fn keep(url: &str, look: &ProbeResult, answer: reqwest::Response) {
+    let mut k = kept_list();
+    k.retain(|x| x.url != url);
+    k.push(Kept { url: url.to_string(), at: std::time::Instant::now(), look: look.clone(), answer });
+    while k.len() > KEEP_MAX {
+        k.remove(0);
+    }
+    drop(k);
+    // its connection is let go when nobody took it in time
+    if let Ok(rt) = tokio::runtime::Handle::try_current() {
+        let url = url.to_string();
+        rt.spawn(async move {
+            tokio::time::sleep(KEEP_FOR + Duration::from_secs(1)).await;
+            drop(kept_list());
+            let _ = url;
+        });
+    }
+}
+
+/// What the kept answer for `url` said (it stays kept).
+fn kept_look(url: &str) -> Option<ProbeResult> {
+    kept_list().iter().find(|x| x.url == url).map(|x| x.look.clone())
+}
+
+/// The kept answer for `url`, taken: the download reads the file from it.
+pub fn take_kept(url: &str) -> Option<(ProbeResult, reqwest::Response)> {
+    let mut k = kept_list();
+    let i = k.iter().position(|x| x.url == url)?;
+    let x = k.remove(i);
+    Some((x.look, x.answer))
+}
+
+/// Nobody will take the kept answer for `url` (the window was closed, the
+/// download goes on from parts already there): its connection goes.
+pub fn drop_kept(url: &str) {
+    kept_list().retain(|x| x.url != url);
+}
+
+// ---------------------------------------------------------------- pages that lead on to the file
+
+/// Most pages in a row a look follows ("your download starts in 5 seconds").
+const MAX_PAGE_HOPS: usize = 5;
+/// The longest wait such a page asks for that is kept.
+const PAGE_WAIT: Duration = Duration::from_secs(10);
+/// How much of a web page is read to find where it leads.
+const PAGE_PEEK: usize = 256 * 1024;
+
+/// A site's "not a robot" check turned the request away (it says so in a
+/// header of its answer).
+pub fn is_bot_check(resp: &reqwest::Response) -> bool {
+    resp.status() == StatusCode::FORBIDDEN
+        && resp
+            .headers()
+            .get("cf-mitigated")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.trim().eq_ignore_ascii_case("challenge"))
+}
+
+/// Where a "Refresh" value leads and after how long: "5; url=next.html",
+/// "0;URL='https://...'", "3, https://...". None for a page that only
+/// reloads itself, or for anything but a web address.
+pub fn refresh_target(value: &str, base: &url::Url) -> Option<(Duration, url::Url)> {
+    let (delay, rest) = value.split_once([';', ','])?;
+    let delay: f64 = delay.trim().parse().ok().filter(|d: &f64| d.is_finite() && *d >= 0.0)?;
+    let rest = rest.trim();
+    let target = match rest.get(..3) {
+        Some(u) if u.eq_ignore_ascii_case("url") && rest[3..].trim_start().starts_with('=') => rest[3..].trim_start()[1..].trim(),
+        _ => rest,
+    };
+    let target = target.trim_matches(|c| c == '"' || c == '\'').trim();
+    let target = target.replace("&amp;", "&");
+    let next = base.join(&target).ok()?;
+    let mut same = next.clone();
+    same.set_fragment(base.fragment());
+    (matches!(next.scheme(), "http" | "https") && same != *base).then(|| (Duration::from_secs_f64(delay.min(PAGE_WAIT.as_secs_f64())), next))
+}
+
+/// The value of attribute `name` in one tag's text (`<meta a="b" ...>`).
+fn attribute(tag: &str, name: &str) -> Option<String> {
+    let lower = tag.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(i) = lower[from..].find(name) {
+        let at = from + i;
+        from = at + name.len();
+        // a whole attribute name, not the end of another one
+        if at > 0 && !lower.as_bytes()[at - 1].is_ascii_whitespace() {
+            continue;
+        }
+        let rest = tag[from..].trim_start();
+        let Some(rest) = rest.strip_prefix('=') else { continue };
+        let rest = rest.trim_start();
+        let value = match rest.chars().next() {
+            Some(q @ ('"' | '\'')) => rest[1..].split(q).next().unwrap_or(""),
+            _ => rest.split(|c: char| c.is_whitespace() || c == '>').next().unwrap_or(""),
+        };
+        return Some(value.to_string());
+    }
+    None
+}
+
+/// Where a page's `<meta http-equiv="refresh" content="...">` leads.
+pub fn meta_refresh(page: &str, base: &url::Url) -> Option<(Duration, url::Url)> {
+    let lower = page.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(i) = lower[from..].find("<meta") {
+        let start = from + i;
+        let end = lower[start..].find('>').map(|e| start + e).unwrap_or(lower.len());
+        let tag = &page[start..end];
+        from = end;
+        let refresh = attribute(tag, "http-equiv").is_some_and(|v| v.trim().eq_ignore_ascii_case("refresh"));
+        if refresh {
+            if let Some(found) = attribute(tag, "content").and_then(|c| refresh_target(&c, base)) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
+/// The "name=value" pairs a response's Set-Cookie headers set.
+fn set_cookies(h: &reqwest::header::HeaderMap) -> Vec<String> {
+    h.get_all(reqwest::header::SET_COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .filter_map(|v| v.split(';').next())
+        .map(str::trim)
+        .filter(|c| c.contains('='))
+        .map(str::to_string)
+        .collect()
+}
+
+/// `cookies` added to `old` (each replacing one of the same name).
+pub fn add_cookies(old: Option<&str>, cookies: &[String]) -> Option<String> {
+    if cookies.is_empty() {
+        return old.map(str::to_string);
+    }
+    let name = |c: &str| c.split('=').next().unwrap_or("").trim().to_string();
+    let new: std::collections::HashSet<String> = cookies.iter().map(|c| name(c)).collect();
+    let mut all: Vec<String> = old
+        .unwrap_or("")
+        .split(';')
+        .map(str::trim)
+        .filter(|c| !c.is_empty() && !new.contains(&name(c)))
+        .map(str::to_string)
+        .collect();
+    all.extend(cookies.iter().cloned());
+    Some(all.join("; "))
+}
+
+/// One look, following the pages that lead on to the file by themselves.
+async fn probe_once(client: &Client, url: &str, headers: &RequestHeaders, default_ua: &str) -> anyhow::Result<ProbeResult> {
+    let mut at = url.to_string();
+    let mut h = headers.clone();
+    let mut led = false;
+    for hop in 0..=MAX_PAGE_HOPS {
+        let (mut look, answer, next) = probe_at(client, &at, &h, default_ua, hop < MAX_PAGE_HOPS).await?;
+        if led {
+            look.headers_used = Some(look.headers_used.take().unwrap_or_else(|| h.clone()));
+        }
+        let Some((wait, next, cookies)) = next else {
+            if let Some(answer) = answer {
+                keep(url, &look, answer);
+            }
+            return Ok(look);
+        };
+        if !wait.is_zero() {
+            tokio::time::sleep(wait).await;
+        }
+        if let Some(used) = look.headers_used.take() {
+            h = used;
+        }
+        let from = url::Url::parse(&at).ok();
+        let same_site = from.as_ref().is_some_and(|f| {
+            crate::http_download::site_of(f.as_str()) == crate::http_download::site_of(next.as_str())
+                && !(f.scheme() == "https" && next.scheme() != "https")
+        });
+        if same_site {
+            h.cookies = add_cookies(h.cookies.as_deref(), &cookies);
+        }
+        if let Some(f) = from {
+            h.referer = Some(f.to_string());
+        }
+        at = next.to_string();
+        led = true;
+    }
+    bail!("the link opens one web page after another, not a file")
+}
+
+/// Where a page leads (wait, address, cookies it set).
+type PageNext = (Duration, url::Url, Vec<String>);
+
+async fn probe_at(
     client: &Client,
     url: &str,
     headers: &RequestHeaders,
     default_ua: &str,
-) -> anyhow::Result<ProbeResult> {
+    follow_pages: bool,
+) -> anyhow::Result<(ProbeResult, Option<reqwest::Response>, Option<PageNext>)> {
     let mut first_refusal: Option<u16> = None;
     let mut found = None;
     for (with_range, h) in fallbacks(headers) {
@@ -576,7 +800,6 @@ async fn probe_once(
         if with_range {
             // from the start to the end, like a browser asking to resume:
             // some servers refuse a tiny range ("bytes=0-0") but take this.
-            // Only the answer's headers are read, then the connection goes.
             rb = rb.header(RANGE, "bytes=0-");
         }
         let resp = match tokio::time::timeout(ANSWER_TIMEOUT, rb.send_ordered()).await {
@@ -586,6 +809,10 @@ async fn probe_once(
         let status = resp.status();
         if status == StatusCode::UNAUTHORIZED {
             bail!("the server asks for a user name and password (HTTP 401) - use \"Use authorization\" or Options > Site Logins");
+        }
+        // the site's "not a robot" check: no other way of asking helps
+        if is_bot_check(&resp) {
+            return Err(anyhow::Error::new(HttpStatus(403)).context(CAPTCHA));
         }
         // refused (forbidden, range not allowed, too many requests...): try
         // the next way; anything else is the server's real answer
@@ -600,16 +827,13 @@ async fn probe_once(
         found = Some((resp, with_range, changed.then_some(h)));
         break;
     }
-    let Some((resp, with_range, headers_used)) = found else {
+    let Some((mut resp, with_range, headers_used)) = found else {
         return Err(HttpStatus(first_refusal.unwrap_or(403)).into());
     };
     let status = resp.status();
     let final_url = resp.url().to_string();
-    let h = resp.headers();
-    let content_type = h
-        .get(CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
+    let h = resp.headers().clone();
+    let content_type = h.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(|s| s.to_string());
     let last_modified = h
         .get(reqwest::header::LAST_MODIFIED)
         .and_then(|v| v.to_str().ok())
@@ -622,21 +846,20 @@ async fn probe_once(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty() && !s.starts_with("W/"));
 
-    let (total_size, resumable) = if status == StatusCode::PARTIAL_CONTENT {
+    let (total_size, resumable, from_zero) = if status == StatusCode::PARTIAL_CONTENT {
         // "bytes 0-123455/123456"
-        let total = h
-            .get(CONTENT_RANGE)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.rsplit('/').next())
-            .and_then(|s| s.trim().parse::<u64>().ok());
-        (total, total.is_some())
+        let range = h.get(CONTENT_RANGE).and_then(|v| v.to_str().ok()).unwrap_or("");
+        let total = range.rsplit('/').next().and_then(|s| s.trim().parse::<u64>().ok());
+        let start = range.trim().strip_prefix("bytes").and_then(|r| r.trim().split('-').next()).and_then(|s| s.trim().parse::<u64>().ok());
+        (total, total.is_some(), start == Some(0))
     } else {
         // the whole file came, not a part: whatever "Accept-Ranges" says,
         // this server did not take a byte range, so one connection and no
         // resume (parts it would not honour were made again and again)
-        (resp.content_length(), false)
+        (resp.content_length(), false, true)
     };
 
+    let named = h.get(CONTENT_DISPOSITION).is_some();
     let name = h
         .get(CONTENT_DISPOSITION)
         .and_then(|v| v.to_str().ok())
@@ -659,11 +882,9 @@ async fn probe_once(
     } else {
         file_name = filename::ensure_extension(file_name, content_type.as_deref());
     }
-    drop(resp);
-
     // a server that refused a byte range gets one plain connection
     let resumable = resumable && with_range;
-    Ok(ProbeResult {
+    let look = ProbeResult {
         headers_used,
         final_url,
         file_name,
@@ -673,7 +894,37 @@ async fn probe_once(
         kind,
         last_modified,
         etag,
-    })
+    };
+    // a small web page where a file was expected: a page that leads on to
+    // the file by itself ("your download starts in a moment")?
+    let small = resp.content_length().is_none_or(|n| n <= PAGE_PEEK as u64);
+    {
+        if follow_pages && look.is_web_page() && !named && small {
+            let base = resp.url().clone();
+            let refresh = h.get(reqwest::header::REFRESH).and_then(|v| v.to_str().ok()).and_then(|v| refresh_target(v, &base));
+            let next = match refresh {
+                Some(n) => Some(n),
+                None => {
+                    let mut page = Vec::new();
+                    while page.len() < PAGE_PEEK {
+                        match tokio::time::timeout(Duration::from_secs(10), resp.chunk()).await {
+                            Ok(Ok(Some(c))) => page.extend_from_slice(&c),
+                            _ => break,
+                        }
+                    }
+                    meta_refresh(&String::from_utf8_lossy(&page), &base)
+                }
+            };
+            if let Some((wait, next)) = next {
+                return Ok((look, None, Some((wait, next, set_cookies(&h)))));
+            }
+            return Ok((look, None, None));
+        }
+    }
+    // kept for the download: a file (not a page, not a stream list) whose
+    // answer starts at its first byte
+    let keepable = kind == DownloadKind::Http && from_zero && !look.is_web_page();
+    Ok((look, keepable.then_some(resp), None))
 }
 
 #[cfg(test)]
