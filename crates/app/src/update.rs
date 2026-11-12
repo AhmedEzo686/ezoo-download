@@ -30,11 +30,6 @@ fn downloading(mgr: &Manager) -> bool {
         .any(|v| matches!(v.status, Status::Connecting | Status::Downloading | Status::Assembling))
 }
 
-/// Start the installer and close the program (downloads resume next time).
-fn apply(setup: PathBuf, sha256: String) {
-    apply_as(setup, sha256, false)
-}
-
 fn apply_as(setup: PathBuf, sha256: String, visible: bool) {
     match selfupdate::run_installer(&setup, &sha256, visible) {
         Ok(()) => {
@@ -52,6 +47,13 @@ pub fn spawn(ctx: &Ctx) {
             if name.contains(&format!("-{}.", selfupdate::current())) || name.ends_with(".download") {
                 let _ = std::fs::remove_file(e.path());
             }
+        }
+    }
+    if let Ok(t) = std::fs::read_to_string(update_dir().join("tries.txt")) {
+        let v = t.split(' ').next().unwrap_or_default().to_string();
+        if !selfupdate::is_newer(&v, selfupdate::current()) {
+            // that version (or a newer one) is what runs now
+            let _ = std::fs::remove_file(update_dir().join("tries.txt"));
         }
     }
     if !selfupdate::installed() {
@@ -76,6 +78,25 @@ pub fn spawn(ctx: &Ctx) {
     });
 }
 
+/// How many times the setup of `version` was started already (it closes
+/// the program and should open the new version again; when the program
+/// opens as the old version again, that setup did not get through).
+fn tries_of(version: &str) -> u32 {
+    std::fs::read_to_string(update_dir().join("tries.txt"))
+        .ok()
+        .and_then(|t| {
+            let (v, n) = t.trim().split_once(' ')?;
+            (v == version).then(|| n.parse().ok()).flatten()
+        })
+        .unwrap_or(0)
+}
+
+fn count_try(version: &str) {
+    let n = tries_of(version) + 1;
+    let _ = std::fs::create_dir_all(update_dir());
+    let _ = std::fs::write(update_dir().join("tries.txt"), format!("{version} {n}"));
+}
+
 /// One check. true = the installer was started.
 async fn round(mgr: &Arc<Manager>, at_start: bool) -> bool {
     let client = mgr.client();
@@ -93,7 +114,22 @@ async fn round(mgr: &Arc<Manager>, at_start: bool) -> bool {
         }
     }
     let sha = rel.sha256.clone();
-    let _ = slint::invoke_from_event_loop(move || apply(setup, sha));
+    let tries = tries_of(&rel.version);
+    if tries >= 2 {
+        // twice started and still the old version here: no more closing the
+        // program by itself; Help > Check for updates installs it in front of
+        // the user (and shows why it can't)
+        crate::note(&format!("update {} did not install after {tries} tries; waiting for the user", rel.version));
+        return false;
+    }
+    count_try(&rel.version);
+    let version = rel.version.clone();
+    let _ = slint::invoke_from_event_loop(move || {
+        crate::note(&format!("installing update {version} (try {})", tries + 1));
+        // its small progress window shows: the program closing by itself
+        // without it looked like a crash
+        apply_as(setup, sha, true)
+    });
     true
 }
 

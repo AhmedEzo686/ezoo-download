@@ -33,8 +33,26 @@ async function init() {
   });
 
   const look = document.getElementById("look");
-  chrome.storage.local.get({ bubbleStyle: "blue" }, (o) => (look.value = o.bubbleStyle || "blue"));
+  chrome.storage.local.get({ bubbleStyle: "compact" }, (o) => (look.value = o.bubbleStyle || "compact"));
   look.addEventListener("change", () => chrome.storage.local.set({ bubbleStyle: look.value }));
+
+  // how solid the button is on the video (the mouse on it: always solid)
+  const solid = document.getElementById("solid");
+  const solidText = document.getElementById("solidText");
+  const showSolid = (v) => {
+    solid.value = String(v);
+    solidText.textContent = `${v}%`;
+  };
+  chrome.storage.local.get({ bubbleOpacity: 0.9 }, (o) => showSolid(Math.round((Number(o.bubbleOpacity) || 0.9) * 100)));
+  solid.addEventListener("input", () => {
+    showSolid(Number(solid.value));
+    chrome.storage.local.set({ bubbleOpacity: Number(solid.value) / 100 });
+  });
+
+  // full screen: the button stays out of the way unless the user wants it
+  const fullscreen = document.getElementById("fullscreen");
+  chrome.storage.local.get({ bubbleFullscreen: false }, (o) => (fullscreen.checked = !!o.bubbleFullscreen));
+  fullscreen.addEventListener("change", () => chrome.storage.local.set({ bubbleFullscreen: fullscreen.checked }));
 
   // size of the "Download this video" button on pages (also in the settings page)
   const scale = document.getElementById("scale");
@@ -57,9 +75,28 @@ async function init() {
   chrome.runtime.sendMessage({ type: "swiftget-status" }, (res) => {
     const el = document.getElementById("status");
     const ok = res && res.ok;
-    el.textContent = ok ? "connected" : "app not running";
+    const nokey = res && res.state === "nokey";
+    el.textContent = ok ? "connected" : nokey ? "not connected" : "app not running";
     el.classList.toggle("on", !!ok);
-    if (!ok) {
+    if (nokey) {
+      // the program runs but does not know this add-in (yet): connect again
+      const again = document.createElement("button");
+      again.className = "act";
+      again.textContent = "Connect again";
+      again.addEventListener("click", () => {
+        again.textContent = "Connecting… (answer in Ezoo Download if it asks)";
+        again.disabled = true;
+        chrome.runtime.sendMessage({ type: "swiftget-reconnect" }, (r) => {
+          again.disabled = false;
+          again.textContent = r && r.ok ? "Connected ✔" : "Not connected - try again";
+          if (r && r.ok) {
+            el.textContent = "connected";
+            el.classList.add("on");
+          }
+        });
+      });
+      document.querySelector("section").appendChild(again);
+    } else if (!ok) {
       // the program registers "ezoo-download:" when it is installed
       const open = document.createElement("a");
       open.href = "ezoo-download://open";

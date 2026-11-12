@@ -19,6 +19,31 @@ pub(crate) fn open_source(source: &str) {
     }
 }
 
+/// A web address of a .torrent file (by its name), not something to save as it is.
+pub(crate) fn looks_like_torrent(url: &str, file_name: Option<&str>) -> bool {
+    let path = url::Url::parse(url).map(|u| u.path().to_ascii_lowercase()).unwrap_or_default();
+    (url.starts_with("http://") || url.starts_with("https://"))
+        && (path.ends_with(".torrent") || file_name.is_some_and(|n| n.trim().to_ascii_lowercase().ends_with(".torrent")))
+}
+
+/// A .torrent link clicked in the browser: the file is fetched at once and
+/// the torrent window shows what it shares (no extra step). If it can't be
+/// read as a torrent, it goes the ordinary way ("Download File Info").
+pub(crate) fn fetch_and_open(ctx: &Ctx, url: String, headers: RequestHeaders, file_name: Option<String>) {
+    let mgr = ctx.mgr.clone();
+    ctx.rt.spawn(async move {
+        let result = mgr.fetch_torrent_file(&url, &headers).await;
+        let _ = slint::invoke_from_event_loop(move || match result {
+            Ok(path) => open_source(&path.display().to_string()),
+            Err(_) => {
+                if let Some(ui) = OPENER.with(|o| o.borrow().clone()) {
+                    open_add_dialog(&ui.ctx, url, headers, file_name, VideoExtra::default());
+                }
+            }
+        });
+    });
+}
+
 pub(crate) fn open(ui: &Ui, source: Option<&str>) {
     let Some(d) = ui.torrent.upgrade() else { return };
     match source {
@@ -67,11 +92,31 @@ pub(crate) fn wire(ui: &Ui) {
             if torrent::is_magnet(&src) {
                 d.set_magnet(true);
                 d.set_name(torrent::magnet_name(&src).unwrap_or_else(|| t("Magnet link")).into());
-                d.set_info(t("The file list comes from the other computers when it starts").into());
+                d.set_info(t("Getting the list of files from the people who share it… (up to a minute and a half)").into());
                 d.set_checked_text(SharedString::new());
                 if d.get_folder().is_empty() {
                     d.set_folder(settings.dir_for("General").display().to_string().into());
                 }
+                // the file list first (only the torrent's description is
+                // fetched), so the files can be chosen like with a .torrent
+                let w2 = d.as_weak();
+                let asked = src.clone();
+                mgr.magnet_files(src.clone(), move |r| {
+                    let _ = slint::invoke_from_event_loop(move || {
+                        let Some(d) = w2.upgrade() else { return };
+                        // another link was put in meanwhile
+                        if d.get_source().trim().trim_matches('"') != asked {
+                            return;
+                        }
+                        match r {
+                            Ok(file) => {
+                                d.set_source(file.display().to_string().into());
+                                d.invoke_load();
+                            }
+                            Err(_) => d.set_info(t("The file list did not come yet: all files will be downloaded (they show once it starts).").into()),
+                        }
+                    });
+                });
                 return;
             }
             d.set_name(SharedString::new());

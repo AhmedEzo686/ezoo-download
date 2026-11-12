@@ -8,6 +8,8 @@
 //! The UI only needs [`Manager`].
 
 pub mod category;
+pub mod clip;
+pub mod clipserve;
 pub mod config;
 pub mod ef2;
 pub mod fileio;
@@ -31,5 +33,5 @@ pub mod torrent;
 pub mod ytdlp;
 
 pub use config::{AfterDone, Schedule, Settings};
-pub use manager::{default_data_dir, DetailsEdit, Event, Manager, PreviewSource};
+pub use manager::{default_data_dir, ClipSource, DetailsEdit, Event, Manager, PreviewSource};
 pub use model::*;

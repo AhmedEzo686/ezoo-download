@@ -101,17 +101,131 @@ fn detect() -> Vec<Browser> {
     ]
 }
 
-/// The extension's folder next to the program (Firefox has its own copy).
+/// The extension as it came with this program: when a file of its folder is
+/// missing or was changed (an antivirus, a half-finished copy...), the
+/// browser says "files missing or unreadable" and won't load it, so the
+/// folder is put back in order from this copy first.
+const EXTENSION_FILES: &[(&str, &[u8])] = &[
+    ("background.js", include_bytes!("../../../extension/background.js")),
+    ("content.js", include_bytes!("../../../extension/content.js")),
+    ("yt-core.js", include_bytes!("../../../extension/yt-core.js")),
+    ("popup.html", include_bytes!("../../../extension/popup.html")),
+    ("popup.js", include_bytes!("../../../extension/popup.js")),
+    ("options.html", include_bytes!("../../../extension/options.html")),
+    ("options.js", include_bytes!("../../../extension/options.js")),
+    ("icons/icon16.png", include_bytes!("../../../extension/icons/icon16.png")),
+    ("icons/icon32.png", include_bytes!("../../../extension/icons/icon32.png")),
+    ("icons/icon48.png", include_bytes!("../../../extension/icons/icon48.png")),
+    ("icons/icon128.png", include_bytes!("../../../extension/icons/icon128.png")),
+];
+const MANIFEST: &[u8] = include_bytes!("../../../extension/manifest.json");
+const MANIFEST_FIREFOX: &[u8] = include_bytes!("../../../extension/manifest.firefox.json");
+
+/// Every file of the extension in `dir`, as it came with the program (only
+/// what differs is written). false = it could not be written there.
+pub(crate) fn put_extension(dir: &Path, firefox: bool) -> bool {
+    let manifest = if firefox { MANIFEST_FIREFOX } else { MANIFEST };
+    // the program's secret key: an add-in loaded from this folder reads it
+    // and shows it with every request (other programs don't get in)
+    let key = format!(
+        "{{\"token\":\"{}\",\"port\":{}}}\n",
+        crate::api::TOKEN.get().cloned().unwrap_or_default(),
+        crate::api::MAIN_PORT.load(std::sync::atomic::Ordering::Relaxed)
+    );
+    let mut all: Vec<(&str, &[u8])> = EXTENSION_FILES.to_vec();
+    all.push(("manifest.json", manifest));
+    if crate::api::TOKEN.get().is_some() {
+        all.push(("token.json", key.as_bytes()));
+    }
+    let mut ok = true;
+    for (name, data) in all {
+        let path = dir.join(name);
+        if std::fs::read(&path).map(|have| have == data).unwrap_or(false) {
+            continue;
+        }
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        // through a new file, so the browser never reads a half one
+        let tmp = path.with_extension("ezoo-new");
+        if std::fs::write(&tmp, data).and_then(|_| std::fs::rename(&tmp, &path)).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+            ok = false;
+        }
+    }
+    ok
+}
+
+/// At start: the add-in folders next to the program are complete and carry
+/// the key (an add-in loaded from them before gets the key at once).
+pub(crate) fn prepare_extension_folders() {
+    // right now (not later): an add-in that reloads after an update reads
+    // the key at once
+    for firefox in [false, true] {
+        let _ = extension_dir(firefox);
+    }
+}
+
+/// "Repair the browser add-in": every file of the add-in folders is written
+/// again as it came with the program, and the add-in (it sees the new
+/// number) forgets what it kept and starts again.
+pub(crate) fn repair_extension() -> bool {
+    let mut ok = true;
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+        for (name, firefox) in [("extension", false), ("extension-firefox", true)] {
+            let d = dir.join(name);
+            if d.is_dir() {
+                // what is not part of the add-in any more goes too
+                if let Ok(rd) = std::fs::read_dir(&d) {
+                    for e in rd.flatten() {
+                        let n = e.file_name().to_string_lossy().to_string();
+                        let known = n == "icons" || n == "manifest.json" || n == "token.json" || EXTENSION_FILES.iter().any(|(f, _)| *f == n);
+                        if !known {
+                            let p = e.path();
+                            let _ = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+                        }
+                    }
+                }
+                ok &= put_extension(&d, firefox);
+            }
+        }
+    }
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(1);
+    crate::api::REPAIR.store(now, std::sync::atomic::Ordering::Relaxed);
+    ok
+}
+
+/// The extension's folder next to the program (Firefox has its own copy),
+/// complete. Where the program's folder can't be written, a copy in the
+/// program's data folder is used.
 fn extension_dir(firefox: bool) -> Option<PathBuf> {
-    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
     let name = if firefox { "extension-firefox" } else { "extension" };
-    [dir.join(name), dir.join("..").join(name)].into_iter().find(|p| p.exists())
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let next_to = dir.join(name);
+    if put_extension(&next_to, firefox) {
+        return Some(next_to);
+    }
+    let own = swiftget_engine::default_data_dir().join(name);
+    put_extension(&own, firefox).then_some(own)
 }
 
 /// The signed Firefox add-on next to the program, when the release has one.
 fn firefox_xpi() -> Option<PathBuf> {
     let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
     Some(dir.join(FIREFOX_XPI)).filter(|p| p.exists())
+}
+
+/// "Update the Firefox add-on": Firefox opens the signed add-on of this
+/// program and asks "Add Ezoo Download?" (the new one takes the old one's
+/// place). Without the file (a build without it): the browsers window.
+pub(crate) fn update_firefox_addon(ui: &Ui) {
+    let firefox = detect().into_iter().find(|b| b.firefox).and_then(|b| b.exe);
+    match (firefox, firefox_xpi()) {
+        (Some(exe), Some(xpi)) => {
+            let _ = std::process::Command::new(&exe).arg(&xpi).spawn();
+        }
+        _ => open(ui),
+    }
 }
 
 pub(crate) fn open(ui: &Ui) {
@@ -199,9 +313,19 @@ pub(crate) fn wire(ui: &Ui) {
             if let Some(d) = w.upgrade() {
                 let f = d.get_folder().to_string();
                 if !f.is_empty() {
-                    let _ = open::that(f);
+                    let _ = open::that_detached(f);
                 }
             }
+        });
+    }
+    {
+        d.on_repair(move || {
+            let ok = repair_extension();
+            crate::message(&if ok {
+                t("The add-in's files were put back. It starts again by itself within a minute (or click Reload on it in the browser's extensions page).")
+            } else {
+                t("Some files of the add-in could not be written. Close the browser and click \"Repair the add-in\" again.")
+            });
         });
     }
     {

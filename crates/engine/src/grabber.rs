@@ -1,6 +1,7 @@
 //! Site Grabber: explores a web site from a start page and collects the
 //! files it links to (images, videos, music, archives, documents...).
 
+use crate::http::SendOrdered;
 use crate::config::wildcard_match;
 use crate::filename;
 use crate::http::request;
@@ -162,7 +163,7 @@ fn allowed(opts: &GrabOptions, url: &str) -> bool {
 }
 
 async fn fetch_page(client: &Client, url: &str, opts: &GrabOptions) -> Option<(String, String)> {
-    let resp = request(client, url, &opts.headers, &opts.user_agent).send().await.ok()?;
+    let resp = request(client, url, &opts.headers, &opts.user_agent).send_ordered().await.ok()?;
     if !resp.status().is_success() {
         return None;
     }

@@ -59,6 +59,7 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_bg_strength(s.background_strength.clamp(10, 80) as f32);
     d.set_start_with_windows(autostart::is_enabled());
     d.set_close_to_tray(s.close_to_tray);
+    d.set_gpu_drawing(s.gpu_drawing);
     d.set_clipboard(s.clipboard_monitor);
     d.set_auto_clipboard(s.auto_start_clipboard);
     d.set_double_click(s.double_click.min(1) as i32);
@@ -82,6 +83,10 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_show_start_dialog(s.show_start_dialog);
     d.set_start_while_info(s.start_while_info);
     d.set_complete_dialog(s.show_complete_dialog);
+    d.set_ask_remove(s.ask_before_remove);
+    d.set_subtitles(s.subtitles);
+    d.set_subtitle_langs(s.subtitle_langs.clone().into());
+    d.set_mp3_index(match s.mp3_kbps { 0..=159 => 0, 160..=223 => 1, 224..=287 => 2, _ => 3 });
     d.set_progress_mode(s.progress_mode.min(2) as i32);
     d.set_duplicate_action(s.duplicate_action.min(3) as i32);
     d.set_set_file_date(s.set_file_date);
@@ -151,6 +156,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.background_image = d.get_bg_image().to_string();
     s.background_strength = (d.get_bg_strength().round() as u32).clamp(10, 80);
     s.close_to_tray = d.get_close_to_tray();
+    s.gpu_drawing = d.get_gpu_drawing();
     s.clipboard_monitor = d.get_clipboard();
     s.auto_start_clipboard = d.get_auto_clipboard();
     s.double_click = d.get_double_click().clamp(0, 1) as u32;
@@ -183,6 +189,10 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.show_start_dialog = d.get_show_start_dialog();
     s.start_while_info = d.get_start_while_info();
     s.show_complete_dialog = d.get_complete_dialog();
+    s.ask_before_remove = d.get_ask_remove();
+    s.subtitles = d.get_subtitles();
+    s.subtitle_langs = d.get_subtitle_langs().trim().chars().take(60).collect();
+    s.mp3_kbps = [128, 192, 256, 320][d.get_mp3_index().clamp(0, 3) as usize];
     s.progress_mode = d.get_progress_mode().clamp(0, 2) as u32;
     s.show_progress_window = s.progress_mode != 2;
     s.duplicate_action = d.get_duplicate_action().clamp(0, 3) as u32;
@@ -445,6 +455,8 @@ pub(crate) fn wire(ui: &Ui) {
             match read(&ui2, &d, old.clone()) {
                 Ok(s) => {
                     let port_changed = s.browser_port != old.browser_port;
+                    // settings that only take effect at the next start
+                    let drawing_changed = s.gpu_drawing != old.gpu_drawing;
                     let theme = s.theme as i32;
                     let view = s.clone();
                     if let Err(e) = ui2.ctx.mgr.set_settings(s) {
@@ -456,8 +468,13 @@ pub(crate) fn wire(ui: &Ui) {
                     crate::change_language(&ui2, crate::i18n::effective(&view.language));
                     let _ = d.hide();
                     refresh(&ui2);
-                    if port_changed {
-                        message(&t("Restart Ezoo Download to use the new port. Set the same port in the browser extension."));
+                    if port_changed || drawing_changed {
+                        let text = if port_changed {
+                            t("Ezoo Download needs to restart to use the new port (set the same port in the browser add-in too). Downloads continue after it opens.\n\nRestart now?")
+                        } else {
+                            t("Ezoo Download needs to restart to draw its windows the new way. Downloads continue after it opens.\n\nRestart now?")
+                        };
+                        crate::ask_restart(text);
                     }
                 }
                 Err(msg) => d.set_message(msg.into()),

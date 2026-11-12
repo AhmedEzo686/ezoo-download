@@ -6,7 +6,7 @@ use crate::*;
 
 use crate::i18n::{t, tf};
 
-const QUALITIES: [&str; 9] = ["best", "2160", "1440", "1080", "720", "480", "360", "audio", "mp3"];
+const QUALITIES: [&str; 11] = ["best", "2160", "1440", "1080", "720", "480", "360", "240", "144", "audio", "mp3"];
 
 pub(crate) fn open(ui: &Ui) {
     let Some(d) = ui.playlist.upgrade() else { return };

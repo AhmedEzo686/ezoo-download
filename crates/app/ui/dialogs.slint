@@ -773,6 +773,8 @@ export component DuplicateDialog inherits ThemedWindow {
             text: @tr("This address is already in the download list:");
         }
         Text {
+            // a long name is cut ("…"), it never makes the window wider
+            min-width: 0px;
             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.file-name + "  (" + root.existing-status + ")";
             font-weight: 600;
@@ -839,6 +841,10 @@ export component ConfirmDialog inherits ThemedWindow {
     in property <bool> front;
     in property <string> heading;
     in property <string> text;
+    // removing downloads: "delete the files too" and "don't ask again"
+    in property <bool> removing;
+    in-out property <bool> delete-files;
+    in-out property <bool> dont-ask;
     callback answered(bool);
     forward-focus: keys;
     keys := FocusScope {
@@ -859,6 +865,17 @@ export component ConfirmDialog inherits ThemedWindow {
             Label {
                 text: root.text;
                 wrap: word-wrap;
+            }
+            if root.removing: VerticalLayout {
+                spacing: 6px;
+                CheckBox {
+                    text: @tr("Delete the downloaded files from the disk too (be careful)");
+                    checked <=> root.delete-files;
+                }
+                CheckBox {
+                    text: @tr("Don't show this question again");
+                    checked <=> root.dont-ask;
+                }
             }
             HRow {
                 alignment: end;
@@ -1516,6 +1533,8 @@ export component GrabberDialog inherits ThemedWindow {
                     }
                 }
                 Text {
+                    // a long name is cut ("…"), it never makes the window wider
+                    min-width: 0px;
                     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.progress-text;
                     font-size: 11px * Theme.font-scale;
@@ -1836,6 +1855,8 @@ export component RefreshDialog inherits ThemedWindow {
         padding: 16px;
         spacing: 10px;
         Text {
+            // a long name is cut ("…"), it never makes the window wider
+            min-width: 0px;
             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.file-name;
             font-weight: 700;
@@ -1849,6 +1870,8 @@ export component RefreshDialog inherits ThemedWindow {
         if root.page != "": HRow {
             spacing: 8px;
             Text {
+                // a long name is cut ("…"), it never makes the window wider
+                min-width: 0px;
                 horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 text: root.page;
                 color: Theme.muted;
@@ -1954,6 +1977,7 @@ export component SettingsDialog inherits ThemedWindow {
     callback preview-look();
     in-out property <bool> start-with-windows;
     in-out property <bool> close-to-tray;
+    in-out property <bool> gpu-drawing;
     in-out property <bool> clipboard;
     in-out property <bool> auto-clipboard;
     in-out property <int> double-click;
@@ -1978,6 +2002,11 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <bool> show-start-dialog;
     in-out property <bool> start-while-info;
     in-out property <bool> complete-dialog;
+    in-out property <bool> ask-remove: true;
+    // 0 128k, 1 192k, 2 256k, 3 320k
+    in-out property <int> mp3-index: 1;
+    in-out property <bool> subtitles;
+    in-out property <string> subtitle-langs;
     in-out property <int> progress-mode;
     in-out property <int> duplicate-action;
     in-out property <bool> set-file-date;
@@ -2232,6 +2261,10 @@ export component SettingsDialog inherits ThemedWindow {
                         enabled: root.clipboard;
                     }
                     CheckBox {
+                        text: @tr("Draw the windows with the graphics card (uses more memory; after a restart)");
+                        checked <=> root.gpu-drawing;
+                    }
+                    CheckBox {
                         text: @tr("Show \"Tip of the day\" at startup");
                         checked <=> root.show-tips;
                     }
@@ -2475,6 +2508,40 @@ export component SettingsDialog inherits ThemedWindow {
                     CheckBox {
                         text: @tr("Show the \"Download complete\" window");
                         checked <=> root.complete-dialog;
+                    }
+                    CheckBox {
+                        text: @tr("Ask before removing downloads from the list");
+                        checked <=> root.ask-remove;
+                    }
+                    HRow {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Quality of MP3 files");
+                        }
+                        ComboBox {
+                            width: 160px;
+                            model: ["128 kbps", "192 kbps", "256 kbps", "320 kbps"];
+                            current-index <=> root.mp3-index;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    HRow {
+                        spacing: 8px;
+                        CheckBox {
+                            text: @tr("Download the subtitles of videos too, in these languages:");
+                            checked <=> root.subtitles;
+                        }
+                        LineEdit {
+                            width: 120px;
+                            enabled: root.subtitles;
+                            text <=> root.subtitle-langs;
+                            placeholder-text: "ar en";
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
                     }
                     HRow {
                         spacing: 8px;
@@ -3077,6 +3144,8 @@ export component TorrentDialog inherits ThemedWindow {
             VerticalLayout {
                 alignment: center;
                 Text {
+                    // a long name is cut ("…"), it never makes the window wider
+                    min-width: 0px;
                     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.name;
                     font-size: 14px * Theme.font-scale;
@@ -3085,6 +3154,8 @@ export component TorrentDialog inherits ThemedWindow {
                     overflow: elide;
                 }
                 Text {
+                    // a long name is cut ("…"), it never makes the window wider
+                    min-width: 0px;
                     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: root.info;
                     font-size: 11px * Theme.font-scale;
@@ -3236,6 +3307,8 @@ export component TorrentDialog inherits ThemedWindow {
                 checked <=> root.start-now;
             }
             Text {
+                // a long name is cut ("…"), it never makes the window wider
+                min-width: 0px;
                 text: root.message != "" ? root.message : root.checked-text;
                 color: root.message != "" ? Theme.err : Theme.muted;
                 vertical-alignment: center;
@@ -3315,6 +3388,8 @@ export component PlaylistDialog inherits ThemedWindow {
             }
         }
         Text {
+            // a long name is cut ("…"), it never makes the window wider
+            min-width: 0px;
             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.status;
             font-size: 11px * Theme.font-scale;
@@ -3322,6 +3397,8 @@ export component PlaylistDialog inherits ThemedWindow {
             overflow: elide;
         }
         if root.playlist-title != "": Text {
+            // a long name is cut ("…"), it never makes the window wider
+            min-width: 0px;
             horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             text: root.playlist-title;
             font-size: 14px * Theme.font-scale;
@@ -3450,7 +3527,7 @@ export component PlaylistDialog inherits ThemedWindow {
                 spacing: 8px;
                 ComboBox {
                     width: 240px;
-                    model: [@tr("Best quality (MP4)"), @tr("2160p 4K"), @tr("1440p 2K"), @tr("1080p Full HD"), @tr("720p HD"), @tr("480p SD"), @tr("360p SD"), @tr("Audio only (M4A)"), @tr("Audio MP3")];
+                    model: [@tr("Best quality (MP4)"), @tr("2160p 4K"), @tr("1440p 2K"), @tr("1080p Full HD"), @tr("720p HD"), @tr("480p SD"), @tr("360p SD"), "240p", "144p", @tr("Audio only (M4A)"), @tr("Audio MP3")];
                     current-index <=> root.quality;
                 }
                 Label {
@@ -3618,6 +3695,7 @@ export component BrowserDialog inherits ThemedWindow {
     callback add(int);
     callback open-folder();
     callback copy-folder();
+    callback repair();
     callback close-window();
     VerticalLayout {
         padding: 16px;
@@ -3665,6 +3743,8 @@ export component BrowserDialog inherits ThemedWindow {
         HRow {
             spacing: 8px;
             Text {
+                // a long name is cut ("…"), it never makes the window wider
+                min-width: 0px;
                 horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 text: root.folder;
                 font-size: 11px * Theme.font-scale;
@@ -3672,6 +3752,14 @@ export component BrowserDialog inherits ThemedWindow {
                 overflow: elide;
                 vertical-alignment: center;
                 horizontal-stretch: 1;
+            }
+            // the add-in shows nothing / does not answer: its files are put
+            // back and it starts again by itself
+            Button {
+                text: @tr("Repair the add-in");
+                clicked => {
+                    root.repair();
+                }
             }
             Button {
                 text: @tr("Copy folder path");
@@ -3752,6 +3840,31 @@ export component AboutDialog inherits ThemedWindow {
                 }
             }
         }
+        // the official place to get the program (when updating from inside
+        // the program does not work)
+        HRow {
+            alignment: center;
+            Button {
+                text: @tr("Official download page (GitHub)");
+                clicked => {
+                    root.open-link("https://github.com/AhmedEzo686/ezoo-download/releases/latest");
+                }
+            }
+        }
+        Text {
+            text: @tr("Download Ezoo Download only from its official page.");
+            horizontal-alignment: center;
+            font-size: 11px * Theme.font-scale;
+            color: Theme.muted;
+            wrap: word-wrap;
+        }
+        Text {
+            text: @tr("© Ezoo Tech – All rights reserved");
+            horizontal-alignment: center;
+            font-size: 12px * Theme.font-scale;
+            font-weight: 700;
+            color: Theme.text;
+        }
         Text {
             text: @tr("Like Ezoo Download? You can support its development:");
             horizontal-alignment: center;
@@ -3812,6 +3925,324 @@ export component AboutDialog inherits ThemedWindow {
     }
 }
 
+
+// "Download a part of a video": an address (video page, video link or
+// stream), the quality, from / to, the kind of cut, a look at the part
+// before it is downloaded; only the part is downloaded.
+export component ClipDialog inherits ThemedWindow {
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Download a part of a video");
+    preferred-width: 640px;
+    min-width: 520px;
+    in-out property <string> url;
+    in property <bool> busy;
+    in property <string> status;
+    in property <string> video-title;
+    in property <[string]> qualities;
+    in-out property <int> quality: 0;
+    // seconds; 0 = the length is not known (type the times)
+    in property <float> duration;
+    in-out property <float> from: 0;
+    in-out property <float> to: 0;
+    in-out property <string> from-text;
+    in-out property <string> to-text;
+    in property <string> length-text;
+    // 0 quick (the usual), 1 exact
+    in-out property <int> cut: 0;
+    in property <bool> previewing;
+    in property <string> message;
+    in property <bool> ready;
+    callback fetch();
+    callback from-typed(string);
+    callback to-typed(string);
+    callback slid();
+    callback preview();
+    callback download();
+    callback close-window();
+    property <length> label-w: 90px;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        Label {
+            text: @tr("Paste the address of the video (its page, or a link to the video or stream):");
+        }
+        HRow {
+            spacing: 8px;
+            LineEdit {
+                text <=> root.url;
+                placeholder-text: "https://…";
+                horizontal-stretch: 1;
+                accepted(t) => {
+                    root.fetch();
+                }
+            }
+            Button {
+                text: root.busy ? @tr("Looking…") : @tr("Get the video");
+                primary: !root.ready;
+                enabled: !root.busy && root.url != "";
+                clicked => {
+                    root.fetch();
+                }
+            }
+        }
+        Text {
+            min-width: 0px;
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            text: root.status;
+            font-size: 11px * Theme.font-scale;
+            color: Theme.muted;
+            overflow: elide;
+        }
+        if root.video-title != "": Text {
+            min-width: 0px;
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            text: root.video-title;
+            font-size: 14px * Theme.font-scale;
+            font-weight: 700;
+            color: Theme.text;
+            overflow: elide;
+        }
+        HRow {
+            spacing: 8px;
+            Label {
+                width: root.label-w;
+                text: @tr("Quality:");
+                vertical-alignment: center;
+            }
+            ComboBox {
+                horizontal-stretch: 1;
+                enabled: root.ready;
+                model: root.qualities;
+                current-index <=> root.quality;
+            }
+        }
+        HRow {
+            spacing: 8px;
+            Label {
+                width: root.label-w;
+                text: @tr("From:");
+                vertical-alignment: center;
+            }
+            LineEdit {
+                width: 100px;
+                enabled: root.ready;
+                text <=> root.from-text;
+                placeholder-text: "00:00";
+                edited(t) => {
+                    root.from-typed(t);
+                }
+            }
+            Slider {
+                horizontal-stretch: 1;
+                enabled: root.ready && root.duration > 0;
+                minimum: 0;
+                maximum: max(root.duration, 1);
+                value <=> root.from;
+                changed(v) => {
+                    root.slid();
+                }
+            }
+        }
+        HRow {
+            spacing: 8px;
+            Label {
+                width: root.label-w;
+                text: @tr("To:");
+                vertical-alignment: center;
+            }
+            LineEdit {
+                width: 100px;
+                enabled: root.ready;
+                text <=> root.to-text;
+                placeholder-text: "00:30";
+                edited(t) => {
+                    root.to-typed(t);
+                }
+            }
+            Slider {
+                horizontal-stretch: 1;
+                enabled: root.ready && root.duration > 0;
+                minimum: 0;
+                maximum: max(root.duration, 1);
+                value <=> root.to;
+                changed(v) => {
+                    root.slid();
+                }
+            }
+        }
+        HRow {
+            spacing: 8px;
+            Label {
+                width: root.label-w;
+                text: @tr("Length:");
+                vertical-alignment: center;
+            }
+            Text {
+                vertical-alignment: center;
+                text: root.length-text;
+                color: Theme.text;
+                font-weight: 700;
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+        }
+        HRow {
+            spacing: 8px;
+            Label {
+                width: root.label-w;
+                text: @tr("Cut:");
+                vertical-alignment: center;
+            }
+            ComboBox {
+                horizontal-stretch: 1;
+                enabled: root.ready;
+                model: [@tr("Quick cut (recommended)"), @tr("Exact cut")];
+                current-index <=> root.cut;
+            }
+        }
+        // what each kind of cut does
+        Rectangle {
+            background: Theme.input-bg;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: 4px;
+            VerticalLayout {
+                padding: 10px;
+                spacing: 4px;
+                Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: root.cut == 0 ? @tr("Quick cut") : @tr("Exact cut");
+                    font-weight: 700;
+                    color: Theme.text;
+                }
+                Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    wrap: word-wrap;
+                    color: Theme.text;
+                    font-size: 12px * Theme.font-scale;
+                    text: root.cut == 0
+                        ? @tr("Takes seconds and keeps the quality exactly as it is (nothing is made again). A video can only start on a whole picture, so the part may start a second or two before the time you chose.")
+                        : @tr("Starts and ends on the very second you chose. The picture of the part is made again, so it takes longer (about as long as the part plays, or less) and works the processor. Sound alone is always cut exactly.");
+                }
+            }
+        }
+        if root.message != "": Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            text: root.message;
+            wrap: word-wrap;
+            color: #e0443b;
+        }
+        HRow {
+            spacing: 8px;
+            Button {
+                text: root.previewing ? @tr("Preparing the preview…") : @tr("Preview the part");
+                enabled: root.ready && !root.previewing;
+                clicked => {
+                    root.preview();
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("Download the part");
+                primary: true;
+                enabled: root.ready;
+                clicked => {
+                    root.download();
+                }
+            }
+            Button {
+                text: @tr("Close");
+                clicked => {
+                    root.close-window();
+                }
+            }
+        }
+    }
+}
+
+// Once after 50 finished downloads (then at most once a month): a small
+// word about supporting the free program. Nothing is locked behind it.
+export component SupportDialog inherits ThemedWindow {
+    in property <bool> front;
+    always-on-top: root.front;
+    title: @tr("Support Ezoo Download");
+    preferred-width: 460px;
+    preferred-height: 250px;
+    min-width: 400px;
+    min-height: 230px;
+    callback open-link(string);
+    callback close-window();
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+        GridLayout {
+            // a row that reads from right to left in Arabic (wrapped text needs a grid)
+            spacing: 14px;
+            Image {
+                col: Theme.rtl ? 1 : 0;
+                row: 0;
+                source: @image-url("icon.png");
+                width: 40px;
+                height: 40px;
+            }
+            VerticalLayout {
+                col: Theme.rtl ? 0 : 1;
+                row: 0;
+                spacing: 6px;
+                horizontal-stretch: 1;
+                Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: @tr("Did Ezoo Download save you time?");
+                    font-size: 14px * Theme.font-scale;
+                    font-weight: 700;
+                    color: Theme.text;
+                }
+                Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: @tr("It is free and has no ads. If you like, you can support its development with any amount.");
+                    wrap: word-wrap;
+                    color: Theme.text;
+                    font-size: 12px * Theme.font-scale;
+                    vertical-stretch: 1;
+                }
+            }
+        }
+        // an HRow already starts on the right in Arabic
+        HRow {
+            spacing: 8px;
+            Button {
+                text: @tr("Support with PayPal");
+                primary: true;
+                clicked => {
+                    root.open-link("https://www.paypal.com/paypalme/ahmedezzat99");
+                    root.close-window();
+                }
+            }
+            Button {
+                text: @tr("Support with InstaPay");
+                primary: true;
+                clicked => {
+                    root.open-link("https://ipn.eg/S/a7medek/instapay/1pmCQ7");
+                    root.close-window();
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+            }
+            Button {
+                text: @tr("Not now");
+                clicked => {
+                    root.close-window();
+                }
+            }
+        }
+    }
+}
 
 // After an update: what is new, right to left in Arabic.
 export component WhatsNewDialog inherits ThemedWindow {

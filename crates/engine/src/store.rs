@@ -15,10 +15,18 @@ pub fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> anyhow::Result
 }
 
 pub fn load_downloads(path: &Path) -> Vec<DownloadRecord> {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    match serde_json::from_str(&text) {
+        Ok(list) => list,
+        Err(_) => {
+            // a broken list (the computer went off while it was written...):
+            // kept aside, never overwritten by the empty one
+            let _ = std::fs::copy(path, path.with_extension("broken.json"));
+            Vec::new()
+        }
+    }
 }
 
 /// The download list: saved often, so without spaces (smaller, faster).

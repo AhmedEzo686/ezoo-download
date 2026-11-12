@@ -21,7 +21,8 @@ pub fn check_room(dir: &Path, needed: u64, total: Option<u64>) -> Result<(), Str
         // keep a little air for the file system
         if needed > 0 && free < needed.saturating_add(16 * 1024 * 1024) {
             return Err(format!(
-                "Not enough free space on the disk: the file needs {} more, only {} free.",
+                "Not enough free space on the disk {}: the file needs {} more, only {} free.",
+                disk_name(&dir),
                 crate::fmt_size(needed),
                 crate::fmt_size(free)
             ));
@@ -39,6 +40,14 @@ pub fn check_room(dir: &Path, needed: u64, total: Option<u64>) -> Result<(), Str
         }
     }
     Ok(())
+}
+
+/// "C:" for C:\\Users\\x\\Downloads, else the folder itself.
+pub fn disk_name(dir: &Path) -> String {
+    match dir.components().next() {
+        Some(std::path::Component::Prefix(p)) => p.as_os_str().to_string_lossy().into_owned(),
+        _ => dir.display().to_string(),
+    }
 }
 
 fn existing_parent(dir: &Path) -> std::path::PathBuf {

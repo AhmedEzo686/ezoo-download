@@ -49,6 +49,12 @@ msgstr "تحميل كل فيديوهات قائمة تشغيل أو بعضها."
 msgid "Download a .torrent file or a magnet link."
 msgstr "تحميل ملف تورنت أو رابط magnet."
 
+msgid "Move to queue"
+msgstr "نقل إلى قائمة الانتظار"
+
+msgid "Delete from queue"
+msgstr "حذف من قائمة الانتظار"
+
 msgid "{} downloads selected"
 msgstr "تم تحديد {} تحميلات"
 
@@ -63,6 +69,9 @@ msgstr "فتح باستخدام…"
 
 msgid "Play while downloading"
 msgstr "تشغيل أثناء التحميل"
+
+msgid "Download a part of it…"
+msgstr "تحميل جزء منه…"
 
 msgid "Open folder"
 msgstr "فتح المجلد"
@@ -81,12 +90,6 @@ msgstr "تحديث رابط التحميل…"
 
 msgid "Move / Rename…"
 msgstr "نقل / إعادة تسمية…"
-
-msgid "Move to queue"
-msgstr "نقل إلى قائمة الانتظار"
-
-msgid "Delete from queue"
-msgstr "حذف من قائمة الانتظار"
 
 msgid "Copy address"
 msgstr "نسخ الرابط"
@@ -180,6 +183,9 @@ msgstr "تشغيل جامع المواقع…"
 
 msgid "Download a playlist…"
 msgstr "تحميل قائمة تشغيل…"
+
+msgid "Download a part of a video…"
+msgstr "تحميل جزء من فيديو…"
 
 msgid "Add a torrent / magnet link…"
 msgstr "إضافة تورنت / رابط magnet…"
@@ -598,6 +604,9 @@ msgstr "<< إخفاء التفاصيل"
 msgid "Show details >>"
 msgstr "إظهار التفاصيل >>"
 
+msgid "Next to the clock"
+msgstr "بجوار الساعة"
+
 msgid "Pause"
 msgstr "إيقاف مؤقت"
 
@@ -613,8 +622,8 @@ msgstr "رقم"
 msgid "Info"
 msgstr "معلومات"
 
-msgid "Hide next to the clock"
-msgstr "إخفاء بجوار الساعة"
+msgid "Drag me"
+msgstr "اسحبني"
 
 msgid "Download complete"
 msgstr "اكتمل التحميل"
@@ -732,6 +741,12 @@ msgstr "إذا كان مكتملاً اعرضه، وإن لم يكن استأن�
 
 msgid "Remember my choice (Options > Downloads)"
 msgstr "تذكّر اختياري (الخيارات > التحميلات)"
+
+msgid "Delete the downloaded files from the disk too (be careful)"
+msgstr "حذف الملفات المحمَّلة من القرص أيضًا (انتبه)"
+
+msgid "Don't show this question again"
+msgstr "عدم إظهار هذا السؤال مرة أخرى"
 
 msgid "All downloads are finished."
 msgstr "انتهت كل التحميلات."
@@ -1036,6 +1051,9 @@ msgstr "مراقبة الحافظة لروابط التحميل"
 msgid "Automatically start downloading links placed in the clipboard"
 msgstr "بدء تحميل الروابط المنسوخة للحافظة تلقائياً"
 
+msgid "Draw the windows with the graphics card (uses more memory; after a restart)"
+msgstr "رسم النوافذ بكارت الشاشة (يستهلك ذاكرة أكثر؛ بعد إعادة التشغيل)"
+
 msgid "Show \"Tip of the day\" at startup"
 msgstr "إظهار \"نصيحة اليوم\" عند البدء"
 
@@ -1128,6 +1146,15 @@ msgstr "إظهار نافذة \"معلومات ملف التحميل\" للتح�
 
 msgid "Start downloading immediately while showing \"Download File Info\""
 msgstr "بدء التحميل فوراً أثناء عرض \"معلومات ملف التحميل\""
+
+msgid "Ask before removing downloads from the list"
+msgstr "السؤال قبل إزالة التحميلات من القائمة"
+
+msgid "Quality of MP3 files"
+msgstr "جودة ملفات MP3"
+
+msgid "Download the subtitles of videos too, in these languages:"
+msgstr "تحميل ترجمة الفيديوهات أيضًا، بهذه اللغات:"
 
 msgid "Show the download progress window"
 msgstr "إظهار نافذة تقدّم التحميل"
@@ -1393,6 +1420,9 @@ msgstr "اضغط على متصفحك:"
 msgid "Almost done:"
 msgstr "خطوة أخيرة:"
 
+msgid "Repair the add-in"
+msgstr "إصلاح الإضافة"
+
 msgid "Copy folder path"
 msgstr "نسخ مسار المجلد"
 
@@ -1401,6 +1431,15 @@ msgstr "الإصدار {}"
 
 msgid "Coded by Ahmed Ezzat"
 msgstr "Coded by Ahmed Ezzat"
+
+msgid "Official download page (GitHub)"
+msgstr "صفحة التحميل الرسمية (GitHub)"
+
+msgid "Download Ezoo Download only from its official page."
+msgstr "حمّل Ezoo Download من صفحته الرسمية فقط."
+
+msgid "© Ezoo Tech – All rights reserved"
+msgstr "© Ezoo Tech – كل الحقوق محفوظة"
 
 msgid "Like Ezoo Download? You can support its development:"
 msgstr "أعجبك Ezoo Download؟ يمكنك دعم تطويره:"
@@ -1413,6 +1452,69 @@ msgstr "ادعم عبر InstaPay"
 
 msgid "InstaPay: a7medek@instapay (scan the code with your bank's app)"
 msgstr "امسح الكود بتطبيق البنك أو InstaPay — a7medek@instapay"
+
+msgid "Download a part of a video"
+msgstr "تحميل جزء من فيديو"
+
+msgid "Paste the address of the video (its page, or a link to the video or stream):"
+msgstr "الصق عنوان الفيديو (صفحته، أو رابط الفيديو أو البث):"
+
+msgid "Looking…"
+msgstr "جارٍ البحث…"
+
+msgid "Get the video"
+msgstr "جلب الفيديو"
+
+msgid "Quality:"
+msgstr "الجودة:"
+
+msgid "From:"
+msgstr "من:"
+
+msgid "To:"
+msgstr "إلى:"
+
+msgid "Length:"
+msgstr "المدة:"
+
+msgid "Cut:"
+msgstr "القص:"
+
+msgid "Quick cut (recommended)"
+msgstr "قص سريع (مستحسن)"
+
+msgid "Exact cut"
+msgstr "قص دقيق"
+
+msgid "Quick cut"
+msgstr "قص سريع"
+
+msgid "Takes seconds and keeps the quality exactly as it is (nothing is made again). A video can only start on a whole picture, so the part may start a second or two before the time you chose."
+msgstr "يستغرق ثوانيَ ويحافظ على الجودة كما هي تمامًا (لا يُعاد إنشاء أي شيء). لا يمكن للفيديو أن يبدأ إلا عند صورة كاملة، لذلك قد يبدأ الجزء قبل الوقت الذي اخترته بثانية أو ثانيتين."
+
+msgid "Starts and ends on the very second you chose. The picture of the part is made again, so it takes longer (about as long as the part plays, or less) and works the processor. Sound alone is always cut exactly."
+msgstr "يبدأ وينتهي في الثانية التي اخترتها بالضبط. تُعاد صناعة صورة الجزء، لذلك يستغرق وقتًا أطول (قرابة مدة الجزء أو أقل) ويُشغّل المعالج. الصوت وحده يُقص دائمًا بدقة."
+
+msgid "Preparing the preview…"
+msgstr "جارٍ تجهيز المعاينة…"
+
+msgid "Preview the part"
+msgstr "معاينة الجزء"
+
+msgid "Download the part"
+msgstr "تحميل الجزء"
+
+msgid "Support Ezoo Download"
+msgstr "ادعم Ezoo Download"
+
+msgid "Did Ezoo Download save you time?"
+msgstr "هل وفّر لك Ezoo Download وقتك؟"
+
+msgid "It is free and has no ads. If you like, you can support its development with any amount."
+msgstr "البرنامج مجاني وبدون إعلانات. إن أحببت، يمكنك دعم تطويره بأي مبلغ."
+
+msgid "Not now"
+msgstr "ليس الآن"
 
 msgid "What's new in Ezoo Download"
 msgstr "الجديد في Ezoo Download"

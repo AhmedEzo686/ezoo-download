@@ -250,6 +250,23 @@ pub const MP3_KEY: &str = "audio|MP3";
 /// bitrate of the MP3 files we make
 pub const MP3_KBPS: u64 = 192;
 
+/// The MP3 quality chosen in Options (kbps): 128, 192, 256 or 320.
+static MP3_RATE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(MP3_KBPS);
+
+pub fn set_mp3_kbps(kbps: u32) {
+    let k = match kbps {
+        0..=159 => 128,
+        160..=223 => 192,
+        224..=287 => 256,
+        _ => 320,
+    };
+    MP3_RATE.store(k, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn mp3_kbps() -> u64 {
+    MP3_RATE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Plain words for a resolution, so the choice is easy to understand.
 pub fn quality_tag(height: u64) -> &'static str {
     match height {
@@ -402,10 +419,11 @@ pub fn build_options(full: &Value) -> YtInfo {
         if ext != "mp3" {
             // the same sound, turned into an MP3 file after the download
             // (plays on every phone, car radio and old player)
-            let mp3_size = if duration > 0 { duration * MP3_KBPS * 1000 / 8 } else { 0 };
+            let rate = mp3_kbps();
+            let mp3_size = if duration > 0 { duration * rate * 1000 / 8 } else { 0 };
             options.push(YtOption {
                 key: MP3_KEY.into(),
-                label: format!("Audio · MP3 {MP3_KBPS}k"),
+                label: format!("Audio · MP3 {rate}k"),
                 sub: fmt_size(mp3_size),
                 quality: "mp3".into(),
                 video_url: a.url.clone(),
@@ -416,7 +434,7 @@ pub fn build_options(full: &Value) -> YtInfo {
                 tag: String::new(),
                 codec: String::new(),
                 duration,
-                kbps: MP3_KBPS,
+                kbps: rate,
             });
         }
     }
@@ -560,6 +578,11 @@ fn needs_login(msg: &str) -> bool {
         .any(|k| m.contains(k))
 }
 
+/// Sites where much is seen only by friends / group members.
+fn members_site(url: &str) -> bool {
+    matches!(site_of(url).as_str(), "facebook.com" | "fb.watch" | "instagram.com" | "threads.net" | "x.com" | "twitter.com")
+}
+
 /// The site part of an address that cookies belong to ("www.youtube.com",
 /// "m.youtube.com" and "youtu.be" are all "youtube.com").
 fn site_of(url: &str) -> String {
@@ -625,7 +648,10 @@ fn with_cookies<T>(
     }
     match run(None) {
         Ok(v) => Ok(v),
-        Err(e) if needs_login(&e.to_string()) => {
+        // social sites hide what only friends / members see behind messages
+        // that say nothing of a login ("Cannot parse data", "No video
+        // formats found"): with the browser's cookies there, always
+        Err(e) if needs_login(&e.to_string()) || (members_site(page_url) && cookies.is_some_and(|c| !c.is_empty())) => {
             let list = cookies.map(<[BrowserCookie]>::to_vec).or_else(|| remembered_cookies(page_url));
             let Some(list) = list.filter(|c| !c.is_empty()) else {
                 return Err(if login_wall(&e.to_string()) { e.context(LOGIN_NEEDED) } else { e });
@@ -637,6 +663,46 @@ fn with_cookies<T>(
         }
         Err(e) => Err(e),
     }
+}
+
+/// The subtitles of a video page (when the site has them), saved next to
+/// the video as "<name>.<language>.<ext>". `langs`: "ar en" (yt-dlp's own
+/// automatic translations are used when there are no real ones). Blocking.
+pub fn fetch_subtitles(page_url: &str, dir: &Path, stem: &str, langs: &str) -> anyhow::Result<()> {
+    let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe is missing"))?;
+    let langs: Vec<String> = langs
+        .split(|c: char| c == ',' || c.is_whitespace())
+        .map(|l| l.trim().to_ascii_lowercase())
+        .filter(|l| !l.is_empty() && l.len() <= 12 && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        .collect();
+    if langs.is_empty() {
+        return Ok(());
+    }
+    // "ar" also takes "ar-EG" and the like
+    let wanted = langs.iter().map(|l| format!("{l}.*")).chain(langs.iter().cloned()).collect::<Vec<_>>().join(",");
+    // a name of ours as the output template: "%" means something to yt-dlp
+    let out = format!("{}.%(ext)s", stem.replace('%', "%%"));
+    with_cookies(page_url, None, |file| {
+        let mut cmd = ytdlp_command(&tool);
+        cmd.args(["--ignore-config", "--skip-download", "--write-subs", "--write-auto-subs", "--no-playlist", "--no-warnings", "--no-cache-dir"])
+            .args(["--socket-timeout", "20", "--sub-format", "srt/vtt/best", "--sub-langs"])
+            .arg(&wanted)
+            .arg("-P")
+            .arg(dir)
+            .arg("-o")
+            .arg(&out);
+        if let Some(c) = file {
+            cmd.arg("--cookies").arg(c);
+        }
+        cmd.arg("--").arg(page_url);
+        let o = cmd.output().context("could not start yt-dlp")?;
+        if o.status.success() {
+            Ok(())
+        } else {
+            let err = String::from_utf8_lossy(&o.stderr);
+            bail!("{}", err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no subtitles"))
+        }
+    })
 }
 
 /// Find the download choices of a page with a video. Blocking (takes a few

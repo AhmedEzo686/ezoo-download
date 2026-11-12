@@ -17,6 +17,11 @@ LAME - https://lame.sourceforge.io
   Built into that ffmpeg program to make MP3 files. GNU Lesser General Public
   License (see lame-COPYING.txt in the "tools" folder).
 
+OpenH264 - https://github.com/cisco/openh264
+  Built into that ffmpeg program for the exact cut of "Download a part of a
+  video" (the picture of the part is made again). BSD 2-Clause License (see
+  openh264-LICENSE.txt in the "tools" folder).
+
 aria2 - https://github.com/aria2/aria2
   The aria2c program in the "tools" folder (used for torrents) is an
   unmodified release build licensed under the GNU General Public License

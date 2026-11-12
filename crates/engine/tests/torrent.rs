@@ -310,3 +310,25 @@ async fn only_the_checked_files_of_a_torrent() {
     seeder.remove(&sg).await;
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A magnet link: its file list (a .torrent file) comes before the
+/// download, from the people who share it, so files can be chosen.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn magnet_link_file_list_first() {
+    let Some((root, data, _file, seeder, sg, port)) = shared_file("meta").await else { return };
+    let hash: String = ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, &make_info("song.bin", &data))
+        .as_ref()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let magnet = format!("magnet:?xt=urn:btih:{hash}&tr=http%3A%2F%2F127.0.0.1%3A{port}%2Fannounce");
+    let getter = Aria2::new(&root.join("m"));
+    let file = getter.metadata(&magnet, &root.join("listdir"), Duration::from_secs(60)).await.unwrap();
+    let info = swiftget_engine::torrent::parse_torrent(&std::fs::read(&file).unwrap()).unwrap();
+    assert_eq!(info.name, "song.bin");
+    assert_eq!(info.total, data.len() as u64);
+    // nothing of the file itself was downloaded
+    assert!(!root.join("listdir").join("song.bin").exists());
+    seeder.remove(&sg).await;
+    let _ = std::fs::remove_dir_all(&root);
+}

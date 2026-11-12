@@ -15,6 +15,7 @@
 //! a release (or a file) that was not made with that key is never installed,
 //! even if someone could publish files on the repository.
 
+use crate::http::SendOrdered;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -131,7 +132,7 @@ pub async fn check(client: &reqwest::Client) -> anyhow::Result<Option<Release>> 
         .get(version_url())
         .header(reqwest::header::USER_AGENT, crate::config::DEFAULT_USER_AGENT)
         .header(reqwest::header::CACHE_CONTROL, "no-cache")
-        .send()
+        .send_ordered()
         .await?
         .error_for_status()?
         .text()
@@ -196,7 +197,7 @@ pub async fn download_with_progress(
     let mut resp = client
         .get(r.setup_url())
         .header(reqwest::header::USER_AGENT, crate::config::DEFAULT_USER_AGENT)
-        .send()
+        .send_ordered()
         .await?
         .error_for_status()?;
     use std::io::Write;

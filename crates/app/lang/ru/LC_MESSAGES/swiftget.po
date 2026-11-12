@@ -49,6 +49,12 @@ msgstr "Скачать все или некоторые видео плейли�
 msgid "Download a .torrent file or a magnet link."
 msgstr "Скачать файл .torrent или magnet-ссылку."
 
+msgid "Move to queue"
+msgstr "Переместить в очередь"
+
+msgid "Delete from queue"
+msgstr "Убрать из очереди"
+
 msgid "{} downloads selected"
 msgstr "Выбрано загрузок: {}"
 
@@ -63,6 +69,9 @@ msgstr "Открыть с помощью…"
 
 msgid "Play while downloading"
 msgstr "Воспроизвести во время загрузки"
+
+msgid "Download a part of it…"
+msgstr "Скачать часть…"
 
 msgid "Open folder"
 msgstr "Открыть папку"
@@ -81,12 +90,6 @@ msgstr "Обновить адрес загрузки…"
 
 msgid "Move / Rename…"
 msgstr "Переместить / Переименовать…"
-
-msgid "Move to queue"
-msgstr "Переместить в очередь"
-
-msgid "Delete from queue"
-msgstr "Убрать из очереди"
 
 msgid "Copy address"
 msgstr "Копировать адрес"
@@ -180,6 +183,9 @@ msgstr "Запустить сборщик сайтов…"
 
 msgid "Download a playlist…"
 msgstr "Скачать плейлист…"
+
+msgid "Download a part of a video…"
+msgstr "Скачать часть видео…"
 
 msgid "Add a torrent / magnet link…"
 msgstr "Добавить торрент / magnet-ссылку…"
@@ -598,6 +604,9 @@ msgstr "<< Скрыть подробности"
 msgid "Show details >>"
 msgstr "Подробнее >>"
 
+msgid "Next to the clock"
+msgstr "К часам"
+
 msgid "Pause"
 msgstr "Пауза"
 
@@ -613,8 +622,8 @@ msgstr "№"
 msgid "Info"
 msgstr "Инфо"
 
-msgid "Hide next to the clock"
-msgstr "Спрятать к часам"
+msgid "Drag me"
+msgstr "Перетащи меня"
 
 msgid "Download complete"
 msgstr "Загрузка завершена"
@@ -732,6 +741,12 @@ msgstr "Если завершена — показать, если нет — п
 
 msgid "Remember my choice (Options > Downloads)"
 msgstr "Запомнить мой выбор (Параметры > Загрузки)"
+
+msgid "Delete the downloaded files from the disk too (be careful)"
+msgstr "Удалить и скачанные файлы с диска (осторожно)"
+
+msgid "Don't show this question again"
+msgstr "Больше не задавать этот вопрос"
 
 msgid "All downloads are finished."
 msgstr "Все загрузки завершены."
@@ -1036,6 +1051,9 @@ msgstr "Следить за буфером обмена на ссылки для
 msgid "Automatically start downloading links placed in the clipboard"
 msgstr "Автоматически скачивать ссылки, попавшие в буфер обмена"
 
+msgid "Draw the windows with the graphics card (uses more memory; after a restart)"
+msgstr "Рисовать окна видеокартой (больше памяти; после перезапуска)"
+
 msgid "Show \"Tip of the day\" at startup"
 msgstr "Показывать \"Совет дня\" при запуске"
 
@@ -1128,6 +1146,15 @@ msgstr "Показывать окно \"Сведения о файле\" для 
 
 msgid "Start downloading immediately while showing \"Download File Info\""
 msgstr "Сразу начинать загрузку, показывая \"Сведения о файле\""
+
+msgid "Ask before removing downloads from the list"
+msgstr "Спрашивать перед удалением загрузок из списка"
+
+msgid "Quality of MP3 files"
+msgstr "Качество файлов MP3"
+
+msgid "Download the subtitles of videos too, in these languages:"
+msgstr "Скачивать и субтитры видео на этих языках:"
 
 msgid "Show the download progress window"
 msgstr "Показывать окно хода загрузки"
@@ -1393,6 +1420,9 @@ msgstr "Нажмите на свой браузер:"
 msgid "Almost done:"
 msgstr "Почти готово:"
 
+msgid "Repair the add-in"
+msgstr "Восстановить дополнение"
+
 msgid "Copy folder path"
 msgstr "Копировать путь к папке"
 
@@ -1401,6 +1431,15 @@ msgstr "Версия {}"
 
 msgid "Coded by Ahmed Ezzat"
 msgstr "Автор: Ahmed Ezzat"
+
+msgid "Official download page (GitHub)"
+msgstr "Официальная страница загрузки (GitHub)"
+
+msgid "Download Ezoo Download only from its official page."
+msgstr "Скачивайте Ezoo Download только с официальной страницы."
+
+msgid "© Ezoo Tech – All rights reserved"
+msgstr "© Ezoo Tech – Все права защищены"
 
 msgid "Like Ezoo Download? You can support its development:"
 msgstr "Нравится Ezoo Download? Вы можете поддержать разработку:"
@@ -1413,6 +1452,69 @@ msgstr "Поддержать через InstaPay"
 
 msgid "InstaPay: a7medek@instapay (scan the code with your bank's app)"
 msgstr "InstaPay: a7medek@instapay (отсканируйте код приложением банка)"
+
+msgid "Download a part of a video"
+msgstr "Скачать часть видео"
+
+msgid "Paste the address of the video (its page, or a link to the video or stream):"
+msgstr "Вставьте адрес видео (его страницу или ссылку на видео или поток):"
+
+msgid "Looking…"
+msgstr "Поиск…"
+
+msgid "Get the video"
+msgstr "Получить видео"
+
+msgid "Quality:"
+msgstr "Качество:"
+
+msgid "From:"
+msgstr "С:"
+
+msgid "To:"
+msgstr "По:"
+
+msgid "Length:"
+msgstr "Длительность:"
+
+msgid "Cut:"
+msgstr "Обрезка:"
+
+msgid "Quick cut (recommended)"
+msgstr "Быстрая обрезка (рекомендуется)"
+
+msgid "Exact cut"
+msgstr "Точная обрезка"
+
+msgid "Quick cut"
+msgstr "Быстрая обрезка"
+
+msgid "Takes seconds and keeps the quality exactly as it is (nothing is made again). A video can only start on a whole picture, so the part may start a second or two before the time you chose."
+msgstr "Занимает секунды и сохраняет качество без изменений (ничего не пересоздаётся). Видео может начинаться только с полного кадра, поэтому часть может начаться на секунду-две раньше выбранного времени."
+
+msgid "Starts and ends on the very second you chose. The picture of the part is made again, so it takes longer (about as long as the part plays, or less) and works the processor. Sound alone is always cut exactly."
+msgstr "Начинается и заканчивается точно в выбранную секунду. Изображение части создаётся заново, поэтому это дольше (примерно как длится часть или меньше) и нагружает процессор. Звук отдельно всегда обрезается точно."
+
+msgid "Preparing the preview…"
+msgstr "Подготовка просмотра…"
+
+msgid "Preview the part"
+msgstr "Посмотреть часть"
+
+msgid "Download the part"
+msgstr "Скачать часть"
+
+msgid "Support Ezoo Download"
+msgstr "Поддержать Ezoo Download"
+
+msgid "Did Ezoo Download save you time?"
+msgstr "Ezoo Download сэкономил вам время?"
+
+msgid "It is free and has no ads. If you like, you can support its development with any amount."
+msgstr "Программа бесплатная и без рекламы. Если хотите, можете поддержать её развитие любой суммой."
+
+msgid "Not now"
+msgstr "Не сейчас"
 
 msgid "What's new in Ezoo Download"
 msgstr "Что нового в Ezoo Download"
