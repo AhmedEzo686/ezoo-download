@@ -308,6 +308,7 @@ impl Aria2 {
             let _ = std::fs::rename(&log, self.data_dir.join("aria2.old.log"));
         }
         let mut cmd = std::process::Command::new(&tool);
+        crate::http::with_proxy(&mut cmd);
         cmd.args([
             "--enable-rpc=true",
             "--rpc-listen-all=false",

@@ -311,7 +311,59 @@ pub fn client_for(client: &Client, url: &str) -> Client {
     client.clone()
 }
 
+/// The proxy the helper programs (video pages, cuts, torrents) go through,
+/// as Options set it: they read it from their surroundings.
+static TOOL_PROXY: std::sync::LazyLock<Mutex<ProxyConfig>> =
+    std::sync::LazyLock::new(|| Mutex::new(ProxyConfig { mode: 1, ..Default::default() }));
+
+const PROXY_VARS: [&str; 6] = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"];
+
+/// The surroundings a helper program is started with so that it uses the
+/// proxy of Options: (name, value), None = taken away.
+pub fn proxy_env() -> Vec<(&'static str, Option<String>)> {
+    let p = TOOL_PROXY.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    env_for(&p)
+}
+
+fn env_for(p: &ProxyConfig) -> Vec<(&'static str, Option<String>)> {
+    match p.mode {
+        // no proxy: none from the surroundings either
+        0 => {
+            let mut v: Vec<_> = PROXY_VARS.iter().map(|k| (*k, None)).collect();
+            v.push(("NO_PROXY", Some("*".into())));
+            v.push(("no_proxy", Some("*".into())));
+            v
+        }
+        2 if !p.host.is_empty() => {
+            let host = p.host.trim_start_matches("http://").trim_start_matches("https://").trim_end_matches('/');
+            let enc = |s: &str| percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string();
+            let login = if p.user.is_empty() { String::new() } else { format!("{}:{}@", enc(&p.user), enc(&p.password)) };
+            let url = format!("http://{login}{host}:{}", p.port);
+            let bypass = p.bypass.split_whitespace().collect::<Vec<_>>().join(",");
+            let mut v: Vec<_> = PROXY_VARS.iter().map(|k| (*k, Some(url.clone()))).collect();
+            v.push(("NO_PROXY", Some(bypass.clone())));
+            v.push(("no_proxy", Some(bypass)));
+            v
+        }
+        // the system's: the programs find it themselves
+        _ => Vec::new(),
+    }
+}
+
+/// `cmd` started with the proxy of Options.
+pub fn with_proxy(cmd: &mut std::process::Command) {
+    for (k, v) in proxy_env() {
+        match v {
+            Some(v) => cmd.env(k, v),
+            None => cmd.env_remove(k),
+        };
+    }
+}
+
 fn build_client_family(proxy: &ProxyConfig, ipv4_only: bool) -> anyhow::Result<Client> {
+    if !ipv4_only {
+        *TOOL_PROXY.lock().unwrap_or_else(|e| e.into_inner()) = proxy.clone();
+    }
     let mut b = Client::builder()
         // Real separate TCP connections. With HTTP/2 all our
         // "connections" would share one TCP connection and be as slow as one.
@@ -894,6 +946,7 @@ async fn probe_at(
         kind,
         last_modified,
         etag,
+        digest: crate::checksum::Expected::from_headers(&h, status == StatusCode::OK).map(|e| e.text()),
     };
     // a small web page where a file was expected: a page that leads on to
     // the file by itself ("your download starts in a moment")?
@@ -1112,6 +1165,19 @@ mod refused_tests {
 #[cfg(test)]
 mod passing_tests {
     use super::*;
+    #[test]
+    fn helper_programs_get_the_proxy() {
+        let manual = ProxyConfig { mode: 2, host: "http://10.0.0.1".into(), port: 8080, user: "a b".into(), password: "p@ss".into(), bypass: "local.test  x.test".into() };
+        let env = env_for(&manual);
+        let get = |k: &str| env.iter().find(|(n, _)| *n == k).and_then(|(_, v)| v.clone());
+        assert_eq!(get("HTTPS_PROXY").as_deref(), Some("http://a%20b:p%40ss@10.0.0.1:8080"));
+        assert_eq!(get("NO_PROXY").as_deref(), Some("local.test,x.test"));
+        let none = env_for(&ProxyConfig { mode: 0, ..Default::default() });
+        assert!(none.iter().any(|(k, v)| *k == "http_proxy" && v.is_none()));
+        assert!(none.iter().any(|(k, v)| *k == "NO_PROXY" && v.as_deref() == Some("*")));
+        assert!(env_for(&ProxyConfig { mode: 1, ..Default::default() }).is_empty());
+    }
+
     #[test]
     fn which_failures_pass() {
         assert!(is_passing_error(&anyhow::Error::new(HttpStatus(503))));

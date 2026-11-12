@@ -1947,6 +1947,7 @@ export component AddDialog inherits ThemedWindow {
     // full path: folder + file name
     in-out property <string> save-as;
     in-out property <string> description;
+    in-out property <string> checksum;
     in-out property <int> connections: 32;
     in-out property <int> category-index: 0;
     in-out property <bool> remember-path;
@@ -2080,6 +2081,20 @@ export component AddDialog inherits ThemedWindow {
                     row: 4;
                     text <=> root.description;
                     placeholder-text: @tr("optional note");
+                }
+                Text {
+                    col: Theme.rtl ? 1 : 0;
+                    row: 5;
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: @tr("Checksum");
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+                LineEdit {
+                    col: Theme.rtl ? 0 : 1;
+                    row: 5;
+                    text <=> root.checksum;
+                    placeholder-text: @tr("MD5 / SHA-1 / SHA-256 (optional)");
                 }
             }
             VerticalLayout {

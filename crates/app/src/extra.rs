@@ -238,6 +238,7 @@ pub(crate) fn open_properties(ui: &Ui, id: u64) {
     d.set_url(v.url.clone().into());
     d.set_referer(v.referer().to_string().into());
     d.set_description(v.description.clone().unwrap_or_default().into());
+    d.set_checksum(v.checksum.clone().unwrap_or_default().into());
     d.set_use_login(v.headers.auth.is_some());
     d.set_user(v.headers.auth.as_ref().map(|a| a.0.clone()).unwrap_or_default().into());
     d.set_password(v.headers.auth.as_ref().map(|a| a.1.clone()).unwrap_or_default().into());
@@ -250,11 +251,17 @@ fn save_properties(ui: &Ui) {
     let Some(v) = ui.ctx.mgr.get(id) else { return };
     let auth = (d.get_use_login() && !d.get_user().trim().is_empty())
         .then(|| (d.get_user().trim().to_string(), d.get_password().to_string()));
+    let checksum = d.get_checksum().trim().to_string();
+    if !checksum.is_empty() && swiftget_engine::checksum::Expected::parse(&checksum).is_none() {
+        d.set_message(t("This is not a checksum: paste its MD5, SHA-1, SHA-256, SHA-384 or SHA-512 value").into());
+        return;
+    }
     let edit = DetailsEdit {
         url: (v.status != Status::Completed).then(|| d.get_url().trim().to_string()),
         referer: Some(d.get_referer().trim().to_string()),
         description: Some(d.get_description().trim().to_string()),
         auth,
+        checksum: Some(checksum),
     };
     if let Err(e) = ui.ctx.mgr.update_details(id, edit) {
         d.set_message(format!("{e:#}").into());

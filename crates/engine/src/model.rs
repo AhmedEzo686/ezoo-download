@@ -61,6 +61,8 @@ pub enum Step {
     Move,
     /// the part of a video cut out
     Cut,
+    /// the finished file compared with its checksum
+    Check,
 }
 
 impl Step {
@@ -71,6 +73,7 @@ impl Step {
             3 => Step::ToMp3,
             4 => Step::Move,
             5 => Step::Cut,
+            6 => Step::Check,
             _ => return None,
         })
     }
@@ -81,6 +84,7 @@ impl Step {
             Step::ToMp3 => 3,
             Step::Move => 4,
             Step::Cut => 5,
+            Step::Check => 6,
         }
     }
 }
@@ -197,6 +201,8 @@ pub struct ProbeResult {
     /// the server refused the request as it was (HTTP 403 and the like) and
     /// took it with these headers instead: the download uses them too
     pub headers_used: Option<RequestHeaders>,
+    /// the checksum the server sent with the file ("sha256:..."), if any
+    pub digest: Option<String>,
 }
 
 impl ProbeResult {
@@ -238,6 +244,8 @@ pub struct NewDownload {
     pub torrent_select: Option<String>,
     /// only this part of the video / sound
     pub clip: Option<Clip>,
+    /// the checksum the finished file must have (what the user pasted)
+    pub checksum: Option<String>,
 }
 
 /// Persisted state of one download.
@@ -329,6 +337,10 @@ pub struct DownloadRecord {
     /// only this part of the video / sound ("Download a part")
     #[serde(default)]
     pub clip: Option<Clip>,
+    /// the checksum the finished file must have ("sha256:..."): the user's,
+    /// else the one the server sent
+    #[serde(default)]
+    pub checksum: Option<String>,
 }
 
 impl DownloadRecord {
@@ -449,6 +461,8 @@ pub struct DownloadView {
     pub queue: Option<u64>,
     pub finished_at: Option<DateTime<Utc>>,
     pub description: Option<String>,
+    /// the checksum the finished file must have ("sha256:...")
+    pub checksum: Option<String>,
     pub speed_limit_kb: Option<u64>,
     pub on_complete: crate::config::AfterDone,
     pub added_at: DateTime<Utc>,

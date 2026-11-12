@@ -443,6 +443,12 @@ impl Manager {
             torrent_select: req.torrent_select.clone().filter(|s| !s.trim().is_empty()),
             torrent_files: Vec::new(),
             clip,
+            checksum: req
+                .checksum
+                .as_deref()
+                .and_then(crate::checksum::Expected::parse)
+                .or_else(|| probe.as_ref().and_then(|p| p.digest.as_deref()).and_then(crate::checksum::Expected::parse))
+                .map(|e| e.text()),
         };
         let mut rec = rec;
         if early {
@@ -758,6 +764,9 @@ impl Manager {
         }
         e.rec.headers.referer = d.referer.filter(|r| !r.trim().is_empty());
         e.rec.description = d.description.filter(|r| !r.trim().is_empty());
+        if let Some(c) = d.checksum {
+            e.rec.checksum = crate::checksum::Expected::parse(&c).map(|x| x.text());
+        }
         e.rec.headers.auth = d.auth.filter(|(u, _)| !u.trim().is_empty());
         inner.dirty = true;
         Ok(())
@@ -793,6 +802,15 @@ impl Manager {
     /// The "Download File Info" window was confirmed for a download that
     /// already started in the background: give it the final folder, name,
     /// note and login. Works while it downloads.
+    /// The checksum the finished file must have (None: none of the user's).
+    pub fn set_checksum(&self, id: DownloadId, checksum: Option<String>) {
+        self.update(id, move |r| {
+            if checksum.is_some() {
+                r.checksum = checksum;
+            }
+        });
+    }
+
     pub fn retarget(
         self: &Arc<Self>,
         id: DownloadId,
@@ -1562,6 +1580,9 @@ impl Manager {
             }
         }
         rec.etag = p.etag.clone().or(rec.etag.take());
+        if rec.checksum.is_none() {
+            rec.checksum = p.digest.as_deref().and_then(crate::checksum::Expected::parse).map(|e| e.text());
+        }
         // the server only took the request without the browser's cookies /
         // referrer: the download asks the same way
         if let Some(h) = &p.headers_used {
@@ -1610,6 +1631,9 @@ impl Manager {
                 x.auto_name = false;
                 x.server_time = r.server_time;
                 x.etag = r.etag;
+                if x.checksum.is_none() {
+                    x.checksum = r.checksum;
+                }
                 if x.status == Status::Connecting {
                     x.status = Status::Downloading;
                 }
@@ -2060,14 +2084,34 @@ impl Manager {
             progress.set_step(None);
             anyhow::bail!("{why}");
         }
-        let mut target = save_dir.join(&file_name);
-        if target.exists() {
-            let name = filename::unique_name(&save_dir, &file_name);
-            target = save_dir.join(&name);
-            self.update(id, move |x| x.file_name = name);
+        // the checksum it must have (the user's, or the server's)
+        let want = {
+            let inner = self.inner.lock().unwrap();
+            inner.entries.get(&id).and_then(|e| e.rec.checksum.clone()).or_else(|| rec.checksum.clone())
+        };
+        if let Some(want) = want.as_deref().filter(|_| rec.kind == DownloadKind::Http && rec.clip.is_none()).and_then(crate::checksum::Expected::parse) {
+            progress.set_step(Some(Step::Check));
+            let (p2, pr, c2, w2) = (part.clone(), progress.clone(), cancel.clone(), want.clone());
+            let same = tokio::task::spawn_blocking(move || crate::checksum::matches(&p2, &w2, &|f| pr.step_at(f), &|| c2.is_cancelled())).await?;
+            progress.set_step(None);
+            if cancel.is_cancelled() {
+                return Err(Cancelled.into());
+            }
+            if !same? {
+                anyhow::bail!(
+                    "the downloaded file is damaged: its checksum ({}) is not the one it should have - download it again",
+                    want.algo.name()
+                );
+            }
         }
         let _ = std::fs::create_dir_all(&save_dir);
-        if std::fs::rename(&part, &target).is_err() {
+        let (p2, d2, n2) = (part.clone(), save_dir.clone(), file_name.clone());
+        let (target, moved) = tokio::task::spawn_blocking(move || move_into_place(&p2, &d2, &n2)).await?;
+        if let Some(name) = target.file_name().and_then(|n| n.to_str()).filter(|n| *n != file_name) {
+            let name = name.to_string();
+            self.update(id, move |x| x.file_name = name);
+        }
+        if !moved {
             // temporary folder on another disk: copied (its own bar), then removed
             progress.set_step(Some(Step::Move));
             let (from, to, p2, c2) = (part.clone(), target.clone(), progress.clone(), cancel.clone());
@@ -2611,6 +2655,7 @@ fn view_of(e: &Entry, with_parts: bool) -> DownloadView {
         queue: e.rec.queue,
         finished_at: e.rec.finished_at,
         description: e.rec.description.clone(),
+        checksum: e.rec.checksum.clone(),
         speed_limit_kb: e.rec.speed_limit_kb,
         on_complete: e.rec.on_complete,
         added_at: e.rec.added_at,
@@ -2831,6 +2876,8 @@ pub struct DetailsEdit {
     pub referer: Option<String>,
     pub description: Option<String>,
     pub auth: Option<(String, String)>,
+    /// the checksum the file must have ("": none; None: unchanged)
+    pub checksum: Option<String>,
 }
 
 /// The download's headers plus a saved site login, if it has none of its own.
@@ -2840,6 +2887,29 @@ fn with_login(s: &Settings, url: &str, h: &RequestHeaders) -> RequestHeaders {
         h.auth = s.login_for(url);
     }
     h
+}
+
+/// The finished file put in its place under `name` in `dir`, or a free
+/// numbered name: a file that appeared there meanwhile is never replaced.
+/// An antivirus or indexer that holds the new file for a moment does not
+/// fail the download: it is tried again for a few seconds. (where, moved?)
+/// Not moved: another disk (it is copied then).
+fn move_into_place(part: &Path, dir: &Path, name: &str) -> (PathBuf, bool) {
+    let mut wait = 100;
+    for _ in 0..12 {
+        let target = if dir.join(name).exists() { dir.join(filename::unique_name(dir, name)) } else { dir.join(name) };
+        match std::fs::rename(part, &target) {
+            Ok(()) => return (target, true),
+            // held by another program for a moment (access denied, in use)
+            Err(e) if cfg!(windows) && matches!(e.raw_os_error(), Some(5 | 32 | 33)) && part.exists() => {
+                std::thread::sleep(Duration::from_millis(wait));
+                wait = (wait * 2).min(1000);
+            }
+            Err(_) => return (target, false),
+        }
+    }
+    let target = if dir.join(name).exists() { dir.join(filename::unique_name(dir, name)) } else { dir.join(name) };
+    (target, false)
 }
 
 /// Packed files: their bytes look random, long runs of zero bytes never

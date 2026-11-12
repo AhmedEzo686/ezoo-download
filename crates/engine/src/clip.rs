@@ -118,6 +118,7 @@ fn video_kbps(p: &Picture) -> u64 {
 fn command(ffmpeg: &Path) -> std::process::Command {
     let mut cmd = std::process::Command::new(ffmpeg);
     crate::mux::hide_window(&mut cmd);
+    crate::http::with_proxy(&mut cmd);
     cmd.stdin(Stdio::null());
     cmd
 }

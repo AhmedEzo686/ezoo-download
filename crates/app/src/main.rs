@@ -2616,6 +2616,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     }
     d.set_url(url.clone().into());
     d.set_description(SharedString::new());
+    d.set_checksum(SharedString::new());
     d.set_size_text(SharedString::new());
     d.set_connections(s.connections() as i32);
     d.set_queue_names(queue_names(&s));
@@ -2786,6 +2787,14 @@ fn confirm_add(ui: &Ui, start: bool) {
         d.set_info_error(true);
         return;
     }
+    // the checksum the file must have: one that is none is said at once
+    let checksum_text = d.get_checksum().trim().to_string();
+    let checksum = swiftget_engine::checksum::Expected::parse(&checksum_text).map(|e| e.text());
+    if !checksum_text.is_empty() && checksum.is_none() {
+        d.set_info(t("This is not a checksum: paste its MD5, SHA-1, SHA-256, SHA-384 or SHA-512 value").into());
+        d.set_info_error(true);
+        return;
+    }
     let save_as = PathBuf::from(d.get_save_as().trim());
     // the name as the program suggested it (its extension is the real one)
     let suggested = {
@@ -2874,6 +2883,7 @@ fn confirm_add(ui: &Ui, start: bool) {
             start,
             torrent_select: None,
             clip: None,
+            checksum: checksum.clone(),
         }
     };
     let _ = d.hide();
@@ -2887,6 +2897,9 @@ fn confirm_add(ui: &Ui, start: bool) {
             let name = req.file_name.clone().unwrap_or_default();
             if let Err(e) = ctx.mgr.retarget(id, &dir, &name, req.description.clone(), req.headers.auth.clone()) {
                 message(&tf("Could not change where it is saved: {}", &[&format!("{e:#}")]));
+            }
+            if checksum.is_some() {
+                ctx.mgr.set_checksum(id, checksum.clone());
             }
             if start {
                 if ctx.mgr.get(id).map(|v| v.status == Status::Failed || v.status == Status::Paused).unwrap_or(false) {
@@ -3942,6 +3955,7 @@ fn step_text(st: swiftget_engine::Step) -> String {
         Step::ToMp3 => "Making the MP3 file",
         Step::Move => "Moving the file to its folder",
         Step::Cut => "Cutting the part",
+        Step::Check => "Checking the file",
     })
 }
 

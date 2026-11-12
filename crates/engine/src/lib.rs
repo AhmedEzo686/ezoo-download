@@ -8,6 +8,7 @@
 //! The UI only needs [`Manager`].
 
 pub mod category;
+pub mod checksum;
 pub mod clip;
 pub mod clipserve;
 pub mod config;

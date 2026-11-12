@@ -183,6 +183,7 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
             cmd.env("TEMP", &dir).env("TMP", &dir).current_dir(&dir);
         }
         cmd.args(["--ignore-config", "-U"]);
+        crate::http::with_proxy(&mut cmd);
         hide_window(&mut cmd);
         cmd.output().map(|o| o.status.success()).unwrap_or(false)
     })

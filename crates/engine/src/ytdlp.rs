@@ -564,6 +564,7 @@ fn ytdlp_command(tool: &Path) -> Command {
     if let Some(dir) = crate::tools::work_dir() {
         cmd.env("TEMP", &dir).env("TMP", &dir).current_dir(&dir);
     }
+    crate::http::with_proxy(&mut cmd);
     hide_window(&mut cmd);
     cmd
 }

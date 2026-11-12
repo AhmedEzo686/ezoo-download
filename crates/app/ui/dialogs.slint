@@ -537,6 +537,7 @@ export component PropertiesDialog inherits ThemedWindow {
     in-out property <string> url;
     in-out property <string> referer;
     in-out property <string> description;
+    in-out property <string> checksum;
     in-out property <bool> use-login;
     in-out property <string> user;
     in-out property <string> password;
@@ -668,6 +669,17 @@ export component PropertiesDialog inherits ThemedWindow {
                 col: Theme.rtl ? 0 : 1;
                 row: 3;
                 text <=> root.description;
+            }
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 4;
+                text: @tr("Checksum");
+            }
+            LineEdit {
+                col: Theme.rtl ? 0 : 1;
+                row: 4;
+                placeholder-text: @tr("MD5 / SHA-1 / SHA-256 (optional)");
+                text <=> root.checksum;
             }
         }
         CheckBox {

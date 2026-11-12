@@ -299,3 +299,51 @@ fn refresh_values() {
     let page = r#"<meta charset="utf-8"><meta content="2;url=/go" http-equiv="refresh">"#;
     assert_eq!(http::meta_refresh(page, &base).unwrap().1.as_str(), "https://a.test/go");
 }
+
+async fn wait_end(mgr: &Arc<swiftget_engine::Manager>, id: u64) -> swiftget_engine::DownloadView {
+    for _ in 0..1500 {
+        let v = mgr.get(id).unwrap();
+        if matches!(v.status, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
+            return v;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("did not end");
+}
+
+/// A checksum the user pasted is checked before the file is done: right, it
+/// is done; wrong, the download says the file is damaged. A file of the same
+/// name that is already there is never replaced.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_checksum_is_checked_and_nothing_is_replaced() {
+    let data = Arc::new(b"abc".repeat(100_000));
+    let d = data.clone();
+    let port = serve(Arc::new(move |a: &Asked| ranged(&d, a, None))).await;
+    let root = std::env::temp_dir().join(format!("ezoo-sum-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = root.join("out");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("f.bin"), b"mine").unwrap();
+    let mgr = swiftget_engine::Manager::new(tokio::runtime::Handle::current(), root.join("app")).unwrap();
+    let sha = {
+        let mut c = ring::digest::Context::new(&ring::digest::SHA256);
+        c.update(&data);
+        c.finish().as_ref().iter().map(|b| format!("{b:02x}")).collect::<String>()
+    };
+    let add = |checksum: &str| swiftget_engine::NewDownload {
+        url: format!("http://127.0.0.1:{port}/f.bin"),
+        save_dir: Some(dir.clone()),
+        file_name: Some("f.bin".into()),
+        start: true,
+        checksum: Some(checksum.to_string()),
+        ..Default::default()
+    };
+    let good = wait_end(&mgr, mgr.add(add(&format!("SHA-256: {sha}")))).await;
+    assert_eq!(good.status, swiftget_engine::Status::Completed, "{:?}", good.error);
+    assert!(std::fs::read(&good.save_path).unwrap() == *data);
+    assert_eq!(std::fs::read(dir.join("f.bin")).unwrap(), b"mine", "the file that was there stays");
+    let bad = wait_end(&mgr, mgr.add(add("900150983cd24fb0d6963f7d28e17f72"))).await;
+    assert_eq!(bad.status, swiftget_engine::Status::Failed);
+    assert!(bad.error.unwrap_or_default().contains("damaged"));
+    let _ = std::fs::remove_dir_all(&root);
+}
