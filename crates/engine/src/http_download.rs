@@ -133,6 +133,17 @@ impl std::error::Error for Again {}
 /// The file on the server is not the one the download began with.
 pub const FILE_CHANGED: &str = "the file on the server changed since the download began - start the download again";
 
+/// The file changed on the server: nothing more is asked (another try gets
+/// the same other file).
+#[derive(Debug)]
+pub struct FileChanged;
+impl std::fmt::Display for FileChanged {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(FILE_CHANGED)
+    }
+}
+impl std::error::Error for FileChanged {}
+
 /// Request size limit for servers known to throttle big range requests.
 pub fn max_request_for(url: &str) -> Option<u64> {
     let host = url::Url::parse(url).ok()?.host_str()?.to_ascii_lowercase();
@@ -625,6 +636,8 @@ impl Worker {
                 }
                 Err(e) if e.is::<Leave>() => return Err(e),
                 Err(e) if e.is::<Again>() && attempt < 3 => attempt += 1,
+                // another file now: no try brings this one back
+                Err(e) if e.is::<FileChanged>() => return Err(e),
                 Err(e) => {
                     let after = self.segs.lock().unwrap()[idx].pos;
                     if after > before {
@@ -812,7 +825,7 @@ impl Worker {
                         return Err(Again("asked again without the version check").into());
                     }
                     if !same_size {
-                        bail!(FILE_CHANGED);
+                        return Err(FileChanged.into());
                     }
                 }
                 bail!("server did not accept the byte range (HTTP {})", status.as_u16());
@@ -857,7 +870,7 @@ impl Worker {
                 let mut disk = vec![0u8; k as usize];
                 crate::fileio::read_at(&self.file, &mut disk, at)?;
                 if disk[..] != chunk[..k as usize] {
-                    bail!(FILE_CHANGED);
+                    return Err(FileChanged.into());
                 }
                 compare -= k;
                 chunk = chunk.slice(k as usize..);
