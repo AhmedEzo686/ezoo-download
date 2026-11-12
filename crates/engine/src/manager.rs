@@ -880,6 +880,11 @@ impl Manager {
         true
     }
 
+    /// "First and last pieces first" of this torrent.
+    pub fn torrent_first_last(&self, id: DownloadId) -> bool {
+        self.inner.lock().unwrap().entries.get(&id).map(|e| e.rec.torrent_first_last).unwrap_or(false)
+    }
+
     /// The first and last pieces of each file first (a video plays sooner).
     pub fn set_torrent_first_last(&self, id: DownloadId, on: bool) {
         self.update(id, move |r| r.torrent_first_last = on);

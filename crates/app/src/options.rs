@@ -14,6 +14,9 @@ pub(crate) struct Lists {
 
 const KEYS: [&str; 4] = ["alt", "ctrl", "shift", "none"];
 
+/// "Stop sharing once it sent": the choices of Options > Torrents (0 = no limit).
+const RATIOS: [f32; 7] = [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0];
+
 fn key_index(k: &str) -> i32 {
     KEYS.iter().position(|x| *x == k).unwrap_or(3) as i32
 }
@@ -136,6 +139,7 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_limiter_startup(s.limiter_on_startup);
     d.set_limit_only_active(s.limit_only_active);
     d.set_seed_minutes(s.torrent_seed_minutes.min(10080) as i32);
+    d.set_seed_ratio(RATIOS.iter().position(|r| (*r - s.torrent_seed_ratio).abs() < 0.01).unwrap_or(0) as i32);
     d.set_torrent_upload(s.torrent_upload_kb.min(1_000_000) as i32);
     d.set_torrent_main(s.torrent_main);
     show_lists(ui, d);
@@ -239,6 +243,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.limiter_on_startup = d.get_limiter_startup();
     s.limit_only_active = d.get_limit_only_active();
     s.torrent_seed_minutes = d.get_seed_minutes().max(0) as u32;
+    s.torrent_seed_ratio = RATIOS.get(d.get_seed_ratio().max(0) as usize).copied().unwrap_or(0.0);
     s.torrent_upload_kb = d.get_torrent_upload().max(0) as u64;
     s.torrent_main = d.get_torrent_main();
     Ok(s)

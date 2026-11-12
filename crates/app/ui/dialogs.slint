@@ -2071,6 +2071,7 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <bool> limiter-startup;
     // Torrents tab
     in-out property <int> seed-minutes;
+    in-out property <int> seed-ratio;
     in-out property <int> torrent-upload;
     in-out property <bool> torrent-main;
     in property <string> message;
@@ -3062,6 +3063,20 @@ export component SettingsDialog inherits ThemedWindow {
                     }
                     Hint {
                         text: @tr("0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent.");
+                    }
+                    HRow {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Stop sharing once it sent (times what it received)");
+                        }
+                        ComboBox {
+                            width: 110px;
+                            model: [@tr("No limit"), "0.5", "1", "1.5", "2", "3", "5"];
+                            current-index <=> root.seed-ratio;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
                     }
                     HRow {
                         spacing: 8px;

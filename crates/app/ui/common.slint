@@ -89,6 +89,29 @@ export struct QueueRow {
 }
 
 // one connection of a download (progress window)
+// a torrent's file, person and piece run (its window's "Torrent" tab)
+export struct TFileRow {
+    index: int,
+    name: string,
+    size: string,
+    done: float,
+    selected: bool,
+}
+
+export struct TPeerRow {
+    address: string,
+    down: string,
+    up: string,
+    have: string,
+    seeder: bool,
+}
+
+export struct PieceRun {
+    from: float,
+    to: float,
+    here: bool,
+}
+
 export struct SegView {
     // this connection is receiving right now
     busy: bool,

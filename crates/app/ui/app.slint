@@ -3,7 +3,7 @@
 // queue tree, detailed list, one progress window per download. Nine themes.
 
 import { Button, LineEdit, SpinBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
-import { ToolTip, DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, CaptionButton, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph, HRow, CheckBox } from "common.slint";
+import { ToolTip, DownloadRow, QueueRow, SegView, TFileRow, TPeerRow, PieceRun, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, CaptionButton, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph, HRow, CheckBox } from "common.slint";
 export { DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme }
 export { BrowserRow } from "dialogs.slint";
 export { ConfirmDialog, ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, TorrentDialog, BrowserDialog, AboutDialog, UpdateDialog, WhatsNewDialog, SupportDialog, ClipDialog } from "dialogs.slint";
@@ -2715,6 +2715,22 @@ export component DetailsDialog inherits ThemedWindow {
     // "Hide details" / "Show details": the window takes the size it needs
     out property <length> content-height: outer.preferred-height;
     callback details-toggled();
+    // a torrent: its files, people, trackers and pieces
+    in property <bool> is-torrent;
+    in property <[TFileRow]> t-files;
+    in property <[TPeerRow]> t-peers;
+    in property <[string]> t-trackers;
+    in property <[PieceRun]> t-pieces;
+    in property <string> t-summary;
+    in-out property <int> t-view: 0;
+    in-out property <bool> t-first-last;
+    in-out property <string> t-new-tracker;
+    in-out property <string> t-note;
+    callback t-file-toggled(int);
+    callback t-add-tracker();
+    callback t-recheck();
+    callback t-copy-magnet();
+    callback t-first-last-changed();
 
     outer := VerticalLayout {
       padding: 0px;
@@ -2743,6 +2759,13 @@ export component DetailsDialog inherits ThemedWindow {
                 active: root.tab == 2;
                 clicked => {
                     root.tab = 2;
+                }
+            }
+            if root.is-torrent: TabButton {
+                text: @tr("Torrent");
+                active: root.tab == 3;
+                clicked => {
+                    root.tab = 3;
                 }
             }
             Rectangle {
@@ -3183,6 +3206,172 @@ export component DetailsDialog inherits ThemedWindow {
                     text: @tr("You get 30 seconds to cancel before the computer shuts down, sleeps or hibernates.");
                     font-size: 11px * Theme.font-scale;
                     color: Theme.muted;
+                    wrap: word-wrap;
+                }
+            }
+            // ---- a torrent: its pieces, files, people and trackers
+            if root.tab == 3 && root.is-torrent: VerticalLayout {
+                padding: 10px;
+                spacing: 8px;
+                Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: root.t-summary;
+                    color: Theme.muted;
+                    font-size: 11px * Theme.font-scale;
+                }
+                // which pieces are here
+                Rectangle {
+                    height: 12px;
+                    background: Theme.bar-bg;
+                    border-width: 1px;
+                    border-color: Theme.line;
+                    clip: true;
+                    for run in root.t-pieces: Rectangle {
+                        y: 0px;
+                        height: parent.height;
+                        x: (Theme.rtl ? 1 - run.to : run.from) * parent.width;
+                        width: max(1px, (run.to - run.from) * parent.width);
+                        background: run.here ? Theme.accent : transparent;
+                    }
+                }
+                HRow {
+                    spacing: 2px;
+                    TabButton {
+                        text: @tr("Files");
+                        active: root.t-view == 0;
+                        clicked => {
+                            root.t-view = 0;
+                        }
+                    }
+                    TabButton {
+                        text: @tr("People");
+                        active: root.t-view == 1;
+                        clicked => {
+                            root.t-view = 1;
+                        }
+                    }
+                    TabButton {
+                        text: @tr("Trackers");
+                        active: root.t-view == 2;
+                        clicked => {
+                            root.t-view = 2;
+                        }
+                    }
+                }
+                if root.t-view == 0: ListView {
+                    height: 150px;
+                    for f[i] in root.t-files: HRow {
+                        spacing: 8px;
+                        padding: 2px;
+                        CheckBox {
+                            text: "";
+                            checked: f.selected;
+                            toggled => {
+                                root.t-file-toggled(i);
+                            }
+                        }
+                        Text {
+                            text: f.name;
+                            color: Theme.text;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: f.size;
+                            color: Theme.muted;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: round(f.done * 100) + "%";
+                            color: Theme.muted;
+                            vertical-alignment: center;
+                            width: 44px;
+                        }
+                    }
+                }
+                if root.t-view == 1: ListView {
+                    height: 150px;
+                    for p in root.t-peers: HRow {
+                        spacing: 8px;
+                        padding: 2px;
+                        Text {
+                            text: p.address + (p.seeder ? "  ★" : "");
+                            color: Theme.text;
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: "↓ " + p.down;
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: "↑ " + p.up;
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: p.have;
+                            color: Theme.muted;
+                            width: 44px;
+                        }
+                    }
+                }
+                if root.t-view == 2: VerticalLayout {
+                    spacing: 6px;
+                    ListView {
+                        height: 118px;
+                        for tr in root.t-trackers: Text {
+                            text: tr;
+                            color: Theme.text;
+                            overflow: elide;
+                        }
+                    }
+                    HRow {
+                        spacing: 6px;
+                        LineEdit {
+                            text <=> root.t-new-tracker;
+                            placeholder-text: "udp://… / https://…";
+                            horizontal-stretch: 1;
+                        }
+                        Button {
+                            text: @tr("Add tracker");
+                            clicked => {
+                                root.t-add-tracker();
+                            }
+                        }
+                    }
+                }
+                HRow {
+                    spacing: 8px;
+                    CheckBox {
+                        text: @tr("First and last pieces first");
+                        checked <=> root.t-first-last;
+                        toggled => {
+                            root.t-first-last-changed();
+                        }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                    Button {
+                        text: @tr("Check the files again");
+                        clicked => {
+                            root.t-recheck();
+                        }
+                    }
+                    Button {
+                        text: @tr("Copy magnet link");
+                        clicked => {
+                            root.t-copy-magnet();
+                        }
+                    }
+                }
+                if root.t-note != "": Text {
+                    text: root.t-note;
+                    color: Theme.muted;
+                    font-size: 11px * Theme.font-scale;
                     wrap: word-wrap;
                 }
             }
