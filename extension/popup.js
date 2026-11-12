@@ -88,6 +88,29 @@ async function init() {
     box.hidden = false;
   });
 
+  // the button was turned off on this site (from its own help): back on
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    let site = "";
+    try {
+      site = new URL((tabs && tabs[0] && tabs[0].url) || "").hostname.toLowerCase();
+    } catch {
+      return;
+    }
+    chrome.storage.local.get({ noButtonSites: [] }, ({ noButtonSites }) => {
+      if (!site || !(noButtonSites || []).includes(site)) return;
+      const again = document.createElement("button");
+      again.className = "act";
+      again.textContent = `Show the video button on ${site} again`;
+      again.addEventListener("click", () => {
+        chrome.storage.local.set({ noButtonSites: noButtonSites.filter((h) => h !== site) }, () => {
+          again.textContent = "Done - reload the page";
+          again.disabled = true;
+        });
+      });
+      document.querySelector("section").appendChild(again);
+    });
+  });
+
   chrome.runtime.sendMessage({ type: "swiftget-status" }, (res) => {
     const el = document.getElementById("status");
     const ok = res && res.ok;
