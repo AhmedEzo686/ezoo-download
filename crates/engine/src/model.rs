@@ -341,6 +341,15 @@ pub struct DownloadRecord {
     /// it runs; a magnet link only knows them then)
     #[serde(default)]
     pub torrent_files: Vec<String>,
+    /// torrents: trackers the user added
+    #[serde(default)]
+    pub torrent_trackers: Vec<String>,
+    /// torrents: the first and last pieces of each file first
+    #[serde(default)]
+    pub torrent_first_last: bool,
+    /// torrents: check every piece on the disk at the next start
+    #[serde(default)]
+    pub torrent_recheck: bool,
     /// only this part of the video / sound ("Download a part")
     #[serde(default)]
     pub clip: Option<Clip>,

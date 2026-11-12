@@ -312,6 +312,10 @@ pub struct Settings {
     /// torrents: most upload speed in KB/s (0 = no limit)
     #[serde(default)]
     pub torrent_upload_kb: u64,
+    /// torrents: stop sharing once this much was sent for what was received
+    /// (0 = no such limit; the minutes above still count)
+    #[serde(default)]
+    pub torrent_seed_ratio: f32,
     /// Ezoo Download is the main program for torrents: magnet links and
     /// .torrent files from the browser (the add-in) and from Windows open in
     /// it. Off: they stay with the browser / the torrent program of the user
@@ -469,6 +473,7 @@ impl Default for Settings {
             limit_only_active: false,
             torrent_seed_minutes: 0,
             torrent_upload_kb: 0,
+            torrent_seed_ratio: 0.0,
             torrent_main: true,
             category_dirs: Default::default(),
             hide_categories: false,

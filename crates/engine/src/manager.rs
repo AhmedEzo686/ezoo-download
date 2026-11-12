@@ -100,12 +100,25 @@ pub struct Manager {
     /// downloads whose link stopped working: the next start gets a new link
     /// and goes on only when it is the same file (size, ranges)
     relink: Mutex<HashSet<DownloadId>>,
+    /// what running torrents show in their window (files, people, pieces)
+    torrent_live: Mutex<HashMap<DownloadId, TorrentLive>>,
     /// the computer is woken for the next scheduled start (when, the timer)
     waker: Mutex<Option<(i64, system::Waker)>>,
     /// the limit the downloads have now (the speed limit, or none while
     /// nobody uses the computer)
     limit_now: std::sync::atomic::AtomicU64,
     ticks: std::sync::atomic::AtomicU64,
+}
+
+/// What a running torrent shows in its window.
+#[derive(Debug, Clone, Default)]
+pub struct TorrentLive {
+    pub files: Vec<torrent::FileState>,
+    pub peers: Vec<torrent::Peer>,
+    pub trackers: Vec<String>,
+    /// which parts of it are here: (from, to, here), 0..1
+    pub pieces: Vec<(f32, f32, bool)>,
+    pub uploaded: u64,
 }
 
 /// A minute without the mouse or the keyboard: nobody uses the computer.
@@ -232,6 +245,7 @@ impl Manager {
             data_dir,
             relink: Mutex::new(HashSet::new()),
             waker: Mutex::new(None),
+            torrent_live: Mutex::new(HashMap::new()),
             limit_now: std::sync::atomic::AtomicU64::new(u64::MAX),
             ticks: std::sync::atomic::AtomicU64::new(0),
         });
@@ -479,6 +493,9 @@ impl Manager {
             work_stem: None,
             torrent_select: req.torrent_select.clone().filter(|s| !s.trim().is_empty()),
             torrent_files: Vec::new(),
+            torrent_trackers: Vec::new(),
+            torrent_first_last: false,
+            torrent_recheck: false,
             clip,
             checksum: req
                 .checksum
@@ -839,6 +856,54 @@ impl Manager {
     /// The "Download File Info" window was confirmed for a download that
     /// already started in the background: give it the final folder, name,
     /// note and login. Works while it downloads.
+    /// What a running torrent's window shows.
+    pub fn torrent_live(&self, id: DownloadId) -> Option<TorrentLive> {
+        self.torrent_live.lock().unwrap().get(&id).cloned()
+    }
+
+    /// The torrent's files to get ("1,3"; None: all), while it runs too.
+    pub fn set_torrent_files(&self, id: DownloadId, select: Option<String>) {
+        self.update(id, move |r| r.torrent_select = select.filter(|s| !s.trim().is_empty()));
+    }
+
+    /// A tracker the user adds to a torrent (refused: not a tracker address).
+    pub fn add_torrent_tracker(&self, id: DownloadId, tracker: &str) -> bool {
+        let t = tracker.trim().to_string();
+        if !torrent::is_tracker(&t) {
+            return false;
+        }
+        self.update(id, move |r| {
+            if !r.torrent_trackers.contains(&t) && r.torrent_trackers.len() < 100 {
+                r.torrent_trackers.push(t);
+            }
+        });
+        true
+    }
+
+    /// The first and last pieces of each file first (a video plays sooner).
+    pub fn set_torrent_first_last(&self, id: DownloadId, on: bool) {
+        self.update(id, move |r| r.torrent_first_last = on);
+    }
+
+    /// Check every piece on the disk again (stopped, checked, then on).
+    pub fn recheck_torrent(self: &Arc<Self>, id: DownloadId) {
+        self.update(id, |r| r.torrent_recheck = true);
+        self.pause(id);
+        self.start(id);
+    }
+
+    /// The torrent's magnet link (to give to someone).
+    pub fn magnet_link(&self, id: DownloadId) -> Option<String> {
+        let url = {
+            let inner = self.inner.lock().unwrap();
+            inner.entries.get(&id).filter(|e| e.rec.kind == DownloadKind::Torrent).map(|e| e.rec.url.clone())?
+        };
+        if torrent::is_magnet(&url) {
+            return Some(url);
+        }
+        torrent::magnet_of(&std::fs::read(&url).ok()?)
+    }
+
     /// The checksum the finished file must have (None: none of the user's).
     pub fn set_checksum(&self, id: DownloadId, checksum: Option<String>) {
         self.update(id, move |r| {
@@ -1915,15 +1980,29 @@ impl Manager {
         let target = rec.target_path();
         let control = rec.save_dir.join(format!("{}.aria2", rec.file_name));
         let limit_kb = rec.speed_limit_kb.unwrap_or(settings.effective_limit() / 1024);
+        // file names Windows can't keep safely (".." , "CON"...): written
+        // under safe names
+        let index_out = if torrent::is_magnet(&rec.url) {
+            Vec::new()
+        } else {
+            std::fs::read(&rec.url).ok().and_then(|d| torrent::parse_torrent(&d).ok()).map(|i| torrent::safe_paths(&i)).unwrap_or_default()
+        };
         let opts = torrent::AddOptions {
             dir: rec.save_dir.clone(),
             select: rec.torrent_select.clone(),
             seed_minutes: settings.torrent_seed_minutes,
             download_limit_kb: limit_kb,
             upload_limit_kb: settings.torrent_upload_kb,
-            // all there already (no notes of aria2 about it): check it
-            check: target.exists() && !control.exists(),
+            // all there already (no notes of aria2 about it), or asked for: check it
+            check: (target.exists() && !control.exists()) || rec.torrent_recheck,
+            seed_ratio: settings.torrent_seed_ratio,
+            first_last: rec.torrent_first_last,
+            trackers: rec.torrent_trackers.clone(),
+            index_out,
         };
+        if rec.torrent_recheck {
+            self.update(id, |x| x.torrent_recheck = false);
+        }
         // files that were there before: never removed by us
         let existed: HashSet<PathBuf> = rec.torrent_data_paths().into_iter().filter(|p| p.exists()).collect();
         let mut gid = tokio::select! {
@@ -1943,7 +2022,12 @@ impl Manager {
         // since when people are connected but none of them sends anything
         let mut dry_since: Option<Instant> = None;
         let mut said_dry = false;
+        // what was asked of aria2 last (files, trackers, first / last pieces)
+        let mut applied = (rec.torrent_select.clone(), rec.torrent_trackers.clone(), rec.torrent_first_last);
+        let mut rounds = 0u64;
+        let mut checked_paths = false;
         loop {
+            rounds += 1;
             tokio::select! {
                 _ = tokio::time::sleep(Duration::from_millis(800)) => {}
                 _ = cancel.cancelled() => {
@@ -1966,6 +2050,39 @@ impl Manager {
             // the chosen files only: aria2's own total also counts the
             // pieces they share with files that were left out
             let files = if st.total > 0 { self.torrents.files(&gid).await.unwrap_or_default() } else { Vec::new() };
+            // a magnet link's files (known only now): every one inside the folder
+            if !checked_paths && !files.is_empty() {
+                checked_paths = true;
+                if files.iter().any(|f| !f.path.as_os_str().is_empty() && !torrent::stays_inside(&f.path, &rec.save_dir)) {
+                    self.torrents.remove(&gid).await;
+                    anyhow::bail!("this torrent has file names that lead out of its folder: it was stopped");
+                }
+            }
+            // the user changed its files, trackers or "first and last pieces"
+            let wanted = {
+                let inner = self.inner.lock().unwrap();
+                inner.entries.get(&id).map(|e| (e.rec.torrent_select.clone(), e.rec.torrent_trackers.clone(), e.rec.torrent_first_last))
+            };
+            if let Some(w) = wanted.filter(|w| *w != applied && !files.is_empty()) {
+                let all = format!("1-{}", files.iter().map(|f| f.index).max().unwrap_or(1));
+                let sel = w.0.clone().filter(|s| !s.is_empty()).unwrap_or(all);
+                if self.torrents.change(&gid, torrent::live_options(&sel, &w.1, w.2)).await.is_ok() {
+                    applied = w;
+                }
+            }
+            // what its window shows
+            {
+                let peers = if rounds % 3 == 1 { self.torrents.peers(&gid).await.ok() } else { None };
+                let mut live = self.torrent_live.lock().unwrap();
+                let l = live.entry(id).or_default();
+                l.files = files.clone();
+                l.trackers = st.trackers.clone();
+                l.pieces = torrent::piece_runs(&st.bitfield, st.pieces, 200);
+                l.uploaded = st.upload_total;
+                if let Some(p) = peers {
+                    l.peers = p;
+                }
+            }
             let chosen: Vec<&torrent::FileState> = files.iter().filter(|f| f.selected).collect();
             let (total, done) = if chosen.is_empty() {
                 (st.total, st.done)
@@ -2051,7 +2168,7 @@ impl Manager {
             if finished {
                 // no sharing wanted (or its time is over): aria2 forgets it,
                 // so the same torrent can be added again
-                if st.status == "complete" || settings.torrent_seed_minutes == 0 {
+                if st.status == "complete" || (settings.torrent_seed_minutes == 0 && settings.torrent_seed_ratio <= 0.0) {
                     self.torrents.remove(&gid).await;
                 }
                 // the bits of the files that were left out (pieces are shared

@@ -332,3 +332,96 @@ async fn magnet_link_file_list_first() {
     seeder.remove(&sg).await;
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A torrent whose file names Windows can't keep (a device name, characters
+/// a name can't have) is written under safe names; the files can be changed
+/// while it runs; its magnet link can be given.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn unsafe_names_files_changed_while_running_and_its_magnet() {
+    if swiftget_engine::mux::find_tool("aria2c").is_none() {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!("ezoo-torrent-safe-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let seed = root.join("seed");
+    let a: Vec<u8> = (0..120_000u32).map(|i| (i % 249) as u8).collect();
+    let b: Vec<u8> = (0..70_000u32).map(|i| (i % 239) as u8).collect();
+    let port = tracker().await;
+    // the same as make_multi, with names Windows refuses
+    let piece = 16 * 1024;
+    let all: Vec<u8> = a.iter().chain(&b).copied().collect();
+    let mut pieces = Vec::new();
+    for c in all.chunks(piece) {
+        pieces.extend_from_slice(ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, c).as_ref());
+    }
+    let file = |len: usize, name: &str| {
+        let mut f = b"d6:length".to_vec();
+        f.extend(format!("i{len}e").into_bytes());
+        f.extend(b"4:pathl");
+        f.extend(ben(name.as_bytes()));
+        f.extend(b"ee");
+        f
+    };
+    let mut info = b"d5:filesl".to_vec();
+    info.extend(file(a.len(), "CON"));
+    info.extend(file(b.len(), "a:b?.bin"));
+    info.extend(b"e4:name");
+    info.extend(ben(b"pack"));
+    info.extend(b"12:piece lengthi16384e6:pieces");
+    info.extend(ben(&pieces));
+    info.extend(b"e");
+    let mut t = b"d8:announce".to_vec();
+    t.extend(ben(format!("http://127.0.0.1:{port}/announce").as_bytes()));
+    t.extend(b"4:info");
+    t.extend(info);
+    t.extend(b"e");
+    let tfile = root.join("pack.torrent");
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(&tfile, &t).unwrap();
+    let parsed = parse_torrent(&t).unwrap();
+    let safe = swiftget_engine::torrent::safe_paths(&parsed);
+    assert_eq!(safe.len(), 2, "{safe:?}");
+    // the computer that shares it keeps the files under the safe names too
+    for ((_, rel), data) in safe.iter().zip([&a, &b]) {
+        let p = seed.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, data).unwrap();
+    }
+    let seeder = Aria2::new(&root.join("a"));
+    let sg = seeder
+        .add(tfile.to_str().unwrap(), &AddOptions { dir: seed.clone(), seed_minutes: 30, check: true, index_out: safe.clone(), ..Default::default() })
+        .await
+        .unwrap();
+    let mgr = swiftget_engine::Manager::new(tokio::runtime::Handle::current(), root.join("app")).unwrap();
+    let get = root.join("get");
+    let id = mgr.add(swiftget_engine::NewDownload {
+        url: tfile.to_string_lossy().into_owned(),
+        save_dir: Some(get.clone()),
+        start: true,
+        torrent_select: Some("1".into()),
+        ..Default::default()
+    });
+    // its magnet link: its id and name
+    let m = mgr.magnet_link(id).unwrap();
+    assert!(m.contains(&parsed.info_hash.clone().unwrap()) && m.contains("dn=pack"), "{m}");
+    // while it runs: both files wanted after all
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    mgr.set_torrent_files(id, None);
+    let mut v = mgr.get(id).unwrap();
+    for _ in 0..900 {
+        v = mgr.get(id).unwrap();
+        if matches!(v.status, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(v.status, swiftget_engine::Status::Completed, "{:?}", v.error);
+    for ((_, rel), data) in safe.iter().zip([&a, &b]) {
+        assert_eq!(&std::fs::read(get.join(rel)).unwrap(), data, "{rel}");
+    }
+    assert!(!get.join("pack/CON").exists() && !get.join("pack/a:b?.bin").exists());
+    let live = mgr.torrent_live(id).unwrap();
+    assert!(!live.pieces.is_empty());
+    seeder.remove(&sg).await;
+    let _ = std::fs::remove_dir_all(&root);
+}

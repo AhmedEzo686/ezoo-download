@@ -137,10 +137,107 @@ pub struct TorrentInfo {
     pub name: String,
     pub files: Vec<TorrentFile>,
     pub total: u64,
+    /// several files (in a folder named `name`), or one
+    pub multi: bool,
+    /// the trackers it names
+    pub trackers: Vec<String>,
+    /// its id (the SHA-1 of its "info" part, as a magnet link names it)
+    pub info_hash: Option<String>,
+}
+
+/// More files than any real torrent has: refused (a file made to hurt).
+const MAX_FILES: usize = 200_000;
+
+/// A part of a path in a torrent as Windows can keep it safely: no "..",
+/// no name of a device (CON, NUL...), none of \ / : * ? " < > |, no dot or
+/// space at the end.
+pub fn safe_part(part: &str) -> String {
+    let p = part.trim();
+    if p.is_empty() || p == "." || p == ".." {
+        return "_".into();
+    }
+    let s = crate::filename::sanitize(p);
+    if s.is_empty() || s.chars().all(|c| c == '.') {
+        "_".into()
+    } else {
+        s
+    }
+}
+
+/// The files whose path in the torrent is not safe to write as it is: their
+/// number and the path to write them at instead (from the save folder, as
+/// aria2's "index-out" wants it). Empty: every path is fine.
+pub fn safe_paths(info: &TorrentInfo) -> Vec<(usize, String)> {
+    let name = safe_part(&info.name);
+    let name_changed = name != info.name;
+    let mut out = Vec::new();
+    for f in &info.files {
+        let parts: Vec<&str> = f.path.split('/').collect();
+        let safe: Vec<String> = parts.iter().map(|p| safe_part(p)).collect();
+        let changed = name_changed || parts.iter().zip(&safe).any(|(a, b)| *a != b.as_str());
+        if !changed {
+            continue;
+        }
+        let rel = if info.multi { format!("{name}/{}", safe.join("/")) } else { name.clone() };
+        out.push((f.index, rel));
+    }
+    out
+}
+
+/// A path written by the torrent program stays inside `dir`.
+pub fn stays_inside(path: &Path, dir: &Path) -> bool {
+    use std::path::Component;
+    // "dir/./name" as aria2 writes it; a path given from the folder
+    let clean = |p: &Path| p.components().filter(|c| !matches!(c, Component::CurDir)).collect::<PathBuf>();
+    let (path, dir) = (clean(path), clean(dir));
+    let rel = if path.is_absolute() {
+        match path.strip_prefix(&dir) {
+            Ok(r) => r.to_path_buf(),
+            Err(_) => return false,
+        }
+    } else {
+        path
+    };
+    rel.components().all(|c| matches!(c, Component::Normal(_)))
+}
+
+/// Where the "info" part of a .torrent file is (its bytes make the id).
+fn info_span(data: &[u8]) -> Option<(usize, usize)> {
+    let mut r = Reader { data, pos: 0, depth: 0 };
+    if r.peek().ok()? != b'd' {
+        return None;
+    }
+    r.pos += 1;
+    while r.peek().ok()? != b'e' {
+        let Ben::Bytes(k) = r.value().ok()? else { return None };
+        let start = r.pos;
+        r.value().ok()?;
+        if k == b"info" {
+            return Some((start, r.pos));
+        }
+    }
+    None
+}
+
+/// The magnet link of a .torrent file (its id, name and trackers).
+pub fn magnet_of(data: &[u8]) -> Option<String> {
+    let info = parse_torrent(data).ok()?;
+    let hash = info.info_hash?;
+    let enc = |s: &str| percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string();
+    let mut m = format!("magnet:?xt=urn:btih:{hash}&dn={}", enc(&info.name));
+    for t in info.trackers.iter().take(20) {
+        m.push_str("&tr=");
+        m.push_str(&enc(t));
+    }
+    Some(m)
 }
 
 /// Read a .torrent file.
 pub fn parse_torrent(data: &[u8]) -> anyhow::Result<TorrentInfo> {
+    // a description, never more (the biggest real ones are a few MB)
+    if data.len() > 32 << 20 {
+        bail!("not a torrent file");
+    }
     let root = Reader { data, pos: 0, depth: 0 }.value()?;
     let info = root.get("info").ok_or_else(|| anyhow!("not a torrent file"))?;
     let name = info
@@ -149,6 +246,10 @@ pub fn parse_torrent(data: &[u8]) -> anyhow::Result<TorrentInfo> {
         .and_then(Ben::text)
         .unwrap_or_else(|| "torrent".into());
     let mut files = Vec::new();
+    let multi = info.get("files").is_some();
+    if info.get("files").is_some_and(|l| l.list().len() > MAX_FILES) {
+        bail!("this torrent has too many files");
+    }
     if let Some(list) = info.get("files") {
         for (n, f) in list.list().iter().enumerate() {
             let parts = f.get("path.utf-8").or_else(|| f.get("path")).map(Ben::list).unwrap_or(&[]);
@@ -171,8 +272,21 @@ pub fn parse_torrent(data: &[u8]) -> anyhow::Result<TorrentInfo> {
     if files.is_empty() {
         bail!("this torrent has no files");
     }
-    let total = files.iter().map(|f| f.size).sum();
-    Ok(TorrentInfo { name, files, total })
+    let total = files.iter().fold(0u64, |a, f| a.saturating_add(f.size));
+    let mut trackers: Vec<String> = Vec::new();
+    for t in root.get("announce").and_then(Ben::text).into_iter().chain(
+        root.get("announce-list").map(Ben::list).unwrap_or(&[]).iter().flat_map(|tier| tier.list().iter().filter_map(Ben::text)),
+    ) {
+        let t = t.trim().to_string();
+        if !t.is_empty() && t.len() < 1024 && !trackers.contains(&t) {
+            trackers.push(t);
+        }
+    }
+    let info_hash = info_span(data).map(|(a, b)| {
+        let d = ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, &data[a..b]);
+        d.as_ref().iter().map(|x| format!("{x:02x}")).collect()
+    });
+    Ok(TorrentInfo { name, files, total, multi, trackers, info_hash })
 }
 
 /// A magnet link of a torrent ("magnet:?xt=urn:btih:...").
@@ -243,6 +357,58 @@ pub struct TorrentStatus {
     /// a magnet link got its file list: the torrent itself goes on here
     pub followed_by: Option<String>,
     pub error: Option<String>,
+    /// how many pieces, and which are here (hex, a bit a piece)
+    pub pieces: u32,
+    pub bitfield: String,
+    /// the trackers it asks
+    pub trackers: Vec<String>,
+    /// bytes sent to others
+    pub upload_total: u64,
+}
+
+/// One person a torrent is connected to.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Peer {
+    pub address: String,
+    pub down: u64,
+    pub up: u64,
+    /// how much of the torrent they have (0..1)
+    pub have: f32,
+    pub seeder: bool,
+}
+
+/// How much of the pieces a bitfield (hex) says are there (0..1).
+pub fn share_of(bitfield: &str) -> f32 {
+    if bitfield.is_empty() {
+        return 0.0;
+    }
+    let ones: u32 = bitfield.chars().filter_map(|c| c.to_digit(16)).map(|d| d.count_ones()).sum();
+    ones as f32 / (bitfield.len() as f32 * 4.0)
+}
+
+/// Which pieces are here, as up to `n` runs: (from, to, here) in 0..1.
+pub fn piece_runs(bitfield: &str, pieces: u32, n: usize) -> Vec<(f32, f32, bool)> {
+    if pieces == 0 || bitfield.is_empty() || n == 0 {
+        return Vec::new();
+    }
+    let has = |i: u32| -> bool {
+        let c = bitfield.as_bytes().get((i / 4) as usize).and_then(|c| (*c as char).to_digit(16)).unwrap_or(0);
+        c & (8 >> (i % 4)) != 0
+    };
+    let cells = (pieces as usize).min(n);
+    let mut out: Vec<(f32, f32, bool)> = Vec::new();
+    for cell in 0..cells {
+        let a = (cell as u64 * pieces as u64 / cells as u64) as u32;
+        let b = (((cell as u64 + 1) * pieces as u64 / cells as u64) as u32).max(a + 1);
+        // a cell is "here" when all its pieces are
+        let here = (a..b).all(has);
+        let (from, to) = (cell as f32 / cells as f32, (cell + 1) as f32 / cells as f32);
+        match out.last_mut() {
+            Some(last) if last.2 == here => last.1 = to,
+            _ => out.push((from, to, here)),
+        }
+    }
+    out
 }
 
 fn num(v: &Value) -> u64 {
@@ -278,6 +444,43 @@ pub struct AddOptions {
     pub upload_limit_kb: u64,
     /// check the pieces already on the disk first
     pub check: bool,
+    /// stop sharing once this much was sent per byte received (0 = no such limit)
+    pub seed_ratio: f32,
+    /// the first and last pieces of each file first (a video plays sooner)
+    pub first_last: bool,
+    /// trackers the user added (besides the torrent's own and the public ones)
+    pub trackers: Vec<String>,
+    /// files whose names are not safe to write: written at these paths
+    pub index_out: Vec<(usize, String)>,
+}
+
+/// The trackers aria2 is given: the public ones and the user's.
+fn tracker_list(user: &[String]) -> String {
+    let mut all: Vec<String> = user.iter().map(|t| t.trim().to_string()).filter(|t| is_tracker(t)).collect();
+    for t in PUBLIC_TRACKERS {
+        if !all.iter().any(|a| a == t) {
+            all.push((*t).to_string());
+        }
+    }
+    all.join(",")
+}
+
+/// An address a tracker can have (udp, http, https; no spaces or commas).
+pub fn is_tracker(t: &str) -> bool {
+    let l = t.trim().to_ascii_lowercase();
+    (l.starts_with("udp://") || l.starts_with("http://") || l.starts_with("https://"))
+        && t.len() < 1024
+        && !t.contains([',', ' ', '\n', '\r'])
+        && url::Url::parse(t.trim()).is_ok()
+}
+
+/// What changes while a torrent runs (aria2 starts it again by itself).
+pub fn live_options(select: &str, trackers: &[String], first_last: bool) -> Value {
+    let mut o = json!({ "select-file": select, "bt-tracker": tracker_list(trackers) });
+    if first_last {
+        o["bt-prioritize-piece"] = json!("head=2M,tail=2M");
+    }
+    o
 }
 
 impl Aria2 {
@@ -341,7 +544,6 @@ impl Aria2 {
             "--bt-tracker-timeout=20",
             "--log-level=warn",
         ])
-        .arg(format!("--bt-tracker={}", PUBLIC_TRACKERS.join(",")))
         .arg(format!("--log={}", log.display()))
         .arg(format!("--rpc-listen-port={port}"))
         .arg(format!("--rpc-secret={secret}"))
@@ -397,7 +599,17 @@ impl Aria2 {
             "max-upload-limit": format!("{}K", o.upload_limit_kb),
             "bt-remove-unselected-file": "true",
             "pause-metadata": "false",
+            "bt-tracker": tracker_list(&o.trackers),
         });
+        if o.seed_ratio > 0.0 {
+            opts["seed-ratio"] = json!(format!("{:.2}", o.seed_ratio));
+        }
+        if o.first_last {
+            opts["bt-prioritize-piece"] = json!("head=2M,tail=2M");
+        }
+        if !o.index_out.is_empty() {
+            opts["index-out"] = json!(o.index_out.iter().map(|(i, p)| format!("{i}={p}")).collect::<Vec<_>>());
+        }
         if o.check {
             opts["check-integrity"] = json!("true");
         }
@@ -417,7 +629,7 @@ impl Aria2 {
     pub async fn status(&self, gid: &str) -> anyhow::Result<TorrentStatus> {
         let keys = json!([
             "status", "totalLength", "completedLength", "downloadSpeed", "uploadSpeed", "connections",
-            "numSeeders", "seeder", "bittorrent", "followedBy", "errorMessage", "errorCode"
+            "numSeeders", "seeder", "bittorrent", "followedBy", "errorMessage", "errorCode", "bitfield", "numPieces", "uploadLength"
         ]);
         let r = self.call("aria2.tellStatus", vec![json!(gid), keys]).await?;
         let name = r["bittorrent"]["info"]["name"].as_str().map(String::from).filter(|n| !n.is_empty());
@@ -433,7 +645,39 @@ impl Aria2 {
             name,
             followed_by: r["followedBy"].as_array().and_then(|a| a.first()).and_then(|g| g.as_str()).map(String::from),
             error: r["errorMessage"].as_str().filter(|m| !m.is_empty()).map(String::from),
+            pieces: num(&r["numPieces"]) as u32,
+            bitfield: r["bitfield"].as_str().unwrap_or("").to_string(),
+            trackers: r["bittorrent"]["announceList"]
+                .as_array()
+                .map(|tiers| tiers.iter().filter_map(|t| t.as_array()).flatten().filter_map(|t| t.as_str()).map(String::from).collect())
+                .unwrap_or_default(),
+            upload_total: num(&r["uploadLength"]),
         })
+    }
+
+    /// The people this torrent is connected to.
+    pub async fn peers(&self, gid: &str) -> anyhow::Result<Vec<Peer>> {
+        let r = self.call("aria2.getPeers", vec![json!(gid)]).await?;
+        Ok(r.as_array()
+            .map(|a| {
+                a.iter()
+                    .take(300)
+                    .map(|p| Peer {
+                        address: format!("{}:{}", p["ip"].as_str().unwrap_or(""), p["port"].as_str().unwrap_or("")),
+                        down: num(&p["downloadSpeed"]),
+                        up: num(&p["uploadSpeed"]),
+                        have: share_of(p["bitfield"].as_str().unwrap_or("")),
+                        seeder: p["seeder"].as_str() == Some("true"),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    /// Change what a running torrent gets (aria2 starts it again by itself).
+    pub async fn change(&self, gid: &str, options: Value) -> anyhow::Result<()> {
+        self.call("aria2.changeOption", vec![json!(gid), options]).await?;
+        Ok(())
     }
 
     /// The file list of a magnet link before it is downloaded: only the
@@ -448,6 +692,7 @@ impl Aria2 {
             "dir": dir.to_string_lossy(),
             "bt-metadata-only": "true",
             "bt-save-metadata": "true",
+            "bt-tracker": tracker_list(&[]),
             "follow-torrent": "false",
             "seed-time": "0",
         });
@@ -517,6 +762,7 @@ impl Aria2 {
             .map(|a| {
                 a.iter()
                     .map(|f| FileState {
+                        index: num(&f["index"]) as usize,
                         path: PathBuf::from(f["path"].as_str().unwrap_or("")),
                         size: num(&f["length"]),
                         done: num(&f["completedLength"]),
@@ -531,6 +777,8 @@ impl Aria2 {
 /// One file of a running torrent.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FileState {
+    /// its number in the torrent (1-based)
+    pub index: usize,
     pub path: PathBuf,
     pub size: u64,
     pub done: u64,
@@ -583,6 +831,56 @@ mod tests {
             TorrentFile { path: "readme.txt".into(), size: 5, index: 2 },
         ]);
         assert_eq!(i.total, 105);
+        assert!(i.multi);
+        assert_eq!(i.trackers, vec!["http://t/a".to_string()]);
+        assert_eq!(i.info_hash.as_deref().map(str::len), Some(40));
+        assert!(safe_paths(&i).is_empty(), "nothing to change");
+    }
+
+    #[test]
+    fn unsafe_names_are_written_safely() {
+        let t = format!(
+            "d4:infod5:filesld6:lengthi1e4:pathl{}{}eed6:lengthi1e4:pathl{}eed6:lengthi1e4:pathl{}eee4:name{}ee",
+            ben_str(".."),
+            ben_str("evil.exe"),
+            ben_str("CON"),
+            ben_str("ok.txt"),
+            ben_str("Show")
+        );
+        let i = parse_torrent(t.as_bytes()).unwrap();
+        let out = safe_paths(&i);
+        assert_eq!(out.len(), 2, "{out:?}");
+        assert_eq!(out[0], (1, "Show/_/evil.exe".to_string()));
+        assert!(!out[1].1.ends_with("/CON"), "{out:?}");
+        assert!(out.iter().all(|(_, p)| !p.split('/').any(|x| x == "..")));
+        // a torrent whose own name leads out
+        let t = format!("d4:infod6:lengthi3e4:name{}ee", ben_str("../../x.exe"));
+        let i = parse_torrent(t.as_bytes()).unwrap();
+        let out = safe_paths(&i);
+        assert_eq!(out.len(), 1);
+        assert!(!out[0].1.contains(['/', '\\']) && out[0].1 != "..", "a name, never a way out: {out:?}");
+        assert!(stays_inside(Path::new("/d/a/b.txt"), Path::new("/d")));
+        assert!(!stays_inside(Path::new("/d/../e.txt"), Path::new("/d")));
+        assert!(!stays_inside(Path::new("/e/x"), Path::new("/d")));
+        assert!(stays_inside(Path::new("/d/./a/b"), Path::new("/d/")));
+    }
+
+    #[test]
+    fn magnets_trackers_and_pieces() {
+        let t = format!("d8:announce{}4:infod6:lengthi3e4:name{}ee", ben_str("udp://t.test:1/a"), ben_str("a b"));
+        let m = magnet_of(t.as_bytes()).unwrap();
+        assert!(m.starts_with("magnet:?xt=urn:btih:") && m.contains("&dn=a%20b") && m.contains("&tr=udp%3A%2F%2Ft%2Etest%3A1%2Fa"), "{m}");
+        assert!(is_magnet(&m));
+        assert!(is_tracker("udp://tracker.test:80/announce"));
+        assert!(!is_tracker("udp://a,b"));
+        assert!(!is_tracker("file:///etc/passwd"));
+        assert!((share_of("f0") - 0.5).abs() < 1e-6);
+        // 8 pieces, the first 4 here
+        let runs = piece_runs("f0", 8, 100);
+        assert_eq!(runs, vec![(0.0, 0.5, true), (0.5, 1.0, false)]);
+        let o = live_options("1,3", &["udp://x.test:1/a".into()], true);
+        assert_eq!(o["select-file"], "1,3");
+        assert!(o["bt-tracker"].as_str().unwrap().starts_with("udp://x.test:1/a,"));
     }
 
     #[test]
