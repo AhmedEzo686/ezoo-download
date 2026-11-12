@@ -17,6 +17,8 @@ use tokio_util::sync::CancellationToken;
 /// What the test server was asked.
 #[derive(Debug, Clone, Default)]
 struct Asked {
+    method: String,
+    body: String,
     path: String,
     range: Option<(usize, Option<usize>)>,
     if_range: Option<String>,
@@ -38,12 +40,14 @@ async fn serve(handler: Arc<dyn Fn(&Asked) -> Answer + Send + Sync>) -> u16 {
                 let mut r = BufReader::new(r);
                 let mut asked = Asked::default();
                 let mut first = true;
+                let mut length = 0usize;
                 loop {
                     let mut line = String::new();
                     if r.read_line(&mut line).await.unwrap_or(0) == 0 || line.trim().is_empty() {
                         break;
                     }
                     if first {
+                        asked.method = line.split_whitespace().next().unwrap_or("").to_string();
                         asked.path = line.split_whitespace().nth(1).unwrap_or("/").to_string();
                         first = false;
                         continue;
@@ -57,7 +61,14 @@ async fn serve(handler: Arc<dyn Fn(&Asked) -> Answer + Send + Sync>) -> u16 {
                         asked.if_range = Some(l[9..].trim().to_string());
                     } else if lower.starts_with("cookie:") {
                         asked.cookie = l[7..].trim().to_string();
+                    } else if let Some(n) = lower.strip_prefix("content-length:") {
+                        length = n.trim().parse().unwrap_or(0);
                     }
+                }
+                if length > 0 {
+                    let mut body = vec![0u8; length];
+                    let _ = tokio::io::AsyncReadExt::read_exact(&mut r, &mut body).await;
+                    asked.body = String::from_utf8_lossy(&body).into_owned();
                 }
                 let (status, headers, body) = handler(&asked);
                 let mut head = format!("HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n", body.len());
@@ -346,4 +357,31 @@ async fn the_checksum_is_checked_and_nothing_is_replaced() {
     assert_eq!(bad.status, swiftget_engine::Status::Failed);
     assert!(bad.error.unwrap_or_default().contains("damaged"));
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A form's download: asked with POST and the form's data, and the file
+/// comes in parts on many connections when the server takes ranges.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_form_download_is_posted() {
+    let data = Arc::new(bytes(1024 * 1024, 6));
+    let d = data.clone();
+    let port = serve(Arc::new(move |a: &Asked| {
+        if a.method == "POST" && a.body == "id=7&ok=1" {
+            ranged(&d, a, None)
+        } else {
+            ("405 Method Not Allowed".into(), vec![], vec![])
+        }
+    }))
+    .await;
+    let url = format!("http://127.0.0.1:{port}/export");
+    let h = RequestHeaders { post: Some("aWQ9NyZvaz0x".into()), ..Default::default() };
+    let p = probe(&shared().client(), &url, &h, "test").await.unwrap();
+    assert!(p.resumable);
+    http::drop_kept(&url);
+    let part = temp("form", port);
+    let mut j = job(&url, data.len(), &part, 4, FileCheck::default());
+    j.headers = h;
+    http_download::run(shared(), j, Arc::new(Mutex::new(Vec::new())), Arc::new(Progress::default()), CancellationToken::new()).await.unwrap();
+    assert!(std::fs::read(&part).unwrap() == *data);
+    let _ = std::fs::remove_dir_all(part.parent().unwrap());
 }

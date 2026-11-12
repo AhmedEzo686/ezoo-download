@@ -1604,6 +1604,8 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
                 user_agent: req.user_agent,
                 extra: Vec::new(),
                 auth: None,
+                post: req.post.filter(|p| !p.is_empty() && p.len() <= 1 << 20),
+                post_type: req.post_type,
             };
             if let Some(list) = &req.headers {
                 swiftget_engine::ytdlp::apply_headers(&mut headers, list);
@@ -2119,16 +2121,20 @@ pub(crate) fn ask(text: &str) -> bool {
 
 fn is_http_url(t: &str) -> Option<String> {
     let t = t.trim();
-    (t.starts_with("http://") || t.starts_with("https://"))
-        .then(|| t.to_string())
-        .filter(|s| !s.contains(char::is_whitespace))
+    is_download_address(t).then(|| t.to_string()).filter(|s| !s.contains(char::is_whitespace))
+}
+
+/// An address the program downloads from: http(s), or a file on an FTP server.
+pub(crate) fn is_download_address(t: &str) -> bool {
+    let l = t.trim_start().to_ascii_lowercase();
+    ["http://", "https://", "ftp://", "ftps://"].iter().any(|p| l.starts_with(p))
 }
 
 /// Every http(s) link in a block of text, one per line or separated by spaces.
 pub(crate) fn extract_links(text: &str) -> Vec<String> {
     text.split_whitespace()
         .map(|l| l.trim_matches(|c| c == '"' || c == '\'' || c == '<' || c == '>' || c == ','))
-        .filter(|l| (l.starts_with("http://") || l.starts_with("https://")) && url::Url::parse(l).is_ok())
+        .filter(|l| is_download_address(l) && url::Url::parse(l).is_ok())
         .map(|l| l.to_string())
         .collect()
 }
@@ -2782,8 +2788,8 @@ fn confirm_add(ui: &Ui, start: bool) {
     let ctx = &ui.ctx;
     let Some(d) = ctx.add.upgrade() else { return };
     let url = d.get_url().trim().to_string();
-    if !(url.starts_with("http://") || url.starts_with("https://")) || url::Url::parse(&url).is_err() {
-        d.set_info(t("Please enter a valid http:// or https:// address").into());
+    if !is_download_address(&url) || url::Url::parse(&url).is_err() {
+        d.set_info(t("Please enter a valid http://, https:// or ftp:// address").into());
         d.set_info_error(true);
         return;
     }

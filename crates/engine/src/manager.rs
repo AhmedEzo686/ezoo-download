@@ -278,6 +278,9 @@ impl Manager {
             let s = self.settings.read().unwrap();
             (s.user_agent.clone(), with_login(&s, url, headers))
         };
+        if crate::ftp::is_ftp(url) {
+            return ftp_probe(url, &headers).await;
+        }
         http::probe(&self.shared.client(), url, &headers, &ua).await
     }
 
@@ -315,7 +318,17 @@ impl Manager {
         self.shared.client()
     }
 
-    pub fn add(self: &Arc<Self>, req: NewDownload) -> DownloadId {
+    pub fn add(self: &Arc<Self>, mut req: NewDownload) -> DownloadId {
+        // an FTP address with its login in it: the login is kept apart (and
+        // encrypted), the address without it
+        if crate::ftp::is_ftp(&req.url) {
+            if let Some(login) = crate::ftp::Site::login_in(&req.url) {
+                if req.headers.auth.is_none() {
+                    req.headers.auth = Some(login);
+                }
+                req.url = crate::ftp::Site::without_password(&req.url);
+            }
+        }
         let settings = self.settings();
         let probe = req.probe.clone();
         let auto_name = req.file_name.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) && req.probe.is_none();
@@ -1529,6 +1542,9 @@ impl Manager {
         if rec.kind == DownloadKind::Torrent {
             return self.run_torrent(id, rec, progress, cancel, &settings).await;
         }
+        if crate::ftp::is_ftp(&rec.url) {
+            return self.run_ftp(id, rec, segs, progress, limiter, cancel, &settings).await;
+        }
         self.refresh_source(id, &mut rec, &cancel).await?;
 
         // Fresh look at the server every time: links behind redirects often
@@ -1743,6 +1759,68 @@ impl Manager {
                 let _ = std::fs::remove_file(&tmp);
             }
         }
+        self.finish_file(id, &rec, &progress, &cancel).await
+    }
+
+    /// A file on an FTP server: its size and date asked (a changed file is
+    /// begun again), then fetched in parts when the server allows.
+    #[allow(clippy::too_many_arguments)]
+    async fn run_ftp(
+        self: &Arc<Self>,
+        id: DownloadId,
+        mut rec: DownloadRecord,
+        segs: SegTable,
+        progress: Arc<Progress>,
+        limiter: Arc<SpeedLimiter>,
+        cancel: CancellationToken,
+        settings: &Settings,
+    ) -> anyhow::Result<()> {
+        let auth = rec.headers.auth.clone();
+        let look = tokio::select! {
+            r = crate::ftp::look(&rec.url, auth.as_ref()) => r?,
+            _ = cancel.cancelled() => return Err(Cancelled.into()),
+        };
+        {
+            let mut table = segs.lock().unwrap();
+            let changed = rec.total_size.is_some() && look.size != rec.total_size;
+            let other_version = !table.is_empty() && rec.server_time.is_some() && look.modified.is_some() && rec.server_time != look.modified;
+            if changed || other_version || !look.rest {
+                table.clear();
+            }
+        }
+        rec.total_size = look.size;
+        rec.resumable = look.rest && look.size.is_some();
+        rec.server_time = look.modified.or(rec.server_time);
+        rec.final_url = Some(rec.url.clone());
+        {
+            let r = rec.clone();
+            self.update(id, move |x| {
+                x.total_size = r.total_size;
+                x.resumable = r.resumable;
+                x.server_time = r.server_time;
+                x.final_url = r.final_url;
+                if x.status == Status::Connecting {
+                    x.status = Status::Downloading;
+                }
+            });
+        }
+        if let Some(total) = rec.total_size {
+            let have = segments::downloaded(&segs.lock().unwrap());
+            system::check_room(&rec.work_dir(), total.saturating_sub(have), Some(total)).map_err(|m| anyhow!(m))?;
+        }
+        let job = crate::ftp::FtpJob {
+            url: rec.url.clone(),
+            auth,
+            path: look.path,
+            total_size: rec.total_size,
+            rest: look.rest,
+            part_path: rec.part_path(),
+            connections: rec.connections,
+            min_split: settings.min_split(),
+            retries: settings.retries,
+            limiter,
+        };
+        crate::ftp::run(self.shared.clone(), job, segs, progress.clone(), cancel.clone()).await?;
         self.finish_file(id, &rec, &progress, &cancel).await
     }
 
@@ -2887,6 +2965,25 @@ fn with_login(s: &Settings, url: &str, h: &RequestHeaders) -> RequestHeaders {
         h.auth = s.login_for(url);
     }
     h
+}
+
+/// What an FTP server says about the file, as a look at an http address
+/// says it.
+async fn ftp_probe(url: &str, headers: &RequestHeaders) -> anyhow::Result<ProbeResult> {
+    let auth = headers.auth.clone().or_else(|| crate::ftp::Site::login_in(url));
+    let look = crate::ftp::look(url, auth.as_ref()).await?;
+    Ok(ProbeResult {
+        final_url: crate::ftp::Site::without_password(url),
+        file_name: crate::ftp::file_name(url),
+        total_size: look.size,
+        resumable: look.rest && look.size.is_some(),
+        content_type: None,
+        kind: DownloadKind::Http,
+        last_modified: look.modified,
+        etag: None,
+        headers_used: None,
+        digest: None,
+    })
 }
 
 /// The finished file put in its place under `name` in `dir`, or a free

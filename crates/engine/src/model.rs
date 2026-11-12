@@ -183,6 +183,13 @@ pub struct RequestHeaders {
     /// encrypted on the disk (secret.rs)
     #[serde(default, with = "crate::secret::pair")]
     pub auth: Option<(String, String)>,
+    /// a form's download: what the form sends (base64), asked with POST;
+    /// encrypted on the disk like cookies
+    #[serde(default, with = "crate::secret::opt", skip_serializing_if = "Option::is_none")]
+    pub post: Option<String>,
+    /// the form's kind of data ("application/x-www-form-urlencoded"...)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub post_type: Option<String>,
 }
 
 /// What we learn about a URL before downloading it.

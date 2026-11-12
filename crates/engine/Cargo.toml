@@ -39,6 +39,8 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Power",
     "Win32_Security_Cryptography",
 ] }
+native-tls = "0.2"
+tokio-native-tls = "0.3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }

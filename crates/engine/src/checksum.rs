@@ -135,7 +135,8 @@ fn to_hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-fn base64(s: &str) -> Option<Vec<u8>> {
+/// Base64 (standard or for addresses) to bytes.
+pub fn base64(s: &str) -> Option<Vec<u8>> {
     let val = |c: u8| -> Option<u32> {
         Some(match c {
             b'A'..=b'Z' => c - b'A',

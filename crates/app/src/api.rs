@@ -71,6 +71,11 @@ pub struct AddRequest {
     /// "Download a part": only from / to (seconds)
     #[serde(default)]
     pub clip: Option<ClipAsk>,
+    /// a form's download: what the form sent (base64) and its kind
+    #[serde(default)]
+    pub post: Option<String>,
+    #[serde(default)]
+    pub post_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -702,12 +707,18 @@ fn can_fetch(add: &AddRequest) -> bool {
         user_agent: add.user_agent.clone(),
         extra: Vec::new(),
         auth: None,
+        post: add.post.clone(),
+        post_type: add.post_type.clone(),
     };
     if let Some(list) = &add.headers {
         swiftget_engine::ytdlp::apply_headers(&mut headers, list);
     }
-    let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return true };
-    let Ok(client) = swiftget_engine::http::build_client() else { return true };
+    // one lasting runtime for these looks: the answer a look keeps for the
+    // download stays open only while the runtime it came on runs
+    static RT: std::sync::LazyLock<Option<tokio::runtime::Runtime>> =
+        std::sync::LazyLock::new(|| tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().ok());
+    let Some(rt) = RT.as_ref() else { return true };
+    let Ok(client) = swiftget_engine::http::build_client_with(&swiftget_engine::http::current_proxy()) else { return true };
     let url = add.url.clone();
     rt.block_on(async move {
         let look = swiftget_engine::http::probe_quick(&client, &url, &headers, swiftget_engine::config::DEFAULT_USER_AGENT);

@@ -350,6 +350,11 @@ fn env_for(p: &ProxyConfig) -> Vec<(&'static str, Option<String>)> {
     }
 }
 
+/// The proxy of Options, as the last client was made with it.
+pub fn current_proxy() -> ProxyConfig {
+    TOOL_PROXY.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
 /// `cmd` started with the proxy of Options.
 pub fn with_proxy(cmd: &mut std::process::Command) {
     for (k, v) in proxy_env() {
@@ -506,9 +511,17 @@ pub fn request(client: &Client, url: &str, h: &RequestHeaders, default_ua: &str)
         .as_deref()
         .filter(|s| !s.is_empty())
         .unwrap_or(default_ua);
+    // a form's download is asked the way the form asks: POST with its data
+    let form = h.post.as_deref().and_then(crate::checksum::base64);
+    let rb = match form {
+        Some(body) => client
+            .post(url)
+            .header(CONTENT_TYPE, h.post_type.as_deref().filter(|t| !t.is_empty()).unwrap_or("application/x-www-form-urlencoded"))
+            .body(body),
+        None => client.get(url),
+    };
     // identity: ranges must refer to the raw bytes, never a compressed body
-    let mut rb = client
-        .get(url)
+    let mut rb = rb
         .header(USER_AGENT, ua)
         .header(ACCEPT, "*/*")
         .header(ACCEPT_ENCODING, "identity");
@@ -874,6 +887,13 @@ async fn probe_at(
         }
         if !status.is_success() {
             return Err(HttpStatus(status.as_u16()).into());
+        }
+        // a form's answer that sent it on elsewhere: there the file is asked
+        // for plainly (as the browser does after "303 See Other")
+        let mut h = h;
+        if h.post.is_some() && resp.url().as_str() != url {
+            h.post = None;
+            h.post_type = None;
         }
         let changed = h != *headers;
         found = Some((resp, with_range, changed.then_some(h)));
