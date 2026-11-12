@@ -87,6 +87,31 @@ pub(crate) fn install(data_dir: &Path) {
     }
 }
 
+/// What the link test says about the helper: is it in place, and which
+/// browsers know it. (browser, it knows the helper)
+pub(crate) fn report() -> (bool, Vec<(&'static str, bool)>) {
+    let st = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(st) = st.as_ref() else { return (false, Vec::new()) };
+    let helper = std::fs::read(st.dir.join("chromium.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| v["path"].as_str().map(PathBuf::from))
+        .is_some_and(|p| p.is_file());
+    #[cfg(windows)]
+    let browsers = {
+        let chromium = st.dir.join("chromium.json").display().to_string();
+        let firefox = st.dir.join("firefox.json").display().to_string();
+        let names = ["Chrome", "Chromium", "Edge", "Brave"];
+        let mut out: Vec<(&'static str, bool)> =
+            CHROMIUM_KEYS.iter().zip(names).map(|(k, n)| (n, crate::assoc::query(k, None).as_deref() == Some(chromium.as_str()))).collect();
+        out.push(("Firefox", crate::assoc::query(FIREFOX_KEY, None).as_deref() == Some(firefox.as_str())));
+        out
+    };
+    #[cfg(not(windows))]
+    let browsers = Vec::new();
+    (helper, browsers)
+}
+
 /// The key of a browser points at `file` (written only when it does not).
 #[cfg(windows)]
 fn point(key: &str, file: &str) {

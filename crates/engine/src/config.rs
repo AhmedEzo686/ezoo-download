@@ -85,6 +85,36 @@ pub struct QueueSchedule {
     pub on_startup: bool,
     pub stop_enabled: bool,
     pub stop_time: String,
+    /// wake the computer from sleep for the start
+    #[serde(default)]
+    pub wake: bool,
+}
+
+impl QueueSchedule {
+    /// The next time the queue starts by itself after `now` (local time).
+    pub fn next_start(&self, now: chrono::DateTime<chrono::Local>) -> Option<chrono::DateTime<chrono::Local>> {
+        use chrono::{Datelike, TimeZone};
+        if !self.start_enabled {
+            return None;
+        }
+        let (h, m) = parse_hhmm(&self.start_time)?;
+        for d in 0..9 {
+            let date = now.date_naive() + chrono::Days::new(d);
+            let ok = if self.once {
+                self.once_date.trim() == date.format("%Y-%m-%d").to_string()
+            } else {
+                self.days[date.weekday().num_days_from_monday() as usize]
+            };
+            if !ok {
+                continue;
+            }
+            let at = chrono::Local.from_local_datetime(&date.and_hms_opt(h, m, 0)?).earliest()?;
+            if at > now {
+                return Some(at);
+            }
+        }
+        None
+    }
 }
 
 impl Default for QueueSchedule {
@@ -98,6 +128,7 @@ impl Default for QueueSchedule {
             on_startup: false,
             stop_enabled: false,
             stop_time: "08:00".into(),
+            wake: false,
         }
     }
 }
@@ -271,6 +302,10 @@ pub struct Settings {
     pub last_version: String,
     /// speed limiter switched on (the limit itself is speed_limit_kb)
     pub speed_limit_on: bool,
+    /// the speed limit only while someone uses the computer: a minute
+    /// without the mouse or the keyboard, full speed
+    #[serde(default)]
+    pub limit_only_active: bool,
     /// torrents: minutes of sharing after one is complete (0 = stop at once)
     #[serde(default)]
     pub torrent_seed_minutes: u32,
@@ -431,6 +466,7 @@ impl Default for Settings {
             background_strength: 45,
             last_version: String::new(),
             speed_limit_on: false,
+            limit_only_active: false,
             torrent_seed_minutes: 0,
             torrent_upload_kb: 0,
             torrent_main: true,
@@ -823,5 +859,32 @@ mod column_tests {
         // hidden in View > Columns: not shown, order kept for later
         s.columns.retain(|c| c != "size");
         assert_eq!(keys(&s)[0], "name");
+    }
+}
+
+#[cfg(test)]
+mod schedule_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn the_next_start_of_a_queue() {
+        // Wednesday 2026-11-11 10:00
+        let now = chrono::Local.with_ymd_and_hms(2026, 11, 11, 10, 0, 0).unwrap();
+        let mut s = QueueSchedule { start_enabled: true, start_time: "02:30".into(), ..Default::default() };
+        // every day: tomorrow at 02:30
+        assert_eq!(s.next_start(now).unwrap().format("%Y-%m-%d %H:%M").to_string(), "2026-11-12 02:30");
+        // only on Mondays
+        s.days = [true, false, false, false, false, false, false];
+        assert_eq!(s.next_start(now).unwrap().format("%Y-%m-%d").to_string(), "2026-11-16");
+        // once, on a day gone by: never
+        s.once = true;
+        s.once_date = "2026-11-01".into();
+        assert!(s.next_start(now).is_none());
+        s.once_date = "2026-11-11".into();
+        s.start_time = "23:00".into();
+        assert_eq!(s.next_start(now).unwrap().format("%H:%M").to_string(), "23:00");
+        s.start_enabled = false;
+        assert!(s.next_start(now).is_none());
     }
 }

@@ -10,6 +10,7 @@ mod winmenu;
 mod nativehost;
 mod autostart;
 mod browser;
+mod cli;
 mod clipboard;
 mod clipui;
 mod extra;
@@ -334,12 +335,20 @@ fn run() -> anyhow::Result<()> {
     }
     // a .torrent file / magnet link opened with Ezoo Download (double click)
     let open_torrent = std::env::args().skip(1).find(|a| api::torrent_source_ok(a));
+    // a download handed over on the command line ("/d address ...")
+    let cli_ask = cli::parse(std::env::args().skip(1)).filter(|c| !c.is_empty());
     // One instance only: if the port is taken by us, bring that one to front.
     let server = match first {
         Ok(s) => Some(s),
         Err(_) => {
             if let Some(src) = &open_torrent {
                 if api::notify_open_torrent(port, src) {
+                    return Ok(());
+                }
+            }
+            if let Some(ask) = &cli_ask {
+                let own = Settings::load(&data_dir.join("settings.json")).api_port;
+                if api::notify_cli(port, ask) || (own != 0 && api::notify_cli(own, ask)) {
                     return Ok(());
                 }
             }
@@ -399,6 +408,7 @@ fn run() -> anyhow::Result<()> {
     // the next start), and the add-in folders get it with the key before
     // anything answers there (an add-in reloading right after an update
     // finds both at once)
+    api::FRONT_OPEN.store(server.is_some(), std::sync::atomic::Ordering::Relaxed);
     let main_server = {
         let path = data_dir.join("settings.json");
         let mut s = Settings::load(&path);
@@ -774,6 +784,11 @@ fn run() -> anyhow::Result<()> {
         // opened from Windows with a torrent: its window, once everything is up
         Timer::single_shot(Duration::from_millis(500), move || torrent_ui::open_source(&src));
     }
+    if let Some(ask) = cli_ask {
+        // started with a download on the command line: once everything is up
+        let ui = ui.clone();
+        Timer::single_shot(Duration::from_millis(600), move || cli_download(&ui, ask));
+    }
     {
         // a .torrent file dropped on the window
         winfx::keep_drawn_with_drop(&main, |path| {
@@ -1042,6 +1057,27 @@ fn wire_main(ui: &Ui) {
     }
     {
         let ui = ui.clone();
+        main.on_move_selection(move |step, shift| {
+            let order = visible_ids(&ui);
+            let Some(m) = ui.ctx.main.upgrade() else { return };
+            if order.is_empty() {
+                return;
+            }
+            let at = order.iter().position(|i| *i as i32 == m.get_selected_id());
+            let next = match (step, at) {
+                (s, _) if s <= -2 => 0,
+                (s, _) if s >= 2 => order.len() - 1,
+                (s, None) if s < 0 => 0,
+                (_, None) => order.len() - 1,
+                (s, Some(i)) => (i as i64 + s as i64).clamp(0, order.len() as i64 - 1) as usize,
+            };
+            row_clicked(&ui, order[next], false, shift);
+            refresh(&ui);
+        });
+    }
+    main.on_show_shortcuts(|| message(&t(SHORTCUTS)));
+    {
+        let ui = ui.clone();
         main.on_row_clicked(move |id, ctrl, shift| {
             // Ctrl / Shift as Windows has them now (a menu or another window
             // may have kept the program from seeing one let go)
@@ -1263,6 +1299,23 @@ fn wire_main(ui: &Ui) {
         let _ = slint::quit_event_loop();
     });
 }
+
+/// The keys of the list (F1 shows them).
+const SHORTCUTS: &str = "Keyboard shortcuts\n\n\
+Ctrl+N or Ctrl+V: add a download (a copied address)\n\
+Ctrl+B: add several addresses\n\
+Enter: open the download (its window, or the file)\n\
+Alt+Enter: properties\n\
+F2: rename / move the file\n\
+Ctrl+R: resume\n\
+Ctrl+S: stop\n\
+Ctrl+O: open the file\n\
+Ctrl+E: open its folder\n\
+Ctrl+C: copy the address\n\
+Delete: delete\n\
+Up / Down, Home / End: move in the list (with Shift: select)\n\
+Ctrl+A: select all\n\
+Ctrl+F, F3: find, find the next";
 
 /// Ids in the order the list shows them.
 fn visible_ids(ui: &Ui) -> Vec<u64> {
@@ -1583,6 +1636,7 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
             let _ = slint::quit_event_loop();
         }
         api::ApiEvent::OpenTorrent(s) => torrent_ui::open_source(&s),
+        api::ApiEvent::Cli(ask) => cli_download(ui, ask),
         api::ApiEvent::Playlist(url) => playlist::open_url(ui, &url),
         api::ApiEvent::Links(l) => grab::open_links(ui, l),
         api::ApiEvent::Add(req) => {
@@ -1680,6 +1734,44 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
             }
             open_add_dialog(&ui.ctx, req.url, headers, req.file_name, extra);
         }
+    }
+}
+
+/// A download (or "start the queue") from the command line.
+fn cli_download(ui: &Ui, ask: cli::CliAsk) {
+    if let Some(url) = ask.url.clone() {
+        let folder = ask.folder.as_ref().map(PathBuf::from).filter(|f| f.is_absolute());
+        if let Some(f) = &folder {
+            let _ = std::fs::create_dir_all(f);
+        }
+        if ask.quiet || ask.later {
+            let id = ui.ctx.mgr.add(NewDownload {
+                url,
+                file_name: ask.name.clone(),
+                save_dir: folder,
+                queue: ask.later.then_some(swiftget_engine::config::MAIN_QUEUE),
+                start: !ask.later,
+                ..Default::default()
+            });
+            if !ask.later {
+                show_progress_for_start(ui, id);
+            }
+            refresh(ui);
+        } else {
+            open_add_dialog(&ui.ctx, url, RequestHeaders::default(), ask.name.clone(), VideoExtra::default());
+            // the folder asked for, with the name the window shows
+            if let (Some(f), Some(d)) = (folder, ui.ctx.add.upgrade()) {
+                let shown = d.get_save_as().to_string();
+                let name = ask.name.clone().or_else(|| Path::new(&shown).file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_default();
+                if !name.is_empty() {
+                    d.set_save_as(f.join(name).display().to_string().into());
+                }
+            }
+        }
+    }
+    if ask.start_queue {
+        ui.ctx.mgr.start_queue(swiftget_engine::config::MAIN_QUEUE);
+        refresh(ui);
     }
 }
 

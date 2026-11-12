@@ -405,6 +405,7 @@ pub(crate) fn wire(ui: &Ui) {
             }
         });
     }
+    d.on_test_link(|| crate::message(&link_report()));
     {
         d.on_repair(move || {
             let ok = repair_extension();
@@ -423,4 +424,37 @@ pub(crate) fn wire(ui: &Ui) {
             }
         });
     }
+}
+
+/// "Test the link": what works between the browsers and the program, and
+/// what to do about what does not.
+pub(crate) fn link_report() -> String {
+    use std::sync::atomic::Ordering;
+    let now = crate::api::now_secs();
+    let ago = |at: u64| at > 0 && now.saturating_sub(at) < 15 * 60;
+    let mark = |ok: bool| if ok { "✔" } else { "✖" };
+    let mut lines = vec![t("Link between the browsers and Ezoo Download:"), String::new()];
+    let main = crate::api::MAIN_PORT.load(Ordering::Relaxed);
+    lines.push(format!("{} {}", mark(main != 0), t("The program answers the add-in")));
+    if !crate::api::FRONT_OPEN.load(Ordering::Relaxed) {
+        lines.push(format!("• {}", t("Its usual port is kept by another program or by Windows: the add-in uses the program's own port (nothing to do).")));
+    }
+    let (helper, browsers) = crate::nativehost::report();
+    lines.push(format!("{} {}", mark(helper), t("The browsers' helper is in place")));
+    for (name, ok) in &browsers {
+        lines.push(format!("   {} {}", mark(*ok), tf("{} knows the helper", &[name])));
+    }
+    let seen = crate::api::ADDIN_SEEN.load(Ordering::Relaxed);
+    let helped = crate::api::HELPER_SEEN.load(Ordering::Relaxed);
+    lines.push(format!("{} {}", mark(ago(seen)), t("An add-in talked to the program in the last 15 minutes")));
+    lines.push(format!("{} {}", mark(ago(helped)), t("...through the browsers' helper")));
+    lines.push(String::new());
+    if !ago(seen) {
+        lines.push(t("No add-in talked lately: open the browser, make sure the Ezoo Download add-in is on (Extensions page), then click a download link and test again."));
+    } else if !ago(helped) {
+        lines.push(t("The add-in talks through the port only. In Firefox: the add-in's window > \"Connect directly\". In other browsers: reload the add-in once (Extensions page)."));
+    } else {
+        lines.push(t("Everything works."));
+    }
+    lines.join("\n")
 }

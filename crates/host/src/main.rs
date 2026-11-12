@@ -241,7 +241,8 @@ fn call(port: u16, token: &str, method: &str, path: &str, headers: &[(String, St
     let _ = s.set_read_timeout(Some(wait));
     let _ = s.set_write_timeout(Some(Duration::from_secs(10)));
     let sign_path = path.split(['?', '#']).next().unwrap_or(path);
-    let mut head = format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nX-SwiftGet: 1\r\n");
+    // X-Ezoo-Helper: the program's link test can say the helper works
+    let mut head = format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nX-SwiftGet: 1\r\nX-Ezoo-Helper: 1\r\n");
     for (k, v) in headers {
         let name_ok = !k.is_empty() && k.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-');
         let ours = ["host", "connection", "content-length", "transfer-encoding", "origin", "x-swiftget", "x-ezoo-time", "x-ezoo-nonce", "x-ezoo-sig"];

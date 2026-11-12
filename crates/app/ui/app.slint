@@ -664,6 +664,9 @@ export component MainWindow inherits ThemedWindow {
     }
     callback select-all();
     callback row-action(int, string);
+    // the keyboard: the next / earlier row (-1 / 1), the first / last (-2 / 2)
+    callback move-selection(int, bool);
+    callback show-shortcuts();
     callback row-to-queue(int, int);
     callback open-download-folder();
     callback export-list(string);
@@ -1307,8 +1310,54 @@ export component MainWindow inherits ThemedWindow {
                 root.delete(root.selected-id);
                 return accept;
             }
+            // Alt+Enter: the download's properties
+            if (event.text == Key.Return && event.modifiers.alt && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "properties");
+                return accept;
+            }
             if (event.text == Key.Return && root.selected-id >= 0) {
                 root.row-activated(root.selected-id);
+                return accept;
+            }
+            if (event.text == Key.UpArrow) {
+                root.move-selection(-1, event.modifiers.shift);
+                return accept;
+            }
+            if (event.text == Key.DownArrow) {
+                root.move-selection(1, event.modifiers.shift);
+                return accept;
+            }
+            if (event.text == Key.Home) {
+                root.move-selection(-2, event.modifiers.shift);
+                return accept;
+            }
+            if (event.text == Key.End) {
+                root.move-selection(2, event.modifiers.shift);
+                return accept;
+            }
+            // F2: rename / move the file
+            if (event.text == Key.F2 && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "move");
+                return accept;
+            }
+            if (event.text == Key.F1) {
+                root.show-shortcuts();
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "r" || event.text == "R" || event.text == "ق") && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "resume");
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "s" || event.text == "S" || event.text == "س") && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "stop");
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "o" || event.text == "O" || event.text == "خ") && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "open");
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "e" || event.text == "E" || event.text == "ث") && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "folder");
                 return accept;
             }
             if (event.text == Key.F3) {

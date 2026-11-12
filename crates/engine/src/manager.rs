@@ -100,6 +100,25 @@ pub struct Manager {
     /// downloads whose link stopped working: the next start gets a new link
     /// and goes on only when it is the same file (size, ranges)
     relink: Mutex<HashSet<DownloadId>>,
+    /// the computer is woken for the next scheduled start (when, the timer)
+    waker: Mutex<Option<(i64, system::Waker)>>,
+    /// the limit the downloads have now (the speed limit, or none while
+    /// nobody uses the computer)
+    limit_now: std::sync::atomic::AtomicU64,
+    ticks: std::sync::atomic::AtomicU64,
+}
+
+/// A minute without the mouse or the keyboard: nobody uses the computer.
+const IDLE_AFTER: u64 = 60;
+
+/// The limit for all downloads now: the speed limit of Options, or none
+/// while nobody uses the computer (when Options say so).
+fn limit_for(s: &Settings, idle: Option<u64>) -> u64 {
+    if s.limit_only_active && idle.is_some_and(|i| i >= IDLE_AFTER) {
+        0
+    } else {
+        s.effective_limit()
+    }
 }
 
 /// Default place for settings.json and downloads.json
@@ -212,6 +231,9 @@ impl Manager {
             torrents: Arc::new(torrent::Aria2::new(&data_dir.join("torrents"))),
             data_dir,
             relink: Mutex::new(HashSet::new()),
+            waker: Mutex::new(None),
+            limit_now: std::sync::atomic::AtomicU64::new(u64::MAX),
+            ticks: std::sync::atomic::AtomicU64::new(0),
         });
 
         for q in startup_queues {
@@ -252,7 +274,9 @@ impl Manager {
             }
             inner.dirty = true;
         }
-        self.shared.limiter.set_rate(s.effective_limit());
+        let limit = limit_for(&s, system::idle_secs());
+        self.limit_now.store(limit, Ordering::Relaxed);
+        self.shared.limiter.set_rate(limit);
         ytdlp::set_mp3_kbps(s.mp3_kbps);
         let proxy = ProxyConfig::from_settings(&s);
         if *self.proxy.lock().unwrap() != proxy {
@@ -2355,7 +2379,43 @@ impl Manager {
         self.finish_file(id, &rec, &progress, &cancel).await
     }
 
+    /// Once a second: the limit for "only while the computer is used".
+    fn follow_use(&self) {
+        let s = self.settings.read().unwrap();
+        if !s.limit_only_active || !s.speed_limit_on {
+            return;
+        }
+        let limit = limit_for(&s, system::idle_secs());
+        drop(s);
+        if self.limit_now.swap(limit, Ordering::Relaxed) != limit {
+            self.shared.limiter.set_rate(limit);
+        }
+    }
+
+    /// The computer is woken for the next start of a queue that asks for it
+    /// (a minute before it). Set again when the time changes.
+    fn arm_wake(&self, queues: &[QueueDef]) {
+        let now = chrono::Local::now();
+        let next = queues
+            .iter()
+            .filter(|q| q.schedule.wake)
+            .filter_map(|q| q.schedule.next_start(now))
+            .min()
+            .map(|t| t.with_timezone(&Utc) - chrono::Duration::seconds(60));
+        let mut w = self.waker.lock().unwrap();
+        match next {
+            None => *w = None,
+            Some(t) if w.as_ref().map(|(at, _)| *at) != Some(t.timestamp()) => {
+                *w = system::Waker::at(t).map(|h| (t.timestamp(), h));
+            }
+            Some(_) => {}
+        }
+    }
+
     fn tick(self: &Arc<Self>) {
+        if self.ticks.fetch_add(1, Ordering::Relaxed).is_multiple_of(5) {
+            self.follow_use();
+        }
         // a queue file waits to be tried again: its time may have come
         let again = self.inner.lock().unwrap().retry_waiting;
         if again {
@@ -2526,6 +2586,7 @@ impl Manager {
             }
         };
         if new_minute {
+            self.arm_wake(&queues);
             let hm = Some((now.hour(), now.minute()));
             for q in &queues {
                 let sc = &q.schedule;
@@ -3245,5 +3306,20 @@ mod media_tests {
         std::fs::write(&p, [0u8, 0, 0, 0x20, b'f', b't', b'y', b'p']).unwrap();
         assert_eq!(not_the_media(&p, "film.mp4"), None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod use_tests {
+    use super::*;
+
+    #[test]
+    fn the_limit_only_while_the_computer_is_used() {
+        let mut s = Settings { speed_limit_on: true, speed_limit_kb: 100, ..Default::default() };
+        assert_eq!(limit_for(&s, Some(500)), 100 * 1024, "always, unless asked");
+        s.limit_only_active = true;
+        assert_eq!(limit_for(&s, Some(5)), 100 * 1024, "someone is at the computer");
+        assert_eq!(limit_for(&s, Some(IDLE_AFTER)), 0, "nobody: full speed");
+        assert_eq!(limit_for(&s, None), 100 * 1024, "not known: the limit");
     }
 }

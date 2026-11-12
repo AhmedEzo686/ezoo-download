@@ -135,6 +135,28 @@ pub enum ApiEvent {
     /// the Ezoo Download add-on in Firefox is older than this program
     /// (Firefox keeps its own copy): offer to put the new one in
     OldFirefoxAddon,
+    /// a download handed over on the command line of another start
+    Cli(crate::cli::CliAsk),
+}
+
+/// Hand a command line download to the copy of the program that is open.
+pub fn notify_cli(port: u16, ask: &crate::cli::CliAsk) -> bool {
+    let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(800)) else {
+        return false;
+    };
+    let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
+    let body = serde_json::to_string(ask).unwrap_or_default();
+    let req = format!(
+        "POST /cli HTTP/1.1\r\nHost: 127.0.0.1\r\nX-SwiftGet: 1\r\n{}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        sign_headers("POST", "/cli"),
+        body.len()
+    );
+    if s.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = String::new();
+    let _ = s.read_to_string(&mut buf);
+    buf.starts_with("HTTP/1.1 200")
 }
 
 /// Ask the copy of the program that is open to close (for the setup).
@@ -291,6 +313,12 @@ pub enum Door {
 
 /// The random port the add-in talks to (0 = not open).
 pub static MAIN_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
+/// The known port is this program's (another program or Windows may keep it).
+pub static FRONT_OPEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// When an add-in last talked to the program with its key (seconds since 1970),
+/// and when one last came through the browser's helper.
+pub static ADDIN_SEEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static HELPER_SEEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// Changed by "Repair the browser add-in": the add-in sees it and starts again.
 pub static REPAIR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -526,7 +554,7 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
     // a torrent may come in on the known port
     let open = matches!(path.as_str(), "/ping") || (door == Door::Front && matches!(path.as_str(), "/show" | "/quit" | "/pair"));
     if !open {
-        let front_ok = matches!(path.as_str(), "/where" | "/open-torrent");
+        let front_ok = matches!(path.as_str(), "/where" | "/open-torrent" | "/cli");
         if door == Door::Front && !front_ok {
             return reply(req, 404, r#"{"error":"not here","where":true}"#);
         }
@@ -537,6 +565,10 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
         // started by it from now on (one without the key is never added)
         if let Some(id) = header(&req, "X-Ezoo-Id") {
             crate::nativehost::saw_addin(id.trim());
+        }
+        ADDIN_SEEN.store(now_secs(), Ordering::Relaxed);
+        if header(&req, "X-Ezoo-Helper").is_some() {
+            HELPER_SEEN.store(now_secs(), Ordering::Relaxed);
         }
     }
     if path == "/pair" && *req.method() == Method::Post {
@@ -583,6 +615,20 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
             }
             let keep = serde_json::from_str::<BrowserQuery>(&body).map(|q| take_for_browser(&q.urls)).unwrap_or(false);
             reply(req, 200, if keep { r#"{"browser":true}"# } else { r#"{"browser":false}"# })
+        }
+        (Method::Post, "/cli") => {
+            // the command line of another start of this program (signed with its key)
+            let mut body = String::new();
+            if req.as_reader().take(1 << 16).read_to_string(&mut body).is_err() {
+                return reply(req, 400, r#"{"error":"bad body"}"#);
+            }
+            match serde_json::from_str::<crate::cli::CliAsk>(&body) {
+                Ok(ask) if ask.url.as_deref().is_none_or(|u| crate::is_download_address(u) && url::Url::parse(u).is_ok()) => {
+                    on_event(ApiEvent::Cli(ask));
+                    reply(req, 200, r#"{"ok":true}"#)
+                }
+                _ => reply(req, 400, r#"{"error":"invalid request"}"#),
+            }
         }
         (Method::Post, "/open-torrent") => {
             let mut body = String::new();

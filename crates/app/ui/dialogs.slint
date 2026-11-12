@@ -1000,6 +1000,7 @@ export component SchedulerDialog inherits ThemedWindow {
     in-out property <bool> d5;
     in-out property <bool> d6;
     in-out property <bool> on-startup;
+    in-out property <bool> wake;
     in-out property <bool> stop-enabled;
     in-out property <string> stop-time;
     in-out property <int> parallel: 1;
@@ -1214,6 +1215,10 @@ export component SchedulerDialog inherits ThemedWindow {
                             text: @tr("Sun");
                             checked <=> root.d6;
                         }
+                    }
+                    CheckBox {
+                        text: @tr("Wake the computer from sleep to start it");
+                        checked <=> root.wake;
                     }
                     CheckBox {
                         text: @tr("Start the queue when Ezoo Download starts");
@@ -2061,6 +2066,7 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <string> sound-qdone;
     // Speed limiter
     in-out property <bool> limiter-on;
+    in-out property <bool> limit-only-active;
     in-out property <int> speed-limit;
     in-out property <bool> limiter-startup;
     // Torrents tab
@@ -3021,6 +3027,10 @@ export component SettingsDialog inherits ThemedWindow {
                         text: @tr("Always turn on the speed limiter when Ezoo Download starts");
                         checked <=> root.limiter-startup;
                     }
+                    CheckBox {
+                        text: @tr("Limit only while I use the computer (full speed after a minute without the mouse or keyboard)");
+                        checked <=> root.limit-only-active;
+                    }
                     Hint {
                         text: @tr("Every download can also have its own limit: its progress window > Speed Limiter tab.");
                     }
@@ -3726,6 +3736,7 @@ export component BrowserDialog inherits ThemedWindow {
     callback open-folder();
     callback copy-folder();
     callback repair();
+    callback test-link();
     callback close-window();
     VerticalLayout {
         padding: 16px;
@@ -3785,6 +3796,12 @@ export component BrowserDialog inherits ThemedWindow {
             }
             // the add-in shows nothing / does not answer: its files are put
             // back and it starts again by itself
+            Button {
+                text: @tr("Test the link");
+                clicked => {
+                    root.test-link();
+                }
+            }
             Button {
                 text: @tr("Repair the add-in");
                 clicked => {

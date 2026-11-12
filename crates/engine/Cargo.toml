@@ -38,6 +38,9 @@ windows-sys = { version = "0.59", features = [
     "Win32_Storage_FileSystem",
     "Win32_System_Power",
     "Win32_Security_Cryptography",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
 native-tls = "0.2"
 tokio-native-tls = "0.3"
