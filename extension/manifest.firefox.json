@@ -9,6 +9,7 @@
     "contextMenus",
     "storage",
     "webRequest",
+    "webRequestBlocking",
     "tabs"
   ],
   "host_permissions": [

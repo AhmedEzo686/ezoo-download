@@ -72,6 +72,22 @@ async function init() {
   scale.addEventListener("input", () => save(Number(scale.value)));
   document.getElementById("scaleReset").addEventListener("click", () => save(100));
 
+  // why the last download stayed in the browser (the last ten minutes)
+  const WHY = {
+    "not-running": "Ezoo Download was not running or did not answer.",
+    small: "it is smaller than the size set in the add-in's settings.",
+    rules: "Ezoo Download's Options leave this kind of file, or this site, to the browser.",
+    "cant-fetch": "the site gives this file to the browser only (a sign-in of the page, or a link that works once).",
+    form: "it comes from a form that sends a file, which can't be sent again.",
+  };
+  chrome.storage.local.get({ lastLeft: null }, ({ lastLeft }) => {
+    const box = document.getElementById("left");
+    if (!lastLeft || !WHY[lastLeft.why] || Date.now() - lastLeft.at > 10 * 60 * 1000) return;
+    const name = lastLeft.name ? `"${lastLeft.name}"` : "The last download";
+    box.textContent = `${name} stayed in the browser: ${WHY[lastLeft.why]}`;
+    box.hidden = false;
+  });
+
   chrome.runtime.sendMessage({ type: "swiftget-status" }, (res) => {
     const el = document.getElementById("status");
     const ok = res && res.ok;

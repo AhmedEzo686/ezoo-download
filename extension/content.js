@@ -21,7 +21,57 @@
   // the video button in full screen too (the add-in's window); off: hidden there
   let showInFullscreen = false;
   const panelAllowed = () =>
-    switchedOn && panel.enabled !== false && !(panel.skipSites || []).some((s) => hostMatches(location.hostname.toLowerCase(), s));
+    switchedOn &&
+    !noButtonHere &&
+    panel.enabled !== false &&
+    !(panel.skipSites || []).some((s) => hostMatches(location.hostname.toLowerCase(), s));
+  // a press of the user (or the same press passed on by early.js), never one a
+  // page's script made up
+  const userPress = (e) => !!e && (e.isTrusted || !!(globalThis.__ezooReplayed && globalThis.__ezooReplayed.has(e)));
+  // "Don't show it on this site", and where the user put it on this site
+  const SITE = location.hostname.toLowerCase();
+  let noButtonHere = false;
+  let sitePlace = null;
+  try {
+    chrome.storage.local.get({ noButtonSites: [], buttonPlaces: {} }, (o) => {
+      noButtonHere = !!(o && (o.noButtonSites || []).includes(SITE));
+      sitePlace = (o && o.buttonPlaces && o.buttonPlaces[SITE]) || null;
+      if (noButtonHere) removeAll();
+    });
+  } catch (_) {
+    /* storage not reachable: shown, at its usual place */
+  }
+  const PRIVATE = !!(chrome.extension && chrome.extension.inIncognitoContext);
+  function keepPlace(p) {
+    sitePlace = p;
+    // never in a private window (it would keep the site's name)
+    if (PRIVATE) return;
+    try {
+      chrome.storage.local.get({ buttonPlaces: {} }, (o) => {
+        const all = (o && o.buttonPlaces) || {};
+        delete all[SITE];
+        all[SITE] = p;
+        const sites = Object.keys(all);
+        for (const s of sites.slice(0, Math.max(0, sites.length - 200))) delete all[s];
+        chrome.storage.local.set({ buttonPlaces: all });
+      });
+    } catch (_) {
+      /* not kept: it stays there on this page */
+    }
+  }
+  function noButtonOnThisSite() {
+    noButtonHere = true;
+    removeAll();
+    try {
+      chrome.storage.local.get({ noButtonSites: [] }, (o) => {
+        const list = ((o && o.noButtonSites) || []).filter((h) => h !== SITE);
+        list.push(SITE);
+        chrome.storage.local.set({ noButtonSites: list.slice(-500) });
+      });
+    } catch (_) {
+      /* only for this page then */
+    }
+  }
 
   const fmtSize = (n) => {
     if (!n) return "";
@@ -462,19 +512,26 @@
         el(
           "div",
           { class: "btn", id: "main" },
-          el("span", { class: "part", id: "grab" }, svg, spin, el("span", { id: "label", text: "Download this video" }), el("span", { class: "caret", text: "▼" })),
-          el("span", { class: "side", id: "help", title: "Help", text: "?" }),
-          el("span", { class: "side", id: "close", title: "Hide", text: "✕" })
+          el(
+            "span",
+            { class: "part", id: "grab", tabindex: "0", role: "button", "aria-haspopup": "true", "aria-label": "Download this video" },
+            svg,
+            spin,
+            el("span", { id: "label", text: "Download this video" }),
+            el("span", { class: "caret", text: "▼" })
+          ),
+          el("span", { class: "side", id: "help", title: "Help", text: "?", tabindex: "0", role: "button", "aria-label": "Help" }),
+          el("span", { class: "side", id: "close", title: "Hide", text: "✕", tabindex: "0", role: "button", "aria-label": "Hide" })
         ),
         list
       )
     );
-    const b = { host, root, video, open: false, own: null, loading: false, dx: null, dy: null, help: false };
+    const b = { host, root, video, open: false, own: null, loading: false, dx: null, dy: null, help: false, place: sitePlace, auto: null };
     const grab = root.getElementById("grab");
     // drag: move it anywhere on the video; a short press is a click
     let down = null;
     grab.addEventListener("mousedown", (e) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || !userPress(e)) return;
       const hr = host.getBoundingClientRect();
       down = { x: e.clientX, y: e.clientY, ox: e.clientX - hr.left, oy: e.clientY - hr.top, moved: false };
       e.preventDefault();
@@ -489,24 +546,55 @@
       b.dy = e.clientY - down.oy - r.top;
       placeOne(b);
     });
-    const up = () => {
-      if (!down) return;
+    const up = (e) => {
+      if (!down || !userPress(e)) return;
       const wasDrag = down.moved;
       down = null;
       root.getElementById("main").classList.remove("drag");
-      if (!wasDrag) clicked(b);
+      if (!wasDrag) return clicked(b);
+      // dropped: it goes to the nearest edge of the video, and stays there on
+      // this site (its other videos, next time too)
+      const r = video.getBoundingClientRect();
+      const main = root.getElementById("main").getBoundingClientRect();
+      const roomX = Math.max(1, r.width - main.width - 16);
+      const roomY = Math.max(1, r.height - main.height - 16);
+      const at = { x: Math.min(1, Math.max(0, (b.dx - 8) / roomX)), y: Math.min(1, Math.max(0, (b.dy - 8) / roomY)) };
+      b.place = snapToEdge(at);
+      b.dx = null;
+      b.dy = null;
+      keepPlace(b.place);
+      placeOne(b);
     };
     addEventListener("mouseup", up);
     // heard here when the page's player keeps it from the window (early.js)
     root.addEventListener("mouseup", up);
-    root.getElementById("help").addEventListener("click", () => {
+    const press = (id, run) => {
+      const x = root.getElementById(id);
+      x.addEventListener("click", (e) => userPress(e) && run());
+      x.addEventListener("keydown", (e) => {
+        if ((e.key === "Enter" || e.key === " ") && e.isTrusted) {
+          e.preventDefault();
+          e.stopPropagation();
+          run();
+        }
+      });
+    };
+    press("help", () => {
       b.help = !b.help;
       b.open = true;
       renderOne(b);
     });
-    root.getElementById("close").addEventListener("click", () => {
+    press("close", () => {
       b.dismissed = true;
       host.remove();
+    });
+    // the keyboard: Enter / Space opens it like a click
+    grab.addEventListener("keydown", (e) => {
+      if ((e.key === "Enter" || e.key === " ") && e.isTrusted) {
+        e.preventDefault();
+        e.stopPropagation();
+        clicked(b);
+      }
     });
     // one player for many videos (the previews of a home page, a feed): a
     // new video in it forgets what was found for the one before
@@ -717,9 +805,13 @@
       box.appendChild(
         el("div", {
           class: "help",
-          text: "Click the button to choose a quality. Drag it to move it on the video. ✕ hides it for this video. Its size can be changed in the Ezoo Download add-in menu.",
+          text: "Click the button (or press Enter on it) to choose a quality. Drag it to an edge of the video: it stays there on this site. ✕ hides it for this video. Its size can be changed in the Ezoo Download add-in menu.",
         })
       );
+      const never = el("div", { class: "act", tabindex: "0", role: "button", text: "Don't show the button on this site" });
+      never.addEventListener("click", (e) => userPress(e) && noButtonOnThisSite());
+      never.addEventListener("keydown", (e) => e.key === "Enter" && e.isTrusted && noButtonOnThisSite());
+      box.appendChild(never);
     }
     if (note) {
       // dir "auto": a note in Arabic reads right to left (its full stop at the end)
@@ -784,7 +876,17 @@
         el("span", { class: "num", text: m.disabled ? "" : `${++n}.` }),
         el("div", { class: "body" }, t, el("div", { class: "s", text: sub }))
       );
-      if (!m.disabled) row.addEventListener("click", () => download(b, m));
+      if (!m.disabled) {
+        row.setAttribute("tabindex", "0");
+        row.setAttribute("role", "button");
+        row.addEventListener("click", () => download(b, m));
+        row.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && e.isTrusted) {
+            e.preventDefault();
+            download(b, m);
+          }
+        });
+      }
       box.appendChild(row);
     });
   }
@@ -946,6 +1048,60 @@
     );
   }
 
+  // a free place (fractions of the video, after a drag) put on its nearest
+  // edge; near a corner, in the corner
+  function snapToEdge(at) {
+    const d = { left: at.x, right: 1 - at.x, top: at.y, bottom: 1 - at.y };
+    const edge = Object.keys(d).reduce((a, k) => (d[a] <= d[k] ? a : k));
+    const c = (n) => (n < 0.08 ? 0 : n > 0.92 ? 1 : n);
+    if (edge === "left") return { x: 0, y: c(at.y) };
+    if (edge === "right") return { x: 1, y: c(at.y) };
+    if (edge === "top") return { x: c(at.x), y: 0 };
+    return { x: c(at.x), y: 1 };
+  }
+
+  // is one of the page's own buttons (much smaller than the video) under this spot?
+  function onPageControl(b, left, top, w, h, r) {
+    const area = (x) => Math.max(0, x.width) * Math.max(0, x.height);
+    const small = (e) => area(e.getBoundingClientRect()) < area(r) / 5;
+    const points = [[left + w / 2, top + h / 2], [left + 3, top + 3], [left + w - 3, top + 3]];
+    for (const [px, py] of points) {
+      let list = [];
+      try {
+        list = document.elementsFromPoint(px, py);
+      } catch (_) {
+        return false;
+      }
+      for (const e of list) {
+        if (e === b.host) continue;
+        if (e === b.video || e.contains(b.video)) break;
+        const c = e.closest && e.closest("button, [role=button], a[href], input, select");
+        if (c && !c.contains(b.video) && small(c)) return true;
+      }
+    }
+    return false;
+  }
+
+  // where the button sits on its video: the user's place on this site, else
+  // the top right corner, or the top left one when a button of the page's
+  // own is there (kept a moment, so it does not jump about)
+  function spotFor(b, r, w, h) {
+    if (b.place) return b.place;
+    const now = Date.now();
+    if (b.auto && b.auto.v === b.video && now - b.auto.t < 600) return b.auto.at;
+    let at = { x: 1, y: 0 };
+    for (const c of [{ x: 1, y: 0 }, { x: 0, y: 0 }]) {
+      const left = r.left + 8 + c.x * Math.max(0, r.width - w - 16);
+      const top = r.top + 8 + c.y * Math.max(0, r.height - h - 16);
+      if (!onPageControl(b, left, top, w, h, r)) {
+        at = c;
+        break;
+      }
+    }
+    b.auto = { v: b.video, at, t: now };
+    return at;
+  }
+
   function placeOne(b) {
     const fs = document.fullscreenElement || document.webkitFullscreenElement;
     const r = b.video.getBoundingClientRect();
@@ -964,8 +1120,17 @@
     const mainRect = b.root.getElementById("main").getBoundingClientRect();
     const w = mainRect.width || 62;
     const h = mainRect.height || 22;
-    let x = b.dx == null ? r.right - w - 8 : r.left + b.dx;
-    let y = b.dy == null ? r.top + 8 : r.top + b.dy;
+    let x;
+    let y;
+    if (b.dx != null) {
+      // being dragged
+      x = r.left + b.dx;
+      y = r.top + b.dy;
+    } else {
+      const at = spotFor(b, r, w, h);
+      x = r.left + 8 + at.x * Math.max(0, r.width - w - 16);
+      y = r.top + 8 + at.y * Math.max(0, r.height - h - 16);
+    }
     x = Math.max(r.left, Math.min(x, r.right - 60));
     y = Math.max(r.top, Math.min(y, r.bottom - h));
     const left = Math.max(4, Math.min(x, innerWidth - w));

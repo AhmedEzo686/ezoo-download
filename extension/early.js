@@ -11,11 +11,17 @@
   const roots = (globalThis.__ezooRoots = globalThis.__ezooRoots || new WeakMap());
   const KEEP = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "auxclick", "contextmenu"];
   const GIVE = new Set(["mousedown", "mouseup", "click", "dblclick"]);
-  const replayed = new WeakSet();
+  // the copies made here: the buttons take them as the user's own presses
+  const replayed = (globalThis.__ezooReplayed = globalThis.__ezooReplayed || new WeakSet());
   const route = (e) => {
     if (replayed.has(e)) return;
     const root = e.target && roots.get(e.target);
     if (!root || typeof e.clientX !== "number") return;
+    // a press the page's script made up: never reaches the buttons
+    if (!e.isTrusted) {
+      e.stopImmediatePropagation();
+      return;
+    }
     const inner = root.elementFromPoint(e.clientX, e.clientY);
     // the add-in's own text boxes and lists work as usual
     if (inner && /^(INPUT|SELECT|TEXTAREA|OPTION|LABEL)$/.test(inner.tagName)) return;
