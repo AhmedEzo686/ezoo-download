@@ -29,5 +29,6 @@ aria2 - https://github.com/aria2/aria2
   code is available at https://github.com/aria2/aria2.
 
 Rust crates (tokio, reqwest, serde, chrono, tiny_http, arboard, rfd, tray-icon,
-regex, sha2, aes, cbc, url, directories, filetime and their dependencies)
-  MIT and/or Apache-2.0 licenses.
+regex, sha2, aes, cbc, url, directories, filetime, ring, native-tls,
+tokio-native-tls and their dependencies)
+  MIT, Apache-2.0 and/or ISC licenses.

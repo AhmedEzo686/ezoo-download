@@ -603,9 +603,12 @@ impl Manager {
         let rec = entry.rec;
         let data_dir = self.data_dir.clone();
         let me = self.clone();
+        self.torrent_live.lock_ok().remove(&id);
         self.rt.spawn(async move {
             // give running connections a moment to close their file handles
             tokio::time::sleep(Duration::from_millis(800)).await;
+            // (a torrent's last round may have filled it again meanwhile)
+            me.torrent_live.lock_ok().remove(&id);
             for _ in 0..5 {
                 let mut ok = remove_temp_files(&rec, &me.paths_in_use());
                 if delete_file && rec.status == Status::Completed && rec.kind == DownloadKind::Torrent {
