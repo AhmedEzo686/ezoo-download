@@ -701,6 +701,38 @@ const AR: &[(&str, &str)] = &[
     ("The add-in has one tab for the whole video and one for a part of it, and it never downloads the video that played before in the same player.", "إضافة المتصفح فيها تبويب للفيديو كامل وتبويب لجزء منه، ولا تحمّل أبدًا الفيديو الذي كان يعمل قبله في نفس المشغل."),
     ("The right-click menu of the list is a real Windows menu that is never cut off, in the look of the program.", "قائمة الزر الأيمن في القائمة أصبحت قائمة Windows حقيقية لا تُقطع أبدًا، بنفس شكل البرنامج."),
     ("Sites that refuse extra connections: the download goes on with fewer. Up to 64 connections. A site that asks for a robot check says so, and the Firefox add-on is fetched from the official page when it is missing.", "المواقع التي ترفض الاتصالات الإضافية: التحميل يكمل باتصالات أقل. حتى 64 اتصالًا. الموقع الذي يطلب التأكد من أنك لست روبوتًا يوضح ذلك، وإضافة Firefox تُجلب من الصفحة الرسمية عندما تكون غير موجودة."),
+    ("Link between the browsers and Ezoo Download:", "الربط بين المتصفحات و Ezoo Download:"),
+    ("The program answers the add-in", "البرنامج يرد على الإضافة"),
+    ("Its usual port is kept by another program or by Windows: the add-in uses the program's own port (nothing to do).", "المنفذ المعتاد يستخدمه برنامج آخر أو ويندوز: الإضافة تستخدم المنفذ الخاص بالبرنامج (لا داعي لعمل شيء)."),
+    ("The browsers' helper is in place", "مساعد المتصفحات موجود"),
+    ("{} knows the helper", "{} يعرف المساعد"),
+    ("An add-in talked to the program in the last 15 minutes", "تواصلت إضافة مع البرنامج خلال آخر 15 دقيقة"),
+    ("...through the browsers' helper", "...عن طريق مساعد المتصفحات"),
+    ("No add-in talked lately: open the browser, make sure the Ezoo Download add-in is on (Extensions page), then click a download link and test again.", "لم تتواصل أي إضافة مؤخرًا: افتح المتصفح وتأكد أن إضافة Ezoo Download مفعّلة (صفحة الإضافات)، ثم اضغط على رابط تحميل واختبر مرة أخرى."),
+    ("The add-in talks through the port only. In Firefox: the add-in's window > \"Connect directly\". In other browsers: reload the add-in once (Extensions page).", "الإضافة تتواصل عن طريق المنفذ فقط. في فايرفوكس: نافذة الإضافة > \"Connect directly\". في المتصفحات الأخرى: أعد تحميل الإضافة مرة واحدة (صفحة الإضافات)."),
+    ("Everything works.", "كل شيء يعمل."),
+    ("Please enter a valid http://, https:// or ftp:// address", "من فضلك أدخل رابطًا صحيحًا يبدأ بـ http:// أو https:// أو ftp://"),
+    ("This is not a checksum: paste its MD5, SHA-1, SHA-256, SHA-384 or SHA-512 value", "هذا ليس رمز تحقق: الصق قيمة MD5 أو SHA-1 أو SHA-256 أو SHA-384 أو SHA-512"),
+    ("The torrent goes on with the files checked (it starts again for a moment).", "التورنت يكمل بالملفات المحددة (يتوقف لحظة ثم يبدأ من جديد)."),
+    ("Tracker added.", "تمت إضافة المتتبع."),
+    ("This is not a tracker address (udp://, http:// or https://).", "هذا ليس عنوان متتبع (udp:// أو http:// أو https://)."),
+    ("Every piece on the disk is checked again, then it goes on.", "يُعاد فحص كل جزء على القرص، ثم يكمل."),
+    ("The magnet link was copied.", "تم نسخ رابط magnet."),
+    ("The magnet link could not be made.", "تعذر إنشاء رابط magnet."),
+    ("Sent to others: {} (ratio {})", "تم الإرسال للآخرين: {} (النسبة {})"),
+    ("Checking the file", "جارٍ فحص الملف"),
+    ("The downloaded file is damaged: its checksum is not the one it should have. Click Redownload.", "الملف الذي تم تحميله تالف: رمز التحقق الخاص به ليس هو المطلوب. اضغط إعادة التحميل."),
+    ("The file on the server changed since the download began, so its parts would not fit together. Click Redownload.", "الملف على الخادم تغيّر منذ بدء التحميل، فأجزاؤه لن تتطابق معًا. اضغط إعادة التحميل."),
+    ("The link opens one web page after another, not a file. Open it in the browser and download it from there.", "الرابط يفتح صفحة ويب بعد أخرى وليس ملفًا. افتحه في المتصفح وحمّله من هناك."),
+    ("This torrent has file names that lead out of its folder, so it was stopped to keep your other files safe.", "هذا التورنت فيه أسماء ملفات تخرج خارج مجلده، لذلك تم إيقافه لحماية ملفاتك الأخرى."),
+    ("Keyboard shortcuts\n\nCtrl+N or Ctrl+V: add a download (a copied address)\nCtrl+B: add several addresses\nEnter: open the download (its window, or the file)\nAlt+Enter: properties\nF2: rename / move the file\nCtrl+R: resume\nCtrl+S: stop\nCtrl+O: open the file\nCtrl+E: open its folder\nCtrl+C: copy the address\nDelete: delete\nUp / Down, Home / End: move in the list (with Shift: select)\nCtrl+A: select all\nCtrl+F, F3: find, find the next", "اختصارات لوحة المفاتيح\n\nCtrl+N أو Ctrl+V: إضافة تحميل (رابط منسوخ)\nCtrl+B: إضافة عدة روابط\nEnter: فتح التحميل (نافذته أو الملف)\nAlt+Enter: الخصائص\nF2: إعادة تسمية / نقل الملف\nCtrl+R: استئناف\nCtrl+S: إيقاف\nCtrl+O: فتح الملف\nCtrl+E: فتح مجلده\nCtrl+C: نسخ الرابط\nDelete: حذف\nأعلى / أسفل، Home / End: التنقل في القائمة (مع Shift: تحديد)\nCtrl+A: تحديد الكل\nCtrl+F و F3: بحث، البحث عن التالي"),
+    ("FTP and FTPS links download like web links: in parts, with resume, and with the user name and password kept apart from the address.", "روابط FTP و FTPS تُحمَّل مثل روابط الويب: على أجزاء، مع الاستكمال، واسم المستخدم وكلمة المرور محفوظان بعيدًا عن الرابط."),
+    ("Checksum: paste an MD5, SHA-1 or SHA-256 value in Download File Info (or the site gives one) and the file is checked when it finishes.", "رمز التحقق: الصق قيمة MD5 أو SHA-1 أو SHA-256 في معلومات ملف التحميل (أو يعطيها الموقع) ويُفحص الملف عند انتهائه."),
+    ("Torrents have their own tab in Properties: the files (choose them while it runs), the people, the trackers and the pieces. Add a tracker, check the files again, copy the magnet link, first and last pieces first, and stop sharing at a ratio you choose.", "للتورنت تبويب خاص في الخصائص: الملفات (اخترها أثناء التحميل)، والأجهزة المتصلة، والمتتبعات، والأجزاء. أضف متتبعًا، وأعد فحص الملفات، وانسخ رابط magnet، وحمّل الجزء الأول والأخير أولًا، وأوقف المشاركة عند النسبة التي تختارها."),
+    ("Safer resume: a file that changed on the server is noticed instead of being joined with the old parts, links that lead through a few pages to the file are followed, and downloads that need a form sent from the browser work.", "استكمال أكثر أمانًا: الملف الذي تغيّر على الخادم يُكتشف بدل أن يُدمج مع الأجزاء القديمة، والروابط التي تمر بعدة صفحات قبل الملف تُتابع، والتحميلات التي تحتاج إرسال نموذج من المتصفح تعمل."),
+    ("The speed limit can work only while you use the computer, and a scheduled queue can wake the computer from sleep to start.", "حد السرعة يمكن أن يعمل فقط أثناء استخدامك للكمبيوتر، وقائمة الانتظار المجدولة يمكنها إيقاظ الكمبيوتر من وضع السكون لتبدأ."),
+    ("Keyboard shortcuts for the list (F1 shows them), a command line for other programs and scripts, and Help > Add Ezoo Download to my browser > Test the link checks the add-in step by step.", "اختصارات لوحة المفاتيح للقائمة (F1 يعرضها)، وسطر أوامر للبرامج والسكربتات الأخرى، ومساعدة > إضافة Ezoo Download إلى متصفحي > اختبار الربط يفحص الإضافة خطوة بخطوة."),
+    ("The add-in works in private windows too (allow it there in the browser), keeps the browser's own download when the program is closed, and its video button can be moved or hidden on a site.", "الإضافة تعمل في النوافذ الخاصة أيضًا (اسمح لها بذلك من المتصفح)، وتترك التحميل للمتصفح نفسه إذا كان البرنامج مغلقًا، وزر الفيديو يمكن نقله أو إخفاؤه في أي موقع."),
 ];
 
 #[cfg(test)]
@@ -729,6 +761,17 @@ mod tests {
         }
         assert_eq!(index_of("xx"), 0);
         assert_eq!(effective("es"), "es");
+    }
+
+    #[test]
+    fn whats_new_and_shortcuts_in_every_language() {
+        let texts: Vec<&str> = crate::extra::WHATS_NEW.iter().copied().chain([crate::SHORTCUTS, "Checking the file"]).collect();
+        for en in texts {
+            assert!(lookup(en).is_some(), "ar: {en}");
+            for (code, _) in LANGS.iter().skip(2) {
+                assert!(table(code).expect("table").contains_key(en), "{code}: {en}");
+            }
+        }
     }
 }
 

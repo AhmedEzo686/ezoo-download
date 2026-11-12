@@ -520,5 +520,19 @@
  "Aurora glass": "Cristal aurora",
  "Soft clay": "Arcilla suave",
  "Cyber neon": "Neón cyber",
- "Subtitles too": "También subtítulos"
+ "Subtitles too": "También subtítulos",
+ "Checksum": "Suma de comprobación",
+ "MD5 / SHA-1 / SHA-256 (optional)": "MD5 / SHA-1 / SHA-256 (opcional)",
+ "Limit only while I use the computer (full speed after a minute without the mouse or keyboard)": "Limitar solo mientras uso el ordenador (velocidad completa tras un minuto sin ratón ni teclado)",
+ "Wake the computer from sleep to start it": "Despertar el ordenador de la suspensión para iniciarla",
+ "Test the link": "Probar la conexión",
+ "Files": "Archivos",
+ "People": "Pares",
+ "Trackers": "Trackers",
+ "Add tracker": "Añadir tracker",
+ "First and last pieces first": "Primeras y últimas piezas primero",
+ "Check the files again": "Volver a comprobar los archivos",
+ "Copy magnet link": "Copiar enlace magnet",
+ "Stop sharing once it sent (times what it received)": "Dejar de compartir tras enviar (veces lo recibido)",
+ "No limit": "Sin límite"
 }

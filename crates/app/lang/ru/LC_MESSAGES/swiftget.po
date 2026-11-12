@@ -484,6 +484,12 @@ msgstr "Запомнить этот путь для категории \"{}\""
 msgid "optional note"
 msgstr "примечание (необязательно)"
 
+msgid "Checksum"
+msgstr "Контрольная сумма"
+
+msgid "MD5 / SHA-1 / SHA-256 (optional)"
+msgstr "MD5 / SHA-1 / SHA-256 (необязательно)"
+
 msgid "Use authorization"
 msgstr "Использовать авторизацию"
 
@@ -609,6 +615,27 @@ msgstr "Показывать окно \"Загрузка завершена\""
 
 msgid "You get 30 seconds to cancel before the computer shuts down, sleeps or hibernates."
 msgstr "У вас будет 30 секунд на отмену, прежде чем компьютер выключится или перейдёт в спящий режим или гибернацию."
+
+msgid "Files"
+msgstr "Файлы"
+
+msgid "People"
+msgstr "Участники"
+
+msgid "Trackers"
+msgstr "Трекеры"
+
+msgid "Add tracker"
+msgstr "Добавить трекер"
+
+msgid "First and last pieces first"
+msgstr "Сначала первые и последние фрагменты"
+
+msgid "Check the files again"
+msgstr "Проверить файлы заново"
+
+msgid "Copy magnet link"
+msgstr "Копировать magnet-ссылку"
 
 msgid "<< Hide details"
 msgstr "<< Скрыть подробности"
@@ -810,6 +837,9 @@ msgstr "Сб"
 
 msgid "Sun"
 msgstr "Вс"
+
+msgid "Wake the computer from sleep to start it"
+msgstr "Выводить компьютер из сна для запуска"
 
 msgid "Start the queue when Ezoo Download starts"
 msgstr "Запускать очередь при запуске Ezoo Download"
@@ -1324,6 +1354,9 @@ msgstr "Включить ограничитель скорости"
 msgid "Always turn on the speed limiter when Ezoo Download starts"
 msgstr "Всегда включать ограничитель при запуске Ezoo Download"
 
+msgid "Limit only while I use the computer (full speed after a minute without the mouse or keyboard)"
+msgstr "Ограничивать только пока я пользуюсь компьютером (полная скорость после минуты без мыши и клавиатуры)"
+
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "У каждой загрузки может быть свой лимит: её окно хода загрузки > вкладка «Ограничитель скорости»."
 
@@ -1338,6 +1371,12 @@ msgstr "Раздавать завершённый торрент ещё (мин�
 
 msgid "0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent."
 msgstr "0 = остановиться, как только все файлы получены. Раздача подольше помогает тем, кто качает тот же торрент."
+
+msgid "Stop sharing once it sent (times what it received)"
+msgstr "Прекращать раздачу, когда отдано (во столько раз больше полученного)"
+
+msgid "No limit"
+msgstr "Без ограничения"
 
 msgid "Maximum upload speed (KB/s, 0 = no limit)"
 msgstr "Наибольшая скорость отдачи (КБ/с, 0 = без ограничения)"
@@ -1440,6 +1479,9 @@ msgstr "Нажмите на свой браузер:"
 
 msgid "Almost done:"
 msgstr "Почти готово:"
+
+msgid "Test the link"
+msgstr "Проверить связь"
 
 msgid "Repair the add-in"
 msgstr "Восстановить дополнение"

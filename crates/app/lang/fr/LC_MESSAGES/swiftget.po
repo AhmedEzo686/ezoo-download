@@ -484,6 +484,12 @@ msgstr "Mémoriser ce chemin pour la catégorie \"{}\""
 msgid "optional note"
 msgstr "note facultative"
 
+msgid "Checksum"
+msgstr "Somme de contrôle"
+
+msgid "MD5 / SHA-1 / SHA-256 (optional)"
+msgstr "MD5 / SHA-1 / SHA-256 (facultatif)"
+
 msgid "Use authorization"
 msgstr "Utiliser une authentification"
 
@@ -609,6 +615,27 @@ msgstr "Afficher la fenêtre \"Téléchargement terminé\""
 
 msgid "You get 30 seconds to cancel before the computer shuts down, sleeps or hibernates."
 msgstr "Vous avez 30 secondes pour annuler avant que l'ordinateur s'éteigne ou se mette en veille."
+
+msgid "Files"
+msgstr "Fichiers"
+
+msgid "People"
+msgstr "Pairs"
+
+msgid "Trackers"
+msgstr "Trackers"
+
+msgid "Add tracker"
+msgstr "Ajouter un tracker"
+
+msgid "First and last pieces first"
+msgstr "Premiers et derniers morceaux d'abord"
+
+msgid "Check the files again"
+msgstr "Revérifier les fichiers"
+
+msgid "Copy magnet link"
+msgstr "Copier le lien magnet"
 
 msgid "<< Hide details"
 msgstr "<< Masquer les détails"
@@ -810,6 +837,9 @@ msgstr "Sam"
 
 msgid "Sun"
 msgstr "Dim"
+
+msgid "Wake the computer from sleep to start it"
+msgstr "Sortir l'ordinateur de veille pour la démarrer"
 
 msgid "Start the queue when Ezoo Download starts"
 msgstr "Démarrer la file au lancement d'Ezoo Download"
@@ -1324,6 +1354,9 @@ msgstr "Activer le limiteur de vitesse"
 msgid "Always turn on the speed limiter when Ezoo Download starts"
 msgstr "Toujours activer le limiteur au démarrage d'Ezoo Download"
 
+msgid "Limit only while I use the computer (full speed after a minute without the mouse or keyboard)"
+msgstr "Limiter seulement quand j'utilise l'ordinateur (pleine vitesse après une minute sans souris ni clavier)"
+
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "Chaque téléchargement peut avoir sa propre limite : sa fenêtre de progression > onglet Limiteur de vitesse."
 
@@ -1338,6 +1371,12 @@ msgstr "Continuer à partager un torrent terminé pendant (minutes)"
 
 msgid "0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent."
 msgstr "0 = s'arrêter dès que tous les fichiers sont là. Partager plus longtemps aide ceux qui téléchargent le même torrent."
+
+msgid "Stop sharing once it sent (times what it received)"
+msgstr "Arrêter le partage après avoir envoyé (fois ce qui a été reçu)"
+
+msgid "No limit"
+msgstr "Sans limite"
 
 msgid "Maximum upload speed (KB/s, 0 = no limit)"
 msgstr "Vitesse d'envoi maximale (Ko/s, 0 = sans limite)"
@@ -1440,6 +1479,9 @@ msgstr "Cliquez sur votre navigateur :"
 
 msgid "Almost done:"
 msgstr "Presque terminé :"
+
+msgid "Test the link"
+msgstr "Tester la liaison"
 
 msgid "Repair the add-in"
 msgstr "Réparer le module"

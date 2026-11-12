@@ -484,6 +484,12 @@ msgstr "تذكّر هذا المسار لتصنيف \"{}\""
 msgid "optional note"
 msgstr "ملاحظة اختيارية"
 
+msgid "Checksum"
+msgstr "رمز التحقق"
+
+msgid "MD5 / SHA-1 / SHA-256 (optional)"
+msgstr "MD5 / SHA-1 / SHA-256 (اختياري)"
+
 msgid "Use authorization"
 msgstr "استخدام تسجيل الدخول"
 
@@ -609,6 +615,27 @@ msgstr "إظهار نافذة \"اكتمل التحميل\""
 
 msgid "You get 30 seconds to cancel before the computer shuts down, sleeps or hibernates."
 msgstr "لديك 30 ثانية للإلغاء قبل إيقاف الكمبيوتر أو السكون أو الإسبات."
+
+msgid "Files"
+msgstr "الملفات"
+
+msgid "People"
+msgstr "الأجهزة المتصلة"
+
+msgid "Trackers"
+msgstr "المتتبعات"
+
+msgid "Add tracker"
+msgstr "إضافة متتبع"
+
+msgid "First and last pieces first"
+msgstr "الجزء الأول والأخير أولًا"
+
+msgid "Check the files again"
+msgstr "إعادة فحص الملفات"
+
+msgid "Copy magnet link"
+msgstr "نسخ رابط magnet"
 
 msgid "<< Hide details"
 msgstr "<< إخفاء التفاصيل"
@@ -810,6 +837,9 @@ msgstr "السبت"
 
 msgid "Sun"
 msgstr "الأحد"
+
+msgid "Wake the computer from sleep to start it"
+msgstr "إيقاظ الكمبيوتر من السكون لبدئها"
 
 msgid "Start the queue when Ezoo Download starts"
 msgstr "بدء القائمة عند تشغيل Ezoo Download"
@@ -1324,6 +1354,9 @@ msgstr "تشغيل محدد السرعة"
 msgid "Always turn on the speed limiter when Ezoo Download starts"
 msgstr "تشغيل محدد السرعة دائماً عند بدء Ezoo Download"
 
+msgid "Limit only while I use the computer (full speed after a minute without the mouse or keyboard)"
+msgstr "حدّد السرعة فقط أثناء استخدامي للكمبيوتر (سرعة كاملة بعد دقيقة دون الفأرة أو لوحة المفاتيح)"
+
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "يمكن أن يكون لكل تحميل حد خاص: نافذة تقدّمه > تبويب محدد السرعة."
 
@@ -1338,6 +1371,12 @@ msgstr "استمرار مشاركة التورنت بعد اكتماله لمد�
 
 msgid "0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent."
 msgstr "0 = التوقف بمجرد وصول كل الملفات. المشاركة لمدة أطول تساعد الآخرين الذين يحمّلون نفس التورنت."
+
+msgid "Stop sharing once it sent (times what it received)"
+msgstr "أوقف المشاركة بعد أن يرسل (أضعاف ما استلمه)"
+
+msgid "No limit"
+msgstr "بلا حد"
 
 msgid "Maximum upload speed (KB/s, 0 = no limit)"
 msgstr "أقصى سرعة رفع (كيلوبايت/ث، 0 = بدون حد)"
@@ -1440,6 +1479,9 @@ msgstr "اضغط على متصفحك:"
 
 msgid "Almost done:"
 msgstr "خطوة أخيرة:"
+
+msgid "Test the link"
+msgstr "اختبار الربط"
 
 msgid "Repair the add-in"
 msgstr "إصلاح الإضافة"

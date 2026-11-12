@@ -484,6 +484,12 @@ msgstr "Bu yolu \"{}\" kategorisi için hatırla"
 msgid "optional note"
 msgstr "isteğe bağlı not"
 
+msgid "Checksum"
+msgstr "Sağlama toplamı"
+
+msgid "MD5 / SHA-1 / SHA-256 (optional)"
+msgstr "MD5 / SHA-1 / SHA-256 (isteğe bağlı)"
+
 msgid "Use authorization"
 msgstr "Kimlik doğrulama kullan"
 
@@ -609,6 +615,27 @@ msgstr "\"İndirme tamamlandı\" penceresini göster"
 
 msgid "You get 30 seconds to cancel before the computer shuts down, sleeps or hibernates."
 msgstr "Bilgisayar kapanmadan, uykuya geçmeden veya hazırda beklemeye geçmeden önce iptal etmek için 30 saniyeniz var."
+
+msgid "Files"
+msgstr "Dosyalar"
+
+msgid "People"
+msgstr "Eşler"
+
+msgid "Trackers"
+msgstr "İzleyiciler"
+
+msgid "Add tracker"
+msgstr "İzleyici ekle"
+
+msgid "First and last pieces first"
+msgstr "Önce ilk ve son parçalar"
+
+msgid "Check the files again"
+msgstr "Dosyaları yeniden denetle"
+
+msgid "Copy magnet link"
+msgstr "Magnet bağlantısını kopyala"
 
 msgid "<< Hide details"
 msgstr "<< Ayrıntıları gizle"
@@ -810,6 +837,9 @@ msgstr "Cmt"
 
 msgid "Sun"
 msgstr "Paz"
+
+msgid "Wake the computer from sleep to start it"
+msgstr "Başlatmak için bilgisayarı uykudan uyandır"
 
 msgid "Start the queue when Ezoo Download starts"
 msgstr "Ezoo Download açılınca kuyruğu başlat"
@@ -1324,6 +1354,9 @@ msgstr "Hız sınırlayıcıyı aç"
 msgid "Always turn on the speed limiter when Ezoo Download starts"
 msgstr "Ezoo Download açılınca hız sınırlayıcıyı her zaman aç"
 
+msgid "Limit only while I use the computer (full speed after a minute without the mouse or keyboard)"
+msgstr "Yalnızca bilgisayarı kullanırken sınırla (bir dakika fare veya klavye kullanılmazsa tam hız)"
+
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "Her indirmenin kendi sınırı da olabilir: ilerleme penceresi > Hız sınırlayıcı sekmesi."
 
@@ -1338,6 +1371,12 @@ msgstr "Biten torrenti paylaşmaya devam etme süresi (dakika)"
 
 msgid "0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent."
 msgstr "0 = tüm dosyalar gelir gelmez dur. Daha uzun paylaşmak aynı torrenti indiren diğerlerine yardım eder."
+
+msgid "Stop sharing once it sent (times what it received)"
+msgstr "Gönderdikten sonra paylaşımı durdur (alınanın katı)"
+
+msgid "No limit"
+msgstr "Sınır yok"
 
 msgid "Maximum upload speed (KB/s, 0 = no limit)"
 msgstr "En yüksek yükleme hızı (KB/s, 0 = sınırsız)"
@@ -1440,6 +1479,9 @@ msgstr "Tarayıcınıza tıklayın:"
 
 msgid "Almost done:"
 msgstr "Neredeyse bitti:"
+
+msgid "Test the link"
+msgstr "Bağlantıyı test et"
 
 msgid "Repair the add-in"
 msgstr "Eklentiyi onar"

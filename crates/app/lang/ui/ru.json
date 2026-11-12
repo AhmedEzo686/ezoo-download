@@ -520,5 +520,19 @@
  "Aurora glass": "Северное стекло",
  "Soft clay": "Мягкая глина",
  "Cyber neon": "Кибер-неон",
- "Subtitles too": "И субтитры"
+ "Subtitles too": "И субтитры",
+ "Checksum": "Контрольная сумма",
+ "MD5 / SHA-1 / SHA-256 (optional)": "MD5 / SHA-1 / SHA-256 (необязательно)",
+ "Limit only while I use the computer (full speed after a minute without the mouse or keyboard)": "Ограничивать только пока я пользуюсь компьютером (полная скорость после минуты без мыши и клавиатуры)",
+ "Wake the computer from sleep to start it": "Выводить компьютер из сна для запуска",
+ "Test the link": "Проверить связь",
+ "Files": "Файлы",
+ "People": "Участники",
+ "Trackers": "Трекеры",
+ "Add tracker": "Добавить трекер",
+ "First and last pieces first": "Сначала первые и последние фрагменты",
+ "Check the files again": "Проверить файлы заново",
+ "Copy magnet link": "Копировать magnet-ссылку",
+ "Stop sharing once it sent (times what it received)": "Прекращать раздачу, когда отдано (во столько раз больше полученного)",
+ "No limit": "Без ограничения"
 }

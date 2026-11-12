@@ -520,5 +520,19 @@
  "Aurora glass": "Aurora cam",
  "Soft clay": "Yumuşak kil",
  "Cyber neon": "Siber neon",
- "Subtitles too": "Altyazılar da"
+ "Subtitles too": "Altyazılar da",
+ "Checksum": "Sağlama toplamı",
+ "MD5 / SHA-1 / SHA-256 (optional)": "MD5 / SHA-1 / SHA-256 (isteğe bağlı)",
+ "Limit only while I use the computer (full speed after a minute without the mouse or keyboard)": "Yalnızca bilgisayarı kullanırken sınırla (bir dakika fare veya klavye kullanılmazsa tam hız)",
+ "Wake the computer from sleep to start it": "Başlatmak için bilgisayarı uykudan uyandır",
+ "Test the link": "Bağlantıyı test et",
+ "Files": "Dosyalar",
+ "People": "Eşler",
+ "Trackers": "İzleyiciler",
+ "Add tracker": "İzleyici ekle",
+ "First and last pieces first": "Önce ilk ve son parçalar",
+ "Check the files again": "Dosyaları yeniden denetle",
+ "Copy magnet link": "Magnet bağlantısını kopyala",
+ "Stop sharing once it sent (times what it received)": "Gönderdikten sonra paylaşımı durdur (alınanın katı)",
+ "No limit": "Sınır yok"
 }

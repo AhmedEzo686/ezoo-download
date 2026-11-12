@@ -1302,7 +1302,7 @@ fn wire_main(ui: &Ui) {
 }
 
 /// The keys of the list (F1 shows them).
-const SHORTCUTS: &str = "Keyboard shortcuts\n\n\
+pub(crate) const SHORTCUTS: &str = "Keyboard shortcuts\n\n\
 Ctrl+N or Ctrl+V: add a download (a copied address)\n\
 Ctrl+B: add several addresses\n\
 Enter: open the download (its window, or the file)\n\
@@ -3582,6 +3582,14 @@ pub(crate) fn err_text(e: &str) -> String {
         t("The new link gives another file, so nothing more was written. Right-click the download and use \"Refresh download address\".")
     } else if e.contains("the link has expired or the file was removed") {
         t("The link has expired or the file was removed. Right-click the download and use \"Refresh download address\".")
+    } else if e.contains("the downloaded file is damaged: its checksum") {
+        t("The downloaded file is damaged: its checksum is not the one it should have. Click Redownload.")
+    } else if e.contains(swiftget_engine::http_download::FILE_CHANGED) {
+        t("The file on the server changed since the download began, so its parts would not fit together. Click Redownload.")
+    } else if e.contains("the link opens one web page after another") {
+        t("The link opens one web page after another, not a file. Open it in the browser and download it from there.")
+    } else if e.contains("file names that lead out of its folder") {
+        t("This torrent has file names that lead out of its folder, so it was stopped to keep your other files safe.")
     } else {
         e.to_string()
     }
