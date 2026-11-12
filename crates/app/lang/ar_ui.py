@@ -553,4 +553,5 @@ AR = {
     "Copy magnet link": "نسخ رابط magnet",
     "Stop sharing once it sent (times what it received)": "أوقف المشاركة بعد أن يرسل (أضعاف ما استلمه)",
     "No limit": "بلا حد",
+    "For a playlist or several files added together: one window for each file (not one at the end)": "لقائمة تشغيل أو عدة ملفات مضافة معًا: نافذة لكل ملف (بدل نافذة واحدة في النهاية)",
 }

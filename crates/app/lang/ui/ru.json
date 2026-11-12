@@ -534,5 +534,6 @@
  "Check the files again": "Проверить файлы заново",
  "Copy magnet link": "Копировать magnet-ссылку",
  "Stop sharing once it sent (times what it received)": "Прекращать раздачу, когда отдано (во столько раз больше полученного)",
- "No limit": "Без ограничения"
+ "No limit": "Без ограничения",
+ "For a playlist or several files added together: one window for each file (not one at the end)": "Для плейлиста или нескольких файлов, добавленных вместе: окно для каждого файла (а не одно в конце)"
 }

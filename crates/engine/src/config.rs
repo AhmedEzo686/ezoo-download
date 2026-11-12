@@ -268,6 +268,10 @@ pub struct Settings {
     pub user_agent: String,
     pub clipboard_monitor: bool,
     pub show_complete_dialog: bool,
+    /// downloads added together (a playlist, a batch): the "Download
+    /// complete" window for each file too, not only one at the end
+    #[serde(default)]
+    pub complete_each_in_group: bool,
     /// Removing downloads from the list asks first (unticked in that question:
     /// "Don't show this again"; Options > Downloads turns it back on)
     pub ask_before_remove: bool,
@@ -453,6 +457,7 @@ impl Default for Settings {
             user_agent: DEFAULT_USER_AGENT.into(),
             clipboard_monitor: false,
             show_complete_dialog: true,
+            complete_each_in_group: false,
             ask_before_remove: true,
             remove_deletes_files: false,
             mp3_kbps: 192,

@@ -338,14 +338,25 @@ pub(crate) fn start_countdown(ui: &Ui, action: AfterDone) {
 }
 
 pub(crate) fn tick_countdown(ui: &Ui) {
+    // a file still being put together (joined, checked, moved): the time
+    // waits for it, then starts again from the beginning
+    let waiting = if ui.power.borrow().is_some() { ui.ctx.mgr.finishing() } else { None };
     let left = {
         let mut p = ui.power.borrow_mut();
         let Some((_, left)) = p.as_mut() else { return };
-        *left -= 1;
+        if waiting.is_some() {
+            *left = COUNTDOWN;
+        } else {
+            *left -= 1;
+        }
         *left
     };
     if let Some(d) = ui.countdown.upgrade() {
         d.set_seconds_left(left.max(0));
+        d.set_waiting_text(match &waiting {
+            Some(name) => tf("Waiting for \"{}\" to be finished first (its parts are being put together).", &[name]).into(),
+            None => SharedString::new(),
+        });
     }
     if left <= 0 {
         power_now(ui);
@@ -353,6 +364,13 @@ pub(crate) fn tick_countdown(ui: &Ui) {
 }
 
 fn power_now(ui: &Ui) {
+    // ("Now" while a file is still being put together: it waits for it)
+    if ui.ctx.mgr.finishing().is_some() {
+        if let Some(p) = ui.power.borrow_mut().as_mut() {
+            p.1 = 1;
+        }
+        return;
+    }
     let Some((action, _)) = ui.power.borrow_mut().take() else { return };
     if let Some(d) = ui.countdown.upgrade() {
         let _ = d.hide();
@@ -373,7 +391,8 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-pub(crate) const WHATS_NEW: [&str; 18] = [
+pub(crate) const WHATS_NEW: [&str; 19] = [
+    "The Site Grabber finds the files behind download links that show no file name and asks the server for their real names and sizes, a playlist shows one \"Download complete\" window at the end instead of one for every file, and the computer is never shut down or put to sleep while a file is still being put together.",
     "Torrents are shared by the program itself now, with no helper program: they start sooner, use less of the computer, and a stopped torrent goes on after a restart without checking all its pieces again.",
     "FTP and FTPS links download like web links: in parts, with resume, and with the user name and password kept apart from the address.",
     "Checksum: paste an MD5, SHA-1 or SHA-256 value in Download File Info (or the site gives one) and the file is checked when it finishes.",
@@ -640,11 +659,13 @@ pub(crate) fn import_list(ui: &Ui, kind: &str) {
         return message(&t("No download addresses were found in this file."));
     }
     let mut added = 0;
+    let group = Some(ui.ctx.mgr.new_group());
     for it in items {
         if ui.ctx.mgr.find_url(&it.url).is_some() {
             continue;
         }
         ui.ctx.mgr.add(NewDownload {
+            group,
             url: it.url,
             file_name: it.file_name,
             headers: RequestHeaders {

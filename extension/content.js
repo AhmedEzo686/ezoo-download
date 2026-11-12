@@ -1381,6 +1381,21 @@
       for (const el of root.querySelectorAll("img[src], video[src], audio[src], source[src], embed[src]")) {
         if (inSel(el)) add(el.src, el.alt || el.title || "");
       }
+      // buttons and boxes that keep their file's address in data-* (many
+      // download pages): made absolute against the page
+      for (const el of root.querySelectorAll("[data-href], [data-url], [data-download], [data-file], [data-link]")) {
+        if (!inSel(el)) continue;
+        for (const k of ["href", "url", "download", "file", "link"]) {
+          const v = el.dataset && el.dataset[k];
+          if (v && !/^(javascript|data):/i.test(v)) {
+            try {
+              add(new URL(v, location.href).href, el.innerText || el.title || "");
+            } catch (_) {
+              /* not an address */
+            }
+          }
+        }
+      }
     }
     // addresses written as plain text (pages that show a list of links, a
     // note or a paste): what the user sees is what is collected

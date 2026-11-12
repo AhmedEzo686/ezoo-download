@@ -22,7 +22,7 @@ use anyhow::anyhow;
 use chrono::{Datelike, Timelike, Utc};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use tokio::runtime::Handle;
@@ -470,6 +470,7 @@ impl Manager {
             queue: req.queue,
             auto_name,
             description: req.description.clone().filter(|d| !d.trim().is_empty()),
+            group: req.group,
             speed_limit_kb: None,
             on_complete: AfterDone::Nothing,
             downloaded: 0,
@@ -1085,6 +1086,44 @@ impl Manager {
     }
 
     /// Shut down / sleep / hibernate asked for (the app shows a countdown first).
+    /// A new number for downloads added together (a playlist, a batch).
+    pub fn new_group(&self) -> u64 {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let base = Utc::now().timestamp_millis().max(1) as u64;
+        base.wrapping_mul(1000) + NEXT.fetch_add(1, Ordering::Relaxed) % 1000
+    }
+
+    /// How the downloads added together with others are doing: (all,
+    /// finished, failed, still running or waiting).
+    pub fn group_state(&self, group: u64) -> (usize, usize, usize, bool) {
+        let inner = self.inner.lock_ok();
+        let mut s = (0, 0, 0, false);
+        for e in inner.entries.values().filter(|e| e.rec.group == Some(group)) {
+            s.0 += 1;
+            match e.rec.status {
+                Status::Completed => s.1 += 1,
+                Status::Failed => s.2 += 1,
+                _ => {}
+            }
+            if e.task.is_some() || e.rec.status == Status::Queued {
+                s.3 = true;
+            }
+        }
+        s
+    }
+
+    /// A download still putting its file together (joining its parts,
+    /// converting, checking it, moving it into its folder): its name. The
+    /// computer is not shut down while there is one.
+    pub fn finishing(&self) -> Option<String> {
+        let inner = self.inner.lock_ok();
+        inner
+            .entries
+            .values()
+            .find(|e| e.task.is_some() && (e.progress.assembling.load(Ordering::Relaxed) || e.progress.step.load(Ordering::Relaxed) != 0))
+            .map(|e| e.rec.file_name.clone())
+    }
+
     pub fn take_power_request(&self) -> Option<AfterDone> {
         self.inner.lock_ok().power_request.take()
     }
@@ -2346,6 +2385,10 @@ impl Manager {
             }
         }
         let _ = std::fs::create_dir_all(&save_dir);
+        // every byte on the disk before the file is called done (Windows may
+        // still hold some in memory: a shutdown right after would lose them)
+        let p2 = part.clone();
+        tokio::task::spawn_blocking(move || std::fs::OpenOptions::new().write(true).open(&p2).and_then(|f| f.sync_all())).await?.ok();
         let (p2, d2, n2) = (part.clone(), save_dir.clone(), file_name.clone());
         let (target, moved) = tokio::task::spawn_blocking(move || move_into_place(&p2, &d2, &n2)).await?;
         if let Some(name) = target.file_name().and_then(|n| n.to_str()).filter(|n| *n != file_name) {
@@ -2362,6 +2405,8 @@ impl Manager {
                 progress.set_step(None);
                 return Err(e);
             }
+            let t2 = target.clone();
+            tokio::task::spawn_blocking(move || std::fs::OpenOptions::new().write(true).open(&t2).and_then(|f| f.sync_all())).await?.ok();
             let _ = std::fs::remove_file(&part);
         }
         progress.set_step(None);
@@ -2933,6 +2978,7 @@ fn view_of(e: &Entry, with_parts: bool) -> DownloadView {
         queue: e.rec.queue,
         finished_at: e.rec.finished_at,
         description: e.rec.description.clone(),
+        group: e.rec.group,
         checksum: e.rec.checksum.clone(),
         speed_limit_kb: e.rec.speed_limit_kb,
         on_complete: e.rec.on_complete,

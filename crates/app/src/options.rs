@@ -86,6 +86,7 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_show_start_dialog(s.show_start_dialog);
     d.set_start_while_info(s.start_while_info);
     d.set_complete_dialog(s.show_complete_dialog);
+    d.set_complete_each(s.complete_each_in_group);
     d.set_ask_remove(s.ask_before_remove);
     d.set_subtitles(s.subtitles);
     d.set_subtitle_langs(s.subtitle_langs.clone().into());
@@ -195,6 +196,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.show_start_dialog = d.get_show_start_dialog();
     s.start_while_info = d.get_start_while_info();
     s.show_complete_dialog = d.get_complete_dialog();
+    s.complete_each_in_group = d.get_complete_each();
     s.ask_before_remove = d.get_ask_remove();
     s.subtitles = d.get_subtitles();
     s.subtitle_langs = d.get_subtitle_langs().trim().chars().take(60).collect();

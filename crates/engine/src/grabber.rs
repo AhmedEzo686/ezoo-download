@@ -162,7 +162,29 @@ fn allowed(opts: &GrabOptions, url: &str) -> bool {
     opts.include.iter().all(|p| p.is_empty()) || opts.include.iter().any(|p| !p.is_empty() && wildcard_match(p, url))
 }
 
-async fn fetch_page(client: &Client, url: &str, opts: &GrabOptions) -> Option<(String, String)> {
+/// What an address gave: a page to read, or a file (its name from the server).
+enum Fetched {
+    Page(String, String),
+    File { url: String, name: String },
+}
+
+/// The name a file answer gives itself (the server's, else its address's).
+fn answer_name(resp: &reqwest::Response) -> String {
+    resp.headers()
+        .get(reqwest::header::CONTENT_DISPOSITION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(filename::from_content_disposition)
+        .or_else(|| filename::from_url(resp.url().as_str()))
+        .map(|n| filename::sanitize(&n))
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "download".into())
+}
+
+fn is_page_type(ct: &str) -> bool {
+    ct.is_empty() || ct.contains("html") || ct.contains("xml")
+}
+
+async fn fetch_page(client: &Client, url: &str, opts: &GrabOptions) -> Option<Fetched> {
     let resp = request(client, url, &opts.headers, &opts.user_agent).send_ordered().await.ok()?;
     if !resp.status().is_success() {
         return None;
@@ -173,8 +195,17 @@ async fn fetch_page(client: &Client, url: &str, opts: &GrabOptions) -> Option<(S
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if !(ct.is_empty() || ct.contains("html") || ct.contains("xml")) {
-        return None;
+    let attached = resp
+        .headers()
+        .get(reqwest::header::CONTENT_DISPOSITION)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.to_ascii_lowercase().contains("attachment"));
+    // an address with no file name of its own ("get.php?id=5", "/file/abc")
+    // that answers with a file: a file (only its first bytes were read)
+    if attached || !is_page_type(&ct) {
+        // no extension in the name: the one of its type ("77" + application/pdf)
+        let name = filename::ensure_extension(answer_name(&resp), Some(&ct));
+        return Some(Fetched::File { url: resp.url().to_string(), name });
     }
     let final_url = resp.url().to_string();
     // read at most 4 MB of a page
@@ -186,8 +217,49 @@ async fn fetch_page(client: &Client, url: &str, opts: &GrabOptions) -> Option<(S
             break;
         }
     }
-    Some((final_url, String::from_utf8_lossy(&body).into_owned()))
+    Some(Fetched::Page(final_url, String::from_utf8_lossy(&body).into_owned()))
 }
+
+/// What a link turned out to be when the server was asked.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Checked {
+    /// a file: the server's name for it and its size
+    File { name: String, size: Option<u64> },
+    /// a web page
+    Page,
+    /// no good (not found, refused...): why, in short
+    Gone(String),
+}
+
+/// Ask the server what a link is, without downloading it.
+pub async fn check_link(client: &Client, url: &str, headers: &RequestHeaders, ua: &str) -> Checked {
+    let asked = tokio::time::timeout(std::time::Duration::from_secs(20), crate::http::probe_quick(client, url, headers, ua)).await;
+    crate::http::drop_kept(url);
+    match asked {
+        Ok(Ok(p)) => {
+            let ct = p.content_type.clone().unwrap_or_default().to_ascii_lowercase();
+            if (ct.contains("html") || ct.contains("xhtml")) && p.kind == crate::model::DownloadKind::Http {
+                Checked::Page
+            } else {
+                Checked::File { name: p.file_name.clone(), size: p.total_size }
+            }
+        }
+        Ok(Err(e)) => Checked::Gone(format!("{e:#}").chars().take(120).collect()),
+        Err(_) => Checked::Gone("no answer".into()),
+    }
+}
+
+/// Worth asking the server about: an address that names no file but looks
+/// like a download ("download.php?id=5", "/get/123", "?dl=1").
+pub fn looks_like_download(url: &str, text: &str) -> bool {
+    let l = url.to_ascii_lowercase();
+    let t = text.to_lowercase();
+    let words = ["download", "/dl/", "dl=", "/get/", "get.php", "file", "attachment", "/d/", "mirror", "fetch"];
+    words.iter().any(|w| l.contains(w)) || ["download", "تحميل", "تنزيل"].iter().any(|w| t.contains(w))
+}
+
+/// Links beyond the levels to explore that are asked whether they are files.
+const MAX_ASKED: usize = 300;
 
 /// Explore the site and return the files found (in the order found).
 pub async fn crawl(
@@ -207,9 +279,10 @@ pub async fn crawl(
     let mut found: Vec<FoundFile> = Vec::new();
     let mut seen_files: HashSet<String> = HashSet::new();
     let mut seen_pages: HashSet<String> = HashSet::new();
-    // (url, level, on another site)
-    let mut queue: VecDeque<(String, u32, bool)> = VecDeque::new();
-    queue.push_back((opts.start_url.clone(), 0, false));
+    // (url, level, on another site, only to see whether it is a file)
+    let mut queue: VecDeque<(String, u32, bool, bool)> = VecDeque::new();
+    queue.push_back((opts.start_url.clone(), 0, false, false));
+    let mut asked = 0usize;
     seen_pages.insert(opts.start_url.clone());
     progress.pages_queued.store(1, Ordering::Relaxed);
     let parallel = opts.parallel.clamp(1, 10);
@@ -223,7 +296,7 @@ pub async fn crawl(
             }
         }
         let mut tasks = tokio::task::JoinSet::new();
-        for (url, level, foreign) in batch {
+        for (url, level, foreign, only_ask) in batch {
             let client = client.clone();
             let opts2 = opts.clone();
             if let Ok(mut c) = progress.current.lock() {
@@ -231,16 +304,30 @@ pub async fn crawl(
             }
             tasks.spawn(async move {
                 let page = fetch_page(&client, &url, &opts2).await;
-                (url, level, foreign, page)
+                (url, level, foreign, only_ask, page)
             });
         }
         while let Some(res) = tokio::select! {
             r = tasks.join_next() => r,
             _ = cancel.cancelled() => None,
         } {
-            let Ok((url, level, foreign, page)) = res else { continue };
+            let Ok((url, level, foreign, only_ask, page)) = res else { continue };
             progress.pages_done.fetch_add(1, Ordering::Relaxed);
-            let Some((page_url, html)) = page else { continue };
+            let (page_url, html) = match page {
+                Some(Fetched::Page(u, h)) if !only_ask => (u, h),
+                Some(Fetched::File { url: file_url, name }) => {
+                    let ext = filename::extension(&name);
+                    let new = seen_files.insert(url.clone()) | seen_files.insert(file_url.clone());
+                    if wanted_ext(&opts, &ext) && new {
+                        let f = FoundFile { url: url.clone(), name, ext, text: String::new(), page: url.clone() };
+                        progress.files.fetch_add(1, Ordering::Relaxed);
+                        on_file(f.clone());
+                        found.push(f);
+                    }
+                    continue;
+                }
+                _ => continue,
+            };
             for (link, text) in extract_links(&html, &page_url) {
                 let Ok(u) = url::Url::parse(&link) else { continue };
                 let host = u.host_str().unwrap_or("").to_ascii_lowercase();
@@ -260,7 +347,12 @@ pub async fn crawl(
                         && seen_pages.len() < opts.max_pages.max(1)
                         && seen_pages.insert(link.clone())
                     {
-                        queue.push_back((link, next_level, !same));
+                        queue.push_back((link, next_level, !same, false));
+                        progress.pages_queued.fetch_add(1, Ordering::Relaxed);
+                    } else if asked < MAX_ASKED && looks_like_download(&link, &text) && seen_pages.insert(link.clone()) {
+                        // too deep to explore, but it may be a file: only asked
+                        asked += 1;
+                        queue.push_back((link, next_level, !same, true));
                         progress.pages_queued.fetch_add(1, Ordering::Relaxed);
                     }
                     continue;

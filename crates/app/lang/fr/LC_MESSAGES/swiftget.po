@@ -1189,6 +1189,9 @@ msgstr "Afficher la fenêtre \"Informations sur le fichier\" pour les téléchar
 msgid "Start downloading immediately while showing \"Download File Info\""
 msgstr "Démarrer le téléchargement tout de suite en affichant \"Informations sur le fichier\""
 
+msgid "For a playlist or several files added together: one window for each file (not one at the end)"
+msgstr "Pour une playlist ou plusieurs fichiers ajoutés ensemble : une fenêtre par fichier (pas une seule à la fin)"
+
 msgid "Ask before removing downloads from the list"
 msgstr "Demander avant de retirer des téléchargements de la liste"
 

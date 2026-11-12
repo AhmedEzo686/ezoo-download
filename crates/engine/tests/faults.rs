@@ -117,3 +117,41 @@ async fn a_file_that_changed_while_paused() {
     assert!(v.error.unwrap_or_default().contains("changed since"));
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Files added together (a playlist, a batch): the group is busy while any of
+/// them runs, then says how many finished and failed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn files_added_together_are_one_group() {
+    let data = file_data(400_000, 9);
+    let s = start(data.clone(), Faults { rate: 400_000, ..Default::default() }).await;
+    let (mgr, root) = manager("group");
+    let dir = root.join("get");
+    let g = mgr.new_group();
+    assert_ne!(g, mgr.new_group());
+    let ids: Vec<_> = ["a.bin", "b.bin"]
+        .iter()
+        .map(|n| {
+            mgr.add(NewDownload {
+                url: s.url(n),
+                save_dir: Some(dir.clone()),
+                group: Some(g),
+                start: true,
+                ..Default::default()
+            })
+        })
+        .collect();
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert!(mgr.group_state(g).3, "busy while they run");
+    for _ in 0..300 {
+        if !mgr.group_state(g).3 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(mgr.group_state(g), (2, 2, 0, false));
+    for id in ids {
+        assert_eq!(mgr.get(id).unwrap().group, Some(g));
+    }
+    assert!(mgr.finishing().is_none());
+    let _ = std::fs::remove_dir_all(&root);
+}

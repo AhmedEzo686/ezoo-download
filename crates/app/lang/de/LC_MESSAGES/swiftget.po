@@ -1189,6 +1189,9 @@ msgstr "Fenster \"Dateiinformationen\" für Downloads aus dem Browser anzeigen"
 msgid "Start downloading immediately while showing \"Download File Info\""
 msgstr "Sofort herunterladen, während \"Dateiinformationen\" angezeigt wird"
 
+msgid "For a playlist or several files added together: one window for each file (not one at the end)"
+msgstr "Bei einer Playlist oder mehreren gemeinsam hinzugefügten Dateien: ein Fenster pro Datei (nicht eines am Ende)"
+
 msgid "Ask before removing downloads from the list"
 msgstr "Vor dem Entfernen von Downloads aus der Liste fragen"
 

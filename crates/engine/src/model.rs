@@ -238,6 +238,9 @@ pub struct NewDownload {
     pub source_key: Option<String>,
     /// put it in this download queue
     pub queue: Option<u64>,
+    /// added together with others (a playlist, a batch): one "finished"
+    /// window for all of them
+    pub group: Option<u64>,
     /// the user's note from the download dialog
     pub description: Option<String>,
     /// a video page (playlist item): find its links when it starts, in this
@@ -286,6 +289,9 @@ pub struct DownloadRecord {
     pub auto_name: bool,
     #[serde(default)]
     pub description: Option<String>,
+    /// added together with others (a playlist, a batch)
+    #[serde(default)]
+    pub group: Option<u64>,
     /// this download's own speed limit in KB/s
     #[serde(default)]
     pub speed_limit_kb: Option<u64>,
@@ -477,6 +483,7 @@ pub struct DownloadView {
     pub queue: Option<u64>,
     pub finished_at: Option<DateTime<Utc>>,
     pub description: Option<String>,
+    pub group: Option<u64>,
     /// the checksum the finished file must have ("sha256:...")
     pub checksum: Option<String>,
     pub speed_limit_kb: Option<u64>,

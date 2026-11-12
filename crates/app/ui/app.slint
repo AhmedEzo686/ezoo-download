@@ -565,7 +565,9 @@ export component MainWindow inherits ThemedWindow {
     // set for a moment so the window comes in front of the browser
     in property <bool> front;
     always-on-top: root.front;
-    title: @tr("Ezoo Download");
+    // the program's name with its version, in the bar at the top
+    in property <string> app-version;
+    title: @tr("Ezoo Download") + (root.app-version == "" ? "" : " " + root.app-version);
     // Options > General > Background picture (shows through the panels)
     in property <image> bg-image;
     in property <bool> has-bg-image;
@@ -2780,7 +2782,10 @@ export component DetailsDialog inherits ThemedWindow {
             // its own size: a taller window gives the room to the connections
             vertical-stretch: root.show-details ? 0 : 1;
             // the 3D looks: the ring, the cards and the numbers
-            min-height: Theme.depth && root.tab == 0 ? (root.error != "" ? 330px : 300px) * max(1, Theme.font-scale) : 150px;
+            min-height: Theme.depth && root.tab == 0 ? (root.error != "" ? 330px : 300px) * max(1, Theme.font-scale)
+                : root.tab == 3 && root.is-torrent ? 330px * max(1, Theme.font-scale) : 150px;
+            // nothing of a tab is ever drawn over the progress and the buttons
+            clip: true;
             if root.tab == 0 && Theme.depth: VerticalLayout {
                 padding: 10px;
                 spacing: 10px;
@@ -3259,7 +3264,9 @@ export component DetailsDialog inherits ThemedWindow {
                     }
                 }
                 if root.t-view == 0: ListView {
-                    height: 150px;
+                    // the room that is left (a taller window: a longer list)
+                    vertical-stretch: 1;
+                    min-height: 96px;
                     for f[i] in root.t-files: HRow {
                         spacing: 8px;
                         padding: 2px;
@@ -3292,7 +3299,8 @@ export component DetailsDialog inherits ThemedWindow {
                     }
                 }
                 if root.t-view == 1: ListView {
-                    height: 150px;
+                    vertical-stretch: 1;
+                    min-height: 96px;
                     for p in root.t-peers: HRow {
                         spacing: 8px;
                         padding: 2px;
@@ -3320,8 +3328,10 @@ export component DetailsDialog inherits ThemedWindow {
                 }
                 if root.t-view == 2: VerticalLayout {
                     spacing: 6px;
+                    vertical-stretch: 1;
                     ListView {
-                        height: 118px;
+                        vertical-stretch: 1;
+                        min-height: 64px;
                         for tr in root.t-trackers: Text {
                             text: tr;
                             color: Theme.text;

@@ -1189,6 +1189,9 @@ msgstr "Показывать окно \"Сведения о файле\" для 
 msgid "Start downloading immediately while showing \"Download File Info\""
 msgstr "Сразу начинать загрузку, показывая \"Сведения о файле\""
 
+msgid "For a playlist or several files added together: one window for each file (not one at the end)"
+msgstr "Для плейлиста или нескольких файлов, добавленных вместе: окно для каждого файла (а не одно в конце)"
+
 msgid "Ask before removing downloads from the list"
 msgstr "Спрашивать перед удалением загрузок из списка"
 

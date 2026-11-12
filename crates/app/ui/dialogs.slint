@@ -921,6 +921,8 @@ export component CountdownDialog inherits ThemedWindow {
     in property <string> action-text: "shut down the computer";
     in property <int> seconds-left: 30;
     in property <int> seconds-total: 30;
+    // a file still being put together: the time starts after it
+    in property <string> waiting-text;
     callback now();
     callback stop();
     VerticalLayout {
@@ -935,6 +937,11 @@ export component CountdownDialog inherits ThemedWindow {
         }
         Label {
             text: @tr("Ezoo Download will {} in {} seconds.", root.action-text, root.seconds-left);
+            wrap: word-wrap;
+        }
+        if root.waiting-text != "": Label {
+            text: root.waiting-text;
+            color: Theme.warn;
             wrap: word-wrap;
         }
         Rectangle {
@@ -2020,6 +2027,7 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <bool> show-start-dialog;
     in-out property <bool> start-while-info;
     in-out property <bool> complete-dialog;
+    in-out property <bool> complete-each;
     in-out property <bool> ask-remove: true;
     // 0 128k, 1 192k, 2 256k, 3 320k
     in-out property <int> mp3-index: 1;
@@ -2529,6 +2537,11 @@ export component SettingsDialog inherits ThemedWindow {
                     CheckBox {
                         text: @tr("Show the \"Download complete\" window");
                         checked <=> root.complete-dialog;
+                    }
+                    CheckBox {
+                        enabled: root.complete-dialog;
+                        text: @tr("For a playlist or several files added together: one window for each file (not one at the end)");
+                        checked <=> root.complete-each;
                     }
                     CheckBox {
                         text: @tr("Ask before removing downloads from the list");

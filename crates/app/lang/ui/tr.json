@@ -534,5 +534,6 @@
  "Check the files again": "Dosyaları yeniden denetle",
  "Copy magnet link": "Magnet bağlantısını kopyala",
  "Stop sharing once it sent (times what it received)": "Gönderdikten sonra paylaşımı durdur (alınanın katı)",
- "No limit": "Sınır yok"
+ "No limit": "Sınır yok",
+ "For a playlist or several files added together: one window for each file (not one at the end)": "Oynatma listesi veya birlikte eklenen dosyalar için: her dosyaya bir pencere (sonda tek pencere değil)"
 }

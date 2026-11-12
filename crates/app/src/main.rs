@@ -124,6 +124,10 @@ pub(crate) struct Ui {
     settings_dlg: Weak<SettingsDialog>,
     complete: Weak<CompleteDialog>,
     complete_id: Rc<Cell<Option<u64>>>,
+    /// the window shows a whole playlist / batch: its folder
+    complete_folder: Rc<RefCell<Option<PathBuf>>>,
+    /// playlists and batches with a file finished: one window when all are
+    groups_waiting: Rc<RefCell<std::collections::HashSet<u64>>>,
     columns: Weak<ColumnsDialog>,
     category: Weak<CategoryDialog>,
     /// category being edited (None = a new one)
@@ -439,6 +443,7 @@ fn run() -> anyhow::Result<()> {
     swiftget_engine::tools::spawn_updater(rt.handle(), mgr.client(), data_dir.clone());
 
     let main = MainWindow::new()?;
+    main.set_app_version(env!("CARGO_PKG_VERSION").into());
     let add = AddDialog::new()?;
     let batch = BatchDialog::new()?;
     let settings_dlg = SettingsDialog::new()?;
@@ -491,6 +496,8 @@ fn run() -> anyhow::Result<()> {
         settings_dlg: settings_dlg.as_weak(),
         complete: complete.as_weak(),
         complete_id: Rc::new(Cell::new(None)),
+        complete_folder: Rc::default(),
+        groups_waiting: Rc::default(),
         columns: columns.as_weak(),
         category: category.as_weak(),
         editing_category: Rc::new(RefCell::new(None)),
@@ -689,9 +696,31 @@ fn run() -> anyhow::Result<()> {
             extra::finished_well(&ui, completed.len());
             extra::av1_tip(&ui, &completed);
             let finished: Vec<u64> = completed.into_iter().filter(|id| Some(*id) != early).collect();
-            if let Some(&last) = finished.last() {
-                if ui.ctx.mgr.settings().show_complete_dialog {
+            let s = ui.ctx.mgr.settings();
+            // added together with others (a playlist, a batch): one window
+            // once all of them are done, not one for every file
+            let mut single = None;
+            for id in &finished {
+                match ui.ctx.mgr.get(*id).and_then(|v| v.group).filter(|_| !s.complete_each_in_group) {
+                    Some(g) => {
+                        ui.groups_waiting.borrow_mut().insert(g);
+                    }
+                    None => single = Some(*id),
+                }
+            }
+            if let Some(last) = single {
+                if s.show_complete_dialog {
                     show_complete(&ui, last);
+                }
+            }
+            let waiting: Vec<u64> = ui.groups_waiting.borrow().iter().copied().collect();
+            for g in waiting {
+                let (all, done, failed, busy) = ui.ctx.mgr.group_state(g);
+                if !busy {
+                    ui.groups_waiting.borrow_mut().remove(&g);
+                    if all > 0 && s.show_complete_dialog {
+                        show_group_complete(&ui, g, all, done, failed);
+                    }
                 }
             }
             handle_events(&ui);
@@ -1957,12 +1986,14 @@ fn wire_batch(ui: &Ui) {
             let s = ui.ctx.mgr.settings();
             let queue = s.queues.get(d.get_queue_index().max(0) as usize).map(|q| q.id).unwrap_or(MAIN_QUEUE);
             let folder = d.get_folder().trim().to_string();
+            let group = Some(ui.ctx.mgr.new_group());
             for url in links {
                 ui.ctx.mgr.add(NewDownload {
                     url,
                     save_dir: (!folder.is_empty()).then(|| PathBuf::from(&folder)),
                     headers: RequestHeaders { auth: auth.clone(), ..Default::default() },
                     queue: Some(queue),
+                    group,
                     start: false,
                     ..Default::default()
                 });
@@ -2057,7 +2088,9 @@ fn wire_complete(ui: &Ui) {
     {
         let ui = ui.clone();
         complete.on_open_file(move || {
-            if let Some(v) = ui.complete_id.get().and_then(|i| ui.ctx.mgr.get(i)) {
+            if let Some(dir) = ui.complete_folder.borrow().clone() {
+                open_download(&dir);
+            } else if let Some(v) = ui.complete_id.get().and_then(|i| ui.ctx.mgr.get(i)) {
                 open_download(&v.save_path);
             }
             close_complete(&ui);
@@ -2075,7 +2108,9 @@ fn wire_complete(ui: &Ui) {
     {
         let ui = ui.clone();
         complete.on_open_folder(move || {
-            if let Some(v) = ui.complete_id.get().and_then(|i| ui.ctx.mgr.get(i)) {
+            if let Some(dir) = ui.complete_folder.borrow().clone() {
+                open_download(&dir);
+            } else if let Some(v) = ui.complete_id.get().and_then(|i| ui.ctx.mgr.get(i)) {
                 reveal_in_folder(&v);
             }
             close_complete(&ui);
@@ -2105,8 +2140,30 @@ fn wire_complete(ui: &Ui) {
     }
 }
 
+/// A playlist (or files added together) all done: one window for all.
+fn show_group_complete(ui: &Ui, group: u64, all: usize, done: usize, failed: usize) {
+    let Some(d) = ui.complete.upgrade() else { return };
+    let views: Vec<DownloadView> = ui.ctx.mgr.snapshot().into_iter().filter(|v| v.group == Some(group)).collect();
+    let Some(first) = views.iter().find(|v| v.status == Status::Completed).or(views.first()).cloned() else { return };
+    // the folder they went to (the one most of them share)
+    let folder = first.save_path.parent().map(Path::to_path_buf).unwrap_or_default();
+    let bytes: u64 = views.iter().filter(|v| v.status == Status::Completed).filter_map(|v| v.total_size).sum();
+    ui.complete_id.set(None);
+    *ui.complete_folder.borrow_mut() = Some(folder.clone());
+    let title = first.description.clone().filter(|t| !t.trim().is_empty()).unwrap_or_else(|| tf("{} files", &[&all]));
+    d.set_name(title.into());
+    d.set_url(if failed > 0 { tf("{} finished, {} could not be downloaded", &[&done, &failed]) } else { tf("All {} finished", &[&done]) }.into());
+    d.set_size(fmt_size(bytes).into());
+    d.set_path(folder.display().to_string().into());
+    d.set_kind(kind_for(&first.file_name).into());
+    d.set_ext(SharedString::new());
+    d.set_dont_show(false);
+    open_window!(d);
+}
+
 pub(crate) fn show_complete(ui: &Ui, id: u64) {
     if let (Some(v), Some(d)) = (ui.ctx.mgr.get(id), ui.complete.upgrade()) {
+        *ui.complete_folder.borrow_mut() = None;
         ui.complete_id.set(Some(id));
         d.set_name(v.file_name.clone().into());
         d.set_url(v.url.clone().into());
@@ -2978,6 +3035,7 @@ fn confirm_add(ui: &Ui, start: bool) {
             queue,
             description: (!description.is_empty()).then_some(description),
             pick_quality: None,
+            group: None,
             early: false,
             start,
             torrent_select: None,

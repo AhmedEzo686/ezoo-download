@@ -534,5 +534,6 @@
  "Check the files again": "Revérifier les fichiers",
  "Copy magnet link": "Copier le lien magnet",
  "Stop sharing once it sent (times what it received)": "Arrêter le partage après avoir envoyé (fois ce qui a été reçu)",
- "No limit": "Sans limite"
+ "No limit": "Sans limite",
+ "For a playlist or several files added together: one window for each file (not one at the end)": "Pour une playlist ou plusieurs fichiers ajoutés ensemble : une fenêtre par fichier (pas une seule à la fin)"
 }

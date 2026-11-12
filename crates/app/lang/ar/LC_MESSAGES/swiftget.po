@@ -1189,6 +1189,9 @@ msgstr "إظهار نافذة \"معلومات ملف التحميل\" للتح�
 msgid "Start downloading immediately while showing \"Download File Info\""
 msgstr "بدء التحميل فوراً أثناء عرض \"معلومات ملف التحميل\""
 
+msgid "For a playlist or several files added together: one window for each file (not one at the end)"
+msgstr "لقائمة تشغيل أو عدة ملفات مضافة معًا: نافذة لكل ملف (بدل نافذة واحدة في النهاية)"
+
 msgid "Ask before removing downloads from the list"
 msgstr "السؤال قبل إزالة التحميلات من القائمة"
 

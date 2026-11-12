@@ -1189,6 +1189,9 @@ msgstr "Tarayıcıdan gelen indirmeler için \"Dosya bilgileri\" penceresini gö
 msgid "Start downloading immediately while showing \"Download File Info\""
 msgstr "\"Dosya bilgileri\" gösterilirken hemen indirmeye başla"
 
+msgid "For a playlist or several files added together: one window for each file (not one at the end)"
+msgstr "Oynatma listesi veya birlikte eklenen dosyalar için: her dosyaya bir pencere (sonda tek pencere değil)"
+
 msgid "Ask before removing downloads from the list"
 msgstr "İndirmeleri listeden kaldırmadan önce sor"
 

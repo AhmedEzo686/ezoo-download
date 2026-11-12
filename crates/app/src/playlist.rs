@@ -196,6 +196,7 @@ pub(crate) fn wire(ui: &Ui) {
                 }
             }
             let width = chosen.len().to_string().len().max(2);
+            let group = Some(ui.ctx.mgr.new_group());
             for r in &chosen {
                 let mut file = filename::sanitize(r.name.trim_start_matches('\u{200F}'));
                 if d.get_numbered() {
@@ -210,6 +211,7 @@ pub(crate) fn wire(ui: &Ui) {
                     pick_quality: Some(quality.clone()),
                     queue: Some(queue),
                     description: Some(title.clone()).filter(|t| !t.is_empty()),
+                    group,
                     start: false,
                     ..Default::default()
                 });
