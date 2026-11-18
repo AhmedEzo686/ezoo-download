@@ -560,7 +560,6 @@ const AR: &[(&str, &str)] = &[
     ("Videos made for children download now, and the video qualities show up faster.", "فيديوهات الأطفال تُحمَّل الآن، وجودات الفيديو تظهر أسرع."),
     ("Playlists: a Size column, a Video column you can make wider or narrower, \"Oldest first\" numbering, and videos downloaded before are not added again.", "قوائم التشغيل: عمود للحجم، وعمود الفيديو يمكن توسيعه أو تضييقه، وترقيم \"الأقدم أولًا\"، والفيديوهات التي حُمّلت من قبل لا تُضاف مرة أخرى."),
     ("A queue shows only what is still to come, and a file dragged from the list to a folder on the same drive is moved, as in Windows.", "قائمة الانتظار تعرض ما لم يكتمل فقط، والملف المسحوب من القائمة إلى مجلد على نفس القرص يُنقل كما في ويندوز."),
-    ("Options > General: new versions can be installed only when you ask for them.", "الخيارات > عام: يمكن تثبيت الإصدارات الجديدة فقط عندما تطلب ذلك."),
     ("Fewer antivirus warnings: the program and its setup no longer start Windows tools out of sight, and every release lists the SHA-256 of its files.", "تحذيرات أقل من برامج الحماية: البرنامج ومثبّته لم يعودا يشغّلان أدوات ويندوز في الخفاء، وكل إصدار ينشر بصمة SHA-256 لملفاته."),
     ("YouTube is refusing subtitles for a moment (too many requests). Try again in a few minutes.", "يوتيوب يرفض الترجمات مؤقتًا (طلبات كثيرة). حاول مرة أخرى بعد دقائق."),
     ("Some languages were refused for now (too many requests): {}. Try them again in a few minutes.", "بعض اللغات رُفضت مؤقتًا (طلبات كثيرة): {}. جرّبها مرة أخرى بعد دقائق."),

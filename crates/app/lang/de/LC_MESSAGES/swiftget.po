@@ -1111,9 +1111,6 @@ msgstr "Fenster mit der Grafikkarte zeichnen (mehr Speicher; nach einem Neustart
 msgid "Show \"Tip of the day\" at startup"
 msgstr "\"Tipp des Tages\" beim Start anzeigen"
 
-msgid "Install new versions of Ezoo Download by themselves"
-msgstr "Neue Versionen von Ezoo Download selbst installieren"
-
 msgid "On double click on a download"
 msgstr "Bei Doppelklick auf einen Download"
 

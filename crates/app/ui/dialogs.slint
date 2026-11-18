@@ -2007,7 +2007,6 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <bool> auto-clipboard;
     in-out property <int> double-click;
     in-out property <bool> show-tips;
-    in-out property <bool> auto-update: true;
     in-out property <int> port;
     in-out property <int> skip-key;
     in-out property <int> force-key;
@@ -2297,10 +2296,6 @@ export component SettingsDialog inherits ThemedWindow {
                     CheckBox {
                         text: @tr("Show \"Tip of the day\" at startup");
                         checked <=> root.show-tips;
-                    }
-                    CheckBox {
-                        text: @tr("Install new versions of Ezoo Download by themselves");
-                        checked <=> root.auto-update;
                     }
                     HRow {
                         spacing: 8px;

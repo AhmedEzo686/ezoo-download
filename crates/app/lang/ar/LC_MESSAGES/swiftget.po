@@ -1111,9 +1111,6 @@ msgstr "رسم النوافذ بكارت الشاشة (يستهلك ذاكرة �
 msgid "Show \"Tip of the day\" at startup"
 msgstr "إظهار \"نصيحة اليوم\" عند البدء"
 
-msgid "Install new versions of Ezoo Download by themselves"
-msgstr "تثبيت الإصدارات الجديدة من Ezoo Download تلقائيًا"
-
 msgid "On double click on a download"
 msgstr "عند النقر المزدوج على تحميل"
 

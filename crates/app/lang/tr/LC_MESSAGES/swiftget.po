@@ -1111,9 +1111,6 @@ msgstr "Pencereleri ekran kartıyla çiz (daha çok bellek; yeniden başlatınca
 msgid "Show \"Tip of the day\" at startup"
 msgstr "Başlangıçta \"Günün ipucu\"nu göster"
 
-msgid "Install new versions of Ezoo Download by themselves"
-msgstr "Ezoo Download'un yeni sürümlerini kendiliğinden yükle"
-
 msgid "On double click on a download"
 msgstr "Bir indirmeye çift tıklayınca"
 

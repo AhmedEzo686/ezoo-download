@@ -1111,9 +1111,6 @@ msgstr "Рисовать окна видеокартой (больше памя�
 msgid "Show \"Tip of the day\" at startup"
 msgstr "Показывать \"Совет дня\" при запуске"
 
-msgid "Install new versions of Ezoo Download by themselves"
-msgstr "Устанавливать новые версии Ezoo Download автоматически"
-
 msgid "On double click on a download"
 msgstr "Двойной щелчок по загрузке"
 

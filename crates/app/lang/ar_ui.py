@@ -558,6 +558,5 @@ AR = {
     "New name (numbered)": "اسم جديد (برقم)",
     "Replace it": "استبداله",
     "The name the file gets": "الاسم الذي سيُحفظ به الملف",
-    "Install new versions of Ezoo Download by themselves": "تثبيت الإصدارات الجديدة من Ezoo Download تلقائيًا",
     "Oldest first": "الأقدم أولًا",
 }
