@@ -550,6 +550,8 @@ const AR: &[(&str, &str)] = &[
     ("Choose where to save it", "اختر مكان الحفظ"),
     ("Show download progress", "عرض تقدّم التحميل"),
     ("Stop download", "إيقاف التحميل"),
+    ("YouTube is refusing subtitles for a moment (too many requests). Try again in a few minutes.", "يوتيوب يرفض الترجمات مؤقتًا (طلبات كثيرة). حاول مرة أخرى بعد دقائق."),
+    ("Some languages were refused for now (too many requests): {}. Try them again in a few minutes.", "بعض اللغات رُفضت مؤقتًا (طلبات كثيرة): {}. جرّبها مرة أخرى بعد دقائق."),
     ("This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.", "هذا التورنت يعمل بالفعل (قد يكون ما زال يشارك ملفاته). انتظر قليلًا، أو اخرج من Ezoo Download وافتحه مرة أخرى."),
     ("The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.", "يمكن إيقاف إضافة المتصفح مؤقتًا من نافذتها نفسها، دون تعطيلها من صفحة الإضافات في المتصفح."),
     ("Ezoo Download will restart now to show its windows in the direction of the new language. Downloads continue after it opens.\n\nRestart now?", "سيُعاد تشغيل Ezoo Download الآن لتظهر نوافذه باتجاه اللغة الجديدة. التحميلات تكمل بعد فتحه.\n\nإعادة التشغيل الآن؟"),

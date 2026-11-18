@@ -1871,7 +1871,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     case "swiftget-subtitles":
       sendSubtitles(msg.page, msg.langs, msg.format, msg.title)
-        .then((d) => sendResponse({ ok: true, count: d.count }))
+        .then((d) => sendResponse({ ok: true, count: d.count, note: d.note || "" }))
         .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
       return true;
     case "swiftget-get-media":

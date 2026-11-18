@@ -1683,7 +1683,19 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
             let srt = ask.format != "vtt";
             std::thread::spawn(move || {
                 let body = match swiftget_engine::ytdlp::fetch_subtitle_tracks(&ask.url, &dir, &title, &ask.langs, srt) {
-                    Ok(files) => serde_json::json!({ "ok": true, "count": files.len(), "folder": dir.display().to_string() }),
+                    Ok(got) => serde_json::json!({
+                        "ok": true,
+                        "count": got.files.len(),
+                        "folder": dir.display().to_string(),
+                        // languages YouTube refused for now: said, with when to try again
+                        "note": if got.missing.is_empty() {
+                            String::new()
+                        } else if got.refused {
+                            tf("Some languages were refused for now (too many requests): {}. Try them again in a few minutes.", &[&got.missing.join(", ")])
+                        } else {
+                            String::new()
+                        },
+                    }),
                     Err(e) => serde_json::json!({ "ok": false, "error": err_text(&format!("{e:#}")) }),
                 };
                 let _ = answer.send(body.to_string());
@@ -3674,7 +3686,9 @@ pub(crate) fn open_download(path: &std::path::Path) {
 
 /// An error of the engine in words the user understands, in their language.
 pub(crate) fn err_text(e: &str) -> String {
-    if e.contains("needs a login or an age check") {
+    if e.contains(swiftget_engine::ytdlp::TOO_MANY) {
+        t("YouTube is refusing subtitles for a moment (too many requests). Try again in a few minutes.")
+    } else if e.contains("needs a login or an age check") {
         t("This video needs a login or an age check. Open it once in the browser where you are signed in (with the Ezoo Download extension), then try again.")
     } else if e.contains("BitLocker") || e.contains("-2144272384") {
         t("The drive of the download folder is locked by BitLocker. Unlock it in Windows, or choose another folder (right-click the download > Properties).")

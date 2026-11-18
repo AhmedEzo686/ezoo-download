@@ -999,7 +999,7 @@
     const run = () => {
       if (!pick.size || b.subBusy) return;
       b.subBusy = true;
-      go.textContent = "Getting the subtitles…";
+      go.textContent = pick.size > 3 ? "Getting the subtitles… (a pause between languages, so YouTube doesn't refuse)" : "Getting the subtitles…";
       go.classList.add("off");
       chrome.runtime.sendMessage(
         { type: "swiftget-subtitles", page: yt.source, langs: [...pick], format: b.subFmt === "vtt" ? "vtt" : "srt", title: yt.title || cleanTitle() },
@@ -1007,7 +1007,9 @@
           b.subBusy = false;
           if (chrome.runtime.lastError || !res) return notRunning(b, run);
           if (!res.ok) return flashOne(b, res.error || "No subtitles were found.", true);
-          flashOne(b, `${res.count} subtitle file${res.count > 1 ? "s" : ""} saved in the video folder ✔`, false);
+          const saved = `${res.count} subtitle file${res.count > 1 ? "s" : ""} saved in the video folder ✔`;
+          // some languages refused for now (the site wants a pause)
+          flashOne(b, res.note ? `${saved} ${res.note}` : saved, !!res.note);
         }
       );
     };

@@ -160,8 +160,12 @@ pub fn vtt_to_srt(vtt: &str) -> String {
 
 /// Chosen subtitles of a video page, saved as "<stem>.<language>.srt" (or
 /// .vtt) in `dir`. `codes`: yt-dlp's names of the languages. Blocking.
-/// The files made are given back.
-pub fn fetch_subtitle_tracks(page_url: &str, dir: &Path, stem: &str, codes: &[String], srt: bool) -> anyhow::Result<Vec<PathBuf>> {
+///
+/// YouTube answers "429 Too Many Requests" to subtitles asked for quickly
+/// one after another: each language waits a little, the ones refused are
+/// asked again after a pause (then with the browser's sign-in, which it
+/// refuses less), and what came is kept even when some didn't.
+pub fn fetch_subtitle_tracks(page_url: &str, dir: &Path, stem: &str, codes: &[String], srt: bool) -> anyhow::Result<SubsFetched> {
     let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe is missing"))?;
     let codes: Vec<String> = codes
         .iter()
@@ -174,39 +178,70 @@ pub fn fetch_subtitle_tracks(page_url: &str, dir: &Path, stem: &str, codes: &[St
     std::fs::create_dir_all(dir)?;
     let stem = filename::sanitize(stem);
     let before: Vec<PathBuf> = std::fs::read_dir(dir).map(|r| r.flatten().map(|e| e.path()).collect()).unwrap_or_default();
-    // exact names ("en" is not "en-GB"); "%" means something to yt-dlp
-    let wanted = codes.iter().map(|c| format!("^{c}$")).collect::<Vec<_>>().join(",");
     let out = format!("{}.%(ext)s", stem.replace('%', "%%"));
     let kids = kids_to_youtube(page_url);
     let page_url = kids.as_deref().unwrap_or(page_url);
-    with_cookies(page_url, None, |file| {
+    // the language a new file is for ("<stem>.<code>.vtt")
+    let code_of = |p: &Path| -> Option<String> {
+        let name = p.file_name()?.to_string_lossy().into_owned();
+        let rest = name.strip_prefix(&format!("{stem}."))?;
+        let (code, _) = rest.rsplit_once('.')?;
+        Some(code.to_string())
+    };
+    let new_files = || -> Vec<PathBuf> {
+        std::fs::read_dir(dir)
+            .map(|r| r.flatten().map(|e| e.path()).filter(|p| !before.contains(p) && code_of(p).is_some()).collect())
+            .unwrap_or_default()
+    };
+    let run = |wanted: &[String], cookie: Option<&Path>| -> String {
+        // exact names ("en" is not "en-GB")
+        let list = wanted.iter().map(|c| format!("^{c}$")).collect::<Vec<_>>().join(",");
         let mut cmd = ytdlp_command(&tool);
         cmd.args(["--ignore-config", "--skip-download", "--write-subs", "--write-auto-subs", "--no-playlist", "--no-warnings"])
             .args(cache_args())
+            // one language at a time, a pause between them; a refused one
+            // doesn't stop the others
+            .args(["--ignore-errors", "--sleep-subtitles", "2", "--retries", "3", "--extractor-retries", "2"])
             .args(["--socket-timeout", "20", "--sub-format", "vtt/srt/best", "--sub-langs"])
-            .arg(&wanted)
+            .arg(&list)
             .arg("-P")
             .arg(dir)
             .arg("-o")
             .arg(&out);
-        if let Some(c) = file {
+        if let Some(c) = cookie {
             cmd.arg("--cookies").arg(c);
         }
         cmd.arg("--").arg(page_url);
-        let o = cmd.output().context("could not start yt-dlp")?;
-        if o.status.success() {
-            Ok(())
-        } else {
-            let err = String::from_utf8_lossy(&o.stderr);
-            bail!("{}", err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no subtitles"))
+        match cmd.output() {
+            Ok(o) => String::from_utf8_lossy(&o.stderr).into_owned(),
+            Err(e) => format!("ERROR: could not start yt-dlp: {e}"),
         }
-    })?;
+    };
+    let mut last_err = String::new();
+    for round in 0..3 {
+        let got: Vec<String> = new_files().iter().filter_map(|p| code_of(p)).collect();
+        let missing: Vec<String> = codes.iter().filter(|c| !got.iter().any(|g| g == *c)).cloned().collect();
+        if missing.is_empty() {
+            break;
+        }
+        if round > 0 {
+            // refused for asking too often: a pause before asking again
+            if !too_many(&last_err) {
+                break;
+            }
+            std::thread::sleep(Duration::from_secs(if round == 1 { 8 } else { 20 }));
+        }
+        // the second time with the browser's sign-in (YouTube refuses less)
+        let cookies = (round > 0).then(|| remembered_cookies(page_url)).flatten().filter(|c| !c.is_empty());
+        let file = cookies.and_then(|c| cookie_file(&c).ok());
+        last_err = run(&missing, file.as_deref());
+        if let Some(f) = file {
+            let _ = std::fs::remove_file(f);
+        }
+    }
     let mut made = Vec::new();
-    for p in std::fs::read_dir(dir)?.flatten().map(|e| e.path()) {
+    for p in new_files() {
         let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        if before.contains(&p) || !name.starts_with(&format!("{stem}.")) {
-            continue;
-        }
         if srt && name.to_ascii_lowercase().ends_with(".vtt") {
             if let Ok(text) = std::fs::read_to_string(&p) {
                 let to = p.with_extension("srt");
@@ -219,10 +254,34 @@ pub fn fetch_subtitle_tracks(page_url: &str, dir: &Path, stem: &str, codes: &[St
         }
         made.push(p);
     }
+    let got: Vec<String> = made.iter().filter_map(|p| code_of(p)).collect();
+    let missing: Vec<String> = codes.iter().filter(|c| !got.iter().any(|g| g == *c)).cloned().collect();
     if made.is_empty() {
-        bail!("the video has no subtitles in the languages chosen");
+        if too_many(&last_err) {
+            bail!("{TOO_MANY}");
+        }
+        let line = last_err.lines().rev().find(|l| l.contains("ERROR")).map(|l| l.trim().to_string());
+        bail!("{}", line.unwrap_or_else(|| "the video has no subtitles in the languages chosen".into()));
     }
-    Ok(made)
+    Ok(SubsFetched { files: made, missing, refused: too_many(&last_err) })
+}
+
+/// What `fetch_subtitle_tracks` saved, and the languages it couldn't get.
+#[derive(Debug)]
+pub struct SubsFetched {
+    pub files: Vec<PathBuf>,
+    pub missing: Vec<String>,
+    /// the site refused some for asking too often (worth trying later)
+    pub refused: bool,
+}
+
+/// The words for YouTube refusing for a while.
+pub const TOO_MANY: &str = "YouTube is refusing subtitles for a moment (too many requests). Try again in a few minutes.";
+
+/// "HTTP Error 429: Too Many Requests" (the site wants a pause).
+fn too_many(stderr: &str) -> bool {
+    let m = stderr.to_ascii_lowercase();
+    m.contains("429") || m.contains("too many requests")
 }
 
 /// A cookie as the browser extension sends it.
@@ -905,6 +964,8 @@ pub fn fetch_subtitles(page_url: &str, dir: &Path, stem: &str, langs: &str) -> a
     with_cookies(page_url, None, |file| {
         let mut cmd = ytdlp_command(&tool);
         cmd.args(["--ignore-config", "--skip-download", "--write-subs", "--write-auto-subs", "--no-playlist", "--no-warnings", "--no-cache-dir"])
+            // a pause between languages (YouTube refuses quick ones: 429)
+            .args(["--sleep-subtitles", "2", "--retries", "3"])
             .args(["--socket-timeout", "20", "--sub-format", "srt/vtt/best", "--sub-langs"])
             .arg(&wanted)
             .arg("-P")
