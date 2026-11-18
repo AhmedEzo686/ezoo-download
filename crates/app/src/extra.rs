@@ -391,26 +391,16 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-pub(crate) const WHATS_NEW: [&str; 19] = [
-    "The Site Grabber finds the files behind download links that show no file name and asks the server for their real names and sizes, a playlist shows one \"Download complete\" window at the end instead of one for every file, and the computer is never shut down or put to sleep while a file is still being put together.",
-    "Torrents are shared by the program itself now, with no helper program: they start sooner, use less of the computer, and a stopped torrent goes on after a restart without checking all its pieces again.",
-    "FTP and FTPS links download like web links: in parts, with resume, and with the user name and password kept apart from the address.",
-    "Checksum: paste an MD5, SHA-1 or SHA-256 value in Download File Info (or the site gives one) and the file is checked when it finishes.",
-    "Torrents have their own tab in Properties: the files (choose them while it runs), the people, the trackers and the pieces. Add a tracker, check the files again, copy the magnet link, first and last pieces first, and stop sharing at a ratio you choose.",
-    "Safer resume: a file that changed on the server is noticed instead of being joined with the old parts, links that lead through a few pages to the file are followed, and downloads that need a form sent from the browser work.",
-    "The speed limit can work only while you use the computer, and a scheduled queue can wake the computer from sleep to start.",
-    "Keyboard shortcuts for the list (F1 shows them), a command line for other programs and scripts, and Help > Add Ezoo Download to my browser > Test the link checks the add-in step by step.",
-    "The add-in works in private windows too (allow it there in the browser), keeps the browser's own download when the program is closed, and its video button can be moved or hidden on a site.",
-    "Four new 3D looks (View): 3D, Aurora glass, Soft clay and Cyber neon, with raised buttons, colored pictures, downloads on floating cards and a new download window with a progress ring and the speed.",
-    "The setup asks for the language of the program at the first install, and can let torrents through the Windows firewall.",
-    "Options > Torrents: make Ezoo Download the main program for torrents, or leave magnet links and .torrent files to your own torrent program.",
-    "A torrent that is connected but gets nothing looks for other people by itself, and says why it waits.",
-    "Playlists: names in the program's language, right-to-left names shown from the right, a few videos at a time, and a video that fails is tried again by itself.",
-    "The add-in has one tab for the whole video and one for a part of it, and it never downloads the video that played before in the same player.",
-    "The right-click menu of the list is a real Windows menu that is never cut off, in the look of the program.",
-    "Sites that refuse extra connections: the download goes on with fewer. Up to 64 connections. A site that asks for a robot check says so, and the Firefox add-on is fetched from the official page when it is missing.",
-    "The add-in talks to the program directly, without a port: no more \"Ezoo Download is not running\" while it runs, and a closed program is opened for a download.",
-    "A power cut no longer loses the download list, the end of a download is never held by one slow connection, and a file that is already in the folder asks whether to replace it.",
+pub(crate) const WHATS_NEW: [&str; 9] = [
+    "Windows that lost their picture (after another window covered them, after coming back from next to the clock, after the screen woke up) are drawn again whole: no more half-empty or see-through windows.",
+    "Download File Info has a box for the file name, and a file of the same name in the folder is asked about inside the window (no more window that stops answering after Cancel). \"Replace it\" keeps the old file until the new one is complete.",
+    "The add-in has two new tabs: \"With subtitles\" (the video with its subtitles in the language you choose) and \"Subtitles\" (all of a video's subtitles, or the ones you choose), as SRT or VTT.",
+    "Subtitles are asked for one language at a time with a short pause, and a language the site refuses for a moment is asked for again by itself.",
+    "Videos made for children download now, and the video qualities show up faster.",
+    "Playlists: a Size column, a Video column you can make wider or narrower, \"Oldest first\" numbering, and videos downloaded before are not added again.",
+    "A queue shows only what is still to come, and a file dragged from the list to a folder on the same drive is moved, as in Windows.",
+    "Options > General: new versions can be installed only when you ask for them.",
+    "Fewer antivirus warnings: the program and its setup no longer start Windows tools out of sight, and every release lists the SHA-256 of its files.",
 ];
 
 thread_local! {
