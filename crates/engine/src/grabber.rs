@@ -54,6 +54,12 @@ pub struct GrabProgress {
     pub pages_queued: AtomicUsize,
     pub files: AtomicUsize,
     pub current: Mutex<String>,
+    /// pages the site didn't give (refused, not found, no answer)
+    pub pages_failed: AtomicUsize,
+    /// the start page has almost no links of its own but scripts: its
+    /// links are made in the browser (the add-in's "Download all links"
+    /// sees them, a program asking the site doesn't)
+    pub made_by_scripts: std::sync::atomic::AtomicBool,
 }
 
 const PAGE_EXTS: [&str; 13] =
@@ -73,8 +79,24 @@ fn anchor_re() -> &'static Regex {
 fn attr_re() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| {
-        Regex::new(r#"(?i)\b(?:src|href|data-src|data-href|poster)\s*=\s*(?:"([^"]*)"|'([^']*)')"#).unwrap()
+        // every attribute that may hold an address, quoted or not
+        Regex::new(
+            r#"(?i)[\s"'](src|href|poster|action|content|data|value|data-[a-z0-9_-]*(?:src|href|url|file|link|download|video|audio|original))\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`]+))"#,
+        )
+        .unwrap()
     })
+}
+
+/// srcset="a.jpg 1x, b.jpg 2x" (pictures in several sizes: all of them)
+fn srcset_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r#"(?i)\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)')"#).unwrap())
+}
+
+/// <base href="...">: the address the page's own links start from
+fn base_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r#"(?i)<base\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#).unwrap())
 }
 
 fn tag_re() -> &'static Regex {
@@ -94,7 +116,16 @@ fn decode_entities(s: &str) -> String {
 
 /// Every link of an HTML page as (absolute address, link text).
 pub fn extract_links(html: &str, base: &str) -> Vec<(String, String)> {
-    let Ok(base) = url::Url::parse(base) else { return Vec::new() };
+    let Ok(mut base) = url::Url::parse(base) else { return Vec::new() };
+    // a page that says where its links start from
+    if let Some(c) = base_re().captures(html) {
+        let b = c.get(1).or(c.get(2)).or(c.get(3)).map(|m| decode_entities(m.as_str().trim())).unwrap_or_default();
+        if let Ok(u) = base.join(&b) {
+            if matches!(u.scheme(), "http" | "https") {
+                base = u;
+            }
+        }
+    }
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     let mut push = |raw: &str, text: String| {
@@ -124,8 +155,23 @@ pub fn extract_links(html: &str, base: &str) -> Vec<(String, String)> {
         push(href, text);
     }
     for c in attr_re().captures_iter(html) {
-        let v = c.get(1).or(c.get(2)).map(|m| m.as_str()).unwrap_or("");
+        let name = c.get(1).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_default();
+        let v = c.get(2).or(c.get(3)).or(c.get(4)).map(|m| m.as_str()).unwrap_or("").trim();
+        // content=, value=, action= hold other things too: only a full
+        // address or one from the site's root
+        let loose = matches!(name.as_str(), "content" | "value" | "action" | "data");
+        if (loose && !(v.starts_with("http") || v.starts_with("//") || (v.starts_with('/') && v.len() > 1))) || v.contains(' ') {
+            continue;
+        }
         push(v, String::new());
+    }
+    for c in srcset_re().captures_iter(html) {
+        let v = c.get(1).or(c.get(2)).map(|m| m.as_str()).unwrap_or("");
+        for part in v.split(',') {
+            if let Some(u) = part.split_whitespace().next() {
+                push(u, String::new());
+            }
+        }
     }
     // addresses written as text (lists of links in a post, a note, JSON in
     // a script): many pages have their file links only like that
@@ -326,9 +372,22 @@ pub async fn crawl(
                     }
                     continue;
                 }
+                None => {
+                    progress.pages_failed.fetch_add(1, Ordering::Relaxed);
+                    continue;
+                }
                 _ => continue,
             };
-            for (link, text) in extract_links(&html, &page_url) {
+            let links = extract_links(&html, &page_url);
+            // the start page: links made in the browser by its scripts?
+            if level == 0 {
+                let own = links.iter().filter(|(l, _)| url::Url::parse(l).is_ok_and(|u| u.host_str().unwrap_or("").eq_ignore_ascii_case(&start_host))).count();
+                let scripts = html.matches("<script").count();
+                if own < 5 && scripts >= 3 {
+                    progress.made_by_scripts.store(true, Ordering::Relaxed);
+                }
+            }
+            for (link, text) in links {
                 let Ok(u) = url::Url::parse(&link) else { continue };
                 let host = u.host_str().unwrap_or("").to_ascii_lowercase();
                 let ext = ext_of(&u);
@@ -349,8 +408,23 @@ pub async fn crawl(
                     {
                         queue.push_back((link, next_level, !same, false));
                         progress.pages_queued.fetch_add(1, Ordering::Relaxed);
+                    } else if asked < MAX_ASKED
+                        && ext.is_empty()
+                        && (looks_like_download(&link, &text) || (same && asked < MAX_ASKED / 2 && !u.query().is_some_and(|q| q.len() > 120)))
+                        && seen_pages.insert(link.clone())
+                    {
+                        // too deep to explore, but an address with no file
+                        // name may be a file ("/media/123"): only asked; the
+                        // ones that look like downloads first
+                        asked += 1;
+                        if looks_like_download(&link, &text) {
+                            queue.push_front((link, next_level, !same, true));
+                        } else {
+                            queue.push_back((link, next_level, !same, true));
+                        }
+                        progress.pages_queued.fetch_add(1, Ordering::Relaxed);
                     } else if asked < MAX_ASKED && looks_like_download(&link, &text) && seen_pages.insert(link.clone()) {
-                        // too deep to explore, but it may be a file: only asked
+                        // a page address (".php") that looks like a download
                         asked += 1;
                         queue.push_back((link, next_level, !same, true));
                         progress.pages_queued.fetch_add(1, Ordering::Relaxed);
@@ -419,5 +493,28 @@ mod tests {
         assert!(urls.contains(&"https://example.com/dir/page2.html"));
         assert!(!urls.iter().any(|u| u.contains("mailto") || u.ends_with("#top")));
         assert_eq!(l.iter().find(|(u, _)| u.ends_with("a.pdf")).unwrap().1, "Document A");
+    }
+
+    #[test]
+    fn more_kinds_of_links() {
+        let html = r#"<html><head><base href="https://cdn.example.com/files/">
+            <meta property="og:video" content="https://v.example.com/clip.mp4">
+            <meta name="description" content="a page about things"></head>
+            <img srcset="small.jpg 1x, big.jpg 2x"> <video src=movie.webm></video>
+            <a href=report.pdf>Report <a data-download-url="/get/zip9.zip">x</a>
+            <button data-file="setup.exe">Get</button> <form action="send.php"></form> <input value="12">"#;
+        let links: Vec<String> = super::extract_links(html, "https://www.example.com/page").into_iter().map(|(l, _)| l).collect();
+        for want in [
+            "https://cdn.example.com/files/report.pdf",
+            "https://cdn.example.com/files/small.jpg",
+            "https://cdn.example.com/files/big.jpg",
+            "https://cdn.example.com/files/movie.webm",
+            "https://cdn.example.com/get/zip9.zip",
+            "https://cdn.example.com/files/setup.exe",
+            "https://v.example.com/clip.mp4",
+        ] {
+            assert!(links.iter().any(|l| l == want), "{want} missing in {links:?}");
+        }
+        assert!(!links.iter().any(|l| l.contains("about%20things") || l.ends_with("/12") || l.ends_with("send.php")), "{links:?}");
     }
 }

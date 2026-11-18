@@ -320,6 +320,15 @@ pub(crate) fn poll(ui: &Ui) {
             "{} of {} pages explored  ·  {} files found",
             &[&p.pages_done.load(Ordering::Relaxed), &p.pages_queued.load(Ordering::Relaxed), &p.files.load(Ordering::Relaxed)],
         ) + &if finished { t("  ·  done") } else { format!("  ·  {current}") };
+        // why some may be missing
+        let failed = p.pages_failed.load(Ordering::Relaxed);
+        let mut text = text;
+        if failed > 0 {
+            text += &tf("  ·  {} pages refused by the site", &[&failed]);
+        }
+        if finished && p.made_by_scripts.load(Ordering::Relaxed) {
+            text += &t("  ·  This page makes its links in the browser: open it there and use right-click > \"Download all links with Ezoo Download\" to get all of them.");
+        }
         d.set_progress_text(text.into());
     }
     if finished {
