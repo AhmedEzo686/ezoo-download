@@ -151,6 +151,7 @@ pub(crate) fn wire(ui: &Ui) {
                         ext: fmt_size(f.size).into(),
                         text: f.index.to_string().into(),
                         url: SharedString::new(),
+                        size: SharedString::new(),
                     })
                     .collect::<Vec<_>>(),
             );

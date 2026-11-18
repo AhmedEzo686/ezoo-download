@@ -310,7 +310,9 @@ impl Torrents {
                     persistence: Some(SessionPersistenceConfig::Json { folder: Some(self.data_dir.join("session")) }),
                     listen: Some(ListenerOptions {
                         mode: ListenerMode::TcpOnly,
-                        enable_upnp_port_forwarding: true,
+                        // no port opened in the router (programs that do it unasked look
+                        // like ones that let others in): people still connect out
+                        enable_upnp_port_forwarding: false,
                         listen_addr: if v4 { (std::net::Ipv4Addr::UNSPECIFIED, 0).into() } else { (std::net::Ipv6Addr::UNSPECIFIED, 0).into() },
                         ipv4_only: v4,
                         ..Default::default()

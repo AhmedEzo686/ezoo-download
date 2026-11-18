@@ -1465,3 +1465,61 @@ async fn a_slow_last_connection_does_not_hold_the_end() {
     assert!(std::fs::read(&part).unwrap() == *data);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// "Replace it": the old file stays until the new one is complete, then the
+/// new one takes its name (no "(1)"). And removing an old finished download
+/// "with its file" never deletes a newer file that took the same place.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn replace_keeps_the_old_file_until_the_new_one_is_done() {
+    let data: Arc<Vec<u8>> = Arc::new((0..500_000u32).map(|i| (i % 249) as u8).collect());
+    let port = serve_files(vec![("/f.bin", data.clone())]).await;
+    let root = std::env::temp_dir().join(format!("ezoo-replace-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = root.join("dl");
+    std::fs::create_dir_all(&dir).unwrap();
+    let mgr = swiftget_engine::Manager::new(tokio::runtime::Handle::current(), root.join("app")).unwrap();
+    let wait = |id| {
+        let mgr = mgr.clone();
+        async move {
+            for _ in 0..1500 {
+                let s = mgr.get(id).unwrap().status;
+                if matches!(s, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
+                    return s;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            swiftget_engine::Status::Failed
+        }
+    };
+    let first = mgr.add(swiftget_engine::NewDownload {
+        url: format!("http://127.0.0.1:{port}/f.bin"),
+        file_name: Some("f.bin".into()),
+        save_dir: Some(dir.clone()),
+        start: true,
+        ..Default::default()
+    });
+    assert_eq!(wait(first).await, swiftget_engine::Status::Completed);
+    // the user's own older file of that name
+    std::fs::write(dir.join("f.bin"), b"old").unwrap();
+    let new = mgr.add(swiftget_engine::NewDownload {
+        url: format!("http://127.0.0.1:{port}/f.bin"),
+        file_name: Some("f.bin".into()),
+        save_dir: Some(dir.clone()),
+        replace: true,
+        start: false,
+        ..Default::default()
+    });
+    assert_eq!(mgr.get(new).unwrap().file_name, "f.bin");
+    assert_eq!(std::fs::read(dir.join("f.bin")).unwrap(), b"old", "not touched before it is complete");
+    mgr.start(new);
+    assert_eq!(wait(new).await, swiftget_engine::Status::Completed);
+    assert_eq!(mgr.get(new).unwrap().file_name, "f.bin");
+    assert!(std::fs::read(dir.join("f.bin")).unwrap() == *data);
+    // the first download, removed "with its file": its file was replaced
+    // since, by the new download's own: it stays
+    std::fs::write(dir.join("f.bin"), b"newer and different").unwrap();
+    mgr.remove(first, true);
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    assert!(dir.join("f.bin").exists(), "a newer file at the same place is never deleted");
+    let _ = std::fs::remove_dir_all(&root);
+}

@@ -6,12 +6,13 @@
 //! We only use it to *find* the links (`yt-dlp -J`); the actual download
 //! still runs through our multi-connection engine.
 
+use crate::filename;
 use crate::model::RequestHeaders;
 use crate::mux::{find_tool, hide_window};
 use anyhow::{anyhow, bail, Context};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
@@ -47,6 +48,181 @@ pub struct YtInfo {
     /// e.g. "YouTube", "Instagram", "TikTok"
     pub site: String,
     pub options: Vec<YtOption>,
+    /// the video's subtitles, by language
+    pub subtitles: Vec<SubTrack>,
+}
+
+/// One language of a video's subtitles.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SubTrack {
+    /// yt-dlp's name for it ("ar", "en-orig", "pt-BR")
+    pub code: String,
+    /// its name in words ("Arabic")
+    pub name: String,
+    /// made by the site by itself (spoken words, or a translation)
+    pub auto: bool,
+}
+
+/// The subtitles a video has: the ones its makers wrote, and of the ones the
+/// site makes by itself, the original language and Arabic / English made
+/// from it (YouTube offers a translation into a hundred languages more).
+fn subtitle_tracks(info: &Value) -> Vec<SubTrack> {
+    let ok_code = |c: &str| !c.is_empty() && c.len() <= 20 && c != "live_chat" && c.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    let name_of = |list: &Value, code: &str| {
+        list.as_array()
+            .and_then(|a| a.iter().find_map(|f| f["name"].as_str()))
+            .map(|n| n.replace(" (auto-generated)", "").replace(" (Original)", "").trim().to_string())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| code.to_string())
+    };
+    let mut out: Vec<SubTrack> = Vec::new();
+    if let Some(m) = info["subtitles"].as_object() {
+        for (code, list) in m {
+            if ok_code(code) {
+                out.push(SubTrack { code: code.clone(), name: name_of(list, code), auto: false });
+            }
+        }
+    }
+    if let Some(m) = info["automatic_captions"].as_object() {
+        let orig: Vec<&String> = m.keys().filter(|k| k.ends_with("-orig")).collect();
+        for (code, list) in m {
+            let base = code.trim_end_matches("-orig");
+            let wanted = code.ends_with("-orig") || (orig.is_empty() && m.len() <= 3) || matches!(code.as_str(), "ar" | "en");
+            if !wanted || !ok_code(code) || out.iter().any(|t| t.code == base || t.code == *code) {
+                continue;
+            }
+            // "en" made from "en-orig" is the same text: the original only
+            if orig.iter().any(|o| o.trim_end_matches("-orig") == code) {
+                continue;
+            }
+            out.push(SubTrack { code: code.clone(), name: name_of(list, code), auto: true });
+        }
+    }
+    out.sort_by(|a, b| a.auto.cmp(&b.auto).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    out
+}
+
+/// A subtitle file of WebVTT made SubRip (.srt), the kind every player
+/// knows: numbered cues, "00:01:02,500" times, no styling. YouTube's own
+/// subtitles say each line twice while it rolls up: said once here.
+pub fn vtt_to_srt(vtt: &str) -> String {
+    fn time(t: &str) -> Option<String> {
+        let t = t.trim();
+        let (hms, ms) = t.split_once('.')?;
+        let parts: Vec<&str> = hms.split(':').collect();
+        let (h, m, s) = match parts.as_slice() {
+            [h, m, s] => (h.parse::<u32>().ok()?, m.parse::<u32>().ok()?, s.parse::<u32>().ok()?),
+            [m, s] => (0, m.parse::<u32>().ok()?, s.parse::<u32>().ok()?),
+            _ => return None,
+        };
+        let ms: String = ms.chars().take(3).collect();
+        Some(format!("{h:02}:{m:02}:{s:02},{ms:0<3}"))
+    }
+    fn plain(line: &str) -> String {
+        let mut out = String::new();
+        let mut tag = false;
+        for c in line.chars() {
+            match c {
+                '<' => tag = true,
+                '>' if tag => tag = false,
+                _ if !tag => out.push(c),
+                _ => {}
+            }
+        }
+        out.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&nbsp;", " ").trim().to_string()
+    }
+    let text = vtt.replace("\r\n", "\n");
+    let mut out = String::new();
+    let mut n = 0;
+    let mut last: Vec<String> = Vec::new();
+    for block in text.split("\n\n") {
+        let lines: Vec<&str> = block.lines().collect();
+        let Some(at) = lines.iter().position(|l| l.contains("-->")) else { continue };
+        let mut sides = lines[at].split("-->");
+        let (Some(a), Some(b)) = (sides.next().and_then(time), sides.next().and_then(|r| time(r.split_whitespace().next().unwrap_or("")))) else {
+            continue;
+        };
+        let mut said: Vec<String> = lines[at + 1..].iter().map(|l| plain(l)).filter(|l| !l.is_empty()).collect();
+        // rolling captions: the lines already shown in the cue before go
+        while said.first().is_some_and(|f| last.contains(f)) {
+            said.remove(0);
+        }
+        if said.is_empty() {
+            continue;
+        }
+        n += 1;
+        out.push_str(&format!("{n}\n{a} --> {b}\n{}\n\n", said.join("\n")));
+        last = lines[at + 1..].iter().map(|l| plain(l)).filter(|l| !l.is_empty()).collect();
+    }
+    out
+}
+
+/// Chosen subtitles of a video page, saved as "<stem>.<language>.srt" (or
+/// .vtt) in `dir`. `codes`: yt-dlp's names of the languages. Blocking.
+/// The files made are given back.
+pub fn fetch_subtitle_tracks(page_url: &str, dir: &Path, stem: &str, codes: &[String], srt: bool) -> anyhow::Result<Vec<PathBuf>> {
+    let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe is missing"))?;
+    let codes: Vec<String> = codes
+        .iter()
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty() && c.len() <= 20 && c.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+        .collect();
+    if codes.is_empty() {
+        bail!("no subtitles were chosen");
+    }
+    std::fs::create_dir_all(dir)?;
+    let stem = filename::sanitize(stem);
+    let before: Vec<PathBuf> = std::fs::read_dir(dir).map(|r| r.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+    // exact names ("en" is not "en-GB"); "%" means something to yt-dlp
+    let wanted = codes.iter().map(|c| format!("^{c}$")).collect::<Vec<_>>().join(",");
+    let out = format!("{}.%(ext)s", stem.replace('%', "%%"));
+    let kids = kids_to_youtube(page_url);
+    let page_url = kids.as_deref().unwrap_or(page_url);
+    with_cookies(page_url, None, |file| {
+        let mut cmd = ytdlp_command(&tool);
+        cmd.args(["--ignore-config", "--skip-download", "--write-subs", "--write-auto-subs", "--no-playlist", "--no-warnings"])
+            .args(cache_args())
+            .args(["--socket-timeout", "20", "--sub-format", "vtt/srt/best", "--sub-langs"])
+            .arg(&wanted)
+            .arg("-P")
+            .arg(dir)
+            .arg("-o")
+            .arg(&out);
+        if let Some(c) = file {
+            cmd.arg("--cookies").arg(c);
+        }
+        cmd.arg("--").arg(page_url);
+        let o = cmd.output().context("could not start yt-dlp")?;
+        if o.status.success() {
+            Ok(())
+        } else {
+            let err = String::from_utf8_lossy(&o.stderr);
+            bail!("{}", err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no subtitles"))
+        }
+    })?;
+    let mut made = Vec::new();
+    for p in std::fs::read_dir(dir)?.flatten().map(|e| e.path()) {
+        let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if before.contains(&p) || !name.starts_with(&format!("{stem}.")) {
+            continue;
+        }
+        if srt && name.to_ascii_lowercase().ends_with(".vtt") {
+            if let Ok(text) = std::fs::read_to_string(&p) {
+                let to = p.with_extension("srt");
+                if std::fs::write(&to, vtt_to_srt(&text)).is_ok() {
+                    let _ = std::fs::remove_file(&p);
+                    made.push(to);
+                    continue;
+                }
+            }
+        }
+        made.push(p);
+    }
+    if made.is_empty() {
+        bail!("the video has no subtitles in the languages chosen");
+    }
+    Ok(made)
 }
 
 /// A cookie as the browser extension sends it.
@@ -451,7 +627,8 @@ pub fn build_options(full: &Value) -> YtInfo {
             });
         }
     }
-    YtInfo { title, site, options }
+    let subtitles = subtitle_tracks(info);
+    YtInfo { title, site, options, subtitles }
 }
 
 /// Use the headers yt-dlp asked for when downloading the links.
@@ -497,11 +674,22 @@ pub fn netscape_cookies(cookies: &[BrowserCookie]) -> String {
 /// The arguments for looking at one page. `--ignore-config`: settings files
 /// of yt-dlp on the computer (which could add `--exec` and the like) are not
 /// read; `--`: the address can never be taken for an option.
-fn resolve_args(page_url: &str, cookie_file: Option<&Path>, referer: Option<&str>) -> Vec<std::ffi::OsString> {
-    let mut a: Vec<std::ffi::OsString> = ["--ignore-config", "-J", "--no-playlist", "--no-warnings", "--no-progress", "--no-cache-dir", "--socket-timeout", "20"]
+fn resolve_args(page_url: &str, cookie_file: Option<&Path>, referer: Option<&str>, js: Option<&(&str, PathBuf)>) -> Vec<std::ffi::OsString> {
+    let mut a: Vec<std::ffi::OsString> = ["--ignore-config", "-J", "--no-playlist", "--no-warnings", "--no-progress", "--socket-timeout", "20"]
         .iter()
         .map(Into::into)
         .collect();
+    a.extend(cache_args());
+    // a JavaScript engine for the players whose links must be worked out
+    // (videos made for children, and others the usual player doesn't give)
+    if let Some((name, path)) = js {
+        a.push("--js-runtimes".into());
+        let mut v = std::ffi::OsString::from(format!("{name}:"));
+        v.push(path.as_os_str());
+        a.push(v);
+        a.push("--extractor-args".into());
+        a.push("youtube:player_client=default,web_embedded".into());
+    }
     if let Some(c) = cookie_file {
         a.push("--cookies".into());
         a.push(c.into());
@@ -516,11 +704,24 @@ fn resolve_args(page_url: &str, cookie_file: Option<&Path>, referer: Option<&str
     a
 }
 
+/// yt-dlp keeps what it learnt (YouTube's player code, worked-out
+/// signatures) in a folder of ours: the next video is looked at faster. Not
+/// its usual folder, which some Windows wouldn't let it walk through
+/// (WinError 448); none at all when ours can't be made.
+fn cache_args() -> Vec<std::ffi::OsString> {
+    let dir = crate::tools::work_dir().and_then(|t| t.parent().map(|d| d.join("yt-dlp-cache")));
+    match dir.filter(|d| std::fs::create_dir_all(d).is_ok()) {
+        Some(d) => vec!["--cache-dir".into(), d.into_os_string()],
+        None => vec!["--no-cache-dir".into()],
+    }
+}
+
 fn playlist_args(url: &str, cookie_file: Option<&Path>, lang: &str) -> Vec<std::ffi::OsString> {
-    let mut a: Vec<std::ffi::OsString> = ["--ignore-config", "-J", "--flat-playlist", "--yes-playlist", "--no-warnings", "--no-cache-dir", "--socket-timeout", "20"]
+    let mut a: Vec<std::ffi::OsString> = ["--ignore-config", "-J", "--flat-playlist", "--yes-playlist", "--no-warnings", "--socket-timeout", "20"]
         .iter()
         .map(Into::into)
         .collect();
+    a.extend(cache_args());
     // the names in the user's language, when the site has them in it
     if !lang.is_empty() && lang.len() <= 5 && lang.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         a.push("--extractor-args".into());
@@ -569,9 +770,9 @@ fn ytdlp_command(tool: &Path) -> Command {
     cmd
 }
 
-fn run_ytdlp(tool: &Path, page_url: &str, cookie_file: Option<&Path>, referer: Option<&str>) -> anyhow::Result<Value> {
+fn run_ytdlp(tool: &Path, page_url: &str, cookie_file: Option<&Path>, referer: Option<&str>, js: Option<&(&str, PathBuf)>) -> anyhow::Result<Value> {
     let mut cmd = ytdlp_command(tool);
-    cmd.args(resolve_args(page_url, cookie_file, referer));
+    cmd.args(resolve_args(page_url, cookie_file, referer, js));
     let out = cmd.output().context("could not start yt-dlp")?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
@@ -760,7 +961,8 @@ fn remember(page_url: &str, info: &YtInfo) {
     let mut list = RESULTS.lock().unwrap_or_else(|p| p.into_inner());
     list.retain(|(u, _, _)| u != page_url);
     list.push((page_url.to_string(), std::time::Instant::now(), info.clone()));
-    if list.len() > 30 {
+    // a playlist's videos are looked up for their sizes: kept for its download
+    if list.len() > 300 {
         list.remove(0);
     }
 }
@@ -778,10 +980,39 @@ fn resolve_now(page_url: &str, cookies: Option<&[BrowserCookie]>, referer: Optio
     let tool = find_tool("yt-dlp")
         .ok_or_else(|| anyhow!("yt-dlp.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again"));
     let cookies = cookies.filter(|c| !c.is_empty());
-    let found = tool.and_then(|tool| with_cookies(page_url, cookies, |file| run_ytdlp(&tool, page_url, file, referer)));
+    // a YouTube Kids address is the same video on YouTube (yt-dlp knows no
+    // YouTube Kids pages)
+    let kids = kids_to_youtube(page_url);
+    let page_url = kids.as_deref().unwrap_or(page_url);
+    let run = |tool: &Path, js: Option<&(&str, PathBuf)>| with_cookies(page_url, cookies, |file| run_ytdlp(tool, page_url, file, referer, js));
+    let found = tool.and_then(|tool| {
+        // a video known to need the JavaScript engine: with it at once
+        let known = is_youtube(page_url) && NEEDS_JS.lock().unwrap_or_else(|p| p.into_inner()).iter().any(|u| u == page_url);
+        let first = if known { Err(anyhow!("needs the JavaScript engine")) } else { run(&tool, None) };
+        match first {
+            Err(e) if is_youtube(page_url) && (known || only_with_js(&format!("{e:#}"))) => {
+                // videos made for children (and some others) come only from
+                // YouTube players whose links are worked out by running
+                // YouTube's script: again with a JavaScript engine
+                let Some(js) = crate::tools::js_runtime() else { return Err(e) };
+                let r = run(&tool, Some(&js));
+                if r.is_ok() {
+                    let mut list = NEEDS_JS.lock().unwrap_or_else(|p| p.into_inner());
+                    if !list.iter().any(|u| u == page_url) {
+                        list.push(page_url.to_string());
+                        if list.len() > 200 {
+                            list.remove(0);
+                        }
+                    }
+                }
+                r.or(Err(e))
+            }
+            other => other,
+        }
+    });
     let mut info = match (found, &drive) {
         (Ok(json), _) => build_options(&json),
-        (Err(_), Some(_)) => YtInfo { title: String::new(), site: "Google Drive".into(), options: Vec::new() },
+        (Err(_), Some(_)) => YtInfo { title: String::new(), site: "Google Drive".into(), options: Vec::new(), subtitles: Vec::new() },
         (Err(e), None) => return Err(e),
     };
     if let Some(id) = drive {
@@ -792,6 +1023,40 @@ fn resolve_now(page_url: &str, cookies: Option<&[BrowserCookie]>, referer: Optio
         bail!("no downloadable video was found on this page");
     }
     Ok(info)
+}
+
+/// YouTube pages that gave their video only with the JavaScript engine
+/// (asked again with it at once: fresh links, the next quality).
+static NEEDS_JS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// A YouTube page (youtube.com and its hosts, youtu.be).
+fn is_youtube(url: &str) -> bool {
+    site_of(url) == "youtube.com" || site_of(url) == "youtube-nocookie.com"
+}
+
+/// yt-dlp's words when YouTube's usual player gives nothing for a video
+/// that another player (one that needs a JavaScript engine) gives: videos
+/// made for children say "unavailable" or "not available".
+fn only_with_js(msg: &str) -> bool {
+    let m = msg.to_ascii_lowercase();
+    // never a video that is private, needs a sign-in or is gone for good
+    if ["private video", "sign in", "removed", "terminated", "copyright", "does not exist"].iter().any(|k| m.contains(k)) {
+        return false;
+    }
+    ["not available", "unavailable", "unplayable", "no video formats", "javascript", "js runtime", "made for kids"]
+        .iter()
+        .any(|k| m.contains(k))
+}
+
+/// "youtubekids.com/watch?v=ID" -> "www.youtube.com/watch?v=ID".
+fn kids_to_youtube(url: &str) -> Option<String> {
+    let u = url::Url::parse(url).ok()?;
+    let host = u.host_str()?.to_ascii_lowercase();
+    if host != "youtubekids.com" && !host.ends_with(".youtubekids.com") {
+        return None;
+    }
+    let id = u.query_pairs().find(|(k, _)| k == "v").map(|(_, v)| v.to_string())?;
+    (id.len() == 11 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')).then(|| format!("https://www.youtube.com/watch?v={id}"))
 }
 
 /// The id of a Google Drive file from its page ("/file/d/ID/view",
@@ -1024,7 +1289,13 @@ pub fn pick_option(options: &[YtOption], wanted: &str) -> Option<YtOption> {
 
 /// Update yt-dlp right now ("Help > Update video downloader"). Blocking.
 pub fn update_now() -> anyhow::Result<String> {
-    let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe was not found next to EzooDownload.exe"))?;
+    // the folder build (the one used when it is there) is fetched anew when
+    // yt-dlp made a new one; `-U` is for the one-file build
+    let folder = crate::tools::update_folder_build_now();
+    let tool = crate::tools::bundled("yt-dlp");
+    let Some(tool) = tool else {
+        return if folder { Ok("yt-dlp is up to date".into()) } else { Err(anyhow!("yt-dlp.exe was not found next to EzooDownload.exe")) };
+    };
     let mut cmd = ytdlp_command(&tool);
     cmd.args(["--ignore-config", "-U"]);
     let out = cmd.output().context("could not start yt-dlp")?;
@@ -1051,8 +1322,10 @@ pub fn update_if_due(data_dir: &Path) {
     if !due {
         return;
     }
-    let Some(tool) = find_tool("yt-dlp") else { return };
-    if !tool.is_absolute() {
+    // the one-file build (the folder build can't update itself: tools.rs
+    // fetches a new one)
+    let Some(tool) = crate::tools::bundled("yt-dlp").or_else(|| find_tool("yt-dlp")) else { return };
+    if !tool.is_absolute() || crate::tools::ytdlp_folder_build().as_deref() == Some(tool.as_path()) {
         return; // installed elsewhere (e.g. winget): leave updates to that
     }
     let mut cmd = ytdlp_command(&tool);
@@ -1192,7 +1465,7 @@ mod tests {
         assert_eq!(drive_file_id("https://drive.google.com/open?id=1aLKUiTGVrngA6Mez").as_deref(), Some("1aLKUiTGVrngA6Mez"));
         assert_eq!(drive_file_id("https://drive.google.com/drive/my-drive"), None);
         assert_eq!(drive_file_id("https://example.com/file/d/1aLKUiTGVrngA6MeznJ/view"), None);
-        let o = drive_original("1aLKUiTGVrngA6Mez", &YtInfo { title: String::new(), site: String::new(), options: Vec::new() });
+        let o = drive_original("1aLKUiTGVrngA6Mez", &YtInfo { title: String::new(), site: String::new(), options: Vec::new(), subtitles: Vec::new() });
         assert!(o.video_url.starts_with("https://drive.usercontent.google.com/download?id=1aLKUiTGVrngA6Mez"));
     }
 
@@ -1265,12 +1538,12 @@ mod tests {
 
     #[test]
     fn yt_dlp_settings_files_and_options_are_never_used() {
-        let a: Vec<String> = resolve_args("-x --exec calc", Some(Path::new("c.txt")), Some("-o x")).iter().map(|x| x.to_string_lossy().into_owned()).collect();
+        let a: Vec<String> = resolve_args("-x --exec calc", Some(Path::new("c.txt")), Some("-o x"), None).iter().map(|x| x.to_string_lossy().into_owned()).collect();
         assert_eq!(a[0], "--ignore-config");
         // the address comes after "--": yt-dlp can't read it as an option
         assert_eq!(&a[a.len() - 2..], ["--", "-x --exec calc"]);
         assert!(!a.iter().any(|x| x == "--referer"), "only a web address is a referer");
-        let r: Vec<String> = resolve_args("https://cdn/x.mpd", None, Some("https://site/page")).iter().map(|x| x.to_string_lossy().into_owned()).collect();
+        let r: Vec<String> = resolve_args("https://cdn/x.mpd", None, Some("https://site/page"), None).iter().map(|x| x.to_string_lossy().into_owned()).collect();
         assert!(r.windows(2).any(|w| w[0] == "--referer" && w[1] == "https://site/page"));
         let p: Vec<String> = playlist_args("-o x", None, "").iter().map(|x| x.to_string_lossy().into_owned()).collect();
         assert_eq!(p[0], "--ignore-config");
@@ -1326,5 +1599,47 @@ mod tests {
         assert!(s.contains(".instagram.com\tTRUE\t/\tTRUE\t1900000000\tsessionid\tabc\n"));
         assert!(s.contains("www.x.com\tFALSE\t/\tFALSE\t2147483647\ta\tb=c\n"));
         assert!(needs_login("ERROR: [Instagram] abc: Requested content is not available, rate-limit reached or login required"));
+    }
+
+    #[test]
+    fn videos_for_children() {
+        assert_eq!(
+            super::kids_to_youtube("https://www.youtubekids.com/watch?v=dQw4w9WgXcQ&hl=ar").as_deref(),
+            Some("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        );
+        assert_eq!(super::kids_to_youtube("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), None);
+        assert_eq!(super::kids_to_youtube("https://www.youtubekids.com/watch?v=bad"), None);
+        assert!(super::only_with_js("ERROR: [youtube] abc: This video is not available"));
+        assert!(super::only_with_js("android_vr player response playability status: UNPLAYABLE"));
+        assert!(!super::only_with_js("ERROR: [youtube] abc: Private video. Sign in if you've been granted access"));
+        assert!(!super::only_with_js("ERROR: unable to download webpage: timed out"));
+        assert!(super::is_youtube("https://m.youtube.com/watch?v=x") && super::is_youtube("https://youtu.be/x"));
+        assert!(!super::is_youtube("https://vimeo.com/1"));
+    }
+
+    #[test]
+    fn subtitles_of_a_video() {
+        let info = json!({
+            "subtitles": {"ar": [{"ext": "vtt", "name": "Arabic"}], "live_chat": [{}]},
+            "automatic_captions": {
+                "en-orig": [{"ext": "vtt", "name": "English (Original)"}],
+                "en": [{"ext": "vtt", "name": "English"}],
+                "ar": [{"ext": "vtt", "name": "Arabic"}],
+                "fr": [{"ext": "vtt", "name": "French"}]
+            }
+        });
+        let t = super::subtitle_tracks(&info);
+        let codes: Vec<(&str, bool)> = t.iter().map(|x| (x.code.as_str(), x.auto)).collect();
+        assert_eq!(codes, vec![("ar", false), ("en-orig", true)], "{t:?}");
+        assert_eq!(t[1].name, "English");
+    }
+
+    #[test]
+    fn vtt_becomes_srt() {
+        let vtt = "WEBVTT\nKind: captions\n\n00:00:01.000 --> 00:00:03.500 align:start position:0%\nhello <c>there</c>\n\n00:03.500 --> 00:00:05.000\nhello there\nsecond line\n";
+        assert_eq!(
+            super::vtt_to_srt(vtt),
+            "1\n00:00:01,000 --> 00:00:03,500\nhello there\n\n2\n00:00:03,500 --> 00:00:05,000\nsecond line\n\n"
+        );
     }
 }

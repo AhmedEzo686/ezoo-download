@@ -475,6 +475,9 @@ msgstr "Проверить"
 msgid "Category"
 msgstr "Категория"
 
+msgid "The name the file gets"
+msgstr "Имя, с которым сохранится файл"
+
 msgid "Save As"
 msgstr "Сохранить как"
 
@@ -498,6 +501,15 @@ msgstr "Логин"
 
 msgid "Password"
 msgstr "Пароль"
+
+msgid "A file named \"{}\" is already in this folder. Replace it, save the new one with a numbered name, or change the name above."
+msgstr "Файл \"{}\" уже есть в этой папке. Замените его, сохраните новый с номером или измените имя выше."
+
+msgid "Replace it"
+msgstr "Заменить"
+
+msgid "New name (numbered)"
+msgstr "Новое имя (с номером)"
 
 msgid "Checking the address…"
 msgstr "Проверка адреса…"
@@ -1099,6 +1111,9 @@ msgstr "Рисовать окна видеокартой (больше памя�
 msgid "Show \"Tip of the day\" at startup"
 msgstr "Показывать \"Совет дня\" при запуске"
 
+msgid "Install new versions of Ezoo Download by themselves"
+msgstr "Устанавливать новые версии Ezoo Download автоматически"
+
 msgid "On double click on a download"
 msgstr "Двойной щелчок по загрузке"
 
@@ -1467,6 +1482,9 @@ msgstr "Файлов одновременно"
 
 msgid "Number the files"
 msgstr "Нумеровать файлы"
+
+msgid "Oldest first"
+msgstr "Сначала старые"
 
 msgid "Subtitles too"
 msgstr "И субтитры"

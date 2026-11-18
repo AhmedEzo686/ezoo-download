@@ -475,6 +475,9 @@ msgstr "فحص"
 msgid "Category"
 msgstr "التصنيف"
 
+msgid "The name the file gets"
+msgstr "الاسم الذي سيُحفظ به الملف"
+
 msgid "Save As"
 msgstr "حفظ باسم"
 
@@ -498,6 +501,15 @@ msgstr "اسم المستخدم"
 
 msgid "Password"
 msgstr "كلمة المرور"
+
+msgid "A file named \"{}\" is already in this folder. Replace it, save the new one with a numbered name, or change the name above."
+msgstr "يوجد ملف باسم \"{}\" في هذا المجلد بالفعل. استبدله، أو احفظ الجديد باسم برقم، أو غيّر الاسم بالأعلى."
+
+msgid "Replace it"
+msgstr "استبداله"
+
+msgid "New name (numbered)"
+msgstr "اسم جديد (برقم)"
 
 msgid "Checking the address…"
 msgstr "جارٍ فحص الرابط…"
@@ -1099,6 +1111,9 @@ msgstr "رسم النوافذ بكارت الشاشة (يستهلك ذاكرة �
 msgid "Show \"Tip of the day\" at startup"
 msgstr "إظهار \"نصيحة اليوم\" عند البدء"
 
+msgid "Install new versions of Ezoo Download by themselves"
+msgstr "تثبيت الإصدارات الجديدة من Ezoo Download تلقائيًا"
+
 msgid "On double click on a download"
 msgstr "عند النقر المزدوج على تحميل"
 
@@ -1467,6 +1482,9 @@ msgstr "ملفات في نفس الوقت"
 
 msgid "Number the files"
 msgstr "ترقيم الملفات"
+
+msgid "Oldest first"
+msgstr "الأقدم أولًا"
 
 msgid "Subtitles too"
 msgstr "والترجمة أيضًا"

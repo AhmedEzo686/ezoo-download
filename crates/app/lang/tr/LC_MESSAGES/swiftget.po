@@ -475,6 +475,9 @@ msgstr "Denetle"
 msgid "Category"
 msgstr "Kategori"
 
+msgid "The name the file gets"
+msgstr "Dosyanın alacağı ad"
+
 msgid "Save As"
 msgstr "Farklı kaydet"
 
@@ -498,6 +501,15 @@ msgstr "Kullanıcı"
 
 msgid "Password"
 msgstr "Parola"
+
+msgid "A file named \"{}\" is already in this folder. Replace it, save the new one with a numbered name, or change the name above."
+msgstr "Bu klasörde \"{}\" adlı bir dosya zaten var. Değiştirin, yenisini numaralı adla kaydedin ya da yukarıdan adı değiştirin."
+
+msgid "Replace it"
+msgstr "Değiştir"
+
+msgid "New name (numbered)"
+msgstr "Yeni ad (numaralı)"
 
 msgid "Checking the address…"
 msgstr "Adres denetleniyor…"
@@ -1099,6 +1111,9 @@ msgstr "Pencereleri ekran kartıyla çiz (daha çok bellek; yeniden başlatınca
 msgid "Show \"Tip of the day\" at startup"
 msgstr "Başlangıçta \"Günün ipucu\"nu göster"
 
+msgid "Install new versions of Ezoo Download by themselves"
+msgstr "Ezoo Download'un yeni sürümlerini kendiliğinden yükle"
+
 msgid "On double click on a download"
 msgstr "Bir indirmeye çift tıklayınca"
 
@@ -1467,6 +1482,9 @@ msgstr "Aynı anda dosya"
 
 msgid "Number the files"
 msgstr "Dosyaları numaralandır"
+
+msgid "Oldest first"
+msgstr "Önce en eski"
 
 msgid "Subtitles too"
 msgstr "Altyazılar da"

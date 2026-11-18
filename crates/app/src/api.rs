@@ -77,6 +77,20 @@ pub struct AddRequest {
     pub post: Option<String>,
     #[serde(default)]
     pub post_type: Option<String>,
+    /// "With subtitles": "srt:ar,en" fetched next to the video when done
+    #[serde(default)]
+    pub subs: Option<String>,
+}
+
+/// "Subtitles": only the subtitles of a video page, saved in the video folder.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SubsRequest {
+    pub url: String,
+    pub langs: Vec<String>,
+    #[serde(default)]
+    pub format: String,
+    #[serde(default)]
+    pub title: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -138,6 +152,8 @@ pub enum ApiEvent {
     OldFirefoxAddon,
     /// a download handed over on the command line of another start
     Cli(crate::cli::CliAsk),
+    /// the add-in's "Subtitles": fetch them; the answer (JSON) goes back
+    Subtitles(SubsRequest, std::sync::mpsc::Sender<String>),
 }
 
 /// Hand a command line download to the copy of the program that is open.
@@ -669,6 +685,26 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
                 _ => reply(req, 400, r#"{"error":"invalid request"}"#),
             }
         }
+        (Method::Post, "/subtitles") => {
+            let mut body = String::new();
+            if req.as_reader().take(1 << 16).read_to_string(&mut body).is_err() {
+                return reply(req, 400, r#"{"error":"bad body"}"#);
+            }
+            let Ok(ask) = serde_json::from_str::<SubsRequest>(&body) else {
+                return reply(req, 400, r#"{"error":"invalid request"}"#);
+            };
+            if !is_http(&ask.url) || ask.langs.is_empty() || ask.langs.len() > 300 {
+                return reply(req, 400, r#"{"error":"invalid request"}"#);
+            }
+            let (tx, rx) = std::sync::mpsc::channel::<String>();
+            on_event(ApiEvent::Subtitles(ask, tx));
+            std::thread::spawn(move || {
+                let body = rx
+                    .recv_timeout(Duration::from_secs(120))
+                    .unwrap_or_else(|_| r#"{"ok":false,"error":"no answer in time"}"#.to_string());
+                reply(req, 200, &body);
+            });
+        }
         (Method::Post, "/add") => {
             let mut body = String::new();
             if req.as_reader().take(1 << 20).read_to_string(&mut body).is_err() {
@@ -734,7 +770,7 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
                 let referer = r.referer.as_deref().filter(|u| is_http(u));
                 let body = match swiftget_engine::ytdlp::resolve_for(&r.url, cookies, referer) {
                     Ok(info) => serde_json::json!({
-                        "ok": true, "title": info.title, "site": info.site, "options": info.options
+                        "ok": true, "title": info.title, "site": info.site, "options": info.options, "subtitles": info.subtitles
                     }),
                     Err(e) => serde_json::json!({ "ok": false, "error": crate::err_text(&format!("{e:#}")) }),
                 };

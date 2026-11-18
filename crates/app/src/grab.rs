@@ -165,6 +165,7 @@ fn row(it: &Item) -> LinkRow {
         ext: ext.trim().into(),
         text: it.gone.clone().unwrap_or_else(|| it.text.clone()).into(),
         url: it.url.clone().into(),
+        size: SharedString::new(),
     }
 }
 

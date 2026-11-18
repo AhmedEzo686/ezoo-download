@@ -346,6 +346,9 @@ pub struct Settings {
     pub limiter_on_startup: bool,
     /// "Tip of the day" at startup
     pub show_tips: bool,
+    /// a new version is fetched and installed by itself (else only Help >
+    /// Check for updates does it)
+    pub auto_update: bool,
     pub tip_index: u32,
     /// browser: extensions handed to us, space separated ("R0*" style patterns)
     pub capture_exts: String,
@@ -492,6 +495,7 @@ impl Default for Settings {
             double_click: 0,
             limiter_on_startup: false,
             show_tips: true,
+            auto_update: true,
             tip_index: 0,
             capture_exts: DEFAULT_CAPTURE_EXTS.into(),
             skip_sites: String::new(),

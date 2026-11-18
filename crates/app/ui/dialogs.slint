@@ -2007,6 +2007,7 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <bool> auto-clipboard;
     in-out property <int> double-click;
     in-out property <bool> show-tips;
+    in-out property <bool> auto-update: true;
     in-out property <int> port;
     in-out property <int> skip-key;
     in-out property <int> force-key;
@@ -2296,6 +2297,10 @@ export component SettingsDialog inherits ThemedWindow {
                     CheckBox {
                         text: @tr("Show \"Tip of the day\" at startup");
                         checked <=> root.show-tips;
+                    }
+                    CheckBox {
+                        text: @tr("Install new versions of Ezoo Download by themselves");
+                        checked <=> root.auto-update;
                     }
                     HRow {
                         spacing: 8px;
@@ -3401,7 +3406,7 @@ export component PlaylistDialog inherits ThemedWindow {
     in property <bool> front;
     always-on-top: root.front;
     title: @tr("Download a playlist");
-    preferred-width: 780px;
+    preferred-width: 880px;
     preferred-height: 600px;
     in-out property <string> url;
     in property <bool> busy;
@@ -3412,11 +3417,16 @@ export component PlaylistDialog inherits ThemedWindow {
     in-out property <string> folder;
     in-out property <int> parallel: 2;
     in-out property <bool> numbered: true;
+    // number 1 is the last video of the list (lists that put the newest first)
+    in-out property <bool> oldest-first;
     in-out property <bool> start-now: true;
     // the videos' subtitles too (Options > Downloads, the same switch)
     in-out property <bool> subtitles;
     in property <string> checked-text;
     in property <string> message;
+    // the width of the "Video" column (its edge in the header is dragged)
+    in-out property <length> name-w: 380px;
+    callback quality-changed();
     callback fetch();
     callback toggle(int);
     callback check-all(bool);
@@ -3507,11 +3517,22 @@ export component PlaylistDialog inherits ThemedWindow {
                         }
                         HeaderCell {
                             text: @tr("Video");
-                            horizontal-stretch: 1;
+                            width: root.name-w;
+                            adjustable: true;
+                            resized(w) => {
+                                root.name-w = max(120px, w);
+                            }
+                        }
+                        HeaderCell {
+                            text: @tr("Size");
+                            width: 90px;
                         }
                         HeaderCell {
                             text: @tr("Length");
                             width: 80px;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
                         }
                     }
                 }
@@ -3557,13 +3578,22 @@ export component PlaylistDialog inherits ThemedWindow {
                             Cell {
                                 text: e.name;
                                 horizontal-alignment: e.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
-                                horizontal-stretch: 1;
+                                width: root.name-w - 4px;
+                            }
+                            Cell {
+                                text: e.size;
+                                width: 86px;
+                                color: Theme.muted;
+                                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.left : TextHorizontalAlignment.right;
                             }
                             Cell {
                                 text: e.ext;
                                 width: 76px;
                                 color: Theme.muted;
                                 horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.left : TextHorizontalAlignment.right;
+                            }
+                            Rectangle {
+                                horizontal-stretch: 1;
                             }
                         }
                     }
@@ -3592,6 +3622,9 @@ export component PlaylistDialog inherits ThemedWindow {
                     width: 240px;
                     model: [@tr("Best quality (MP4)"), @tr("2160p 4K"), @tr("1440p 2K"), @tr("1080p Full HD"), @tr("720p HD"), @tr("480p SD"), @tr("360p SD"), "240p", "144p", @tr("Audio only (M4A)"), @tr("Audio MP3")];
                     current-index <=> root.quality;
+                    selected(v) => {
+                        root.quality-changed();
+                    }
                 }
                 Label {
                     text: @tr("Files at the same time");
@@ -3633,6 +3666,10 @@ export component PlaylistDialog inherits ThemedWindow {
             CheckBox {
                 text: @tr("Number the files");
                 checked <=> root.numbered;
+            }
+            if root.numbered: CheckBox {
+                text: @tr("Oldest first");
+                checked <=> root.oldest-first;
             }
             CheckBox {
                 text: @tr("Start now");

@@ -152,8 +152,135 @@ fn replace(new: &Path, target: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// yt-dlp's folder build: the same yt-dlp, unpacked once. The one-file
+/// yt-dlp.exe unpacks its Python into a new temporary folder every time it
+/// starts (and the antivirus looks at all of it each time): a second or
+/// more before every look at a video. Kept as tools\yt-dlp-dir\<version>\,
+/// the one in use named in "current.txt".
+const YTDLP_DIR_ZIP: &str = "yt-dlp_win.zip";
+const YTDLP_DIR_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_win.zip";
+
+fn folder_build_root() -> Option<PathBuf> {
+    tool_dirs().into_iter().map(|d| d.join("yt-dlp-dir")).find(|d| d.join("current.txt").is_file())
+}
+
+/// yt-dlp.exe of the folder build, when it is there.
+pub fn ytdlp_folder_build() -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let root = folder_build_root()?;
+    let name = std::fs::read_to_string(root.join("current.txt")).ok()?;
+    let name = name.trim();
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let exe = root.join(name).join("yt-dlp.exe");
+    (exe.is_file() && root.join(name).join("_internal").is_dir()).then_some(exe)
+}
+
+/// Get the newest folder build when it is not there yet (or yt-dlp made a
+/// new one): checked against yt-dlp's own list of SHA-256, unpacked to one
+/// side, then made the one in use. Older ones go when nothing runs them.
+async fn yt_dlp_folder(client: &reqwest::Client, sums: &str) -> bool {
+    let Some(sum) = sum_for(sums, YTDLP_DIR_ZIP) else { return false };
+    let version = &sum[..16];
+    let root = match folder_build_root() {
+        Some(r) => r,
+        None => match writable_dir("yt-dlp") {
+            Some(d) => d.join("yt-dlp-dir"),
+            None => return false,
+        },
+    };
+    let current = std::fs::read_to_string(root.join("current.txt")).unwrap_or_default();
+    if current.trim() == version && ytdlp_folder_build().is_some() {
+        return true;
+    }
+    if std::fs::create_dir_all(&root).is_err() {
+        return false;
+    }
+    let zip = root.join("download.zip");
+    if download(client, YTDLP_DIR_URL, &zip, &sum).await.is_err() {
+        return false;
+    }
+    let (root2, zip2, version2) = (root.clone(), zip.clone(), version.to_string());
+    let ok = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+        let bytes = std::fs::read(&zip2)?;
+        let part = root2.join(format!("{version2}.part"));
+        let _ = std::fs::remove_dir_all(&part);
+        crate::unzip::unpack(&bytes, &part, 600 << 20)?;
+        let _ = std::fs::remove_file(&zip2);
+        if !part.join("yt-dlp.exe").is_file() || !part.join("_internal").is_dir() {
+            let _ = std::fs::remove_dir_all(&part);
+            anyhow::bail!("not yt-dlp's folder build");
+        }
+        let fin = root2.join(&version2);
+        let _ = std::fs::remove_dir_all(&fin);
+        std::fs::rename(&part, &fin)?;
+        std::fs::write(root2.join("current.txt"), &version2)?;
+        Ok(())
+    })
+    .await
+    .map(|r| r.is_ok())
+    .unwrap_or(false);
+    let _ = std::fs::remove_file(&zip);
+    if ok {
+        old_folder_builds();
+    }
+    ok
+}
+
+/// "Update video downloader": a new folder build now, if yt-dlp made one.
+/// Blocking. true = the folder build is there (new or already newest).
+pub fn update_folder_build_now() -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
+    std::thread::spawn(|| {
+        let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return false };
+        rt.block_on(async {
+            let Ok(client) = crate::http::build_client_with(&crate::http::current_proxy()) else { return false };
+            match get_text(&client, YTDLP_SUMS_URL).await {
+                Ok(sums) => yt_dlp_folder(&client, &sums).await,
+                Err(_) => false,
+            }
+        })
+    })
+    .join()
+    .unwrap_or(false)
+}
+
+/// Folder builds no longer in use (one still running stays until next time).
+fn old_folder_builds() {
+    let Some(root) = folder_build_root() else { return };
+    let current = std::fs::read_to_string(root.join("current.txt")).unwrap_or_default();
+    let Ok(list) = std::fs::read_dir(&root) else { return };
+    for e in list.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if e.path().is_dir() && name != current.trim() {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
+}
+
 /// yt-dlp missing: get it. Present: `yt-dlp -U` (at most once a day).
 async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
+    // the folder build (faster to start): fetched at once when missing,
+    // else checked for a new one once a day; the one-file build stays as it
+    // is, for when the folder build can't be had
+    if cfg!(windows) {
+        let stamp = data_dir.join("yt-dlp-dir-checked");
+        if ytdlp_folder_build().is_none() || due(&stamp, Duration::from_secs(20 * 3600)) {
+            if let Ok(sums) = get_text(client, YTDLP_SUMS_URL).await {
+                if yt_dlp_folder(client, &sums).await {
+                    let _ = std::fs::write(&stamp, b"ok");
+                    return;
+                }
+            }
+        } else {
+            return;
+        }
+    }
     if bundled("yt-dlp").is_none() {
         if cfg!(windows) {
             if let Some(dir) = writable_dir("yt-dlp") {
@@ -189,7 +316,7 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
 }
 
 /// ffmpeg is our own small build that comes with the setup (and is
-/// updated with the program). Copies of the big public build that older
+/// updated with the program; fetched again if it goes missing). Copies of the big public build that older
 /// versions downloaded by themselves are removed, so ours is the one used.
 fn ffmpeg_cleanup() {
     let Some(ours) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("tools").join(exe("ffmpeg")))) else {
@@ -214,6 +341,63 @@ fn aria2_cleanup() {
             let _ = std::fs::remove_file(dir.join(f));
         }
     }
+}
+
+/// A small JavaScript engine (QuickJS-NG, MIT licence) for yt-dlp: some
+/// YouTube videos (those made for children, for one) come only from YouTube
+/// players whose links must be worked out by running YouTube's own script.
+/// Fetched only when such a video is asked for, checked by its SHA-256.
+const QJS_VERSION: &str = "v0.18.0";
+const QJS_SHA256: &str = "ff03398d74ea6e6bd3a8e58058f7003225abcac229d7d57775b7aaae812a49c7";
+
+/// A JavaScript engine yt-dlp can use, as yt-dlp's `--js-runtimes` names
+/// it with its place: Deno or Node.js the user has, else our QuickJS
+/// (fetched now when it isn't there yet; blocking, a few seconds).
+pub fn js_runtime() -> Option<(&'static str, PathBuf)> {
+    if let Some(found) = installed_js_runtime() {
+        return Some(found);
+    }
+    if let Some(q) = bundled("qjs") {
+        return Some(("quickjs", q));
+    }
+    if !cfg!(windows) {
+        return None;
+    }
+    let dir = writable_dir("qjs")?;
+    let url = format!("https://github.com/quickjs-ng/quickjs/releases/download/{QJS_VERSION}/qjs-windows-x86_64.exe");
+    let dest = dir.join(exe("qjs"));
+    // its own small runtime on its own thread: callers may be on one of tokio's
+    let got = std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
+        rt.block_on(async {
+            let client = crate::http::build_client_with(&crate::http::current_proxy()).ok()?;
+            download(&client, &url, &dest, QJS_SHA256).await.ok().map(|_| dest)
+        })
+    })
+    .join()
+    .ok()
+    .flatten()?;
+    Some(("quickjs", got))
+}
+
+/// Deno or Node.js installed on the computer (found where their own setups
+/// put them; a program started from the desktop may not have them on its
+/// PATH).
+fn installed_js_runtime() -> Option<(&'static str, PathBuf)> {
+    let path: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    let home = directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf());
+    let mut deno_dirs = path.clone();
+    if let Some(h) = &home {
+        deno_dirs.push(h.join(".deno").join("bin"));
+    }
+    if let Some(p) = deno_dirs.iter().map(|d| d.join(exe("deno"))).find(|p| p.is_file()) {
+        return Some(("deno", p));
+    }
+    let mut node_dirs = path;
+    if let Some(pf) = std::env::var_os("ProgramFiles") {
+        node_dirs.push(PathBuf::from(pf).join("nodejs"));
+    }
+    node_dirs.iter().map(|d| d.join(exe("node"))).find(|p| p.is_file()).map(|p| ("node", p))
 }
 
 /// The SHA-256 of the ffmpeg.exe that GitHub built together with this very
@@ -256,7 +440,7 @@ pub async fn update_all(client: reqwest::Client, data_dir: PathBuf) {
     aria2_cleanup();
     // leftovers of earlier updates
     for dir in tool_dirs() {
-        for name in ["yt-dlp", "ffmpeg"] {
+        for name in ["yt-dlp", "ffmpeg", "qjs"] {
             let _ = std::fs::remove_file(dir.join(exe(name)).with_extension("old"));
         }
     }
@@ -265,8 +449,10 @@ pub async fn update_all(client: reqwest::Client, data_dir: PathBuf) {
 /// Run `update_all` now and then every few hours while the app is open.
 pub fn spawn_updater(rt: &tokio::runtime::Handle, client: reqwest::Client, data_dir: PathBuf) {
     rt.spawn(async move {
-        // let the app start first
-        tokio::time::sleep(Duration::from_secs(20)).await;
+        // let the app start first (a few seconds only when a tool went
+        // missing: it is fetched again at once)
+        let missing = bundled("yt-dlp").is_none() || bundled("ffmpeg").is_none() || (cfg!(windows) && ytdlp_folder_build().is_none());
+        tokio::time::sleep(Duration::from_secs(if missing { 3 } else { 20 })).await;
         loop {
             update_all(client.clone(), data_dir.clone()).await;
             tokio::time::sleep(Duration::from_secs(6 * 3600)).await;

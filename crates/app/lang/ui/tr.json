@@ -535,5 +535,11 @@
  "Copy magnet link": "Magnet bağlantısını kopyala",
  "Stop sharing once it sent (times what it received)": "Gönderdikten sonra paylaşımı durdur (alınanın katı)",
  "No limit": "Sınır yok",
- "For a playlist or several files added together: one window for each file (not one at the end)": "Oynatma listesi veya birlikte eklenen dosyalar için: her dosyaya bir pencere (sonda tek pencere değil)"
+ "For a playlist or several files added together: one window for each file (not one at the end)": "Oynatma listesi veya birlikte eklenen dosyalar için: her dosyaya bir pencere (sonda tek pencere değil)",
+ "A file named \\\"{}\\\" is already in this folder. Replace it, save the new one with a numbered name, or change the name above.": "Bu klasörde \\\"{}\\\" adlı bir dosya zaten var. Değiştirin, yenisini numaralı adla kaydedin ya da yukarıdan adı değiştirin.",
+ "New name (numbered)": "Yeni ad (numaralı)",
+ "Replace it": "Değiştir",
+ "The name the file gets": "Dosyanın alacağı ad",
+ "Install new versions of Ezoo Download by themselves": "Ezoo Download'un yeni sürümlerini kendiliğinden yükle",
+ "Oldest first": "Önce en eski"
 }

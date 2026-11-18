@@ -435,7 +435,10 @@ impl Manager {
         };
         let mut inner = self.inner.lock_ok();
         // a torrent keeps its own name: that is the folder / file it makes
-        let file_name = if is_torrent { wanted.clone() } else { free_name(&inner, &dir, &wanted) };
+        // "Replace it": the same name (the file there goes once this one is
+        // complete), unless another unfinished download takes that name
+        let replace = req.replace && !is_torrent && !name_in_use(&inner, &dir, &wanted);
+        let file_name = if is_torrent || replace { wanted.clone() } else { free_name(&inner, &dir, &wanted) };
         let id = inner.next_id;
         inner.next_id += 1;
         // our own copy of the .torrent file (the one given may be deleted)
@@ -506,6 +509,8 @@ impl Manager {
                 .and_then(crate::checksum::Expected::parse)
                 .or_else(|| probe.as_ref().and_then(|p| p.digest.as_deref()).and_then(crate::checksum::Expected::parse))
                 .map(|e| e.text()),
+            replace_file: replace,
+            subs: req.subs.clone().filter(|s| !s.trim().is_empty()),
         };
         let mut rec = rec;
         if early {
@@ -607,6 +612,11 @@ impl Manager {
         let me = self.clone();
         self.torrent_live.lock_ok().remove(&id);
         let hash = (rec.kind == DownloadKind::Torrent).then(|| bt::hash_of(&rec.url)).flatten();
+        // the finished file as it is now: only that file is deleted (a new
+        // download of the same name may put its own file there meanwhile)
+        let file_then = (delete_file && rec.status == Status::Completed && rec.kind != DownloadKind::Torrent)
+            .then(|| file_identity(&rec.target_path()))
+            .flatten();
         self.rt.spawn(async move {
             // a torrent is let go of (it stops sharing, its files are closed)
             if let Some(h) = hash {
@@ -620,8 +630,12 @@ impl Manager {
                 let mut ok = remove_temp_files(&rec, &me.paths_in_use());
                 if delete_file && rec.status == Status::Completed && rec.kind == DownloadKind::Torrent {
                     ok &= remove_torrent_data(&rec);
-                } else if delete_file && rec.status == Status::Completed && rec.target_path().exists() {
-                    ok &= std::fs::remove_file(rec.target_path()).is_ok();
+                } else if let Some(then) = &file_then {
+                    let target = rec.target_path();
+                    // still the same file, and no download of the list uses its place
+                    if file_identity(&target).as_ref() == Some(then) && !me.paths_in_use().contains(&target) {
+                        ok &= std::fs::remove_file(&target).is_ok();
+                    }
                 }
                 // our copy of its .torrent file
                 if rec.kind == DownloadKind::Torrent && rec.url.ends_with(".torrent") && Path::new(&rec.url).starts_with(&data_dir) {
@@ -937,6 +951,12 @@ impl Manager {
         });
     }
 
+    /// The file already at the download's place is to be replaced by it
+    /// once it is complete ("Replace it"; call before `retarget`).
+    pub fn set_replace(&self, id: DownloadId, replace: bool) {
+        self.update(id, move |x| x.replace_file = replace);
+    }
+
     pub fn retarget(
         self: &Arc<Self>,
         id: DownloadId,
@@ -985,13 +1005,16 @@ impl Manager {
             inner.dirty = true;
             (done, inner.entries.get(&id).map(|e| e.task.is_some()).unwrap_or(false))
         };
-        // finished already (small file): move the file itself
+        // finished already (small file): move the file itself (over a file
+        // of that name only when the user said to replace it)
         if done {
             let target = dir.join(filename::sanitize(name));
             let current = self.get(id).map(|v| v.save_path).unwrap_or_default();
+            let replace = self.inner.lock_ok().entries.get(&id).is_some_and(|e| e.rec.replace_file);
             if target != current {
-                self.move_file(id, &target, false)?;
+                self.move_file(id, &target, replace)?;
             }
+            self.update(id, |x| x.replace_file = false);
             return Ok(());
         }
         if moves.is_empty() {
@@ -1620,7 +1643,20 @@ impl Manager {
                     }
                 }
             }
-            if finished && settings.subtitles && !settings.subtitle_langs.trim().is_empty() {
+            // subtitles chosen for this very video (the add-in's "With subtitles")
+            let own_subs = if finished { inner.entries.get(&id).and_then(|e| e.rec.subs.clone().map(|s| (e.rec.clone(), s))) } else { None };
+            if let Some((rec, subs)) = own_subs {
+                if let Some(page) = rec.source_page.clone() {
+                    let (fmt, langs) = subs.split_once(':').unwrap_or(("srt", subs.as_str()));
+                    let codes: Vec<String> = langs.split(',').map(str::to_string).collect();
+                    let srt = fmt != "vtt";
+                    let (stem, _) = filename::split_ext(&rec.file_name);
+                    let (stem, dir) = (stem.to_string(), rec.save_dir.clone());
+                    self.rt.spawn_blocking(move || {
+                        let _ = ytdlp::fetch_subtitle_tracks(&page, &dir, &stem, &codes, srt);
+                    });
+                }
+            } else if finished && settings.subtitles && !settings.subtitle_langs.trim().is_empty() {
                 // a site's video: its subtitles next to it (when there are any)
                 if let Some(e) = inner.entries.get(&id) {
                     if let (Some(page), DownloadKind::Dash | DownloadKind::Http | DownloadKind::Hls) = (e.rec.source_page.clone(), e.rec.kind) {
@@ -1904,7 +1940,8 @@ impl Manager {
             let made = r.map(|r| r.is_ok()).unwrap_or(false);
             if made && std::fs::rename(&tmp, &part).is_ok() {
                 let (stem, _) = filename::split_ext(&rec.file_name);
-                let name = filename::unique_name(&rec.save_dir, &format!("{stem}.mp4"));
+                let mp4 = format!("{stem}.mp4");
+                let name = if rec.replace_file { mp4 } else { filename::unique_name(&rec.save_dir, &mp4) };
                 self.update(id, move |x| x.file_name = name);
             } else {
                 let _ = std::fs::remove_file(&tmp);
@@ -2389,11 +2426,15 @@ impl Manager {
         // still hold some in memory: a shutdown right after would lose them)
         let p2 = part.clone();
         tokio::task::spawn_blocking(move || std::fs::OpenOptions::new().write(true).open(&p2).and_then(|f| f.sync_all())).await?.ok();
+        let replace = self.inner.lock_ok().entries.get(&id).map(|e| e.rec.replace_file).unwrap_or(rec.replace_file);
         let (p2, d2, n2) = (part.clone(), save_dir.clone(), file_name.clone());
-        let (target, moved) = tokio::task::spawn_blocking(move || move_into_place(&p2, &d2, &n2)).await?;
+        let (target, moved) = tokio::task::spawn_blocking(move || move_into_place(&p2, &d2, &n2, replace)).await?;
         if let Some(name) = target.file_name().and_then(|n| n.to_str()).filter(|n| *n != file_name) {
             let name = name.to_string();
             self.update(id, move |x| x.file_name = name);
+        }
+        if replace {
+            self.update(id, |x| x.replace_file = false);
         }
         if !moved {
             // temporary folder on another disk: copied (its own bar), then removed
@@ -2905,6 +2946,13 @@ impl Manager {
     }
 }
 
+/// Size and time of change of a file: a different file at the same place
+/// (made later) has others.
+fn file_identity(p: &Path) -> Option<(u64, Option<std::time::SystemTime>)> {
+    let m = std::fs::metadata(p).ok().filter(|m| m.is_file())?;
+    Some((m.len(), m.modified().ok()))
+}
+
 /// The temporary files of `rec` go, never one that a download still in
 /// the list uses (a download removed while a new one of the same file
 /// started took that one's file away: it went on into nothing).
@@ -3237,10 +3285,18 @@ async fn ftp_probe(url: &str, headers: &RequestHeaders) -> anyhow::Result<ProbeR
 /// An antivirus or indexer that holds the new file for a moment does not
 /// fail the download: it is tried again for a few seconds. (where, moved?)
 /// Not moved: another disk (it is copied then).
-fn move_into_place(part: &Path, dir: &Path, name: &str) -> (PathBuf, bool) {
+fn move_into_place(part: &Path, dir: &Path, name: &str, replace: bool) -> (PathBuf, bool) {
+    // the name to use: a numbered one when a file has it already, unless
+    // the user said that file is to be replaced
+    let pick = || if !replace && dir.join(name).exists() { dir.join(filename::unique_name(dir, name)) } else { dir.join(name) };
     let mut wait = 100;
     for _ in 0..12 {
-        let target = if dir.join(name).exists() { dir.join(filename::unique_name(dir, name)) } else { dir.join(name) };
+        let target = pick();
+        if replace && target.is_file() {
+            // the old file goes now that the new one is complete (a file
+            // that is read-only or in use stays, and the move below says so)
+            let _ = std::fs::remove_file(&target);
+        }
         match std::fs::rename(part, &target) {
             Ok(()) => return (target, true),
             // held by another program for a moment (access denied, in use)
@@ -3251,8 +3307,7 @@ fn move_into_place(part: &Path, dir: &Path, name: &str) -> (PathBuf, bool) {
             Err(_) => return (target, false),
         }
     }
-    let target = if dir.join(name).exists() { dir.join(filename::unique_name(dir, name)) } else { dir.join(name) };
-    (target, false)
+    (pick(), false)
 }
 
 /// Packed files: their bytes look random, long runs of zero bytes never
@@ -3376,14 +3431,17 @@ fn playlist_stem(current: &str, title: &str) -> String {
     format!("{number}{title}")
 }
 
+/// Another unfinished download is to be saved as `dir`/`name`.
+fn name_in_use(inner: &Inner, dir: &Path, name: &str) -> bool {
+    inner
+        .entries
+        .values()
+        .any(|e| e.rec.status != Status::Completed && e.rec.save_dir == dir && e.rec.file_name == name)
+}
+
 /// A name that is free on disk and not used by another unfinished download.
 fn free_name(inner: &Inner, dir: &Path, wanted: &str) -> String {
-    let used = |n: &str| {
-        inner
-            .entries
-            .values()
-            .any(|e| e.rec.status != Status::Completed && e.rec.save_dir == dir && e.rec.file_name == n)
-    };
+    let used = |n: &str| name_in_use(inner, dir, n);
     let first = filename::unique_name(dir, wanted);
     if !used(&first) {
         return first;

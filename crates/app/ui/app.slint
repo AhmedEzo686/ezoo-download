@@ -2027,6 +2027,21 @@ export component AddDialog inherits ThemedWindow {
     callback start-now();
     callback later();
     callback cancel();
+    // the file's name alone (the end of "Save As"), to change it easily
+    pure callback name-of(string) -> string;
+    pure callback with-name(string, string) -> string;
+    // a file of the chosen name is in the folder: the user says what to do
+    // here (no message box over the window)
+    in-out property <string> taken-name;
+    in-out property <bool> taken-start;
+    callback replace-taken();
+    callback number-taken();
+    changed save-as => {
+        if (name-box.text != root.name-of(root.save-as)) {
+            name-box.text = root.name-of(root.save-as);
+        }
+        root.taken-name = "";
+    }
 
     VerticalLayout {
         padding: 14px;
@@ -2090,13 +2105,32 @@ export component AddDialog inherits ThemedWindow {
                     col: Theme.rtl ? 1 : 0;
                     row: 2;
                     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: @tr("File name");
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+                name-box := LineEdit {
+                    col: Theme.rtl ? 0 : 1;
+                    row: 2;
+                    placeholder-text: @tr("The name the file gets");
+                    init => {
+                        self.text = root.name-of(root.save-as);
+                    }
+                    edited(t) => {
+                        root.save-as = root.with-name(root.save-as, t);
+                    }
+                }
+                Text {
+                    col: Theme.rtl ? 1 : 0;
+                    row: 3;
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: @tr("Save As");
                     vertical-alignment: center;
                     color: Theme.text;
                 }
                 HRow {
                     col: Theme.rtl ? 0 : 1;
-                    row: 2;
+                    row: 3;
                     spacing: 6px;
                     LineEdit {
                         text <=> root.save-as;
@@ -2111,17 +2145,17 @@ export component AddDialog inherits ThemedWindow {
                 }
                 Rectangle {
                     col: Theme.rtl ? 1 : 0;
-                    row: 3;
+                    row: 4;
                 }
                 CheckBox {
                     col: Theme.rtl ? 0 : 1;
-                    row: 3;
+                    row: 4;
                     text: @tr("Remember this path for \"{}\" category", root.category-name);
                     checked <=> root.remember-path;
                 }
                 Text {
                     col: Theme.rtl ? 1 : 0;
-                    row: 4;
+                    row: 5;
                     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: @tr("Description");
                     vertical-alignment: center;
@@ -2129,13 +2163,13 @@ export component AddDialog inherits ThemedWindow {
                 }
                 LineEdit {
                     col: Theme.rtl ? 0 : 1;
-                    row: 4;
+                    row: 5;
                     text <=> root.description;
                     placeholder-text: @tr("optional note");
                 }
                 Text {
                     col: Theme.rtl ? 1 : 0;
-                    row: 5;
+                    row: 6;
                     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: @tr("Checksum");
                     vertical-alignment: center;
@@ -2143,7 +2177,7 @@ export component AddDialog inherits ThemedWindow {
                 }
                 LineEdit {
                     col: Theme.rtl ? 0 : 1;
-                    row: 5;
+                    row: 6;
                     text <=> root.checksum;
                     placeholder-text: @tr("MD5 / SHA-1 / SHA-256 (optional)");
                 }
@@ -2215,6 +2249,49 @@ export component AddDialog inherits ThemedWindow {
                 wrap: word-wrap;
                 font-size: 12px * Theme.font-scale;
                 horizontal-stretch: 1;
+            }
+        }
+        if root.taken-name != "": Rectangle {
+            border-width: 1px;
+            border-color: Theme.warn;
+            background: Theme.panel;
+            VerticalLayout {
+                padding: 8px;
+                spacing: 6px;
+                GridLayout {
+                    spacing: 6px;
+                    Glyph {
+                        col: Theme.rtl ? 1 : 0;
+                        row: 0;
+                        kind: "warn";
+                    }
+                    Text {
+                        col: Theme.rtl ? 0 : 1;
+                        row: 0;
+                        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                        text: @tr("A file named \"{}\" is already in this folder. Replace it, save the new one with a numbered name, or change the name above.", root.taken-name);
+                        color: Theme.text;
+                        wrap: word-wrap;
+                        font-size: 12px * Theme.font-scale;
+                        horizontal-stretch: 1;
+                    }
+                }
+                HRow {
+                    spacing: 8px;
+                    alignment: end;
+                    Button {
+                        text: @tr("Replace it");
+                        clicked => {
+                            root.replace-taken();
+                        }
+                    }
+                    Button {
+                        text: @tr("New name (numbered)");
+                        clicked => {
+                            root.number-taken();
+                        }
+                    }
+                }
             }
         }
         Rectangle {

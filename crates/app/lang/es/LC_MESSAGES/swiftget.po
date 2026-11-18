@@ -475,6 +475,9 @@ msgstr "Comprobar"
 msgid "Category"
 msgstr "Categoría"
 
+msgid "The name the file gets"
+msgstr "El nombre que tendrá el archivo"
+
 msgid "Save As"
 msgstr "Guardar como"
 
@@ -498,6 +501,15 @@ msgstr "Usuario"
 
 msgid "Password"
 msgstr "Contraseña"
+
+msgid "A file named \"{}\" is already in this folder. Replace it, save the new one with a numbered name, or change the name above."
+msgstr "Ya hay un archivo llamado \"{}\" en esta carpeta. Reemplázalo, guarda el nuevo con un número o cambia el nombre arriba."
+
+msgid "Replace it"
+msgstr "Reemplazar"
+
+msgid "New name (numbered)"
+msgstr "Nombre nuevo (numerado)"
 
 msgid "Checking the address…"
 msgstr "Comprobando la dirección…"
@@ -1099,6 +1111,9 @@ msgstr "Dibujar las ventanas con la tarjeta gráfica (más memoria; tras reinici
 msgid "Show \"Tip of the day\" at startup"
 msgstr "Mostrar el \"Consejo del día\" al iniciar"
 
+msgid "Install new versions of Ezoo Download by themselves"
+msgstr "Instalar solas las nuevas versiones de Ezoo Download"
+
 msgid "On double click on a download"
 msgstr "Al hacer doble clic en una descarga"
 
@@ -1467,6 +1482,9 @@ msgstr "Archivos a la vez"
 
 msgid "Number the files"
 msgstr "Numerar los archivos"
+
+msgid "Oldest first"
+msgstr "Lo más antiguo primero"
 
 msgid "Subtitles too"
 msgstr "También subtítulos"

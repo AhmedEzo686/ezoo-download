@@ -25,23 +25,18 @@ pub(crate) fn torrents(on: bool) {
                 (r"HKCU\Software\Classes\magnet\DefaultIcon", None, icon.as_str()),
                 (r"HKCU\Software\Classes\magnet\shell\open\command", None, open.as_str()),
             ] {
-                let mut args = vec!["add", key];
-                match name {
-                    Some(n) => args.extend(["/v", n]),
-                    None => args.push("/ve"),
-                }
-                args.extend(["/d", data, "/f"]);
-                reg(&args);
+                crate::winreg::set(key, name, data);
             }
         } else {
             // ours only: a .torrent / magnet that another program took stays
-            if query(r"HKCU\Software\Classes\.torrent", None).as_deref() == Some("EzooDownload.torrent") {
-                reg(&["delete", r"HKCU\Software\Classes\.torrent", "/ve", "/f"]);
+            use crate::winreg;
+            if winreg::get(r"HKCU\Software\Classes\.torrent", None).as_deref() == Some("EzooDownload.torrent") {
+                winreg::delete_value(r"HKCU\Software\Classes\.torrent", None);
             }
-            reg(&["delete", r"HKCU\Software\Classes\.torrent\OpenWithProgids", "/v", "EzooDownload.torrent", "/f"]);
-            reg(&["delete", r"HKCU\Software\Classes\EzooDownload.torrent", "/f"]);
-            if query(r"HKCU\Software\Classes\magnet\shell\open\command", None).is_some_and(|v| v.to_ascii_lowercase().contains("ezoodownload.exe")) {
-                reg(&["delete", r"HKCU\Software\Classes\magnet", "/f"]);
+            winreg::delete_value(r"HKCU\Software\Classes\.torrent\OpenWithProgids", Some("EzooDownload.torrent"));
+            winreg::delete_key(r"HKCU\Software\Classes\EzooDownload.torrent");
+            if winreg::get(r"HKCU\Software\Classes\magnet\shell\open\command", None).is_some_and(|v| v.to_ascii_lowercase().contains("ezoodownload.exe")) {
+                winreg::delete_key(r"HKCU\Software\Classes\magnet");
             }
         }
         // Explorer learns of the change at once
@@ -52,27 +47,4 @@ pub(crate) fn torrents(on: bool) {
     }
     #[cfg(not(windows))]
     let _ = on;
-}
-
-#[cfg(windows)]
-pub(crate) fn reg(args: &[&str]) -> Option<std::process::Output> {
-    use std::os::windows::process::CommandExt;
-    const NO_WINDOW: u32 = 0x0800_0000;
-    std::process::Command::new(swiftget_engine::system::windows_tool("reg.exe")).args(args).creation_flags(NO_WINDOW).output().ok()
-}
-
-/// The value (None: the key's default) as `reg query` shows it.
-#[cfg(windows)]
-pub(crate) fn query(key: &str, name: Option<&str>) -> Option<String> {
-    let mut args = vec!["query", key];
-    match name {
-        Some(n) => args.extend(["/v", n]),
-        None => args.push("/ve"),
-    }
-    let out = reg(&args)?;
-    if !out.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&out.stdout).to_string();
-    text.lines().find_map(|l| l.split_once("REG_SZ").map(|(_, v)| v.trim().to_string()))
 }

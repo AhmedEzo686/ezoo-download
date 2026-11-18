@@ -50,9 +50,117 @@ fn fmt_len(secs: u64) -> String {
     }
 }
 
+/// The qualities of each video of the list, looked up one by one after the
+/// list came (for the "Size" column); with the list they belong to.
+#[derive(Default)]
+struct Sizes {
+    list: u64,
+    found: std::collections::HashMap<String, Vec<swiftget_engine::ytdlp::YtOption>>,
+}
+
+static SIZES: std::sync::LazyLock<std::sync::Mutex<Sizes>> = std::sync::LazyLock::new(Default::default);
+/// a new list (or the window closed): the look-ups of the old one stop
+static LIST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The size of a video in the chosen quality, as shown ("" = not known yet).
+fn size_for(url: &str, quality: usize) -> String {
+    let s = SIZES.lock().unwrap_or_else(|p| p.into_inner());
+    let Some(opts) = s.found.get(url) else { return String::new() };
+    match swiftget_engine::ytdlp::pick_option(opts, QUALITIES[quality.min(QUALITIES.len() - 1)]) {
+        Some(o) if o.size > 0 => format!("~{}", fmt_size(o.size)),
+        Some(_) => "?".into(),
+        None => "-".into(),
+    }
+}
+
+/// Every row's size for the quality chosen now.
+fn show_sizes(d: &PlaylistDialog, rows: &VecModel<LinkRow>) {
+    let q = d.get_quality().max(0) as usize;
+    for i in 0..rows.row_count() {
+        if let Some(mut r) = rows.row_data(i) {
+            let size = size_for(r.url.as_str(), q);
+            if r.size.as_str() != size {
+                r.size = size.into();
+                rows.set_row_data(i, r);
+            }
+        }
+    }
+    d.set_checked_text(checked_text(rows).into());
+}
+
+/// Look up the videos of a list one by one, two at a time, in the
+/// background; their sizes show up as they come. A site that starts asking
+/// "are you a robot" stops it (the downloads matter more than the sizes).
+fn look_up_sizes(w: slint::Weak<PlaylistDialog>, urls: Vec<String>) {
+    let list = LIST.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    {
+        let mut s = SIZES.lock().unwrap_or_else(|p| p.into_inner());
+        s.list = list;
+        s.found.clear();
+    }
+    let queue = std::sync::Arc::new(std::sync::Mutex::new(urls.into_iter().collect::<std::collections::VecDeque<String>>()));
+    for _ in 0..2 {
+        let (queue, w) = (queue.clone(), w.clone());
+        std::thread::spawn(move || loop {
+            if LIST.load(std::sync::atomic::Ordering::SeqCst) != list {
+                return;
+            }
+            let Some(url) = queue.lock().unwrap_or_else(|p| p.into_inner()).pop_front() else { return };
+            let cookies = swiftget_engine::ytdlp::remembered_cookies(&url);
+            match swiftget_engine::ytdlp::resolve(&url, cookies.as_deref()) {
+                Ok(info) => {
+                    let mut s = SIZES.lock().unwrap_or_else(|p| p.into_inner());
+                    if s.list == list {
+                        s.found.insert(url, info.options);
+                    }
+                }
+                Err(e) => {
+                    let m = format!("{e:#}").to_ascii_lowercase();
+                    if m.contains("bot") || m.contains("confirm you") || m.contains("429") {
+                        LIST.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        return;
+                    }
+                }
+            }
+            let w = w.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(d) = w.upgrade() {
+                    if let Some(m) = d.get_entries().as_any().downcast_ref::<VecModel<LinkRow>>() {
+                        show_sizes(&d, m);
+                    }
+                }
+            });
+        });
+    }
+}
+
 fn checked_text(rows: &VecModel<LinkRow>) -> String {
-    let n = (0..rows.row_count()).filter_map(|i| rows.row_data(i)).filter(|r| r.checked).count();
-    tf("{} of {} videos checked", &[&n, &rows.row_count()])
+    let chosen: Vec<LinkRow> = (0..rows.row_count()).filter_map(|i| rows.row_data(i)).filter(|r| r.checked).collect();
+    let n = chosen.len();
+    let text = tf("{} of {} videos checked", &[&n, &rows.row_count()]);
+    // the size of the checked ones, once some are known
+    let total: u64 = chosen.iter().filter_map(|r| parse_shown_size(r.size.as_str())).sum();
+    if total > 0 {
+        format!("{text} · ~{}", fmt_size(total))
+    } else {
+        text
+    }
+}
+
+/// "~728.3 MB" back to bytes (the column's own words).
+fn parse_shown_size(s: &str) -> Option<u64> {
+    let s = s.trim_start_matches('~').trim();
+    let (num, unit) = s.split_once(' ')?;
+    let n: f64 = num.replace(',', ".").parse().ok()?;
+    let mult = match unit {
+        "B" => 1.0,
+        "KB" => 1024.0,
+        "MB" => 1024.0 * 1024.0,
+        "GB" => 1024.0 * 1024.0 * 1024.0,
+        "TB" => 1024f64.powi(4),
+        _ => return None,
+    };
+    Some((n * mult) as u64)
 }
 
 pub(crate) fn wire(ui: &Ui) {
@@ -98,8 +206,11 @@ pub(crate) fn wire(ui: &Ui) {
                                     ext: fmt_len(e.duration).into(),
                                     text: format!("{}", i + 1).into(),
                                     url: e.url.clone().into(),
+                                    size: SharedString::new(),
                                 })
                                 .collect();
+                            // the sizes, looked up in the background
+                            look_up_sizes(d.as_weak(), p.entries.iter().map(|e| e.url.clone()).collect());
                             if let Some(m) = d.get_entries().as_any().downcast_ref::<VecModel<LinkRow>>() {
                                 m.set_vec(list);
                                 d.set_checked_text(checked_text(m).into());
@@ -113,6 +224,14 @@ pub(crate) fn wire(ui: &Ui) {
                     }
                 });
             });
+        });
+    }
+    {
+        let (w, rows) = (d.as_weak(), rows.clone());
+        d.on_quality_changed(move || {
+            if let Some(d) = w.upgrade() {
+                show_sizes(&d, &rows);
+            }
         });
     }
     {
@@ -195,12 +314,30 @@ pub(crate) fn wire(ui: &Ui) {
                     let _ = ui.ctx.mgr.set_settings(s);
                 }
             }
-            let width = chosen.len().to_string().len().max(2);
+            let total = ui.playlist_rows.row_count();
+            let width = total.to_string().len().max(2);
             let group = Some(ui.ctx.mgr.new_group());
+            // videos of this list already downloaded (the list asked for
+            // again a month later): only the new ones are added
+            let had: Vec<String> = ui
+                .ctx
+                .mgr
+                .snapshot()
+                .into_iter()
+                .filter(|v| v.status == swiftget_engine::Status::Completed && v.save_path.is_file())
+                .flat_map(|v| [v.source_key.is_some().then_some(v.parent_page).flatten(), Some(v.url)].into_iter().flatten())
+                .collect();
+            let mut skipped = 0;
             for r in &chosen {
+                if had.iter().any(|u| u == r.url.as_str()) {
+                    skipped += 1;
+                    continue;
+                }
                 let mut file = filename::sanitize(r.name.trim_start_matches('\u{200F}'));
                 if d.get_numbered() {
                     let n: usize = r.text.parse().unwrap_or(0);
+                    // "Oldest first": the list's last video is number 1
+                    let n = if d.get_oldest_first() && n >= 1 && n <= total { total + 1 - n } else { n };
                     file = format!("{n:0width$} - {file}");
                 }
                 ui.ctx.mgr.add(NewDownload {
@@ -216,6 +353,9 @@ pub(crate) fn wire(ui: &Ui) {
                     ..Default::default()
                 });
             }
+            if skipped > 0 {
+                crate::note(&format!("playlist: {skipped} videos were downloaded before and are not added again"));
+            }
             if d.get_start_now() {
                 ui.ctx.mgr.start_queue(queue);
             }
@@ -230,6 +370,8 @@ pub(crate) fn wire(ui: &Ui) {
     {
         let w = d.as_weak();
         d.on_close_window(move || {
+            // no more look-ups for the sizes
+            LIST.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if let Some(d) = w.upgrade() {
                 let _ = d.hide();
             }

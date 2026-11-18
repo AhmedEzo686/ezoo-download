@@ -250,6 +250,11 @@ jobs:
           Copy-Item ffmpeg-out/ffmpeg.exe dist/ffmpeg.exe
           $files = @("dist/EzooDownload-Setup.exe", "dist/version.json", "dist/ffmpeg.exe")
           if (Test-Path dist/ezoo-download-firefox.xpi) { $files += "dist/ezoo-download-firefox.xpi", "dist/firefox-updates.json" }
+          # everyone can check their copy is the one published (an antivirus
+          # warning about an unknown new file can be checked against this)
+          $sums = foreach ($f in $files) { "{0}  {1}" -f (Get-FileHash $f -Algorithm SHA256).Hash.ToLower(), (Split-Path $f -Leaf) }
+          [IO.File]::WriteAllText("$PWD/dist/SHA256SUMS.txt", (($sums -join "`n") + "`n"))
+          $files += "dist/SHA256SUMS.txt"
           gh release create "v$env:VERSION" @files --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Ezoo Download $env:VERSION" --notes "Ezoo Download $env:VERSION" --latest
           if ($LASTEXITCODE -ne 0) { throw "could not create the release" }
           # older releases stay as they are (a way back, and their links keep working)

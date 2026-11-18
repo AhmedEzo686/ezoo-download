@@ -554,4 +554,10 @@ AR = {
     "Stop sharing once it sent (times what it received)": "أوقف المشاركة بعد أن يرسل (أضعاف ما استلمه)",
     "No limit": "بلا حد",
     "For a playlist or several files added together: one window for each file (not one at the end)": "لقائمة تشغيل أو عدة ملفات مضافة معًا: نافذة لكل ملف (بدل نافذة واحدة في النهاية)",
+    "A file named \\\"{}\\\" is already in this folder. Replace it, save the new one with a numbered name, or change the name above.": "يوجد ملف باسم \\\"{}\\\" في هذا المجلد بالفعل. استبدله، أو احفظ الجديد باسم برقم، أو غيّر الاسم بالأعلى.",
+    "New name (numbered)": "اسم جديد (برقم)",
+    "Replace it": "استبداله",
+    "The name the file gets": "الاسم الذي سيُحفظ به الملف",
+    "Install new versions of Ezoo Download by themselves": "تثبيت الإصدارات الجديدة من Ezoo Download تلقائيًا",
+    "Oldest first": "الأقدم أولًا",
 }

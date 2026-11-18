@@ -165,6 +165,7 @@
   const VIDEO_PAGE = [
     /youtube\.com\/(watch|shorts\/|live\/|embed\/)/i,
     /youtube-nocookie\.com\/embed\//i,
+    /youtubekids\.com\/watch/i,
     /tiktok\.com\/@[^/]+\/(video|photo)\//i,
     /instagram\.com\/(reels?|p|tv)\//i,
     /facebook\.com\/(.+\/videos\/|watch|reel\/|share\/[vr]\/|plugins\/video)/i,
@@ -402,6 +403,20 @@
     .tab:hover { background: #eef2f8; }
     .tab.on { color: #1d63d6; border-bottom-color: #1d63d6; background: #fff; }
     .tab.part.on { color: #e8590c; border-bottom-color: #e8590c; }
+    /* "💬 With subtitles" / "📝 Subtitles" */
+    .subbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f6f8fb; border-bottom: 1px solid #e8ecf2; color: #334; }
+    .subbar select { flex: 1; min-width: 0; font: inherit; padding: 3px 4px; border: 1px solid #c9d1dc; border-radius: 4px; background: #fff; color: #1f2733; }
+    .subbar select.fmt { flex: none; width: 64px; }
+    .subbar .all { font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .subbar .push { margin-left: auto; }
+    .subs { max-height: 220px; overflow: auto; }
+    .subs label { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid #f0f2f5; color: #1f2733; cursor: default; }
+    .subs label b { font-weight: 700; }
+    .subs .code { color: #6b7686; }
+    .subs .auto { font-size: 10px; color: #a06b00; background: #fff4dc; border-radius: 3px; padding: 1px 4px; }
+    .subgo { margin: 9px 12px; background: #1d63d6; color: #fff; text-align: center; border-radius: 6px; padding: 8px; font-weight: 700; cursor: default; }
+    .subgo.off { background: #9db6e0; }
+    .subnote { font-size: 10.5px; color: #6b7686; padding: 0 12px 9px; }
     .cut { padding: 9px 12px 11px; background: #fff; }
     .cut .lead { color: #e8590c; font-weight: 700; margin-bottom: 8px; }
     .cut .times { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
@@ -830,15 +845,22 @@
     }
     const title = (list.find((m) => m.yt && m.yt.title) || {}).yt;
     box.appendChild(el("div", { class: "head", dir: "auto", title: (title && title.title) || cleanTitle(), text: (title && title.title) || cleanTitle() }));
-    // two tabs: the whole video (never a part), or a part of it
+    // the tabs: the whole video, the video with its subtitles, its
+    // subtitles only, or a part of it
     const partOk = usable.some(canCut);
+    const withSubs = usable.find((m) => m.yt && Array.isArray(m.yt.subtitles) && m.yt.subtitles.length);
+    const subs = withSubs ? withSubs.yt.subtitles : [];
+    if (!subs.length) b.subTab = "";
     const partTab = b.clipMode && partOk;
-    if (partOk) {
-      const tab = (on, text, part) => {
-        const t = el("div", { class: "tab" + (part ? " part" : "") + (on ? " on" : ""), text });
+    const mode = partTab ? "part" : b.subTab || "whole";
+    if (partOk || subs.length) {
+      const tab = (key, text) => {
+        const t = el("div", { class: "tab" + (key === "part" ? " part" : "") + (mode === key ? " on" : ""), text });
         t.addEventListener("click", () => {
-          if (b.clipMode === part) return;
+          if (mode === key) return;
+          const part = key === "part";
           b.clipMode = part;
+          b.subTab = part || key === "whole" ? "" : key;
           if (part && !b.clip) {
             const v = b.video;
             const at = Math.floor(v.currentTime || 0);
@@ -850,8 +872,16 @@
         });
         return t;
       };
-      box.appendChild(el("div", { class: "tabs" }, tab(!partTab, "⬇ Whole video", false), tab(partTab, "✂ Part", true)));
+      const tabs = [tab("whole", "⬇ Whole video")];
+      if (subs.length) tabs.push(tab("with", "💬 With subtitles"), tab("subs", "📝 Subtitles"));
+      if (partOk) tabs.push(tab("part", "✂ Part"));
+      box.appendChild(el("div", { class: "tabs" }, ...tabs));
     }
+    if (mode === "subs") {
+      box.appendChild(subtitlesPanel(b, subs, withSubs.yt));
+      return;
+    }
+    if (mode === "with") box.appendChild(subtitleBar(b, subs));
     if (partTab) {
       box.appendChild(clipPanel(b, usable));
     } else {
@@ -864,7 +894,9 @@
     }
     if (partTab) return;
     let n = 0;
-    list.forEach((m) => {
+    const shown = mode === "with" ? list.filter((m) => m.yt && !m.disabled && !isAudioOnly(m.yt)) : list;
+    const send = (m) => (mode === "with" ? download(b, m, subsChoice(b, subs)) : download(b, m));
+    shown.forEach((m) => {
       const d = describe(m);
       const t = el("div", { class: "t" }, el("span", { text: d.main }));
       if (d.tag) t.append(el("span", { class: "tag " + d.tag.replace(/\s/g, "").replace(/^(\d)K$/, "K$1"), text: d.tag }));
@@ -879,16 +911,118 @@
       if (!m.disabled) {
         row.setAttribute("tabindex", "0");
         row.setAttribute("role", "button");
-        row.addEventListener("click", () => download(b, m));
+        row.addEventListener("click", () => send(m));
         row.addEventListener("keydown", (e) => {
           if (e.key === "Enter" && e.isTrusted) {
             e.preventDefault();
-            download(b, m);
+            send(m);
           }
         });
       }
       box.appendChild(row);
     });
+  }
+
+  // a choice of sound only (no picture: no subtitles to go with it)
+  function isAudioOnly(y) {
+    return y.quality === "mp3" || y.quality === "audio" || /^audio\|/.test(y.key || "");
+  }
+
+  // the language picked for "With subtitles": the one picked before, else
+  // the browser's language, else Arabic / English, else the first
+  function subLangOf(b, subs) {
+    if (subs.some((s) => s.code === b.subLang)) return b.subLang;
+    const lang = (navigator.language || "").split("-")[0].toLowerCase();
+    const by = (code) => subs.find((s) => s.code === code || s.code === `${code}-orig`);
+    const pick = by(lang) || by("ar") || by("en") || subs[0];
+    return pick ? pick.code : "";
+  }
+
+  // what "With subtitles" sends with the video: "srt:ar"
+  function subsChoice(b, subs) {
+    const lang = subLangOf(b, subs);
+    return lang ? `${b.subFmt === "vtt" ? "vtt" : "srt"}:${lang}` : null;
+  }
+
+  function fmtSelect(b) {
+    const f = el("select", { class: "fmt", "aria-label": "Subtitle format" }, el("option", { value: "srt", text: "SRT" }), el("option", { value: "vtt", text: "VTT" }));
+    f.value = b.subFmt === "vtt" ? "vtt" : "srt";
+    keepKeys(f);
+    f.addEventListener("change", () => (b.subFmt = f.value));
+    return f;
+  }
+
+  const subName = (s) => `${s.name}${s.code && s.name !== s.code ? ` (${s.code.replace(/-orig$/, "")})` : ""}${s.auto ? " · auto" : ""}`;
+
+  // "💬 With subtitles": the language and the format, above the qualities
+  function subtitleBar(b, subs) {
+    const lang = el("select", { "aria-label": "Subtitle language" });
+    for (const s of subs) lang.appendChild(el("option", { value: s.code, text: subName(s) }));
+    lang.value = subLangOf(b, subs);
+    keepKeys(lang);
+    lang.addEventListener("change", () => (b.subLang = lang.value));
+    return el("div", { class: "subbar" }, el("span", { text: "Subtitles" }), lang, fmtSelect(b));
+  }
+
+  // "📝 Subtitles": the video's subtitles only, all or some of them
+  function subtitlesPanel(b, subs, yt) {
+    if (!b.subPick || ![...b.subPick].every((c) => subs.some((s) => s.code === c))) b.subPick = new Set(subs.map((s) => s.code));
+    const pick = b.subPick;
+    const go = el("div", { class: "subgo", tabindex: "0", role: "button" });
+    const boxes = [];
+    const all = el("input", { type: "checkbox" });
+    const show = () => {
+      all.checked = pick.size === subs.length;
+      all.indeterminate = pick.size > 0 && pick.size < subs.length;
+      boxes.forEach(([c, s]) => (c.checked = pick.has(s.code)));
+      go.textContent = pick.size ? `⬇ Download ${pick.size} subtitle file${pick.size > 1 ? "s" : ""}` : "Choose the subtitles you want";
+      go.classList.toggle("off", !pick.size);
+    };
+    all.addEventListener("change", () => {
+      pick.clear();
+      if (all.checked) subs.forEach((s) => pick.add(s.code));
+      show();
+    });
+    const list = el("div", { class: "subs" });
+    for (const s of subs) {
+      const c = el("input", { type: "checkbox" });
+      c.addEventListener("change", () => {
+        if (c.checked) pick.add(s.code);
+        else pick.delete(s.code);
+        show();
+      });
+      boxes.push([c, s]);
+      const label = el("label", {}, c, el("b", { dir: "auto", text: s.name }), el("span", { class: "code", text: `(${s.code.replace(/-orig$/, "")})` }));
+      if (s.auto) label.append(el("span", { class: "auto", text: "auto" }));
+      list.appendChild(label);
+    }
+    const run = () => {
+      if (!pick.size || b.subBusy) return;
+      b.subBusy = true;
+      go.textContent = "Getting the subtitles…";
+      go.classList.add("off");
+      chrome.runtime.sendMessage(
+        { type: "swiftget-subtitles", page: yt.source, langs: [...pick], format: b.subFmt === "vtt" ? "vtt" : "srt", title: yt.title || cleanTitle() },
+        (res) => {
+          b.subBusy = false;
+          if (chrome.runtime.lastError || !res) return notRunning(b, run);
+          if (!res.ok) return flashOne(b, res.error || "No subtitles were found.", true);
+          flashOne(b, `${res.count} subtitle file${res.count > 1 ? "s" : ""} saved in the video folder ✔`, false);
+        }
+      );
+    };
+    go.addEventListener("click", run);
+    go.addEventListener("keydown", (e) => e.key === "Enter" && e.isTrusted && run());
+    const box = el(
+      "div",
+      {},
+      el("div", { class: "subbar" }, el("label", { class: "all" }, all, el("span", { text: `All subtitles (${subs.length})` })), el("span", { class: "push", text: "Format" }), fmtSelect(b)),
+      list,
+      go
+    );
+    if (subs.some((s) => s.auto)) box.appendChild(el("div", { class: "subnote", text: "auto = made by the site itself (not by the video's makers)" }));
+    show();
+    return box;
   }
 
   // a quality that can be cut: a video / sound the app downloads itself
@@ -1206,15 +1340,15 @@
     }, 2500);
   }
 
-  function download(b, m) {
+  function download(b, m, subs) {
     // a stream whose qualities are not known yet: ask the app for them
     if (m.resolve) return lookUp(b, m.resolve);
     const fileName = `${cleanTitle()}.${m.ext || "mp4"}`;
     chrome.runtime.sendMessage(
-      { type: "swiftget-download", item: m, title: document.title, fileName, referrer: location.href },
+      { type: "swiftget-download", item: m, title: document.title, fileName, referrer: location.href, subs: subs || null },
       (res) => {
-        if (chrome.runtime.lastError || !res || !res.ok) notRunning(b, () => download(b, m));
-        else flashOne(b, "Sent to Ezoo Download ✔", false);
+        if (chrome.runtime.lastError || !res || !res.ok) notRunning(b, () => download(b, m, subs));
+        else flashOne(b, subs ? "Sent to Ezoo Download with its subtitles ✔" : "Sent to Ezoo Download ✔", false);
       }
     );
   }

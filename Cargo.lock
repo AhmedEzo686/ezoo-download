@@ -1751,6 +1751,7 @@ dependencies = [
  "ring",
  "serde_json",
  "windows-sys 0.59.0",
+ "winresource",
 ]
 
 [[package]]
@@ -6650,8 +6651,10 @@ dependencies = [
  "anyhow",
  "cbc",
  "chrono",
+ "crc32fast",
  "directories 5.0.1",
  "filetime",
+ "flate2",
  "librqbit",
  "librqbit-core",
  "librqbit-sha1-wrapper",

@@ -1,4 +1,5 @@
-//! New versions of Ezoo Download from GitHub, always on: right after the
+//! New versions of Ezoo Download from GitHub (unless turned off in Options >
+//! General): right after the
 //! program opens it looks for a newer release; when there is one it is
 //! downloaded, checked (signature of the release + SHA-256) and installed silently, and the program
 //! starts again by itself. While the program stays open it looks again every
@@ -66,7 +67,8 @@ pub fn spawn(ctx: &Ctx) {
         tokio::time::sleep(Duration::from_secs(3)).await;
         let mut first = true;
         loop {
-            if !BUSY.swap(true, Ordering::SeqCst) {
+            // Options > General: new versions only when asked for
+            if mgr.settings().auto_update && !BUSY.swap(true, Ordering::SeqCst) {
                 let started = round(&mgr, first).await;
                 BUSY.store(false, Ordering::SeqCst);
                 if started {

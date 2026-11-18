@@ -412,15 +412,16 @@ pub(crate) fn taskbar_progress(w: &slint::Window, p: TaskbarProgress) {
 }
 
 /// Drag a finished file out of the program: the user drops it on the
-/// desktop, a folder, a chat... (a copy; the file stays where it is, so the
-/// download list stays right). Returns when the mouse is let go.
+/// desktop, a folder, a chat... As in Explorer: moved within the same
+/// drive, copied to another (Shift moves, Ctrl copies). Returns when the
+/// mouse is let go.
 pub(crate) fn drag_file_out(w: &slint::Window, path: &std::path::Path) {
     #[cfg(windows)]
     {
         use std::ffi::c_void;
         use std::os::windows::ffi::OsStrExt;
         use windows_sys::core::GUID;
-        use windows_sys::Win32::System::Ole::{OleInitialize, DROPEFFECT_COPY, DROPEFFECT_LINK};
+        use windows_sys::Win32::System::Ole::{OleInitialize, DROPEFFECT_COPY, DROPEFFECT_LINK, DROPEFFECT_MOVE};
         use windows_sys::Win32::UI::Shell::Common::ITEMIDLIST;
         use windows_sys::Win32::UI::Shell::{
             ILClone, ILCreateFromPathW, ILFindLastID, ILFree, ILRemoveLastID, SHCreateDataObject, SHDoDragDrop,
@@ -454,9 +455,15 @@ pub(crate) fn drag_file_out(w: &slint::Window, path: &std::path::Path) {
             let hr = SHCreateDataObject(parent, 1, items.as_ptr(), std::ptr::null_mut(), &IID_IDATA_OBJECT, &mut obj);
             if hr >= 0 && !obj.is_null() {
                 let mut effect = 0;
-                // no drop source of our own: the shell's standard one; a copy
-                // (or a shortcut), never a move, so the list stays right
-                let _ = SHDoDragDrop(hwnd as _, obj as _, std::ptr::null_mut(), DROPEFFECT_COPY | DROPEFFECT_LINK, &mut effect);
+                // no drop source of our own: the shell's standard one; copy,
+                // move or a shortcut, as the place it is dropped on chooses
+                let _ = SHDoDragDrop(
+                    hwnd as _,
+                    obj as _,
+                    std::ptr::null_mut(),
+                    DROPEFFECT_COPY | DROPEFFECT_MOVE | DROPEFFECT_LINK,
+                    &mut effect,
+                );
                 // IUnknown::Release is the third entry of every COM object's table
                 let vt = *(obj as *const *const [usize; 3]);
                 let release: unsafe extern "system" fn(*mut c_void) -> u32 = std::mem::transmute((*vt)[2]);
@@ -546,7 +553,12 @@ where
     }
     let weak = c.as_weak();
     let last = Cell::new(std::time::Instant::now());
-    c.window().on_winit_window_event(move |_, ev| {
+    c.window().on_winit_window_event(move |w, ev| {
+        // Windows' own requests for a picture are seen (a window proc of
+        // ours in front of the toolkit's), once the window is there
+        if let Some(h) = hwnd_of(w) {
+            lost::watch(h);
+        }
         let all = |weak: &slint::Weak<C>| {
             if let Some(c) = weak.upgrade() {
                 repaint_all(&c);
@@ -577,8 +589,17 @@ where
                 last.set(std::time::Instant::now());
                 all(&weak);
             }
-            // Windows asks for a picture (or we did): the whole window now
-            // and then, so nothing stays black for long
+            // Windows threw away some of what the window showed (another
+            // window was over it, it came back from next to the clock, the
+            // screen woke up...): all of it is drawn and shown again. Only
+            // the parts that changed were drawn, and only those were put on
+            // the screen, while Windows took the whole window for drawn: the
+            // rest stayed black, white or showed what was behind it.
+            WindowEvent::RedrawRequested if hwnd_of(w).is_some_and(lost::take) => {
+                last.set(std::time::Instant::now());
+                all(&weak);
+            }
+            // now and then anyway, so nothing stays wrong for long
             WindowEvent::RedrawRequested if last.get().elapsed() > std::time::Duration::from_secs(1) => {
                 last.set(std::time::Instant::now());
                 all(&weak);
@@ -587,6 +608,71 @@ where
         }
         EventResult::Propagate
     });
+}
+
+/// The parts of our windows Windows says must be painted again (it lost
+/// them). The toolkit is asked to draw only what changed and puts only that
+/// on the screen, so a window that lost its picture stayed half empty; with
+/// this, such a window is drawn again whole.
+#[cfg(windows)]
+mod lost {
+    use std::cell::RefCell;
+    use std::collections::HashSet;
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+    use windows_sys::Win32::Graphics::Gdi::GetUpdateRect;
+    use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{WM_NCDESTROY, WM_PAINT};
+
+    thread_local! {
+        // windows whose messages we see first
+        static WATCHED: RefCell<HashSet<isize>> = RefCell::new(HashSet::new());
+        // windows Windows asked to paint (part of what they showed is gone)
+        static LOST: RefCell<HashSet<isize>> = RefCell::new(HashSet::new());
+    }
+
+    // "Ezoo": our mark among the window's procedures
+    const ID: usize = 0x457A_6F6F;
+
+    unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM, _id: usize, _data: usize) -> LRESULT {
+        let key = hwnd as isize;
+        if msg == WM_PAINT {
+            // SAFETY: our own live window; only asks whether part of it must be painted
+            if unsafe { GetUpdateRect(hwnd, std::ptr::null_mut(), 0) } != 0 {
+                LOST.with(|l| {
+                    if let Ok(mut l) = l.try_borrow_mut() {
+                        l.insert(key);
+                    }
+                });
+            }
+        } else if msg == WM_NCDESTROY {
+            // SAFETY: the procedure we set on this window, taken off as it goes away
+            unsafe { RemoveWindowSubclass(hwnd, Some(proc_), ID) };
+            for set in [&WATCHED, &LOST] {
+                set.with(|s| {
+                    if let Ok(mut s) = s.try_borrow_mut() {
+                        s.remove(&key);
+                    }
+                });
+            }
+        }
+        // SAFETY: passes the message on, as every such procedure must
+        unsafe { DefSubclassProc(hwnd, msg, wp, lp) }
+    }
+
+    /// See the paint requests of `hwnd` (once per window).
+    pub(super) fn watch(hwnd: isize) {
+        let new = WATCHED.with(|w| w.try_borrow_mut().map(|mut w| w.insert(hwnd)).unwrap_or(false));
+        if new {
+            // SAFETY: a live window of this thread (the toolkit's); our
+            // procedure passes every message on to the toolkit's
+            unsafe { SetWindowSubclass(hwnd as HWND, Some(proc_), ID, 0) };
+        }
+    }
+
+    /// Whether `hwnd` lost part of its picture since this was last asked.
+    pub(super) fn take(hwnd: isize) -> bool {
+        LOST.with(|l| l.try_borrow_mut().map(|mut l| l.remove(&hwnd)).unwrap_or(false))
+    }
 }
 
 #[cfg(not(windows))]

@@ -535,5 +535,11 @@
  "Copy magnet link": "Copiar link magnet",
  "Stop sharing once it sent (times what it received)": "Parar de compartilhar depois de enviar (vezes o que recebeu)",
  "No limit": "Sem limite",
- "For a playlist or several files added together: one window for each file (not one at the end)": "Para uma playlist ou vários arquivos adicionados juntos: uma janela para cada arquivo (não uma só no final)"
+ "For a playlist or several files added together: one window for each file (not one at the end)": "Para uma playlist ou vários arquivos adicionados juntos: uma janela para cada arquivo (não uma só no final)",
+ "A file named \\\"{}\\\" is already in this folder. Replace it, save the new one with a numbered name, or change the name above.": "Já existe um arquivo chamado \\\"{}\\\" nesta pasta. Substitua-o, salve o novo com um número ou mude o nome acima.",
+ "New name (numbered)": "Novo nome (numerado)",
+ "Replace it": "Substituir",
+ "The name the file gets": "O nome que o arquivo terá",
+ "Install new versions of Ezoo Download by themselves": "Instalar sozinhas as novas versões do Ezoo Download",
+ "Oldest first": "Mais antigo primeiro"
 }

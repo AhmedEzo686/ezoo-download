@@ -9,6 +9,7 @@ mod assoc;
 mod winmenu;
 mod nativehost;
 mod autostart;
+mod winreg;
 mod browser;
 mod cli;
 mod clipboard;
@@ -52,6 +53,8 @@ pub(crate) struct VideoExtra {
     /// page + quality key, used to renew expired links
     source_page: Option<String>,
     source_key: Option<String>,
+    /// "With subtitles": the subtitles to fetch next to it ("srt:ar")
+    subs: Option<String>,
 }
 
 /// State of the "Download File Info" window (shared with background threads).
@@ -213,6 +216,14 @@ fn install_crash_log() {
 
 fn main() {
     install_crash_log();
+    // a mark the setup looks for (it waits for the program to close before
+    // it copies the new files): kept until the program ends
+    #[cfg(windows)]
+    {
+        let name: Vec<u16> = "EzooDownload.Running\0".encode_utf16().collect();
+        // SAFETY: a NUL-terminated name; the handle stays open on purpose
+        let _ = unsafe { windows_sys::Win32::System::Threading::CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+    }
     let data_dir = default_data_dir();
     let gpu = Settings::load(&data_dir.join("settings.json")).gpu_drawing;
     // The windows are drawn by the processor unless the user chose the
@@ -271,13 +282,31 @@ fn elevated() -> bool {
 fn end_process(pid: u32) {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        let exe = std::env::current_exe().ok().and_then(|e| e.file_name().map(|n| n.to_string_lossy().to_string()));
-        let exe = exe.unwrap_or_else(|| "EzooDownload.exe".into());
-        let _ = std::process::Command::new(swiftget_engine::system::windows_tool("taskkill.exe"))
-            .args(["/F", "/PID", &pid.to_string(), "/FI", &format!("IMAGENAME eq {exe}")])
-            .creation_flags(0x0800_0000) // no console window
-            .status();
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, QueryFullProcessImageNameW, TerminateProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+            PROCESS_TERMINATE,
+        };
+        let ours = std::env::current_exe().ok().and_then(|e| e.file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()));
+        let ours = ours.unwrap_or_else(|| "ezoodownload.exe".into());
+        // SAFETY: a handle of our own, closed below; the name is read into a
+        // buffer of the size given
+        unsafe {
+            let h = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if h.is_null() {
+                return;
+            }
+            let mut buf = [0u16; 1024];
+            let mut len = buf.len() as u32;
+            let name = (QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut len) != 0)
+                .then(|| String::from_utf16_lossy(&buf[..len as usize]))
+                .and_then(|p| std::path::Path::new(&p).file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()));
+            // only ever a copy of this program
+            if name.as_deref() == Some(ours.as_str()) {
+                TerminateProcess(h, 1);
+            }
+            CloseHandle(h);
+        }
     }
     #[cfg(not(windows))]
     let _ = pid;
@@ -536,9 +565,13 @@ fn run() -> anyhow::Result<()> {
         // first run: start with Windows, like other download managers
         let mut s = mgr.settings();
         if !s.autostart_set {
-            // the installer already asked; a copy run without it starts with Windows
+            // the installer asked and left the answer for the program (it
+            // writes nothing that starts with Windows itself); a copy run
+            // without it starts with Windows
             if !autostart::installed_by_setup() {
                 autostart::set(true);
+            } else if let Some(v) = autostart::setup_value("Autostart") {
+                autostart::set(v == "1");
             }
             s.autostart_set = true;
             let _ = mgr.set_settings(s);
@@ -1204,6 +1237,10 @@ fn wire_main(ui: &Ui) {
             }
             let Some(m) = ui.ctx.main.upgrade() else { return };
             winfx::drag_file_out(m.window(), &v.save_path);
+            // moved away (dropped in a folder of the same drive): the row shows it
+            if !v.save_path.exists() {
+                refresh(&ui);
+            }
             // the mouse was let go outside the list: the row must know too
             m.window().dispatch_event(slint::platform::WindowEvent::PointerReleased {
                 position: slint::LogicalPosition::new(0.0, 0.0),
@@ -1638,6 +1675,20 @@ fn relayed_download(url: &str) -> Option<u64> {
 fn handle_api(ui: &Ui, event: api::ApiEvent) {
     match event {
         api::ApiEvent::Show => bring_to_front(&ui.ctx),
+        api::ApiEvent::Subtitles(ask, answer) => {
+            // into the folder of the videos, named after the video
+            let s = ui.ctx.mgr.settings();
+            let dir = s.dir_for("Video");
+            let title = if ask.title.trim().is_empty() { "subtitles".to_string() } else { ask.title.trim().chars().take(150).collect() };
+            let srt = ask.format != "vtt";
+            std::thread::spawn(move || {
+                let body = match swiftget_engine::ytdlp::fetch_subtitle_tracks(&ask.url, &dir, &title, &ask.langs, srt) {
+                    Ok(files) => serde_json::json!({ "ok": true, "count": files.len(), "folder": dir.display().to_string() }),
+                    Err(e) => serde_json::json!({ "ok": false, "error": err_text(&format!("{e:#}")) }),
+                };
+                let _ = answer.send(body.to_string());
+            });
+        }
         api::ApiEvent::Pair(answer) => {
             bring_to_front(&ui.ctx);
             confirm(
@@ -1744,6 +1795,7 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
                 audio_url: req.audio_url,
                 source_page: req.source_page,
                 source_key: req.source_key,
+                subs: req.subs.filter(|s| s.len() < 2000),
             };
             let s = ui.ctx.mgr.settings();
             if !s.show_start_dialog && ui.ctx.mgr.find_url(&req.url).is_none() {
@@ -1755,6 +1807,7 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
                     audio_url: extra.audio_url,
                     source_page: extra.source_page,
                     source_key: extra.source_key,
+                    subs: extra.subs,
                     start: true,
                     ..Default::default()
                 });
@@ -1881,7 +1934,32 @@ fn wire_add(ui: &Ui) {
     }
     {
         let ui = ui.clone();
-        add.on_start_now(move || confirm_add(&ui, true));
+        add.on_start_now(move || confirm_add(&ui, true, None));
+    }
+    // the file name alone, and "Save As" with another name
+    add.on_name_of(|path| {
+        let p = path.trim();
+        let cut = p.rfind(['\\', '/']).map(|i| i + 1).unwrap_or(0);
+        p[cut..].into()
+    });
+    add.on_with_name(|path, name| {
+        let p = path.trim();
+        let cut = p.rfind(['\\', '/']).map(|i| i + 1).unwrap_or(0);
+        format!("{}{}", &p[..cut], name).into()
+    });
+    {
+        let ui = ui.clone();
+        add.on_replace_taken(move || {
+            let start = ui.ctx.add.upgrade().map(|d| d.get_taken_start()).unwrap_or(true);
+            confirm_add(&ui, start, Some(FileThere::Replace));
+        });
+    }
+    {
+        let ui = ui.clone();
+        add.on_number_taken(move || {
+            let start = ui.ctx.add.upgrade().map(|d| d.get_taken_start()).unwrap_or(true);
+            confirm_add(&ui, start, Some(FileThere::Number));
+        });
     }
     {
         // the server refused us: give the address back to the browser
@@ -1901,7 +1979,7 @@ fn wire_add(ui: &Ui) {
     }
     {
         let ui = ui.clone();
-        add.on_later(move || confirm_add(&ui, false));
+        add.on_later(move || confirm_add(&ui, false, None));
     }
     {
         let ctx = ui.ctx.clone();
@@ -2235,29 +2313,13 @@ pub(crate) fn breakable(text: &str) -> String {
     out
 }
 
+/// "A file of this name is in the folder": what the user chose in the
+/// window ("Download File Info" shows the choice in itself: a message box
+/// over it, opened from its button, left it not answering on some computers).
+#[derive(Clone, Copy, PartialEq)]
 enum FileThere {
     Replace,
     Number,
-    Cancel,
-}
-
-/// "The file is already in this folder": replace it, a new numbered name, or not now.
-fn ask_file_there(name: &str) -> FileThere {
-    use rfd::{MessageButtons, MessageDialogResult};
-    let _g = ModalGuard::new();
-    let (replace, number, cancel) = (t("Replace it"), t("New name (numbered)"), t("Cancel"));
-    let answer = crate::winfx::msg_box()
-        .set_title(APP)
-        .set_description(tf("The file \"{}\" is already in this folder.\nReplace it, or save the new one with a numbered name?", &[&name]))
-        .set_buttons(MessageButtons::YesNoCancelCustom(replace.clone(), number.clone(), cancel))
-        .show();
-    match answer {
-        MessageDialogResult::Custom(c) if c == replace => FileThere::Replace,
-        MessageDialogResult::Yes => FileThere::Replace,
-        MessageDialogResult::Custom(c) if c == number => FileThere::Number,
-        MessageDialogResult::No => FileThere::Number,
-        _ => FileThere::Cancel,
-    }
 }
 
 pub(crate) fn ask(text: &str) -> bool {
@@ -2789,6 +2851,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
         .into(),
     );
     d.set_info(t("Paste a link and press Check").into());
+    d.set_taken_name(SharedString::new());
     d.set_can_use_browser(false);
     d.set_info_error(false);
     d.set_probing(false);
@@ -2805,6 +2868,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
             audio_url: st.extra.audio_url.clone(),
             source_page: st.extra.source_page.clone(),
             source_key: st.extra.source_key.clone(),
+            subs: st.extra.subs.clone(),
             early: true,
             start: true,
             ..Default::default()
@@ -2933,8 +2997,10 @@ fn start_probe(ctx: &Ctx, url: String) {
     });
 }
 
-/// Add the download from the "Download File Info" window.
-fn confirm_add(ui: &Ui, start: bool) {
+/// Add the download from the "Download File Info" window. `there`: what
+/// to do with a file of the same name in the folder (asked in the window
+/// first, when there is one).
+fn confirm_add(ui: &Ui, start: bool, there: Option<FileThere>) {
     let ctx = &ui.ctx;
     let Some(d) = ctx.add.upgrade() else { return };
     let url = d.get_url().trim().to_string();
@@ -2965,25 +3031,35 @@ fn confirm_add(ui: &Ui, start: bool) {
         .filter(|n| !n.trim().is_empty());
     let dir = save_as.parent().map(Path::to_path_buf).filter(|p| !p.as_os_str().is_empty());
     // a file of that name is in the folder already: the user says what to do
-    // (before, a number was put to the name without a word)
+    // (before, a number was put to the name without a word). The file the
+    // download that started with the window made itself is no other file:
+    // asked about it, "Replace" deleted the download's own file.
+    let own_early = {
+        let st = ctx.add_state.lock_ok();
+        st.early_id.and_then(|id| ctx.mgr.get(id)).map(|v| v.save_path)
+    };
+    let mut replace = false;
     let name = match (&dir, name) {
-        (Some(dir), Some(n)) if dir.join(&n).is_file() => match ask_file_there(&n) {
-            FileThere::Replace => {
-                if let Err(e) = std::fs::remove_file(dir.join(&n)) {
-                    message(&tf("Could not replace the file: {}", &[&e.to_string()]));
-                    return;
-                }
+        (Some(dir), Some(n)) if dir.join(&n).is_file() && own_early.as_deref() != Some(dir.join(&n).as_path()) => match there {
+            None => {
+                d.set_taken_start(start);
+                d.set_taken_name(n.into());
+                return;
+            }
+            Some(FileThere::Replace) => {
+                // the old file stays until the new one is complete
+                replace = true;
                 Some(n)
             }
-            FileThere::Number => {
+            Some(FileThere::Number) => {
                 let numbered = filename::unique_name(dir, &n);
                 d.set_save_as(dir.join(&numbered).display().to_string().into());
                 Some(numbered)
             }
-            FileThere::Cancel => return,
         },
         (_, n) => n,
     };
+    d.set_taken_name(SharedString::new());
     let key = ctx
         .add_state
         .lock()
@@ -3032,6 +3108,7 @@ fn confirm_add(ui: &Ui, start: bool) {
             audio_url: extra.audio_url,
             source_page: extra.source_page,
             source_key: extra.source_key,
+            subs: extra.subs,
             queue,
             description: (!description.is_empty()).then_some(description),
             pick_quality: None,
@@ -3041,6 +3118,7 @@ fn confirm_add(ui: &Ui, start: bool) {
             torrent_select: None,
             clip: None,
             checksum: checksum.clone(),
+            replace,
         }
     };
     let _ = d.hide();
@@ -3052,6 +3130,7 @@ fn confirm_add(ui: &Ui, start: bool) {
         {
             let dir = req.save_dir.clone().unwrap_or_else(|| settings.dir_for("General"));
             let name = req.file_name.clone().unwrap_or_default();
+            ctx.mgr.set_replace(id, req.replace);
             if let Err(e) = ctx.mgr.retarget(id, &dir, &name, req.description.clone(), req.headers.auth.clone()) {
                 message(&tf("Could not change where it is saved: {}", &[&format!("{e:#}")]));
             }
@@ -3724,7 +3803,9 @@ fn in_view(v: &DownloadView, view: &str) -> bool {
             } else if let Some(c) = other.strip_prefix("fin:") {
                 v.category == c && v.status == Status::Completed
             } else if let Some(q) = other.strip_prefix("queue:") {
-                v.queue.map(|x| x.to_string()).as_deref() == Some(q)
+                // a queue shows what is still to come: a finished download
+                // stays in "All" and "Finished" (as the queue's count says)
+                v.queue.map(|x| x.to_string()).as_deref() == Some(q) && v.status != Status::Completed
             } else {
                 true
             }

@@ -256,6 +256,12 @@ pub struct NewDownload {
     pub clip: Option<Clip>,
     /// the checksum the finished file must have (what the user pasted)
     pub checksum: Option<String>,
+    /// a file of this name in the folder is replaced by this one once it
+    /// is complete (the user said so; until then the old file stays)
+    pub replace: bool,
+    /// subtitles to fetch next to the video once it is done:
+    /// "srt:ar,en-orig" (the format, then yt-dlp's names of the languages)
+    pub subs: Option<String>,
 }
 
 /// Persisted state of one download.
@@ -363,6 +369,14 @@ pub struct DownloadRecord {
     /// else the one the server sent
     #[serde(default)]
     pub checksum: Option<String>,
+    /// the file of this name in the folder is replaced when this one is
+    /// complete (the user chose "Replace it"); the old one stays until then
+    #[serde(default)]
+    pub replace_file: bool,
+    /// subtitles chosen for this video ("srt:ar,en"): fetched next to it
+    /// when it is done (instead of Options > Downloads' languages)
+    #[serde(default)]
+    pub subs: Option<String>,
 }
 
 impl DownloadRecord {

@@ -34,6 +34,7 @@ pub mod sync;
 pub mod system;
 pub mod tools;
 pub mod torrent;
+pub mod unzip;
 pub mod ytdlp;
 
 pub use config::{AfterDone, Schedule, Settings};

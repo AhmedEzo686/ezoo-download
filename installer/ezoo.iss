@@ -78,7 +78,6 @@ en.GroupStartup=Startup:
 en.TaskAutostart=Start Ezoo Download when Windows starts (recommended)
 en.GroupTorrents=Torrents:
 en.TaskTorrents=Make Ezoo Download the main program for torrents (.torrent files and magnet links)
-en.TaskFirewall=Let torrents through the Windows firewall (faster torrents; Windows asks for permission once)
 en.RunNow=Open Ezoo Download now
 en.SystemFiles=Installing required system files...
 ar.GroupShortcuts=الاختصارات:
@@ -87,7 +86,6 @@ ar.GroupStartup=بدء التشغيل:
 ar.TaskAutostart=تشغيل Ezoo Download مع بدء Windows (مُستحسن)
 ar.GroupTorrents=التورنت:
 ar.TaskTorrents=جعل Ezoo Download البرنامج الرئيسي للتورنت (ملفات ‎.torrent وروابط magnet)
-ar.TaskFirewall=السماح للتورنت بالمرور من جدار حماية Windows (تورنت أسرع؛ يطلب Windows الإذن مرة واحدة)
 ar.RunNow=فتح Ezoo Download الآن
 ar.SystemFiles=جارٍ تثبيت ملفات النظام المطلوبة...
 fr.GroupShortcuts=Raccourcis :
@@ -96,7 +94,6 @@ fr.GroupStartup=Démarrage :
 fr.TaskAutostart=Lancer Ezoo Download au démarrage de Windows (recommandé)
 fr.GroupTorrents=Torrents :
 fr.TaskTorrents=Faire d'Ezoo Download le programme principal pour les torrents (fichiers .torrent et liens magnet)
-fr.TaskFirewall=Laisser passer les torrents dans le pare-feu Windows (torrents plus rapides ; Windows demande l'autorisation une fois)
 fr.RunNow=Ouvrir Ezoo Download maintenant
 fr.SystemFiles=Installation des fichiers système nécessaires...
 de.GroupShortcuts=Verknüpfungen:
@@ -105,7 +102,6 @@ de.GroupStartup=Systemstart:
 de.TaskAutostart=Ezoo Download beim Start von Windows starten (empfohlen)
 de.GroupTorrents=Torrents:
 de.TaskTorrents=Ezoo Download zum Hauptprogramm für Torrents machen (.torrent-Dateien und Magnet-Links)
-de.TaskFirewall=Torrents durch die Windows-Firewall lassen (schnellere Torrents; Windows fragt einmal um Erlaubnis)
 de.RunNow=Ezoo Download jetzt öffnen
 de.SystemFiles=Benötigte Systemdateien werden installiert...
 es.GroupShortcuts=Accesos directos:
@@ -114,7 +110,6 @@ es.GroupStartup=Inicio:
 es.TaskAutostart=Iniciar Ezoo Download al iniciar Windows (recomendado)
 es.GroupTorrents=Torrents:
 es.TaskTorrents=Hacer de Ezoo Download el programa principal para torrents (archivos .torrent y enlaces magnet)
-es.TaskFirewall=Dejar pasar los torrents por el firewall de Windows (torrents más rápidos; Windows pide permiso una vez)
 es.RunNow=Abrir Ezoo Download ahora
 es.SystemFiles=Instalando los archivos del sistema necesarios...
 pt.GroupShortcuts=Atalhos:
@@ -123,7 +118,6 @@ pt.GroupStartup=Inicialização:
 pt.TaskAutostart=Iniciar o Ezoo Download com o Windows (recomendado)
 pt.GroupTorrents=Torrents:
 pt.TaskTorrents=Tornar o Ezoo Download o programa principal para torrents (arquivos .torrent e links magnet)
-pt.TaskFirewall=Liberar os torrents no firewall do Windows (torrents mais rápidos; o Windows pede permissão uma vez)
 pt.RunNow=Abrir o Ezoo Download agora
 pt.SystemFiles=Instalando os arquivos de sistema necessários...
 ru.GroupShortcuts=Ярлыки:
@@ -132,7 +126,6 @@ ru.GroupStartup=Автозапуск:
 ru.TaskAutostart=Запускать Ezoo Download вместе с Windows (рекомендуется)
 ru.GroupTorrents=Торренты:
 ru.TaskTorrents=Сделать Ezoo Download основной программой для торрентов (файлы .torrent и magnet-ссылки)
-ru.TaskFirewall=Пропускать торренты через брандмауэр Windows (торренты быстрее; Windows один раз спросит разрешение)
 ru.RunNow=Открыть Ezoo Download сейчас
 ru.SystemFiles=Установка необходимых системных файлов...
 tr.GroupShortcuts=Kısayollar:
@@ -141,7 +134,6 @@ tr.GroupStartup=Başlangıç:
 tr.TaskAutostart=Ezoo Download'ı Windows ile başlat (önerilir)
 tr.GroupTorrents=Torrentler:
 tr.TaskTorrents=Ezoo Download'ı torrentler için ana program yap (.torrent dosyaları ve magnet bağlantıları)
-tr.TaskFirewall=Torrentlerin Windows güvenlik duvarından geçmesine izin ver (daha hızlı torrentler; Windows bir kez izin ister)
 tr.RunNow=Ezoo Download'ı şimdi aç
 tr.SystemFiles=Gerekli sistem dosyaları yükleniyor...
 
@@ -149,7 +141,6 @@ tr.SystemFiles=Gerekli sistem dosyaları yükleniyor...
 Name: "desktopicon"; Description: "{cm:TaskDesktop}"; GroupDescription: "{cm:GroupShortcuts}"
 Name: "autostart"; Description: "{cm:TaskAutostart}"; GroupDescription: "{cm:GroupStartup}"
 Name: "torrents"; Description: "{cm:TaskTorrents}"; GroupDescription: "{cm:GroupTorrents}"
-Name: "firewall"; Description: "{cm:TaskFirewall}"; GroupDescription: "{cm:GroupTorrents}"
 
 [Files]
 Source: "{#Stage}\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion
@@ -157,7 +148,8 @@ Source: "{#Stage}\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\ezoo-host.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Stage}\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Stage}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-; the helpers go into {app}\tools; the app updates them there by itself
+; the helpers (our own ffmpeg, the official yt-dlp) go into {app}\tools; the
+; program keeps them updated there (and fetches one again if it goes missing)
 Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Stage}\extension\*"; DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Stage}\extension-firefox\*"; DestDir: "{app}\extension-firefox"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -198,7 +190,12 @@ Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: 
 Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: "Torrents"; ValueData: "1"; Tasks: torrents
 Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: "Torrents"; ValueData: "0"; Tasks: not torrents
 ; start in the background (next to the clock) when the user signs in
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "EzooDownload"; ValueData: """{app}\{#MyAppExe}"" --background"; Flags: uninsdeletevalue; Tasks: autostart
+; the choice only: the program itself adds (or not) its "start with Windows"
+; on its first start, the setup writes nothing that starts with Windows
+Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: "Autostart"; ValueData: "1"; Tasks: autostart
+Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: "Autostart"; ValueData: "0"; Tasks: not autostart
+; removed with the program (the value the program added)
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "EzooDownload"; Flags: uninsdeletevalue dontcreatekey
 ; the browsers' entry for the program's helper (the program fills it in at
 ; start): gone again when Ezoo Download is removed
 Root: HKCU; Subkey: "Software\Google\Chrome\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
@@ -232,8 +229,6 @@ Filename: "{app}\{#MyAppExe}"; Flags: nowait; Check: IsAutoUpdate
 
 
 [UninstallRun]
-Filename: "{cmd}"; Parameters: "/C taskkill /IM {#MyAppExe} /F"; Flags: runhidden; RunOnceId: "StopEzoo"
-Filename: "{cmd}"; Parameters: "/C taskkill /IM ezoo-host-* /F"; Flags: runhidden; RunOnceId: "StopEzooHost"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\extension"
@@ -280,38 +275,18 @@ begin
 #endif
 end;
 
-{ the program takes people's connections for torrents: Windows' firewall
-  lets it (needs administrator rights: Windows asks once; refused = torrents
-  still work, a little slower) }
-procedure AllowTorrents;
-var
-  Code: Integer;
-  Tool: String;
-begin
-  if WizardSilent then exit;
-  Tool := ExpandConstant('{app}\{#MyAppExe}');
-  ShellExec('runas', ExpandConstant('{sys}\cmd.exe'),
-    '/C netsh advfirewall firewall delete rule name="Ezoo Download torrents" >nul 2>&1 & ' +
-    'netsh advfirewall firewall add rule name="Ezoo Download torrents" dir=in action=allow program="' + Tool + '" enable=yes profile=any >nul 2>&1',
-    '', SW_HIDE, ewWaitUntilTerminated, Code);
-end;
-
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
     InstallRuntime;
-    if WizardIsTaskSelected('firewall') then
-      AllowTorrents;
   end;
 end;
 
-{ true while EzooDownload.exe still runs }
+{ true while EzooDownload.exe still runs (it keeps this mark while open) }
 function AppRunning: Boolean;
-var
-  Code: Integer;
 begin
-  Result := Exec(ExpandConstant('{cmd}'), '/C tasklist /NH /FI "IMAGENAME eq {#MyAppExe}" | find /I "{#MyAppExe}" >nul', '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
+  Result := CheckForMutexes('EzooDownload.Running');
 end;
 
 { ask the open program to close by itself: it saves the list and the
@@ -331,29 +306,29 @@ begin
   end;
 end;
 
-function PrepareToInstall(var NeedsRestart: Boolean): String;
+{ the running program locks its files: it is asked to close by itself (it
+  saves the list and the downloads); one that does not is closed by
+  Windows' own Restart Manager (CloseApplications above) }
+procedure CloseApp;
 var
-  Code, I: Integer;
+  I: Integer;
 begin
-  { the running program locks its files: close it before copying }
-  if AppRunning then
+  AskAppToQuit;
+  for I := 1 to 30 do
   begin
-    AskAppToQuit;
-    for I := 1 to 20 do
-    begin
-      if not AppRunning then break;
-      Sleep(500);
-    end;
+    if not AppRunning then break;
+    Sleep(500);
   end;
-  if AppRunning then
-  begin
-    Exec(ExpandConstant('{cmd}'), '/C taskkill /IM {#MyAppExe} >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, Code);
-    Sleep(2000);
-  end;
-  if AppRunning then
-  begin
-    Exec(ExpandConstant('{cmd}'), '/C taskkill /F /IM {#MyAppExe} >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, Code);
-    Sleep(800);
-  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  CloseApp;
   Result := '';
+end;
+
+function InitializeUninstall: Boolean;
+begin
+  CloseApp;
+  Result := True;
 end;

@@ -104,8 +104,8 @@ pub(crate) fn report() -> (bool, Vec<(&'static str, bool)>) {
         let firefox = st.dir.join("firefox.json").display().to_string();
         let names = ["Chrome", "Chromium", "Edge", "Brave"];
         let mut out: Vec<(&'static str, bool)> =
-            CHROMIUM_KEYS.iter().zip(names).map(|(k, n)| (n, crate::assoc::query(k, None).as_deref() == Some(chromium.as_str()))).collect();
-        out.push(("Firefox", crate::assoc::query(FIREFOX_KEY, None).as_deref() == Some(firefox.as_str())));
+            CHROMIUM_KEYS.iter().zip(names).map(|(k, n)| (n, crate::winreg::get(k, None).as_deref() == Some(chromium.as_str()))).collect();
+        out.push(("Firefox", crate::winreg::get(FIREFOX_KEY, None).as_deref() == Some(firefox.as_str())));
         out
     };
     #[cfg(not(windows))]
@@ -116,8 +116,8 @@ pub(crate) fn report() -> (bool, Vec<(&'static str, bool)>) {
 /// The key of a browser points at `file` (written only when it does not).
 #[cfg(windows)]
 fn point(key: &str, file: &str) {
-    if crate::assoc::query(key, None).as_deref() != Some(file) {
-        crate::assoc::reg(&["add", key, "/ve", "/d", file, "/f"]);
+    if crate::winreg::get(key, None).as_deref() != Some(file) {
+        crate::winreg::set(key, None, file);
     }
 }
 
