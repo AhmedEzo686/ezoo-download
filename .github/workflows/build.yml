@@ -41,7 +41,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q mingw-w64 nasm pkg-config make
+          sudo apt-get install -y -q -o Acquire::Retries=5 mingw-w64 nasm pkg-config make
           git clone -q --depth 1 --branch "$FFMPEG_TAG" https://github.com/FFmpeg/FFmpeg ffmpeg-src
           test "$(git -C ffmpeg-src rev-parse HEAD)" = "$FFMPEG_COMMIT" || { echo "::error::ffmpeg source is not the expected commit"; exit 1; }
           curl -sSfL -o lame.tar.gz "$LAME_URL"
@@ -53,7 +53,7 @@ jobs:
           echo "$FFMPEG_TAG ($FFMPEG_COMMIT), LAME 3.100, OpenH264 $OPENH264_TAG" > ffmpeg-out/ffmpeg-version.txt
       - name: Test files for our ffmpeg (made with the system's full ffmpeg)
         run: |
-          sudo apt-get install -y -q ffmpeg >/dev/null
+          sudo apt-get install -y -q -o Acquire::Retries=5 --fix-missing ffmpeg >/dev/null
           mkdir -p ffmpeg-test && cd ffmpeg-test
           F="ffmpeg -hide_banner -loglevel error -y"
           V="-f lavfi -i testsrc2=size=320x180:rate=25:duration=4"; A="-f lavfi -i sine=frequency=500:duration=4:sample_rate=48000"
