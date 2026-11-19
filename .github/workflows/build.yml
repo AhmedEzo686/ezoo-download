@@ -53,7 +53,10 @@ jobs:
           echo "$FFMPEG_TAG ($FFMPEG_COMMIT), LAME 3.100, OpenH264 $OPENH264_TAG" > ffmpeg-out/ffmpeg-version.txt
       - name: Test files for our ffmpeg (made with the system's full ffmpeg)
         run: |
-          sudo apt-get install -y -q -o Acquire::Retries=5 --fix-missing ffmpeg >/dev/null
+          # a fresh package list (with the cached build no update ran), and
+          # only what ffmpeg needs (not the graphics drivers it suggests)
+          sudo apt-get update -q >/dev/null
+          sudo apt-get install -y -q -o Acquire::Retries=5 --no-install-recommends ffmpeg >/dev/null
           mkdir -p ffmpeg-test && cd ffmpeg-test
           F="ffmpeg -hide_banner -loglevel error -y"
           V="-f lavfi -i testsrc2=size=320x180:rate=25:duration=4"; A="-f lavfi -i sine=frequency=500:duration=4:sample_rate=48000"
