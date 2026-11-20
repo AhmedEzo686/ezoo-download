@@ -276,6 +276,84 @@ async fn waits_through_a_long_outage_and_resumes() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A server that only advertises range support but answers every request
+/// with the full 200 body: the probe must fall back to one plain connection
+/// instead of trusting the "Accept-Ranges" advertisement.
+async fn serve_no_ranges(data: Arc<Vec<u8>>) -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        loop {
+            let (sock, _) = listener.accept().await.unwrap();
+            let data = data.clone();
+            tokio::spawn(async move {
+                let (r, mut w) = sock.into_split();
+                let mut r = BufReader::new(r);
+                loop {
+                    let mut line = String::new();
+                    if r.read_line(&mut line).await.unwrap_or(0) == 0 || line.trim().is_empty() {
+                        break;
+                    }
+                }
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nAccept-Ranges: bytes\r\nContent-Length: {}\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n",
+                    data.len()
+                );
+                if w.write_all(head.as_bytes()).await.is_err() {
+                    return;
+                }
+                for chunk in data.chunks(8192) {
+                    if w.write_all(chunk).await.is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+    port
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn full_download_without_ranges() {
+    let data = test_data(1024 * 1024 + 45);
+    let port = serve_no_ranges(data.clone()).await;
+    let url = format!("http://127.0.0.1:{port}/n.bin");
+    let shared = Arc::new(Shared::new(build_client().unwrap(), SpeedLimiter::new(0)));
+
+    let p = probe(&shared.client(), &url, &RequestHeaders::default(), "test").await.unwrap();
+    assert!(!p.resumable, "200 to a range request: the advertisement means nothing");
+    assert_eq!(p.total_size, Some(data.len() as u64), "the size is still known");
+
+    let dir = std::env::temp_dir().join(format!("swiftget-norange-{port}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let part = dir.join("out.sgpart");
+    let job = HttpJob {
+        url,
+        headers: RequestHeaders::default(),
+        user_agent: "test".into(),
+        total_size: p.total_size,
+        resumable: false,
+        part_path: part.clone(),
+        connections: 8,
+        min_split: 64 * 1024,
+        retries: 3,
+        progress_base: 0,
+        max_request: None,
+        limiter: Arc::new(SpeedLimiter::new(0)),
+        check: Default::default(),
+    };
+    let segs = Arc::new(Mutex::new(Vec::new()));
+    let progress = Arc::new(Progress::default());
+    http_download::run(shared, job, segs, progress.clone(), CancellationToken::new())
+        .await
+        .unwrap();
+    let out = std::fs::read(&part).unwrap();
+    assert_eq!(out.len(), data.len());
+    assert!(out == *data, "downloaded bytes differ from the source");
+    assert_eq!(progress.bytes.load(Ordering::Relaxed), data.len() as u64);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn network_errors_are_told_apart() {
     use swiftget_engine::http::{http_status_of, is_network_error, HttpStatus, NetDrop};
