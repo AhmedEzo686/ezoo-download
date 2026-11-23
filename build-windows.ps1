@@ -1,4 +1,4 @@
-# Ezoo Download - one-click Windows build
+﻿# Ezoo Download - one-click Windows build
 # Installs what is missing (Visual Studio C++ Build Tools, Rust), builds
 # EzooDownload.exe, gets ffmpeg + yt-dlp and makes dist\EzooDownload-Setup.exe.
 
@@ -80,6 +80,23 @@ if (-not $env:EZOO_FFMPEG_SHA256) {
 Step "Building EzooDownload.exe (first time: 5-15 minutes)"
 cargo build --release
 if ($LASTEXITCODE -ne 0) { Fail "The build failed. Scroll up to see the first red 'error' lines." }
+
+# the 32-bit program for 32-bit Windows 10 (the setup puts the right one)
+Step "Building the 32-bit EzooDownload.exe (for 32-bit Windows 10)"
+rustup target add i686-pc-windows-msvc | Out-Null
+$ffmpeg64Sum = $env:EZOO_FFMPEG_SHA256
+$env:EZOO_FFMPEG_SHA256 = $null
+$relFfmpeg86 = Join-Path $PSScriptRoot "build-cache\release-ffmpeg-x86.exe"
+try {
+    Invoke-WebRequest "https://github.com/AhmedEzo686/ezoo-download/releases/latest/download/ffmpeg-x86.exe" -OutFile $relFfmpeg86
+    $env:EZOO_FFMPEG_SHA256 = (Get-FileHash $relFfmpeg86 -Algorithm SHA256).Hash.ToLower()
+} catch {
+    Remove-Item $relFfmpeg86 -Force -ErrorAction SilentlyContinue
+    Write-Warning "No 32-bit ffmpeg in the latest release yet: put ffmpeg.exe of a GitHub build in tools\ffmpeg\win32."
+}
+cargo build --release --target i686-pc-windows-msvc
+if ($LASTEXITCODE -ne 0) { Fail "The 32-bit build failed. Scroll up to see the first red 'error' lines." }
+$env:EZOO_FFMPEG_SHA256 = $ffmpeg64Sum
 
 # ---------------------------------------------------------------- 4. package
 # The result is ONE file: dist\EzooDownload-Setup.exe (+ dist\version.json
@@ -202,6 +219,33 @@ if ((Test-Path $signedXpi) -and ((Get-XpiVersion $signedXpi) -eq $extVersion)) {
 if (-not (Test-Path $xpiOut)) {
     Write-Warning "No signed Firefox add-on $extVersion yet: this setup has none (the release signs it). Firefox users of this build add it from the folder."
 }
+# 32-bit Windows 10: the 32-bit program and the 32-bit ffmpeg (yt-dlp's
+# 32-bit build is fetched by the program itself at its first start)
+$stage86 = Join-Path $stage "x86"
+New-Item -ItemType Directory -Force (Join-Path $stage86 "tools") | Out-Null
+Copy-Item "target\i686-pc-windows-msvc\release\EzooDownload.exe" $stage86 -Force
+Copy-Item "target\i686-pc-windows-msvc\release\ezoo-host.exe" $stage86 -Force
+$ours86 = Join-Path $PSScriptRoot "tools\ffmpeg\win32"
+if (Test-Path "$ours86\ffmpeg.exe") {
+    Copy-Item "$ours86\*" (Join-Path $stage86 "tools") -Force
+} elseif (Test-Path $relFfmpeg86) {
+    Copy-Item $relFfmpeg86 (Join-Path $stage86 "tools\ffmpeg.exe") -Force
+}
+foreach ($f in @("ffmpeg-LICENSE.txt", "lame-COPYING.txt", "openh264-LICENSE.txt")) {
+    if ((Test-Path "$cache\$f") -and -not (Test-Path (Join-Path $stage86 "tools\$f"))) { Copy-Item "$cache\$f" (Join-Path $stage86 "tools") -Force }
+}
+if (-not (Test-Path "$cache\yt-dlp_x86.exe")) {
+    try {
+        $yt = Invoke-RestMethod "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest" -Headers @{ "User-Agent" = "EzooDownload-build" }
+        $y86 = $yt.assets | Where-Object { $_.name -eq "yt-dlp_x86.exe" } | Select-Object -First 1
+        $ytSums = $yt.assets | Where-Object { $_.name -eq "SHA2-256SUMS" } | Select-Object -First 1
+        Invoke-WebRequest $y86.browser_download_url -OutFile "$cache\yt-dlp_x86.exe"
+        Assert-Sha256 "$cache\yt-dlp_x86.exe" $ytSums.browser_download_url "yt-dlp_x86.exe"
+    } catch {
+        Write-Host "Could not download the 32-bit yt-dlp now. Ezoo Download gets it by itself later." -ForegroundColor Yellow
+    }
+}
+if (Test-Path "$cache\yt-dlp_x86.exe") { Copy-Item "$cache\yt-dlp_x86.exe" (Join-Path $stage86 "tools\yt-dlp.exe") -Force }
 # the helpers go into the setup (both checked on VirusTotal: our ffmpeg 0/71,
 # the official yt-dlp 1/48); the program still fetches one again by itself
 # if it ever goes missing (checked by SHA-256)
@@ -229,6 +273,8 @@ if ($signtool) {
     Step "Signing EzooDownload.exe"
     Sign-File "$stage\EzooDownload.exe"
     Sign-File "$stage\ezoo-host.exe"
+    Sign-File "$stage\x86\EzooDownload.exe"
+    Sign-File "$stage\x86\ezoo-host.exe"
 }
 
 

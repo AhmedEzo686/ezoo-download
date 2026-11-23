@@ -9,7 +9,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
-const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+/// yt-dlp's one-file program for this Windows: 64-bit, or 32-bit in the
+/// 32-bit build (Windows 10 32-bit). Kept as yt-dlp.exe either way.
+#[cfg(not(target_arch = "x86"))]
+const YTDLP_EXE: &str = "yt-dlp.exe";
+#[cfg(target_arch = "x86")]
+const YTDLP_EXE: &str = "yt-dlp_x86.exe";
+const YTDLP_RELEASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/";
 /// the SHA-256 of every file of that release, published by yt-dlp
 const YTDLP_SUMS_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS";
 /// none of the helpers is anywhere near this big
@@ -172,8 +178,12 @@ fn replace(new: &Path, target: &Path) -> anyhow::Result<()> {
 /// starts (and the antivirus looks at all of it each time): a second or
 /// more before every look at a video. Kept as tools\yt-dlp-dir\<version>\,
 /// the one in use named in "current.txt".
+/// yt-dlp's folder build and the program in it (named for its kind: the
+/// 32-bit one is yt-dlp_x86.exe)
+#[cfg(not(target_arch = "x86"))]
 const YTDLP_DIR_ZIP: &str = "yt-dlp_win.zip";
-const YTDLP_DIR_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_win.zip";
+#[cfg(target_arch = "x86")]
+const YTDLP_DIR_ZIP: &str = "yt-dlp_win_x86.zip";
 
 fn folder_build_root() -> Option<PathBuf> {
     tool_dirs().into_iter().map(|d| d.join("yt-dlp-dir")).find(|d| d.join("current.txt").is_file())
@@ -191,7 +201,7 @@ pub fn ytdlp_folder_build() -> Option<PathBuf> {
     if name.is_empty() || !name.chars().all(|c| c.is_ascii_hexdigit()) {
         return None;
     }
-    let exe = root.join(name).join("yt-dlp.exe");
+    let exe = root.join(name).join(YTDLP_EXE);
     (exe.is_file() && root.join(name).join("_internal").is_dir()).then_some(exe)
 }
 
@@ -216,7 +226,7 @@ async fn yt_dlp_folder(client: &reqwest::Client, sums: &str) -> bool {
         return false;
     }
     let zip = root.join("download.zip");
-    if download(client, YTDLP_DIR_URL, &zip, &sum).await.is_err() {
+    if download(client, &format!("{YTDLP_RELEASE}{YTDLP_DIR_ZIP}"), &zip, &sum).await.is_err() {
         return false;
     }
     let (root2, zip2, version2) = (root.clone(), zip.clone(), version.to_string());
@@ -226,7 +236,7 @@ async fn yt_dlp_folder(client: &reqwest::Client, sums: &str) -> bool {
         let _ = std::fs::remove_dir_all(&part);
         crate::unzip::unpack(&bytes, &part, 600 << 20)?;
         let _ = std::fs::remove_file(&zip2);
-        if !part.join("yt-dlp.exe").is_file() || !part.join("_internal").is_dir() {
+        if !part.join(YTDLP_EXE).is_file() || !part.join("_internal").is_dir() {
             let _ = std::fs::remove_dir_all(&part);
             anyhow::bail!("not yt-dlp's folder build");
         }
@@ -306,8 +316,8 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
         if cfg!(windows) {
             if let Some(dir) = writable_dir("yt-dlp") {
                 if let Ok(sums) = get_text(client, YTDLP_SUMS_URL).await {
-                    if let Some(sum) = sum_for(&sums, "yt-dlp.exe") {
-                        let _ = download(client, YTDLP_URL, &dir.join(exe("yt-dlp")), &sum).await;
+                    if let Some(sum) = sum_for(&sums, YTDLP_EXE) {
+                        let _ = download(client, &format!("{YTDLP_RELEASE}{YTDLP_EXE}"), &dir.join(exe("yt-dlp")), &sum).await;
                     }
                 }
             }
@@ -386,8 +396,8 @@ pub fn js_runtime() -> Option<(&'static str, PathBuf)> {
         return None;
     }
     let dir = writable_dir("qjs")?;
-    // the 32-bit one on Windows 7 / 8 / 8.1 (it needs nothing Windows 7 lacks)
-    let (file, sum) = if cfg!(feature = "legacy") { ("qjs-windows-x86.exe", QJS_X86_SHA256) } else { ("qjs-windows-x86_64.exe", QJS_SHA256) };
+    // the 32-bit one in the 32-bit builds (it needs nothing Windows 7 lacks)
+    let (file, sum) = if cfg!(target_arch = "x86") { ("qjs-windows-x86.exe", QJS_X86_SHA256) } else { ("qjs-windows-x86_64.exe", QJS_SHA256) };
     let url = format!("https://github.com/quickjs-ng/quickjs/releases/download/{QJS_VERSION}/{file}");
     let dest = dir.join(exe("qjs"));
     // its own small runtime on its own thread: callers may be on one of tokio's
@@ -447,8 +457,9 @@ pub async fn restore_ffmpeg(client: &reqwest::Client) -> bool {
     }
     let Some(dir) = writable_dir("ffmpeg") else { return false };
     let repo = crate::selfupdate::REPO;
-    // the 32-bit one for Windows 7 / 8 / 8.1 has its own name in the release
-    let file = if cfg!(feature = "legacy") { "ffmpeg-legacy.exe" } else { "ffmpeg.exe" };
+    // the 32-bit one (Windows 7 / 8 / 8.1, 32-bit Windows 10) has its own
+    // name in the release
+    let file = if cfg!(target_arch = "x86") { "ffmpeg-x86.exe" } else { "ffmpeg.exe" };
     let urls = [
         format!("https://github.com/{repo}/releases/download/v{}/{file}", env!("CARGO_PKG_VERSION")),
         format!("https://github.com/{repo}/releases/latest/download/{file}"),

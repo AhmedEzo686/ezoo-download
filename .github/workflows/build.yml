@@ -152,6 +152,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: stable
+          # the 32-bit program for 32-bit Windows 10
+          targets: i686-pc-windows-msvc
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -220,6 +222,11 @@ jobs:
           $env:EZOO_FFMPEG_SHA256 = (Get-FileHash ffmpeg-out/ffmpeg.exe -Algorithm SHA256).Hash.ToLower()
           cargo build --release
           if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
+          # 32-bit Windows 10: the same program, 32-bit, with the 32-bit ffmpeg
+          # (the one of the Windows 7 build, published as ffmpeg-x86.exe)
+          $env:EZOO_FFMPEG_SHA256 = (Get-FileHash build-cache/legacy-stage/tools/ffmpeg.exe -Algorithm SHA256).Hash.ToLower()
+          cargo build --release --target i686-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
       - name: Package
         shell: pwsh
         env:
@@ -243,6 +250,11 @@ jobs:
           New-Item -ItemType Directory -Force "$p/tools", "dist" | Out-Null
           Copy-Item target/release/EzooDownload.exe $p
           Copy-Item target/release/ezoo-host.exe $p
+          New-Item -ItemType Directory -Force "$p/x86/tools" | Out-Null
+          Copy-Item target/i686-pc-windows-msvc/release/EzooDownload.exe "$p/x86/"
+          Copy-Item target/i686-pc-windows-msvc/release/ezoo-host.exe "$p/x86/"
+          Copy-Item build-cache/legacy-stage/tools/ffmpeg*.* "$p/x86/tools/"
+          Copy-Item build-cache/legacy-stage/tools/*-COPYING.txt, build-cache/legacy-stage/tools/*-LICENSE.txt "$p/x86/tools/"
           Copy-Item THIRD-PARTY-NOTICES.txt $p
           Copy-Item LICENSE "$p/LICENSE.txt"
           Copy-Item -Recurse extension "$p/extension"
@@ -291,6 +303,12 @@ jobs:
           $yWant = ($ySumText -split "`n" | Where-Object { $_ -match "^([0-9a-fA-F]{64})\s+\*?yt-dlp\.exe\s*$" } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
           $yGot = (Get-FileHash "$p/tools/yt-dlp.exe" -Algorithm SHA256).Hash
           if (-not $yWant -or $yGot -ne $yWant.ToUpper()) { throw "yt-dlp.exe does not match its published SHA-256" }
+          # its 32-bit program for 32-bit Windows 10 (kept as yt-dlp.exe there)
+          $yt86 = $yt.assets | Where-Object { $_.name -eq "yt-dlp_x86.exe" } | Select-Object -First 1
+          if (-not $yt86) { throw "the yt-dlp release has no yt-dlp_x86.exe" }
+          Invoke-WebRequest $yt86.browser_download_url -OutFile "$p/x86/tools/yt-dlp.exe"
+          $yWant86 = ($ySumText -split "`n" | Where-Object { $_ -match "^([0-9a-fA-F]{64})\s+\*?yt-dlp_x86\.exe\s*$" } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
+          if (-not $yWant86 -or (Get-FileHash "$p/x86/tools/yt-dlp.exe" -Algorithm SHA256).Hash -ne $yWant86.ToUpper()) { throw "yt-dlp_x86.exe does not match its published SHA-256" }
           choco install innosetup -y --no-progress
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DMyAppVersion=$version" installer\ezoo.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
@@ -320,7 +338,7 @@ jobs:
           }
           $ljson = "{`n  ""version"": ""$version"",`n  ""url"": ""https://github.com/${{ github.repository }}/releases/download/v$version/EzooDownload-Legacy-Setup.exe"",`n  ""sha256"": ""$lhash"",`n  ""sig"": ""$lsig""`n}`n"
           [IO.File]::WriteAllText("$PWD/dist/version-legacy.json", $ljson)
-          Copy-Item "$lp/tools/ffmpeg.exe" dist/ffmpeg-legacy.exe
+          Copy-Item "$lp/tools/ffmpeg.exe" dist/ffmpeg-x86.exe
           Compress-Archive -Path dist/EzooDownload-Setup.exe, dist/version.json, dist/EzooDownload-Legacy-Setup.exe, dist/version-legacy.json -DestinationPath EzooDownload-windows.zip -Force
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -337,7 +355,7 @@ jobs:
           gh release view "v$env:VERSION" --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) { Write-Host "v$env:VERSION is already released"; exit 0 }
           Copy-Item ffmpeg-out/ffmpeg.exe dist/ffmpeg.exe
-          $files = @("dist/EzooDownload-Setup.exe", "dist/version.json", "dist/ffmpeg.exe", "dist/EzooDownload-Legacy-Setup.exe", "dist/version-legacy.json", "dist/ffmpeg-legacy.exe")
+          $files = @("dist/EzooDownload-Setup.exe", "dist/version.json", "dist/ffmpeg.exe", "dist/EzooDownload-Legacy-Setup.exe", "dist/version-legacy.json", "dist/ffmpeg-x86.exe")
           if (Test-Path dist/ezoo-download-firefox.xpi) { $files += "dist/ezoo-download-firefox.xpi", "dist/firefox-updates.json" }
           # everyone can check their copy is the one published (an antivirus
           # warning about an unknown new file can be checked against this)
