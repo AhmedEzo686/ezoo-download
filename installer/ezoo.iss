@@ -265,6 +265,36 @@ Type: filesandordirs; Name: "{app}\tools"
 Type: filesandordirs; Name: "{userappdata}\Ezoo\EzooDownload\data\host"
 
 [Code]
+{ Windows 7 (seen on a 32-bit Windows 7): code of Windows or of a display
+  driver that Setup calls computes with floating point and trips Setup's
+  own floating point checks ("External exception C00002B4", again and
+  again on a page). Every other program has these checks off: Setup turns
+  them off too (msvcrt's _controlfp masks them for x87 and SSE alike). }
+function SetFloatControl(NewValue, Mask: Cardinal): Cardinal;
+  external '_controlfp@msvcrt.dll cdecl';
+
+procedure QuietFloat;
+begin
+  { _MCW_EM: invalid, denormal, divide by zero, overflow, underflow, inexact }
+  SetFloatControl($8001F, $8001F);
+end;
+
+function InitializeSetup: Boolean;
+begin
+  QuietFloat;
+  Result := True;
+end;
+
+procedure InitializeWizard;
+begin
+  QuietFloat;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  QuietFloat;
+end;
+
 function IsAutoUpdate: Boolean;
 begin
   Result := ExpandConstant('{param:AUTOUPDATE|0}') = '1';
@@ -359,6 +389,7 @@ end;
 
 function InitializeUninstall: Boolean;
 begin
+  QuietFloat;
   CloseApp;
   Result := True;
 end;
