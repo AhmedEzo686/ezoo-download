@@ -3690,19 +3690,25 @@ pub(crate) fn open_download(path: &std::path::Path) {
 /// Windows 7 / 8 / 8.1 without the Universal C Runtime: video downloads
 /// (yt-dlp, run by Python) need it.
 #[cfg(feature = "legacy")]
-const UCRT_NEEDED: &str = "Downloading videos on this Windows needs an update from Microsoft (KB2999226, the Universal C Runtime). Install it from Windows Update, or open Ezoo Download again and click Yes when it offers it.";
+const UCRT_NEEDED: &str = "Downloading videos on this Windows needs an update from Microsoft (KB2999226, the Universal C Runtime). Ezoo Download offers it now: click Yes in its window (or install it from Windows Update).";
 
 /// Windows 7 / 8 / 8.1 without the Universal C Runtime: a few seconds after
 /// the start, the program offers Microsoft's own update for this Windows
-/// (at most once a week when the user says No). Windows asks before it
-/// installs it.
+/// (at most once a week when the user says No), and again, once a run, as
+/// soon as a video needs it. Windows asks before it installs it.
+#[cfg(feature = "legacy")]
+static UCRT: std::sync::OnceLock<(tokio::runtime::Handle, swiftget_engine::reqwest::Client, std::path::PathBuf)> = std::sync::OnceLock::new();
+#[cfg(feature = "legacy")]
+static UCRT_ASKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[cfg(feature = "legacy")]
 fn offer_ucrt(rt: tokio::runtime::Handle, client: swiftget_engine::reqwest::Client, data_dir: std::path::PathBuf) {
     use swiftget_engine::tools::legacy;
+    let stamp = data_dir.join("ucrt-offered");
+    let _ = UCRT.set((rt, client, data_dir));
     if !legacy::ucrt_missing() {
         return;
     }
-    let stamp = data_dir.join("ucrt-offered");
     let recent = std::fs::metadata(&stamp)
         .and_then(|m| m.modified())
         .ok()
@@ -3711,22 +3717,37 @@ fn offer_ucrt(rt: tokio::runtime::Handle, client: swiftget_engine::reqwest::Clie
     if recent {
         return;
     }
-    slint::Timer::single_shot(std::time::Duration::from_secs(6), move || {
-        let _ = std::fs::write(&stamp, b"asked");
-        if !ask(&t("Downloading videos on this Windows needs an update from Microsoft (KB2999226, the Universal C Runtime).\n\nDownload it from Microsoft and open it now? Windows asks before it installs it.")) {
-            return;
-        }
-        let dir = data_dir.join("updates");
-        rt.spawn(async move {
-            let r = legacy::ucrt_update(&client, &dir).await;
-            let _ = slint::invoke_from_event_loop(move || match r {
-                Ok(msu) => {
-                    if open::that_detached(&msu).is_err() {
-                        message(&tf("Open this file to install the update: {}", &[&msu.display().to_string()]));
-                    }
+    slint::Timer::single_shot(std::time::Duration::from_secs(6), ask_ucrt);
+}
+
+/// A video needs the runtime now: ask (once a run), on the UI thread.
+#[cfg(feature = "legacy")]
+fn offer_ucrt_now() {
+    let _ = slint::invoke_from_event_loop(|| slint::Timer::single_shot(std::time::Duration::from_millis(300), ask_ucrt));
+}
+
+#[cfg(feature = "legacy")]
+fn ask_ucrt() {
+    use std::sync::atomic::Ordering;
+    use swiftget_engine::tools::legacy;
+    if UCRT_ASKED.swap(true, Ordering::SeqCst) || !legacy::ucrt_missing() {
+        return;
+    }
+    let Some((rt, client, data_dir)) = UCRT.get().cloned() else { return };
+    let _ = std::fs::write(data_dir.join("ucrt-offered"), b"asked");
+    if !ask(&t("Downloading videos on this Windows needs an update from Microsoft (KB2999226, the Universal C Runtime).\n\nDownload it from Microsoft and open it now? Windows asks before it installs it.")) {
+        return;
+    }
+    let dir = data_dir.join("updates");
+    rt.spawn(async move {
+        let r = legacy::ucrt_update(&client, &dir).await;
+        let _ = slint::invoke_from_event_loop(move || match r {
+            Ok(msu) => {
+                if open::that_detached(&msu).is_err() {
+                    message(&tf("Open this file to install the update: {}", &[&msu.display().to_string()]));
                 }
-                Err(e) => message(&tf("The update could not be downloaded ({}). Install KB2999226 from Windows Update.", &[&e.to_string()])),
-            });
+            }
+            Err(e) => message(&tf("The update could not be downloaded ({}). Install KB2999226 from Windows Update.", &[&e.to_string()])),
         });
     });
 }
@@ -3734,6 +3755,7 @@ fn offer_ucrt(rt: tokio::runtime::Handle, client: swiftget_engine::reqwest::Clie
 pub(crate) fn err_text(e: &str) -> String {
     #[cfg(feature = "legacy")]
     if e.contains("yt-dlp") && swiftget_engine::tools::legacy::ucrt_missing() {
+        offer_ucrt_now();
         return t(UCRT_NEEDED);
     }
     if e.contains(swiftget_engine::ytdlp::TOO_MANY) {
