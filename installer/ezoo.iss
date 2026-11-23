@@ -28,7 +28,15 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\dist
+#ifdef Legacy
+; the build for Windows 7 / 8 / 8.1 (tools/legacy): one 32-bit program for
+; 32- and 64-bit Windows. Same program (same AppId, same folder): Windows 10
+; or 11 put on later is updated to the build for them by the program
+OutputBaseFilename=EzooDownload-Legacy-Setup
+MinVersion=6.1sp1
+#else
 OutputBaseFilename=EzooDownload-Setup
+#endif
 #ifndef NoIcon
 SetupIconFile=..\crates\app\icon.ico
 #endif
@@ -44,8 +52,10 @@ UninstallDisplayName={#MyAppName}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+#ifndef Legacy
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+#endif
 CloseApplications=yes
 RestartApplications=no
 
@@ -150,7 +160,12 @@ Source: "{#Stage}\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversi
 Source: "{#Stage}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; the helpers (our own ffmpeg, the official yt-dlp) go into {app}\tools; the
 ; program keeps them updated there (and fetches one again if it goes missing)
+#ifdef Legacy
+; Windows 7 / 8 / 8.1: yt-dlp is its Python build run by our Python (tools\python)
+Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs
+#else
 Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifsourcedoesntexist
+#endif
 Source: "{#Stage}\extension\*"; DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Stage}\extension-firefox\*"; DestDir: "{app}\extension-firefox"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Stage}\ezoo-download-firefox.xpi"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist

@@ -22,9 +22,36 @@ use std::path::{Path, PathBuf};
 
 pub const REPO: &str = "AhmedEzo686/ezoo-download";
 pub const SETUP_NAME: &str = "EzooDownload-Setup.exe";
+/// The Windows 7 / 8 / 8.1 build has its own installer and its own
+/// `version-legacy.json` in every release: it never installs the build for
+/// Windows 10 / 11 (which would not start there). Once the computer runs
+/// Windows 10 or newer, it updates to the build for them.
+pub const LEGACY_SETUP_NAME: &str = "EzooDownload-Legacy-Setup.exe";
+
+/// The installer this copy updates with.
+pub fn setup_name() -> &'static str {
+    if legacy_channel() {
+        LEGACY_SETUP_NAME
+    } else {
+        SETUP_NAME
+    }
+}
+
+/// The Windows 7 / 8 / 8.1 build on Windows 7 / 8 / 8.1.
+fn legacy_channel() -> bool {
+    #[cfg(feature = "legacy")]
+    {
+        !crate::tools::legacy::windows_10_or_newer()
+    }
+    #[cfg(not(feature = "legacy"))]
+    {
+        false
+    }
+}
 
 pub fn version_url() -> String {
-    format!("https://github.com/{REPO}/releases/latest/download/version.json")
+    let file = if legacy_channel() { "version-legacy.json" } else { "version.json" };
+    format!("https://github.com/{REPO}/releases/latest/download/{file}")
 }
 
 /// The running version.
@@ -81,7 +108,7 @@ impl Release {
         if self.url.starts_with(&own) {
             self.url.clone()
         } else {
-            format!("https://github.com/{REPO}/releases/download/v{}/{SETUP_NAME}", self.version)
+            format!("https://github.com/{REPO}/releases/download/v{}/{}", self.version, setup_name())
         }
     }
 }

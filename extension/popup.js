@@ -146,6 +146,26 @@ async function init() {
     }
   });
 
+  // Firefox before 127 (Firefox 115 ESR, the last one on Windows 7 / 8 /
+  // 8.1) does not give the add-in the sites when it is added: until the
+  // user allows them it sees no page, no video and no download
+  if (/Firefox\//.test(navigator.userAgent) && chrome.permissions) {
+    chrome.permissions.contains({ origins: ["<all_urls>"] }).then((has) => {
+      if (has) return;
+      const sites = document.createElement("button");
+      sites.className = "act";
+      sites.textContent = "Allow Ezoo Download on all sites";
+      sites.title = "Firefox asks once: without it the add-in sees no page, video or download";
+      sites.addEventListener("click", () => {
+        chrome.permissions.request({ origins: ["<all_urls>"] }).then((yes) => {
+          sites.textContent = yes ? "Allowed on all sites ✔" : "Not allowed";
+          sites.disabled = !!yes;
+        }, () => {});
+      });
+      document.querySelector("section").prepend(sites);
+    }, () => {});
+  }
+
   // Firefox: the add-in talks to the program through the program's helper
   // only once the user allows it (once); until then it uses the port
   if (/Firefox\//.test(navigator.userAgent) && chrome.permissions) {

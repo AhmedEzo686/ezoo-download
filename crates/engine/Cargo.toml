@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 description = "Download engine: multi-connection segmented downloads, resume, HLS, queue and scheduler"
 
+[features]
+# The Windows 7 / 8 / 8.1 build (i686-win7-windows-gnu): TLS is the
+# program's own (rustls, with Mozilla's root certificates and the system's),
+# because the TLS of those Windows versions lacks what many sites ask for
+legacy = ["reqwest/rustls-tls-webpki-roots", "reqwest/rustls-tls-native-roots"]
+
 [dependencies]
 # a small send buffer towards ffmpeg (clipserve): it reads only what it needs
 socket2 = "0.6"

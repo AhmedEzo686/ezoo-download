@@ -47,18 +47,23 @@ pub(crate) fn set_opacity(w: &slint::Window, pct: u32) {
         // its alpha are changed
         unsafe {
             let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-            let layered = ex & WS_EX_LAYERED as isize != 0;
+            // a pointer-sized value: 32 bits in the 32-bit build (Windows 7)
+            #[cfg(target_pointer_width = "64")]
+            let bit = WS_EX_LAYERED as isize;
+            #[cfg(not(target_pointer_width = "64"))]
+            let bit = WS_EX_LAYERED as i32;
+            let layered = ex & bit != 0;
             // the window may have got its style back from the toolkit
             if APPLIED.with(|a| a.get()) == (id, pct) && layered == (pct < 100) {
                 return;
             }
             if pct >= 100 {
                 if layered {
-                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex & !(WS_EX_LAYERED as isize));
+                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex & !bit);
                 }
             } else {
                 if !layered {
-                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | WS_EX_LAYERED as isize);
+                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | bit);
                 }
                 SetLayeredWindowAttributes(hwnd, 0, (pct * 255 / 100) as u8, LWA_ALPHA);
             }

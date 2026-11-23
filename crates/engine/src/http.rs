@@ -389,6 +389,12 @@ fn build_client_family(proxy: &ProxyConfig, ipv4_only: bool) -> anyhow::Result<C
         // redirects are followed by `SendOrdered::send_ordered`, which puts
         // "Host" first again on every step (see there)
         .redirect(reqwest::redirect::Policy::none());
+    // Windows 7 / 8 / 8.1: the program's own TLS (TLS 1.3 and today's
+    // ciphers); the system's one there is refused by many sites
+    #[cfg(feature = "legacy")]
+    {
+        b = b.use_rustls_tls();
+    }
     if ipv4_only {
         b = b.local_address(Some(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)));
     }

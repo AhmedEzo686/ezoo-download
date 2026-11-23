@@ -37,6 +37,8 @@ pub mod torrent;
 pub mod unzip;
 pub mod ytdlp;
 
+/// the HTTP library of the engine, for callers that hand its client around
+pub use reqwest;
 pub use config::{AfterDone, Schedule, Settings};
 pub use manager::{default_data_dir, ClipSource, DetailsEdit, Event, Manager, PreviewSource, TORRENT_DRY_TEXT};
 pub use model::*;

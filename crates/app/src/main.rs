@@ -470,6 +470,8 @@ fn run() -> anyhow::Result<()> {
     let mgr = Manager::new(rt.handle().clone(), data_dir.clone())?;
     // yt-dlp and ffmpeg: put back if missing, update silently once a day
     swiftget_engine::tools::spawn_updater(rt.handle(), mgr.client(), data_dir.clone());
+    #[cfg(feature = "legacy")]
+    offer_ucrt(rt.handle().clone(), mgr.client(), data_dir.clone());
 
     let main = MainWindow::new()?;
     main.set_app_version(env!("CARGO_PKG_VERSION").into());
@@ -3685,7 +3687,55 @@ pub(crate) fn open_download(path: &std::path::Path) {
 }
 
 /// An error of the engine in words the user understands, in their language.
+/// Windows 7 / 8 / 8.1 without the Universal C Runtime: video downloads
+/// (yt-dlp, run by Python) need it.
+#[cfg(feature = "legacy")]
+const UCRT_NEEDED: &str = "Downloading videos on this Windows needs an update from Microsoft (KB2999226, the Universal C Runtime). Install it from Windows Update, or open Ezoo Download again and click Yes when it offers it.";
+
+/// Windows 7 / 8 / 8.1 without the Universal C Runtime: a few seconds after
+/// the start, the program offers Microsoft's own update for this Windows
+/// (at most once a week when the user says No). Windows asks before it
+/// installs it.
+#[cfg(feature = "legacy")]
+fn offer_ucrt(rt: tokio::runtime::Handle, client: swiftget_engine::reqwest::Client, data_dir: std::path::PathBuf) {
+    use swiftget_engine::tools::legacy;
+    if !legacy::ucrt_missing() {
+        return;
+    }
+    let stamp = data_dir.join("ucrt-offered");
+    let recent = std::fs::metadata(&stamp)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age < std::time::Duration::from_secs(7 * 24 * 3600));
+    if recent {
+        return;
+    }
+    slint::Timer::single_shot(std::time::Duration::from_secs(6), move || {
+        let _ = std::fs::write(&stamp, b"asked");
+        if !ask(&t("Downloading videos on this Windows needs an update from Microsoft (KB2999226, the Universal C Runtime).\n\nDownload it from Microsoft and open it now? Windows asks before it installs it.")) {
+            return;
+        }
+        let dir = data_dir.join("updates");
+        rt.spawn(async move {
+            let r = legacy::ucrt_update(&client, &dir).await;
+            let _ = slint::invoke_from_event_loop(move || match r {
+                Ok(msu) => {
+                    if open::that_detached(&msu).is_err() {
+                        message(&tf("Open this file to install the update: {}", &[&msu.display().to_string()]));
+                    }
+                }
+                Err(e) => message(&tf("The update could not be downloaded ({}). Install KB2999226 from Windows Update.", &[&e.to_string()])),
+            });
+        });
+    });
+}
+
 pub(crate) fn err_text(e: &str) -> String {
+    #[cfg(feature = "legacy")]
+    if e.contains("yt-dlp") && swiftget_engine::tools::legacy::ucrt_missing() {
+        return t(UCRT_NEEDED);
+    }
     if e.contains(swiftget_engine::ytdlp::TOO_MANY) {
         t("YouTube is refusing subtitles for a moment (too many requests). Try again in a few minutes.")
     } else if e.contains("needs a login or an age check") {

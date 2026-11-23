@@ -358,6 +358,25 @@ chrome.runtime.onInstalled.addListener(async (d) => {
   await rememberLoadedFiles();
 });
 
+// Firefox before 127 (115 ESR on Windows 7 / 8 / 8.1): the sites are not
+// given when the add-in is added. A "!" on its button until the user allows
+// them in its window (popup.js)
+async function sitesReminder() {
+  if (!IS_FIREFOX || !chrome.permissions) return;
+  try {
+    const has = await chrome.permissions.contains({ origins: ["<all_urls>"] });
+    await chrome.action.setBadgeText({ text: has ? "" : "!" });
+    if (!has) await chrome.action.setBadgeBackgroundColor({ color: "#d1342f" });
+  } catch {
+    /* an older Firefox without it: nothing to show */
+  }
+}
+if (IS_FIREFOX && chrome.permissions && chrome.permissions.onAdded) {
+  chrome.permissions.onAdded.addListener(sitesReminder);
+  chrome.permissions.onRemoved.addListener(sitesReminder);
+}
+sitesReminder();
+
 // ---------------------------------------------------------------- self update
 // The add-in is loaded from the program's own folder. When the program
 // updates itself it brings newer add-in files along; the browser only reads

@@ -72,7 +72,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "ezoo-download@ezoo-tech.com",
-      "strict_min_version": "140.0",
+      "strict_min_version": "115.0",
       "update_url": "https://github.com/AhmedEzo686/ezoo-download/releases/latest/download/firefox-updates.json",
       "data_collection_permissions": {
         "required": [

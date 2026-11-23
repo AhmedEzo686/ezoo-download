@@ -45,7 +45,22 @@ pub fn work_dir() -> Option<PathBuf> {
 
 /// A tool shipped with the app (not one somewhere on PATH).
 pub fn bundled(name: &str) -> Option<PathBuf> {
+    #[cfg(feature = "legacy")]
+    if name == "yt-dlp" {
+        return legacy::ytdlp();
+    }
     tool_dirs().into_iter().map(|d| d.join(exe(name))).find(|p| p.exists())
+}
+
+/// The command that runs yt-dlp `tool` (what `bundled`/`find_tool` gave):
+/// the program itself, or on Windows 7 / 8 / 8.1 our Python with
+/// yt-dlp's one-file Python build (yt-dlp's programs need Windows 10).
+pub fn ytdlp_base_command(tool: &Path) -> Command {
+    #[cfg(feature = "legacy")]
+    if let Some(cmd) = legacy::command(tool) {
+        return cmd;
+    }
+    Command::new(tool)
 }
 
 /// Where new copies go: the install folder's "tools" when we may write
@@ -166,7 +181,8 @@ fn folder_build_root() -> Option<PathBuf> {
 
 /// yt-dlp.exe of the folder build, when it is there.
 pub fn ytdlp_folder_build() -> Option<PathBuf> {
-    if !cfg!(windows) {
+    // Windows 10 and newer only
+    if !cfg!(windows) || cfg!(feature = "legacy") {
         return None;
     }
     let root = folder_build_root()?;
@@ -233,7 +249,7 @@ async fn yt_dlp_folder(client: &reqwest::Client, sums: &str) -> bool {
 /// "Update video downloader": a new folder build now, if yt-dlp made one.
 /// Blocking. true = the folder build is there (new or already newest).
 pub fn update_folder_build_now() -> bool {
-    if !cfg!(windows) {
+    if !cfg!(windows) || cfg!(feature = "legacy") {
         return false;
     }
     std::thread::spawn(|| {
@@ -268,7 +284,7 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
     // the folder build (faster to start): fetched at once when missing,
     // else checked for a new one once a day; the one-file build stays as it
     // is, for when the folder build can't be had
-    if cfg!(windows) {
+    if cfg!(windows) && !cfg!(feature = "legacy") {
         let stamp = data_dir.join("yt-dlp-dir-checked");
         if ytdlp_folder_build().is_none() || due(&stamp, Duration::from_secs(20 * 3600)) {
             if let Ok(sums) = get_text(client, YTDLP_SUMS_URL).await {
@@ -280,6 +296,11 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
         } else {
             return;
         }
+    }
+    #[cfg(feature = "legacy")]
+    if bundled("yt-dlp").is_none() {
+        legacy::fetch_ytdlp(client).await;
+        return;
     }
     if bundled("yt-dlp").is_none() {
         if cfg!(windows) {
@@ -299,7 +320,7 @@ async fn yt_dlp(client: &reqwest::Client, data_dir: &Path) {
     }
     let Some(tool) = bundled("yt-dlp") else { return };
     let ok = tokio::task::spawn_blocking(move || {
-        let mut cmd = Command::new(&tool);
+        let mut cmd = ytdlp_base_command(&tool);
         if let Some(dir) = work_dir() {
             cmd.env("TEMP", &dir).env("TMP", &dir).current_dir(&dir);
         }
@@ -349,6 +370,7 @@ fn aria2_cleanup() {
 /// Fetched only when such a video is asked for, checked by its SHA-256.
 const QJS_VERSION: &str = "v0.18.0";
 const QJS_SHA256: &str = "ff03398d74ea6e6bd3a8e58058f7003225abcac229d7d57775b7aaae812a49c7";
+const QJS_X86_SHA256: &str = "79aa85a8208596dc04333e99726c254d43b9e814803f2100ea593341f2c95b0e";
 
 /// A JavaScript engine yt-dlp can use, as yt-dlp's `--js-runtimes` names
 /// it with its place: Deno or Node.js the user has, else our QuickJS
@@ -364,14 +386,16 @@ pub fn js_runtime() -> Option<(&'static str, PathBuf)> {
         return None;
     }
     let dir = writable_dir("qjs")?;
-    let url = format!("https://github.com/quickjs-ng/quickjs/releases/download/{QJS_VERSION}/qjs-windows-x86_64.exe");
+    // the 32-bit one on Windows 7 / 8 / 8.1 (it needs nothing Windows 7 lacks)
+    let (file, sum) = if cfg!(feature = "legacy") { ("qjs-windows-x86.exe", QJS_X86_SHA256) } else { ("qjs-windows-x86_64.exe", QJS_SHA256) };
+    let url = format!("https://github.com/quickjs-ng/quickjs/releases/download/{QJS_VERSION}/{file}");
     let dest = dir.join(exe("qjs"));
     // its own small runtime on its own thread: callers may be on one of tokio's
     let got = std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
         rt.block_on(async {
             let client = crate::http::build_client_with(&crate::http::current_proxy()).ok()?;
-            download(&client, &url, &dest, QJS_SHA256).await.ok().map(|_| dest)
+            download(&client, &url, &dest, sum).await.ok().map(|_| dest)
         })
     })
     .join()
@@ -384,6 +408,10 @@ pub fn js_runtime() -> Option<(&'static str, PathBuf)> {
 /// put them; a program started from the desktop may not have them on its
 /// PATH).
 fn installed_js_runtime() -> Option<(&'static str, PathBuf)> {
+    // the ones that still start on Windows 7 / 8 / 8.1 are too old for yt-dlp
+    if cfg!(feature = "legacy") {
+        return None;
+    }
     let path: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
     let home = directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf());
     let mut deno_dirs = path.clone();
@@ -419,9 +447,11 @@ pub async fn restore_ffmpeg(client: &reqwest::Client) -> bool {
     }
     let Some(dir) = writable_dir("ffmpeg") else { return false };
     let repo = crate::selfupdate::REPO;
+    // the 32-bit one for Windows 7 / 8 / 8.1 has its own name in the release
+    let file = if cfg!(feature = "legacy") { "ffmpeg-legacy.exe" } else { "ffmpeg.exe" };
     let urls = [
-        format!("https://github.com/{repo}/releases/download/v{}/ffmpeg.exe", env!("CARGO_PKG_VERSION")),
-        format!("https://github.com/{repo}/releases/latest/download/ffmpeg.exe"),
+        format!("https://github.com/{repo}/releases/download/v{}/{file}", env!("CARGO_PKG_VERSION")),
+        format!("https://github.com/{repo}/releases/latest/download/{file}"),
     ];
     for url in urls {
         if download(client, &url, &dir.join(exe("ffmpeg")), sum).await.is_ok() {
@@ -446,12 +476,15 @@ pub async fn update_all(client: reqwest::Client, data_dir: PathBuf) {
     }
 }
 
+#[cfg(feature = "legacy")]
+pub mod legacy;
+
 /// Run `update_all` now and then every few hours while the app is open.
 pub fn spawn_updater(rt: &tokio::runtime::Handle, client: reqwest::Client, data_dir: PathBuf) {
     rt.spawn(async move {
         // let the app start first (a few seconds only when a tool went
         // missing: it is fetched again at once)
-        let missing = bundled("yt-dlp").is_none() || bundled("ffmpeg").is_none() || (cfg!(windows) && ytdlp_folder_build().is_none());
+        let missing = bundled("yt-dlp").is_none() || bundled("ffmpeg").is_none() || (cfg!(windows) && !cfg!(feature = "legacy") && ytdlp_folder_build().is_none());
         tokio::time::sleep(Duration::from_secs(if missing { 3 } else { 20 })).await;
         loop {
             update_all(client.clone(), data_dir.clone()).await;

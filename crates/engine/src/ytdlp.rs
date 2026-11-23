@@ -820,7 +820,7 @@ fn cookie_file(cookies: &[BrowserCookie]) -> anyhow::Result<std::path::PathBuf> 
 /// some computers the Windows temporary folder is on a drive Windows does
 /// not let programs walk through ("WinError 448 ... untrusted mount point").
 fn ytdlp_command(tool: &Path) -> Command {
-    let mut cmd = Command::new(tool);
+    let mut cmd = crate::tools::ytdlp_base_command(tool);
     if let Some(dir) = crate::tools::work_dir() {
         cmd.env("TEMP", &dir).env("TMP", &dir).current_dir(&dir);
     }

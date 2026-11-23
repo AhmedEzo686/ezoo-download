@@ -13,7 +13,7 @@ ring = "0.17"
 # the program's key is kept encrypted for this Windows user (DPAPI)
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
 
-[target.'cfg(windows)'.build-dependencies]
+[build-dependencies]
 # version information and a manifest in ezoo-host.exe (build.rs)
 winresource = "0.1"
 

@@ -28,6 +28,26 @@ OpenH264 - https://github.com/cisco/openh264
   video" (the picture of the part is made again). BSD 2-Clause License (see
   openh264-LICENSE.txt in the "tools" folder).
 
+Only in the build for Windows 7 / 8 / 8.1 (EzooDownload-Legacy-Setup.exe):
+
+Python - https://www.python.org
+  The "tools\python" folder: Python's embeddable package for 32-bit Windows,
+  built from python.org's sources for Windows 7 and newer by
+  https://github.com/adang1345/PythonVista. Python Software Foundation
+  License (LICENSE.txt in that folder). It runs yt-dlp's Python build
+  ("tools\yt-dlp.pyz", from yt-dlp's releases, Unlicense; see yt-dlp above).
+
+yt-dlp's helpers, unchanged, in "tools\python\Lib\site-packages" (each with
+its licence in its .dist-info folder): brotli (MIT), certifi (MPL-2.0),
+charset-normalizer (MIT), idna (BSD-3-Clause), mutagen (GPL-2.0-or-later),
+pycryptodomex (BSD-2-Clause / public domain), requests (Apache-2.0), urllib3
+(MIT), websockets (BSD-3-Clause), yt-dlp-ejs (Unlicense, with MIT and ISC
+parts).
+
+rustls, webpki-roots - https://github.com/rustls
+  The program's own TLS on Windows 7 / 8 / 8.1. Apache-2.0 / ISC / MIT;
+  webpki-roots carries Mozilla's root certificates (CDLA-Permissive-2.0).
+
 librqbit - https://github.com/ikatson/rqbit
   The torrent library built into the program (sharing, magnet links, DHT).
   Apache License 2.0.
