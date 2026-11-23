@@ -104,6 +104,22 @@ unsafe fn fill(menu: windows_sys::Win32::UI::WindowsAndMessaging::HMENU, items: 
     }
 }
 
+/// Windows' build number (10.0.17763 = 1809); 0 before Windows 10. The
+/// program's manifest names Windows 10, so Windows tells the truth.
+#[cfg(windows)]
+fn windows_build() -> u32 {
+    use windows_sys::Win32::System::SystemInformation::{GetVersionExW, OSVERSIONINFOW};
+    // SAFETY: a plain structure Windows fills in
+    unsafe {
+        let mut v: OSVERSIONINFOW = std::mem::zeroed();
+        v.dwOSVersionInfoSize = std::mem::size_of::<OSVERSIONINFOW>() as u32;
+        if GetVersionExW(&mut v) == 0 || v.dwMajorVersion < 10 {
+            return 0;
+        }
+        v.dwBuildNumber
+    }
+}
+
 /// The menus of the program dark (or light) like the program itself:
 /// Windows 10 1903 and newer can do it (uxtheme's unnamed functions 135
 /// and 136); older ones keep their usual light menu.
@@ -119,6 +135,12 @@ pub(crate) fn set_dark_menus(dark: bool) {
         return;
     }
     LAST.with(|l| l.set(Some(dark)));
+    // only Windows 10 1809 and newer have them under these numbers: on older
+    // ones (Windows 7 / 8 / 8.1) the numbers are other functions of uxtheme,
+    // and calling one of those would bring the program down
+    if windows_build() < 17763 {
+        return;
+    }
     let name: Vec<u16> = "uxtheme.dll".encode_utf16().chain(Some(0)).collect();
     // SAFETY: uxtheme is a system library; the two functions are looked up
     // by number and only called when Windows has them
