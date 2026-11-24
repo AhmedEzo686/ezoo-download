@@ -55,8 +55,7 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 #ifndef Legacy
-; 64-bit Windows gets the 64-bit program, 32-bit Windows 10 the 32-bit one
-; (both are in this setup, see [Files])
+ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 #endif
 CloseApplications=yes
@@ -156,17 +155,9 @@ Name: "autostart"; Description: "{cm:TaskAutostart}"; GroupDescription: "{cm:Gro
 Name: "torrents"; Description: "{cm:TaskTorrents}"; GroupDescription: "{cm:GroupTorrents}"
 
 [Files]
-#ifdef Legacy
 Source: "{#Stage}\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion
 ; the helper the browser starts (the program copies it into its data folder)
 Source: "{#Stage}\ezoo-host.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-#else
-Source: "{#Stage}\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion; Check: Is64BitInstallMode
-Source: "{#Stage}\x86\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion; Check: not Is64BitInstallMode
-; the helper the browser starts (the program copies it into its data folder)
-Source: "{#Stage}\ezoo-host.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; Check: Is64BitInstallMode
-Source: "{#Stage}\x86\ezoo-host.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; Check: not Is64BitInstallMode
-#endif
 Source: "{#Stage}\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Stage}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 ; the helpers (our own ffmpeg, the official yt-dlp) go into {app}\tools; the
@@ -175,9 +166,7 @@ Source: "{#Stage}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsou
 ; Windows 7 / 8 / 8.1: yt-dlp is its Python build run by our Python (tools\python)
 Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Excludes: "__pycache__,*.pyc"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs
 #else
-Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifsourcedoesntexist; Check: Is64BitInstallMode
-; 32-bit Windows 10: the 32-bit program, ffmpeg and yt-dlp
-Source: "{#Stage}\x86\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifsourcedoesntexist; Check: not Is64BitInstallMode
+Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifsourcedoesntexist
 #endif
 Source: "{#Stage}\extension\*"; DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Stage}\extension-firefox\*"; DestDir: "{app}\extension-firefox"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -318,8 +307,6 @@ var
   Code: Integer;
 begin
 #ifdef HaveRedist
-  { the 64-bit runtime, for the 64-bit program only }
-  if not Is64BitInstallMode then exit;
   if not RuntimeMissing then exit;
   { an automatic update must not show any window }
   if WizardSilent then exit;
