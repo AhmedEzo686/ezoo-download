@@ -26,7 +26,7 @@ pub const SETUP_NAME: &str = "EzooDownload-Setup.exe";
 /// `version-legacy.json` in every release: it never installs the build for
 /// Windows 10 / 11 (which would not start there). Once the computer runs
 /// Windows 10 or newer, it updates to the build for them.
-pub const LEGACY_SETUP_NAME: &str = "EzooDownload-Legacy-Setup.exe";
+pub const LEGACY_SETUP_NAME: &str = "EzooDownload-Setup-Windows-7-8-8.1.exe";
 
 /// The installer this copy updates with.
 pub fn setup_name() -> &'static str {

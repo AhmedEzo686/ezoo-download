@@ -28,7 +28,7 @@ OpenH264 - https://github.com/cisco/openh264
   video" (the picture of the part is made again). BSD 2-Clause License (see
   openh264-LICENSE.txt in the "tools" folder).
 
-Only in the build for Windows 7 / 8 / 8.1 (EzooDownload-Legacy-Setup.exe):
+Only in the build for Windows 7 / 8 / 8.1 (EzooDownload-Setup-Windows-7-8-8.1.exe):
 
 Python - https://www.python.org
   The "tools\python" folder: Python's embeddable package for 32-bit Windows,

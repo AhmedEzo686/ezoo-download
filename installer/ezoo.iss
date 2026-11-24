@@ -32,11 +32,11 @@ OutputDir=..\dist
 ; the build for Windows 7 / 8 / 8.1 (tools/legacy): one 32-bit program for
 ; 32- and 64-bit Windows. Same program (same AppId, same folder): Windows 10
 ; or 11 put on later is updated to the build for them by the program
-OutputBaseFilename=EzooDownload-Legacy-Setup
+OutputBaseFilename=EzooDownload-Setup-Windows-7-8-8.1
 MinVersion=6.1sp1
 #else
 OutputBaseFilename=EzooDownload-Setup
-; Windows 10 / 11 (Windows 7 / 8 / 8.1 have EzooDownload-Legacy-Setup.exe)
+; Windows 10 / 11 (Windows 7 / 8 / 8.1 have EzooDownload-Setup-Windows-7-8-8.1.exe)
 MinVersion=10.0
 #endif
 #ifndef NoIcon

@@ -330,16 +330,16 @@ jobs:
           if (Test-Path "$p/ezoo-download-firefox.xpi") { Copy-Item "$p/ezoo-download-firefox.xpi" "$lp/" }
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DMyAppVersion=$version" "/DLegacy" "/DStage=..\$lp" installer\ezoo.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed (legacy)" }
-          $lhash = (Get-FileHash dist/EzooDownload-Legacy-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          $lhash = (Get-FileHash dist/EzooDownload-Setup-Windows-7-8-8.1.exe -Algorithm SHA256).Hash.ToLower()
           $lsig = ""
           if ($env:UPDATE_SIGNING_KEY) {
             $lsig = (cargo run --quiet --release -p swiftget-engine --example sign_update -- $version $lhash).Trim()
             if ($LASTEXITCODE -ne 0 -or $lsig.Length -ne 128) { throw "could not sign the legacy release" }
           }
-          $ljson = "{`n  ""version"": ""$version"",`n  ""url"": ""https://github.com/${{ github.repository }}/releases/download/v$version/EzooDownload-Legacy-Setup.exe"",`n  ""sha256"": ""$lhash"",`n  ""sig"": ""$lsig""`n}`n"
+          $ljson = "{`n  ""version"": ""$version"",`n  ""url"": ""https://github.com/${{ github.repository }}/releases/download/v$version/EzooDownload-Setup-Windows-7-8-8.1.exe"",`n  ""sha256"": ""$lhash"",`n  ""sig"": ""$lsig""`n}`n"
           [IO.File]::WriteAllText("$PWD/dist/version-legacy.json", $ljson)
           Copy-Item "$lp/tools/ffmpeg.exe" dist/ffmpeg-x86.exe
-          Compress-Archive -Path dist/EzooDownload-Setup.exe, dist/version.json, dist/EzooDownload-Legacy-Setup.exe, dist/version-legacy.json -DestinationPath EzooDownload-windows.zip -Force
+          Compress-Archive -Path dist/EzooDownload-Setup.exe, dist/version.json, dist/EzooDownload-Setup-Windows-7-8-8.1.exe, dist/version-legacy.json -DestinationPath EzooDownload-windows.zip -Force
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: EzooDownload-windows
@@ -355,7 +355,7 @@ jobs:
           gh release view "v$env:VERSION" --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) { Write-Host "v$env:VERSION is already released"; exit 0 }
           Copy-Item ffmpeg-out/ffmpeg.exe dist/ffmpeg.exe
-          $files = @("dist/EzooDownload-Setup.exe", "dist/version.json", "dist/ffmpeg.exe", "dist/EzooDownload-Legacy-Setup.exe", "dist/version-legacy.json", "dist/ffmpeg-x86.exe")
+          $files = @("dist/EzooDownload-Setup.exe", "dist/version.json", "dist/ffmpeg.exe", "dist/EzooDownload-Setup-Windows-7-8-8.1.exe", "dist/version-legacy.json", "dist/ffmpeg-x86.exe")
           if (Test-Path dist/ezoo-download-firefox.xpi) { $files += "dist/ezoo-download-firefox.xpi", "dist/firefox-updates.json" }
           # everyone can check their copy is the one published (an antivirus
           # warning about an unknown new file can be checked against this)
