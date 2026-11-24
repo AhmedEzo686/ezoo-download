@@ -37,6 +37,12 @@ Python - https://www.python.org
   License (LICENSE.txt in that folder). It runs yt-dlp's Python build
   ("tools\yt-dlp.pyz", from yt-dlp's releases, Unlicense; see yt-dlp above).
 
+Microsoft's Universal C Runtime (ucrtbase.dll and the api-ms-win-*.dll next
+  to it in "tools\python"): Microsoft's signed files, unchanged, deployed
+  next to the program that needs them as Microsoft documents for Windows 7 /
+  8 / 8.1 ("app-local deployment"), taken from Microsoft's PowerShell 7.0.13
+  for 32-bit Windows. Licensed by Microsoft for redistribution with programs.
+
 yt-dlp's helpers, unchanged, in "tools\python\Lib\site-packages" (each with
 its licence in its .dist-info folder): brotli (MIT), certifi (MPL-2.0),
 charset-normalizer (MIT), idna (BSD-3-Clause), mutagen (GPL-2.0-or-later),

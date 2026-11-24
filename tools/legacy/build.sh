@@ -28,6 +28,10 @@ PY_VERSION=3.13.18
 PY_URL=https://github.com/adang1345/PythonVista/releases/download/v$PY_VERSION/python-$PY_VERSION-embed-win32.zip
 PY_SHA256=2d8886d68c369ec0efc76dfbadb1878a8de3db9b459974ec0cb48baea1851a01
 
+# the Universal C Runtime for Python (see below)
+UCRT_URL=https://github.com/PowerShell/PowerShell/releases/download/v7.0.13/PowerShell-7.0.13-win-x86.zip
+UCRT_SHA256=14859dbaf1a9c78f8d849db4c37903f9e01da0b6486d9825f92502d81e6b18e6
+
 fetch() { # url file sha256
   if [ ! -f "$2" ] || ! echo "$3  $2" | sha256sum -c --status -; then
     curl -sSfL --retry 3 -o "$2.part" "$1"
@@ -111,7 +115,17 @@ rm -rf "$STAGE/tools/python/Lib/site-packages/bin"
 PTH=$(ls "$STAGE"/tools/python/python3*._pth)
 ZIP=$(basename "$(ls "$STAGE"/tools/python/python3*.zip)")
 printf '%s\r\n.\r\nLib\\site-packages\r\n' "$ZIP" > "$PTH"
-python3 "$ROOT/tools/legacy/win7check.py" --ucrt-ok "$STAGE"/tools/python/*.exe "$STAGE"/tools/python/*.dll "$STAGE"/tools/python/*.pyd
+# The Universal C Runtime that Python needs, next to it (Microsoft's
+# app-local deployment of it): Windows 7 / 8 / 8.1 without KB2999226 have
+# none. Microsoft's signed files, from Microsoft's PowerShell 7.0 for 32-bit
+# Windows (the last one made for Windows 7, which carries them)
+fetch "$UCRT_URL" "$WORK/ucrt.zip" "$UCRT_SHA256"
+rm -rf "$WORK/ucrt"; mkdir -p "$WORK/ucrt"
+(cd "$WORK/ucrt" && unzip -q "$WORK/ucrt.zip" 'ucrtbase.dll' 'api-ms-win-*' 'API-MS-Win-*')
+for f in "$WORK"/ucrt/*.dll; do
+  [ -e "$STAGE/tools/python/$(basename "$f")" ] || cp "$f" "$STAGE/tools/python/"
+done
+python3 "$ROOT/tools/legacy/win7check.py" "$STAGE"/tools/python/*.exe "$STAGE"/tools/python/*.dll "$STAGE"/tools/python/*.pyd
 # yt-dlp's Python build of its latest release, checked by yt-dlp's own SHA-256 list
 curl -sSfL --retry 3 -o "$WORK/SHA2-256SUMS" https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS
 YSUM=$(awk '$2=="yt-dlp"{print $1}' "$WORK/SHA2-256SUMS")

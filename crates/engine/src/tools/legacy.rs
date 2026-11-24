@@ -60,9 +60,14 @@ pub async fn fetch_ytdlp(client: &reqwest::Client) {
     let _ = download(client, YTDLP_PYZ_URL, &dir.join(PYZ), &sum).await;
 }
 
-/// The Universal C Runtime is not on this Windows (Python can't start).
+/// The Universal C Runtime is not on this Windows (Python can't start):
+/// neither Windows' own nor the one next to our Python (the setup puts it
+/// there; Microsoft's app-local deployment of it).
 pub fn ucrt_missing() -> bool {
     if !cfg!(windows) {
+        return false;
+    }
+    if python().is_some_and(|py| py.with_file_name("ucrtbase.dll").is_file()) {
         return false;
     }
     // a 32-bit program asking for System32 is given SysWOW64 on 64-bit
