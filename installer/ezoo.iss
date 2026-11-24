@@ -173,7 +173,7 @@ Source: "{#Stage}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsou
 ; program keeps them updated there (and fetches one again if it goes missing)
 #ifdef Legacy
 ; Windows 7 / 8 / 8.1: yt-dlp is its Python build run by our Python (tools\python)
-Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs
+Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Excludes: "__pycache__,*.pyc"; Flags: ignoreversion skipifsourcedoesntexist recursesubdirs createallsubdirs
 #else
 Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifsourcedoesntexist; Check: Is64BitInstallMode
 ; 32-bit Windows 10: the 32-bit program, ffmpeg and yt-dlp
