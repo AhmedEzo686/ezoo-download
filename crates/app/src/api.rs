@@ -5,6 +5,7 @@
 //! without a CORS preflight, which we never approve) and any Origin header
 //! must belong to a browser extension.
 
+use swiftget_engine::sync::LockOk;
 use serde::Deserialize;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -25,13 +26,13 @@ pub fn bundled_extension_version() -> String {
 }
 
 pub fn leave_to_browser(url: &str) {
-    let mut l = FOR_BROWSER.lock().unwrap();
+    let mut l = FOR_BROWSER.lock_ok();
     l.retain(|(_, at)| at.elapsed() < Duration::from_secs(300));
     l.push((url.to_string(), std::time::Instant::now()));
 }
 
 fn take_for_browser(urls: &[String]) -> bool {
-    let mut l = FOR_BROWSER.lock().unwrap();
+    let mut l = FOR_BROWSER.lock_ok();
     l.retain(|(_, at)| at.elapsed() < Duration::from_secs(300));
     if let Some(i) = l.iter().position(|(u, _)| urls.iter().any(|x| x == u)) {
         l.remove(i);
@@ -71,6 +72,25 @@ pub struct AddRequest {
     /// "Download a part": only from / to (seconds)
     #[serde(default)]
     pub clip: Option<ClipAsk>,
+    /// a form's download: what the form sent (base64) and its kind
+    #[serde(default)]
+    pub post: Option<String>,
+    #[serde(default)]
+    pub post_type: Option<String>,
+    /// "With subtitles": "srt:ar,en" fetched next to the video when done
+    #[serde(default)]
+    pub subs: Option<String>,
+}
+
+/// "Subtitles": only the subtitles of a video page, saved in the video folder.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SubsRequest {
+    pub url: String,
+    pub langs: Vec<String>,
+    #[serde(default)]
+    pub format: String,
+    #[serde(default)]
+    pub title: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -130,6 +150,30 @@ pub enum ApiEvent {
     /// the Ezoo Download add-on in Firefox is older than this program
     /// (Firefox keeps its own copy): offer to put the new one in
     OldFirefoxAddon,
+    /// a download handed over on the command line of another start
+    Cli(crate::cli::CliAsk),
+    /// the add-in's "Subtitles": fetch them; the answer (JSON) goes back
+    Subtitles(SubsRequest, std::sync::mpsc::Sender<String>),
+}
+
+/// Hand a command line download to the copy of the program that is open.
+pub fn notify_cli(port: u16, ask: &crate::cli::CliAsk) -> bool {
+    let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(800)) else {
+        return false;
+    };
+    let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
+    let body = serde_json::to_string(ask).unwrap_or_default();
+    let req = format!(
+        "POST /cli HTTP/1.1\r\nHost: 127.0.0.1\r\nX-SwiftGet: 1\r\n{}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        sign_headers("POST", "/cli"),
+        body.len()
+    );
+    if s.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = String::new();
+    let _ = s.read_to_string(&mut buf);
+    buf.starts_with("HTTP/1.1 200")
 }
 
 /// Ask the copy of the program that is open to close (for the setup).
@@ -168,6 +212,7 @@ pub fn config_json(s: &swiftget_engine::Settings) -> String {
         "skipKey": s.skip_key,
         "forceKey": s.force_key,
         "mp3Kbps": s.mp3_kbps,
+        "torrents": s.torrent_main,
         "panel": {
             "enabled": s.panel_enabled,
             "skipSites": split(&s.panel_skip_sites),
@@ -251,6 +296,28 @@ pub fn notify_existing(port: u16) -> Existing {
     }
 }
 
+/// The known port could not be asked: the copy that may be open is asked on
+/// its own port (signed, as the add-in does) to come to the front.
+pub fn show_on_own_port(port: u16) -> bool {
+    if port == 0 {
+        return false;
+    }
+    let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(800)) else {
+        return false;
+    };
+    let _ = s.set_read_timeout(Some(Duration::from_secs(3)));
+    let req = format!(
+        "POST /show HTTP/1.1\r\nHost: 127.0.0.1\r\nX-SwiftGet: 1\r\n{}Content-Length: 0\r\nConnection: close\r\n\r\n",
+        sign_headers("POST", "/show")
+    );
+    if s.write_all(req.as_bytes()).is_err() {
+        return false;
+    }
+    let mut buf = String::new();
+    let _ = s.read_to_string(&mut buf);
+    buf.starts_with("HTTP/1.1 200") && buf.contains("Ezoo")
+}
+
 /// Which of the program's two ports a request came in on.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Door {
@@ -263,6 +330,12 @@ pub enum Door {
 
 /// The random port the add-in talks to (0 = not open).
 pub static MAIN_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
+/// The known port is this program's (another program or Windows may keep it).
+pub static FRONT_OPEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// When an add-in last talked to the program with its key (seconds since 1970),
+/// and when one last came through the browser's helper.
+pub static ADDIN_SEEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static HELPER_SEEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 /// Changed by "Repair the browser add-in": the add-in sees it and starts again.
 pub static REPAIR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -276,7 +349,12 @@ pub fn serve(
         .name(format!("ezoo-api-{door:?}"))
         .spawn(move || {
             for req in server.incoming_requests() {
-                handle(req, door, &config, &on_event);
+                // one request that goes wrong must not close the door for
+                // good (the program would look closed to the add-in)
+                let run = std::panic::AssertUnwindSafe(|| handle(req, door, &config, &on_event));
+                if std::panic::catch_unwind(run).is_err() {
+                    eprintln!("a request to the add-in port failed");
+                }
             }
         })
         .expect("failed to start API thread");
@@ -316,7 +394,7 @@ fn signed(req: &Request, path: &str) -> bool {
         return false;
     }
     // each signed request only once
-    let mut seen = SEEN.lock().unwrap();
+    let mut seen = SEEN.lock_ok();
     seen.retain(|_, t| t.elapsed() < Duration::from_secs(130));
     seen.insert(nonce, std::time::Instant::now()).is_none()
 }
@@ -390,7 +468,7 @@ const AFTER_NO: Duration = Duration::from_secs(120);
 /// the key. Asked once at a time, and not again for 10 minutes after a no.
 fn pair(req: Request, on_event: &impl Fn(ApiEvent)) {
     {
-        let mut p = PAIRING.lock().unwrap();
+        let mut p = PAIRING.lock_ok();
         let refused_lately = p.1.map(|t| t.elapsed() < AFTER_NO).unwrap_or(false);
         if p.0 || refused_lately {
             return reply(req, 429, r#"{"error":"wait"}"#);
@@ -405,7 +483,7 @@ fn pair(req: Request, on_event: &impl Fn(ApiEvent)) {
         let answer = rx.recv_timeout(Duration::from_secs(120));
         let yes = matches!(answer, Ok(true));
         {
-            let mut p = PAIRING.lock().unwrap();
+            let mut p = PAIRING.lock_ok();
             p.0 = false;
             // only a real "no" waits before asking again; no answer does not
             if !yes && !matches!(answer, Err(std::sync::mpsc::RecvTimeoutError::Timeout)) {
@@ -493,12 +571,21 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
     // a torrent may come in on the known port
     let open = matches!(path.as_str(), "/ping") || (door == Door::Front && matches!(path.as_str(), "/show" | "/quit" | "/pair"));
     if !open {
-        let front_ok = matches!(path.as_str(), "/where" | "/open-torrent");
+        let front_ok = matches!(path.as_str(), "/where" | "/open-torrent" | "/cli");
         if door == Door::Front && !front_ok {
             return reply(req, 404, r#"{"error":"not here","where":true}"#);
         }
         if !signed(&req, &path) {
             return reply(req, 401, r#"{"error":"pair","pair":true}"#);
+        }
+        // an add-in with the key says who it is: the browser's helper may be
+        // started by it from now on (one without the key is never added)
+        if let Some(id) = header(&req, "X-Ezoo-Id") {
+            crate::nativehost::saw_addin(id.trim());
+        }
+        ADDIN_SEEN.store(now_secs(), Ordering::Relaxed);
+        if header(&req, "X-Ezoo-Helper").is_some() {
+            HELPER_SEEN.store(now_secs(), Ordering::Relaxed);
         }
     }
     if path == "/pair" && *req.method() == Method::Post {
@@ -546,6 +633,20 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
             let keep = serde_json::from_str::<BrowserQuery>(&body).map(|q| take_for_browser(&q.urls)).unwrap_or(false);
             reply(req, 200, if keep { r#"{"browser":true}"# } else { r#"{"browser":false}"# })
         }
+        (Method::Post, "/cli") => {
+            // the command line of another start of this program (signed with its key)
+            let mut body = String::new();
+            if req.as_reader().take(1 << 16).read_to_string(&mut body).is_err() {
+                return reply(req, 400, r#"{"error":"bad body"}"#);
+            }
+            match serde_json::from_str::<crate::cli::CliAsk>(&body) {
+                Ok(ask) if ask.url.as_deref().is_none_or(|u| crate::is_download_address(u) && url::Url::parse(u).is_ok()) => {
+                    on_event(ApiEvent::Cli(ask));
+                    reply(req, 200, r#"{"ok":true}"#)
+                }
+                _ => reply(req, 400, r#"{"error":"invalid request"}"#),
+            }
+        }
         (Method::Post, "/open-torrent") => {
             let mut body = String::new();
             if req.as_reader().take(1 << 16).read_to_string(&mut body).is_err() {
@@ -583,6 +684,26 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
                 }
                 _ => reply(req, 400, r#"{"error":"invalid request"}"#),
             }
+        }
+        (Method::Post, "/subtitles") => {
+            let mut body = String::new();
+            if req.as_reader().take(1 << 16).read_to_string(&mut body).is_err() {
+                return reply(req, 400, r#"{"error":"bad body"}"#);
+            }
+            let Ok(ask) = serde_json::from_str::<SubsRequest>(&body) else {
+                return reply(req, 400, r#"{"error":"invalid request"}"#);
+            };
+            if !is_http(&ask.url) || ask.langs.is_empty() || ask.langs.len() > 300 {
+                return reply(req, 400, r#"{"error":"invalid request"}"#);
+            }
+            let (tx, rx) = std::sync::mpsc::channel::<String>();
+            on_event(ApiEvent::Subtitles(ask, tx));
+            std::thread::spawn(move || {
+                let body = rx
+                    .recv_timeout(Duration::from_secs(120))
+                    .unwrap_or_else(|_| r#"{"ok":false,"error":"no answer in time"}"#.to_string());
+                reply(req, 200, &body);
+            });
         }
         (Method::Post, "/add") => {
             let mut body = String::new();
@@ -649,7 +770,7 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
                 let referer = r.referer.as_deref().filter(|u| is_http(u));
                 let body = match swiftget_engine::ytdlp::resolve_for(&r.url, cookies, referer) {
                     Ok(info) => serde_json::json!({
-                        "ok": true, "title": info.title, "site": info.site, "options": info.options
+                        "ok": true, "title": info.title, "site": info.site, "options": info.options, "subtitles": info.subtitles
                     }),
                     Err(e) => serde_json::json!({ "ok": false, "error": crate::err_text(&format!("{e:#}")) }),
                 };
@@ -669,15 +790,21 @@ fn can_fetch(add: &AddRequest) -> bool {
         user_agent: add.user_agent.clone(),
         extra: Vec::new(),
         auth: None,
+        post: add.post.clone(),
+        post_type: add.post_type.clone(),
     };
     if let Some(list) = &add.headers {
         swiftget_engine::ytdlp::apply_headers(&mut headers, list);
     }
-    let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() else { return true };
-    let Ok(client) = swiftget_engine::http::build_client() else { return true };
+    // one lasting runtime for these looks: the answer a look keeps for the
+    // download stays open only while the runtime it came on runs
+    static RT: std::sync::LazyLock<Option<tokio::runtime::Runtime>> =
+        std::sync::LazyLock::new(|| tokio::runtime::Builder::new_multi_thread().worker_threads(1).enable_all().build().ok());
+    let Some(rt) = RT.as_ref() else { return true };
+    let Ok(client) = swiftget_engine::http::build_client_with(&swiftget_engine::http::current_proxy()) else { return true };
     let url = add.url.clone();
     rt.block_on(async move {
-        let look = swiftget_engine::http::probe(&client, &url, &headers, swiftget_engine::config::DEFAULT_USER_AGENT);
+        let look = swiftget_engine::http::probe_quick(&client, &url, &headers, swiftget_engine::config::DEFAULT_USER_AGENT);
         match tokio::time::timeout(std::time::Duration::from_millis(2500), look).await {
             // a sign-in page instead of the file
             Ok(Ok(p)) => !p.is_web_page(),
@@ -747,6 +874,59 @@ mod tests {
         assert!(ask(fport, "/where", Some(sign_headers("GET", "/where"))).contains(&format!("\"port\":{mport}")));
         // "are you there" stays open on both
         assert!(ask(fport, "/ping", None).starts_with("HTTP/1.1 200"));
+    }
+
+    /// The browser's helper (crates/host) talks to the program as the add-in
+    /// does: run with EZOO_HOST_BIN = the built helper.
+    #[test]
+    fn the_helper_gets_through() {
+        use std::io::{Read, Write};
+        let Some(bin) = std::env::var_os("EZOO_HOST_BIN") else { return };
+        let _ = TOKEN.set("a".repeat(64));
+        let token = TOKEN.get().unwrap().clone();
+        let main = bind(0).unwrap();
+        let mport = main.server_addr().to_ip().unwrap().port();
+        serve(main, Door::Main, || r#"{"ok":true,"from":"config"}"#.to_string(), |_| {});
+        let dir = std::env::temp_dir().join(format!("ezoo-helper-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let host = dir.join("ezoo-host");
+        std::fs::copy(&bin, &host).unwrap();
+        std::fs::write(dir.join("settings.json"), format!(r#"{{"api_port":{mport},"api_token":"{token}"}}"#)).unwrap();
+        std::fs::write(dir.join("app.json"), serde_json::json!({ "settings": dir.join("settings.json") }).to_string()).unwrap();
+        let mut child = std::process::Command::new(&host)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut input = child.stdin.take().unwrap();
+        let mut output = child.stdout.take().unwrap();
+        let mut ask = |v: serde_json::Value| -> serde_json::Value {
+            let d = v.to_string();
+            input.write_all(&(d.len() as u32).to_ne_bytes()).unwrap();
+            input.write_all(d.as_bytes()).unwrap();
+            input.flush().unwrap();
+            let mut len = [0u8; 4];
+            output.read_exact(&mut len).unwrap();
+            let mut buf = vec![0u8; u32::from_ne_bytes(len) as usize];
+            output.read_exact(&mut buf).unwrap();
+            serde_json::from_slice(&buf).unwrap()
+        };
+        let a = ask(serde_json::json!({ "id": 1, "method": "GET", "path": "/config", "ms": 3000 }));
+        assert_eq!(a["id"], 1);
+        assert_eq!(a["status"], 200, "{a}");
+        assert!(a["body"].as_str().unwrap().contains("config"));
+        let a = ask(serde_json::json!({ "id": 2, "method": "GET", "path": "/ping", "ms": 3000 }));
+        assert_eq!(a["status"], 200);
+        assert!(a["body"].as_str().unwrap().contains("EzooDownload"));
+        let a = ask(serde_json::json!({ "id": 3, "method": "POST", "path": "/nothing", "body": "{}", "ms": 3000 }));
+        assert_eq!(a["status"], 404);
+        // a wrong key: the program says no
+        std::fs::write(dir.join("settings.json"), format!(r#"{{"api_port":{mport},"api_token":"{}"}}"#, "b".repeat(64))).unwrap();
+        let a = ask(serde_json::json!({ "id": 4, "method": "GET", "path": "/config", "ms": 3000 }));
+        assert_eq!(a["status"], 401);
+        drop(input);
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

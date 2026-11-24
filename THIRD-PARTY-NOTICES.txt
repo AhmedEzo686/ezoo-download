@@ -4,7 +4,13 @@ Slint (user interface toolkit) - https://slint.dev
   Used under the Slint Royalty-free Desktop, Mobile, and Web Applications License 2.0.
 
 yt-dlp - https://github.com/yt-dlp/yt-dlp
-  The Unlicense (public domain).
+  The Unlicense (public domain). Its folder build (yt-dlp_win.zip) is fetched
+  unchanged from its releases; it carries Python and the libraries yt-dlp's
+  makers list in its own files.
+
+QuickJS-NG - https://github.com/quickjs-ng/quickjs
+  MIT License. qjs.exe is fetched unchanged from its releases, only when a
+  video needs it (yt-dlp runs YouTube's player script with it).
 
 FFmpeg - https://github.com/FFmpeg/FFmpeg
   The ffmpeg program in the "tools" folder is Ezoo Download's own small build
@@ -22,12 +28,11 @@ OpenH264 - https://github.com/cisco/openh264
   video" (the picture of the part is made again). BSD 2-Clause License (see
   openh264-LICENSE.txt in the "tools" folder).
 
-aria2 - https://github.com/aria2/aria2
-  The aria2c program in the "tools" folder (used for torrents) is an
-  unmodified release build licensed under the GNU General Public License
-  version 2 or later (see aria2-COPYING.txt in the "tools" folder). Its source
-  code is available at https://github.com/aria2/aria2.
+librqbit - https://github.com/ikatson/rqbit
+  The torrent library built into the program (sharing, magnet links, DHT).
+  Apache License 2.0.
 
 Rust crates (tokio, reqwest, serde, chrono, tiny_http, arboard, rfd, tray-icon,
-regex, sha2, aes, cbc, url, directories, filetime and their dependencies)
-  MIT and/or Apache-2.0 licenses.
+regex, sha2, aes, cbc, url, directories, filetime, ring, native-tls,
+tokio-native-tls and their dependencies)
+  MIT, Apache-2.0 and/or ISC licenses.

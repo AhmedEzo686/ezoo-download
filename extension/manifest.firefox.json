@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ezoo Download",
-  "version": "1.0.10",
+  "version": "1.0.12",
   "description": "Ezoo Download extension.",
   "permissions": [
     "downloads",
@@ -9,10 +9,14 @@
     "contextMenus",
     "storage",
     "webRequest",
+    "webRequestBlocking",
     "tabs"
   ],
   "host_permissions": [
     "<all_urls>"
+  ],
+  "optional_permissions": [
+    "nativeMessaging"
   ],
   "background": {
     "scripts": [
@@ -40,6 +44,18 @@
     "128": "icons/icon128.png"
   },
   "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "early.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true
+    },
     {
       "matches": [
         "http://*/*",

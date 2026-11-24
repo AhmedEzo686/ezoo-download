@@ -5,8 +5,13 @@
 slint::include_modules!();
 
 mod api;
+mod assoc;
+mod winmenu;
+mod nativehost;
 mod autostart;
+mod winreg;
 mod browser;
+mod cli;
 mod clipboard;
 mod clipui;
 mod extra;
@@ -22,6 +27,7 @@ mod tray;
 mod update;
 mod winfx;
 
+use swiftget_engine::sync::LockOk;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, TimerMode, VecModel, Weak};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -47,6 +53,8 @@ pub(crate) struct VideoExtra {
     /// page + quality key, used to renew expired links
     source_page: Option<String>,
     source_key: Option<String>,
+    /// "With subtitles": the subtitles to fetch next to it ("srt:ar")
+    subs: Option<String>,
 }
 
 /// State of the "Download File Info" window (shared with background threads).
@@ -119,6 +127,10 @@ pub(crate) struct Ui {
     settings_dlg: Weak<SettingsDialog>,
     complete: Weak<CompleteDialog>,
     complete_id: Rc<Cell<Option<u64>>>,
+    /// the window shows a whole playlist / batch: its folder
+    complete_folder: Rc<RefCell<Option<PathBuf>>>,
+    /// playlists and batches with a file finished: one window when all are
+    groups_waiting: Rc<RefCell<std::collections::HashSet<u64>>>,
     columns: Weak<ColumnsDialog>,
     category: Weak<CategoryDialog>,
     /// category being edited (None = a new one)
@@ -204,6 +216,14 @@ fn install_crash_log() {
 
 fn main() {
     install_crash_log();
+    // a mark the setup looks for (it waits for the program to close before
+    // it copies the new files): kept until the program ends
+    #[cfg(windows)]
+    {
+        let name: Vec<u16> = "EzooDownload.Running\0".encode_utf16().collect();
+        // SAFETY: a NUL-terminated name; the handle stays open on purpose
+        let _ = unsafe { windows_sys::Win32::System::Threading::CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+    }
     let data_dir = default_data_dir();
     let gpu = Settings::load(&data_dir.join("settings.json")).gpu_drawing;
     // The windows are drawn by the processor unless the user chose the
@@ -262,13 +282,31 @@ fn elevated() -> bool {
 fn end_process(pid: u32) {
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        let exe = std::env::current_exe().ok().and_then(|e| e.file_name().map(|n| n.to_string_lossy().to_string()));
-        let exe = exe.unwrap_or_else(|| "EzooDownload.exe".into());
-        let _ = std::process::Command::new(swiftget_engine::system::windows_tool("taskkill.exe"))
-            .args(["/F", "/PID", &pid.to_string(), "/FI", &format!("IMAGENAME eq {exe}")])
-            .creation_flags(0x0800_0000) // no console window
-            .status();
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, QueryFullProcessImageNameW, TerminateProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+            PROCESS_TERMINATE,
+        };
+        let ours = std::env::current_exe().ok().and_then(|e| e.file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()));
+        let ours = ours.unwrap_or_else(|| "ezoodownload.exe".into());
+        // SAFETY: a handle of our own, closed below; the name is read into a
+        // buffer of the size given
+        unsafe {
+            let h = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if h.is_null() {
+                return;
+            }
+            let mut buf = [0u16; 1024];
+            let mut len = buf.len() as u32;
+            let name = (QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut len) != 0)
+                .then(|| String::from_utf16_lossy(&buf[..len as usize]))
+                .and_then(|p| std::path::Path::new(&p).file_name().map(|n| n.to_string_lossy().to_ascii_lowercase()));
+            // only ever a copy of this program
+            if name.as_deref() == Some(ours.as_str()) {
+                TerminateProcess(h, 1);
+            }
+            CloseHandle(h);
+        }
     }
     #[cfg(not(windows))]
     let _ = pid;
@@ -276,14 +314,29 @@ fn end_process(pid: u32) {
 
 fn run() -> anyhow::Result<()> {
     // started by Windows at sign-in: stay next to the clock, no window
-    let background = std::env::args().any(|a| a == "--background");
+    // --from-browser: opened by the add-in's helper for a download (the
+    // download's own window comes; the list stays in the tray)
+    let background = std::env::args().any(|a| a == "--background" || a == "--from-browser");
     let data_dir = default_data_dir();
     // the secret key of the browser add-in: made once, kept (encrypted) in
     // the settings; another program on the computer can't talk to the port
     // without it
     let (port, token) = {
         let path = data_dir.join("settings.json");
+        let first_start = !path.exists();
         let mut s = Settings::load(&path);
+        if first_start {
+            // what was chosen in the setup program: its language, and
+            // whether torrents are ours
+            if let Some(lang) = autostart::setup_value("Language").filter(|l| i18n::LANGS.iter().any(|(code, _)| code == l)) {
+                s.language = lang;
+            }
+            if let Some(t) = autostart::setup_value("Torrents") {
+                s.torrent_main = t != "0";
+            }
+            let _ = std::fs::create_dir_all(&data_dir);
+            let _ = s.save(&path);
+        }
         if s.api_token.len() < 32 {
             s.api_token = swiftget_engine::secret::random_token();
             let _ = std::fs::create_dir_all(&data_dir);
@@ -316,12 +369,20 @@ fn run() -> anyhow::Result<()> {
     }
     // a .torrent file / magnet link opened with Ezoo Download (double click)
     let open_torrent = std::env::args().skip(1).find(|a| api::torrent_source_ok(a));
+    // a download handed over on the command line ("/d address ...")
+    let cli_ask = cli::parse(std::env::args().skip(1)).filter(|c| !c.is_empty());
     // One instance only: if the port is taken by us, bring that one to front.
     let server = match first {
         Ok(s) => Some(s),
         Err(_) => {
             if let Some(src) = &open_torrent {
                 if api::notify_open_torrent(port, src) {
+                    return Ok(());
+                }
+            }
+            if let Some(ask) = &cli_ask {
+                let own = Settings::load(&data_dir.join("settings.json")).api_port;
+                if api::notify_cli(port, ask) || (own != 0 && api::notify_cli(own, ask)) {
                     return Ok(());
                 }
             }
@@ -359,7 +420,21 @@ fn run() -> anyhow::Result<()> {
                     }
                     got
                 }
-                api::Existing::None => None,
+                api::Existing::None if api::show_on_own_port(Settings::load(&data_dir.join("settings.json")).api_port) => {
+                    // the open copy answered on its own port (the known one
+                    // is kept by someone else): it comes to the front
+                    note("already open (its own port): brought to the front");
+                    return Ok(());
+                }
+                api::Existing::None => {
+                    // the known port is kept by another program, or Windows
+                    // keeps it for itself (a range of ports set aside by
+                    // Hyper-V / WSL / an update): the program still opens its
+                    // own port and the add-in finds it there (token.json, or
+                    // the port it was given when it was paired)
+                    note(&format!("port {port} can't be opened (another program or Windows keeps it): the add-in uses the program's own port"));
+                    None
+                }
             }
         }
     };
@@ -367,7 +442,8 @@ fn run() -> anyhow::Result<()> {
     // the next start), and the add-in folders get it with the key before
     // anything answers there (an add-in reloading right after an update
     // finds both at once)
-    let main_server = if server.is_some() {
+    api::FRONT_OPEN.store(server.is_some(), std::sync::atomic::Ordering::Relaxed);
+    let main_server = {
         let path = data_dir.join("settings.json");
         let mut s = Settings::load(&path);
         let got = api::bind_main(s.api_port);
@@ -379,9 +455,11 @@ fn run() -> anyhow::Result<()> {
             }
         }
         browser::prepare_extension_folders();
+        // the browser's helper (no port in the browser): on its own thread,
+        // nothing at start waits for it
+        let dir = data_dir.clone();
+        std::thread::spawn(move || nativehost::install(&dir));
         got.map(|(srv, _)| srv)
-    } else {
-        None
     };
     let _ = &token;
 
@@ -394,6 +472,7 @@ fn run() -> anyhow::Result<()> {
     swiftget_engine::tools::spawn_updater(rt.handle(), mgr.client(), data_dir.clone());
 
     let main = MainWindow::new()?;
+    main.set_app_version(env!("CARGO_PKG_VERSION").into());
     let add = AddDialog::new()?;
     let batch = BatchDialog::new()?;
     let settings_dlg = SettingsDialog::new()?;
@@ -446,6 +525,8 @@ fn run() -> anyhow::Result<()> {
         settings_dlg: settings_dlg.as_weak(),
         complete: complete.as_weak(),
         complete_id: Rc::new(Cell::new(None)),
+        complete_folder: Rc::default(),
+        groups_waiting: Rc::default(),
         columns: columns.as_weak(),
         category: category.as_weak(),
         editing_category: Rc::new(RefCell::new(None)),
@@ -484,9 +565,13 @@ fn run() -> anyhow::Result<()> {
         // first run: start with Windows, like other download managers
         let mut s = mgr.settings();
         if !s.autostart_set {
-            // the installer already asked; a copy run without it starts with Windows
+            // the installer asked and left the answer for the program (it
+            // writes nothing that starts with Windows itself); a copy run
+            // without it starts with Windows
             if !autostart::installed_by_setup() {
                 autostart::set(true);
+            } else if let Some(v) = autostart::setup_value("Autostart") {
+                autostart::set(v == "1");
             }
             s.autostart_set = true;
             let _ = mgr.set_settings(s);
@@ -515,7 +600,7 @@ fn run() -> anyhow::Result<()> {
     browser::wire(&ui);
 
     // ------------------------------------------------------------ browser + clipboard
-    if let Some(server) = server {
+    if server.is_some() || main_server.is_some() {
         let ctx = ctx.clone();
         let cfg_mgr = mgr.clone();
         // the API thread only sends; the UI thread owns the windows
@@ -528,10 +613,14 @@ fn run() -> anyhow::Result<()> {
                 let _ = slint::invoke_from_event_loop(|| {});
             });
         }
-        api::serve(server, api::Door::Front, move || api::config_json(&cfg_mgr.settings()), move |event| {
-            let _ = tx.send(event);
-            let _ = slint::invoke_from_event_loop(|| {});
-        });
+        if let Some(server) = server {
+            api::serve(server, api::Door::Front, move || api::config_json(&cfg_mgr.settings()), move |event| {
+                let _ = tx.send(event);
+                let _ = slint::invoke_from_event_loop(|| {});
+            });
+        } else {
+            drop((tx, cfg_mgr));
+        }
         let ui2 = ui.clone();
         let api_timer = Timer::default();
         api_timer.start(TimerMode::Repeated, Duration::from_millis(50), move || {
@@ -640,9 +729,31 @@ fn run() -> anyhow::Result<()> {
             extra::finished_well(&ui, completed.len());
             extra::av1_tip(&ui, &completed);
             let finished: Vec<u64> = completed.into_iter().filter(|id| Some(*id) != early).collect();
-            if let Some(&last) = finished.last() {
-                if ui.ctx.mgr.settings().show_complete_dialog {
+            let s = ui.ctx.mgr.settings();
+            // added together with others (a playlist, a batch): one window
+            // once all of them are done, not one for every file
+            let mut single = None;
+            for id in &finished {
+                match ui.ctx.mgr.get(*id).and_then(|v| v.group).filter(|_| !s.complete_each_in_group) {
+                    Some(g) => {
+                        ui.groups_waiting.borrow_mut().insert(g);
+                    }
+                    None => single = Some(*id),
+                }
+            }
+            if let Some(last) = single {
+                if s.show_complete_dialog {
                     show_complete(&ui, last);
+                }
+            }
+            let waiting: Vec<u64> = ui.groups_waiting.borrow().iter().copied().collect();
+            for g in waiting {
+                let (all, done, failed, busy) = ui.ctx.mgr.group_state(g);
+                if !busy {
+                    ui.groups_waiting.borrow_mut().remove(&g);
+                    if all > 0 && s.show_complete_dialog {
+                        show_group_complete(&ui, g, all, done, failed);
+                    }
                 }
             }
             handle_events(&ui);
@@ -705,6 +816,9 @@ fn run() -> anyhow::Result<()> {
     let was_maximized = mgr.settings().main_maximized;
     if !(background && has_tray) {
         main.show()?;
+        winfx::latin_shortcuts(main.window());
+        // the menus of Windows in the look of the program from the start
+        winmenu::set_dark_menus(main.global::<Theme>().get_dark());
         // the main window: in the middle of the screen (once drawn), and it
         // can be maximized; maximized there, so it comes back there
         let w = main.as_weak();
@@ -732,6 +846,11 @@ fn run() -> anyhow::Result<()> {
     if let Some(src) = open_torrent {
         // opened from Windows with a torrent: its window, once everything is up
         Timer::single_shot(Duration::from_millis(500), move || torrent_ui::open_source(&src));
+    }
+    if let Some(ask) = cli_ask {
+        // started with a download on the command line: once everything is up
+        let ui = ui.clone();
+        Timer::single_shot(Duration::from_millis(600), move || cli_download(&ui, ask));
     }
     {
         // a .torrent file dropped on the window
@@ -901,7 +1020,7 @@ fn wire_main(ui: &Ui) {
         let ui = ui.clone();
         main.on_set_theme(move |m| {
             let mut s = ui.ctx.mgr.settings();
-            s.theme = m.clamp(0, 8) as u32;
+            s.theme = m.clamp(0, 12) as u32;
             let _ = ui.ctx.mgr.set_settings(s);
             apply_theme(&ui, m);
         });
@@ -1001,7 +1120,31 @@ fn wire_main(ui: &Ui) {
     }
     {
         let ui = ui.clone();
+        main.on_move_selection(move |step, shift| {
+            let order = visible_ids(&ui);
+            let Some(m) = ui.ctx.main.upgrade() else { return };
+            if order.is_empty() {
+                return;
+            }
+            let at = order.iter().position(|i| *i as i32 == m.get_selected_id());
+            let next = match (step, at) {
+                (s, _) if s <= -2 => 0,
+                (s, _) if s >= 2 => order.len() - 1,
+                (s, None) if s < 0 => 0,
+                (_, None) => order.len() - 1,
+                (s, Some(i)) => (i as i64 + s as i64).clamp(0, order.len() as i64 - 1) as usize,
+            };
+            row_clicked(&ui, order[next], false, shift);
+            refresh(&ui);
+        });
+    }
+    main.on_show_shortcuts(|| message(&t(SHORTCUTS)));
+    {
+        let ui = ui.clone();
         main.on_row_clicked(move |id, ctrl, shift| {
+            // Ctrl / Shift as Windows has them now (a menu or another window
+            // may have kept the program from seeing one let go)
+            let (ctrl, shift) = winfx::ctrl_shift_held().unwrap_or((ctrl, shift));
             row_clicked(&ui, id as u64, ctrl, shift);
             refresh(&ui);
         });
@@ -1018,9 +1161,28 @@ fn wire_main(ui: &Ui) {
             refresh(&ui);
         });
     }
+    main.set_native_menu(winmenu::available());
+    {
+        let ui = ui.clone();
+        main.on_row_menu(move |id| {
+            // the newly selected row is drawn first (a Windows menu stops
+            // the drawing of the program while it is open), then the menu
+            let ui = ui.clone();
+            if let Some(m) = ui.ctx.main.upgrade() {
+                m.window().request_redraw();
+            }
+            slint::Timer::single_shot(Duration::from_millis(60), move || row_menu(&ui, id));
+        });
+    }
     {
         let ui = ui.clone();
         main.on_row_drag(move |id, offset| {
+            // only while the left button is really held: Windows may keep the
+            // release of a click that closed a menu, and the list must not
+            // select rows when the mouse just moves
+            if !winfx::left_button_down() {
+                return;
+            }
             // select with the mouse: from the row where the drag started
             let order = visible_ids(&ui);
             let Some(start) = order.iter().position(|x| *x == id as u64) else { return };
@@ -1065,6 +1227,9 @@ fn wire_main(ui: &Ui) {
     {
         let ui = ui.clone();
         main.on_row_drag_out(move |id| {
+            if !winfx::left_button_down() {
+                return;
+            }
             // a finished file pulled out of the list: Windows takes it from here
             let Some(v) = ui.ctx.mgr.get(id as u64) else { return };
             if v.status != Status::Completed || !v.save_path.is_file() {
@@ -1072,6 +1237,10 @@ fn wire_main(ui: &Ui) {
             }
             let Some(m) = ui.ctx.main.upgrade() else { return };
             winfx::drag_file_out(m.window(), &v.save_path);
+            // moved away (dropped in a folder of the same drive): the row shows it
+            if !v.save_path.exists() {
+                refresh(&ui);
+            }
             // the mouse was let go outside the list: the row must know too
             m.window().dispatch_event(slint::platform::WindowEvent::PointerReleased {
                 position: slint::LogicalPosition::new(0.0, 0.0),
@@ -1197,6 +1366,23 @@ fn wire_main(ui: &Ui) {
         let _ = slint::quit_event_loop();
     });
 }
+
+/// The keys of the list (F1 shows them).
+pub(crate) const SHORTCUTS: &str = "Keyboard shortcuts\n\n\
+Ctrl+N or Ctrl+V: add a download (a copied address)\n\
+Ctrl+B: add several addresses\n\
+Enter: open the download (its window, or the file)\n\
+Alt+Enter: properties\n\
+F2: rename / move the file\n\
+Ctrl+R: resume\n\
+Ctrl+S: stop\n\
+Ctrl+O: open the file\n\
+Ctrl+E: open its folder\n\
+Ctrl+C: copy the address\n\
+Delete: delete\n\
+Up / Down, Home / End: move in the list (with Shift: select)\n\
+Ctrl+A: select all\n\
+Ctrl+F, F3: find, find the next";
 
 /// Ids in the order the list shows them.
 fn visible_ids(ui: &Ui) -> Vec<u64> {
@@ -1324,8 +1510,47 @@ thread_local! {
 
 fn tray_action(ui: &Ui, action: tray::TrayAction) {
     use tray::TrayAction as T;
+    // a click waits a moment: the second click of a double click is not
+    // taken for "go away"
+    thread_local! {
+        static CLICKS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+        static SHOWN_AT: std::cell::Cell<Option<std::time::Instant>> = const { std::cell::Cell::new(None) };
+    }
     match action {
-        T::Show => bring_to_front(&ui.ctx),
+        T::Show => {
+            CLICKS.with(|c| c.set(c.get() + 1));
+            SHOWN_AT.with(|t| t.set(Some(std::time::Instant::now())));
+            bring_to_front(&ui.ctx);
+        }
+        T::Toggle => {
+            // the last click of a double click (Windows may send it after the double click)
+            if SHOWN_AT.with(|t| t.get()).is_some_and(|t| t.elapsed() < Duration::from_millis(600)) {
+                return;
+            }
+            let n = CLICKS.with(|c| {
+                c.set(c.get() + 1);
+                c.get()
+            });
+            let ui = ui.clone();
+            Timer::single_shot(Duration::from_millis(320), move || {
+                if CLICKS.with(|c| c.get()) != n {
+                    return;
+                }
+                let Some(w) = ui.ctx.main.upgrade() else { return };
+                let shown = w.window().is_visible() && !w.window().is_minimized();
+                if shown {
+                    // open already: to the tray (or the taskbar)
+                    if ui.ctx.mgr.settings().close_to_tray {
+                        let _ = w.hide();
+                    } else {
+                        w.window().set_minimized(true);
+                    }
+                } else {
+                    w.window().set_minimized(false);
+                    bring_to_front(&ui.ctx);
+                }
+            });
+        }
         T::AddUrl => {
             bring_to_front(&ui.ctx);
             open_add_dialog(&ui.ctx, String::new(), RequestHeaders::default(), None, VideoExtra::default());
@@ -1407,7 +1632,9 @@ fn relay_refused(ui: &Ui, id: u64) -> bool {
     let Some(v) = ui.ctx.mgr.get(id) else { return false };
     let err = v.error.clone().unwrap_or_default();
     let refused = err.contains("HTTP 403") || err.contains("HTTP 401");
-    if v.kind != DownloadKind::Http || v.downloaded > 0 || !refused || !v.url.starts_with("http") {
+    // a site's video (yt-dlp found its link): a fresh link is fetched by the
+    // engine itself, the browser can't help with it
+    if v.kind != DownloadKind::Http || v.downloaded > 0 || !refused || !v.url.starts_with("http") || v.source_key.is_some() {
         return false;
     }
     let times = RELAYED.with(|r| {
@@ -1448,6 +1675,32 @@ fn relayed_download(url: &str) -> Option<u64> {
 fn handle_api(ui: &Ui, event: api::ApiEvent) {
     match event {
         api::ApiEvent::Show => bring_to_front(&ui.ctx),
+        api::ApiEvent::Subtitles(ask, answer) => {
+            // into the folder of the videos, named after the video
+            let s = ui.ctx.mgr.settings();
+            let dir = s.dir_for("Video");
+            let title = if ask.title.trim().is_empty() { "subtitles".to_string() } else { ask.title.trim().chars().take(150).collect() };
+            let srt = ask.format != "vtt";
+            std::thread::spawn(move || {
+                let body = match swiftget_engine::ytdlp::fetch_subtitle_tracks(&ask.url, &dir, &title, &ask.langs, srt) {
+                    Ok(got) => serde_json::json!({
+                        "ok": true,
+                        "count": got.files.len(),
+                        "folder": dir.display().to_string(),
+                        // languages YouTube refused for now: said, with when to try again
+                        "note": if got.missing.is_empty() {
+                            String::new()
+                        } else if got.refused {
+                            tf("Some languages were refused for now (too many requests): {}. Try them again in a few minutes.", &[&got.missing.join(", ")])
+                        } else {
+                            String::new()
+                        },
+                    }),
+                    Err(e) => serde_json::json!({ "ok": false, "error": err_text(&format!("{e:#}")) }),
+                };
+                let _ = answer.send(body.to_string());
+            });
+        }
         api::ApiEvent::Pair(answer) => {
             bring_to_front(&ui.ctx);
             confirm(
@@ -1476,6 +1729,7 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
             let _ = slint::quit_event_loop();
         }
         api::ApiEvent::OpenTorrent(s) => torrent_ui::open_source(&s),
+        api::ApiEvent::Cli(ask) => cli_download(ui, ask),
         api::ApiEvent::Playlist(url) => playlist::open_url(ui, &url),
         api::ApiEvent::Links(l) => grab::open_links(ui, l),
         api::ApiEvent::Add(req) => {
@@ -1497,6 +1751,8 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
                 user_agent: req.user_agent,
                 extra: Vec::new(),
                 auth: None,
+                post: req.post.filter(|p| !p.is_empty() && p.len() <= 1 << 20),
+                post_type: req.post_type,
             };
             if let Some(list) = &req.headers {
                 swiftget_engine::ytdlp::apply_headers(&mut headers, list);
@@ -1551,6 +1807,7 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
                 audio_url: req.audio_url,
                 source_page: req.source_page,
                 source_key: req.source_key,
+                subs: req.subs.filter(|s| s.len() < 2000),
             };
             let s = ui.ctx.mgr.settings();
             if !s.show_start_dialog && ui.ctx.mgr.find_url(&req.url).is_none() {
@@ -1562,6 +1819,7 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
                     audio_url: extra.audio_url,
                     source_page: extra.source_page,
                     source_key: extra.source_key,
+                    subs: extra.subs,
                     start: true,
                     ..Default::default()
                 });
@@ -1571,6 +1829,44 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
             }
             open_add_dialog(&ui.ctx, req.url, headers, req.file_name, extra);
         }
+    }
+}
+
+/// A download (or "start the queue") from the command line.
+fn cli_download(ui: &Ui, ask: cli::CliAsk) {
+    if let Some(url) = ask.url.clone() {
+        let folder = ask.folder.as_ref().map(PathBuf::from).filter(|f| f.is_absolute());
+        if let Some(f) = &folder {
+            let _ = std::fs::create_dir_all(f);
+        }
+        if ask.quiet || ask.later {
+            let id = ui.ctx.mgr.add(NewDownload {
+                url,
+                file_name: ask.name.clone(),
+                save_dir: folder,
+                queue: ask.later.then_some(swiftget_engine::config::MAIN_QUEUE),
+                start: !ask.later,
+                ..Default::default()
+            });
+            if !ask.later {
+                show_progress_for_start(ui, id);
+            }
+            refresh(ui);
+        } else {
+            open_add_dialog(&ui.ctx, url, RequestHeaders::default(), ask.name.clone(), VideoExtra::default());
+            // the folder asked for, with the name the window shows
+            if let (Some(f), Some(d)) = (folder, ui.ctx.add.upgrade()) {
+                let shown = d.get_save_as().to_string();
+                let name = ask.name.clone().or_else(|| Path::new(&shown).file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_default();
+                if !name.is_empty() {
+                    d.set_save_as(f.join(name).display().to_string().into());
+                }
+            }
+        }
+    }
+    if ask.start_queue {
+        ui.ctx.mgr.start_queue(swiftget_engine::config::MAIN_QUEUE);
+        refresh(ui);
     }
 }
 
@@ -1584,7 +1880,7 @@ fn wire_add(ui: &Ui) {
             if let Some(d) = ctx.add.upgrade() {
                 let url = d.get_url().trim().to_string();
                 // another address: the download started for the old one stops
-                if url != ctx.add_state.lock().unwrap().origin_url {
+                if url != ctx.add_state.lock_ok().origin_url {
                     cancel_early(&ctx);
                 }
                 if swiftget_engine::torrent::is_magnet(&url) {
@@ -1616,10 +1912,12 @@ fn wire_add(ui: &Ui) {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| "download".into());
-            let path = ctx.mgr.settings().dir_for(&cat).join(&name).display().to_string();
+            let s = ctx.mgr.settings();
+            let path = s.dir_for(&cat).join(&name).display().to_string();
             d.set_save_as(path.clone().into());
             d.set_category_name(t(&cat).into());
-            ctx.add_state.lock().unwrap().auto_path = path;
+            d.set_remember_path(s.category_dirs.contains_key(&cat));
+            ctx.add_state.lock_ok().auto_path = path;
         });
     }
     {
@@ -1648,7 +1946,32 @@ fn wire_add(ui: &Ui) {
     }
     {
         let ui = ui.clone();
-        add.on_start_now(move || confirm_add(&ui, true));
+        add.on_start_now(move || confirm_add(&ui, true, None));
+    }
+    // the file name alone, and "Save As" with another name
+    add.on_name_of(|path| {
+        let p = path.trim();
+        let cut = p.rfind(['\\', '/']).map(|i| i + 1).unwrap_or(0);
+        p[cut..].into()
+    });
+    add.on_with_name(|path, name| {
+        let p = path.trim();
+        let cut = p.rfind(['\\', '/']).map(|i| i + 1).unwrap_or(0);
+        format!("{}{}", &p[..cut], name).into()
+    });
+    {
+        let ui = ui.clone();
+        add.on_replace_taken(move || {
+            let start = ui.ctx.add.upgrade().map(|d| d.get_taken_start()).unwrap_or(true);
+            confirm_add(&ui, start, Some(FileThere::Replace));
+        });
+    }
+    {
+        let ui = ui.clone();
+        add.on_number_taken(move || {
+            let start = ui.ctx.add.upgrade().map(|d| d.get_taken_start()).unwrap_or(true);
+            confirm_add(&ui, start, Some(FileThere::Number));
+        });
     }
     {
         // the server refused us: give the address back to the browser
@@ -1656,7 +1979,7 @@ fn wire_add(ui: &Ui) {
         add.on_use_browser(move || {
             let Some(d) = ctx.add.upgrade() else { return };
             let url = d.get_url().trim().to_string();
-            ctx.add_state.lock().unwrap().probe_seq += 1;
+            ctx.add_state.lock_ok().probe_seq += 1;
             cancel_early(&ctx);
             let _ = d.hide();
             if url.starts_with("http://") || url.starts_with("https://") {
@@ -1668,12 +1991,13 @@ fn wire_add(ui: &Ui) {
     }
     {
         let ui = ui.clone();
-        add.on_later(move || confirm_add(&ui, false));
+        add.on_later(move || confirm_add(&ui, false, None));
     }
     {
         let ctx = ui.ctx.clone();
         add.on_cancel(move || {
-            ctx.add_state.lock().unwrap().probe_seq += 1; // ignore a check still running
+            ctx.add_state.lock_ok().probe_seq += 1; // ignore a check still running
+            forget_look(&ctx);
             cancel_early(&ctx);
             if let Some(d) = ctx.add.upgrade() {
                 let _ = d.hide();
@@ -1684,7 +2008,8 @@ fn wire_add(ui: &Ui) {
     {
         let ctx = ui.ctx.clone();
         add.window().on_close_requested(move || {
-            ctx.add_state.lock().unwrap().probe_seq += 1;
+            ctx.add_state.lock_ok().probe_seq += 1;
+            forget_look(&ctx);
             cancel_early(&ctx);
             open_next(&ctx);
             slint::CloseRequestResponse::HideWindow
@@ -1751,12 +2076,14 @@ fn wire_batch(ui: &Ui) {
             let s = ui.ctx.mgr.settings();
             let queue = s.queues.get(d.get_queue_index().max(0) as usize).map(|q| q.id).unwrap_or(MAIN_QUEUE);
             let folder = d.get_folder().trim().to_string();
+            let group = Some(ui.ctx.mgr.new_group());
             for url in links {
                 ui.ctx.mgr.add(NewDownload {
                     url,
                     save_dir: (!folder.is_empty()).then(|| PathBuf::from(&folder)),
                     headers: RequestHeaders { auth: auth.clone(), ..Default::default() },
                     queue: Some(queue),
+                    group,
                     start: false,
                     ..Default::default()
                 });
@@ -1851,7 +2178,9 @@ fn wire_complete(ui: &Ui) {
     {
         let ui = ui.clone();
         complete.on_open_file(move || {
-            if let Some(v) = ui.complete_id.get().and_then(|i| ui.ctx.mgr.get(i)) {
+            if let Some(dir) = ui.complete_folder.borrow().clone() {
+                open_download(&dir);
+            } else if let Some(v) = ui.complete_id.get().and_then(|i| ui.ctx.mgr.get(i)) {
                 open_download(&v.save_path);
             }
             close_complete(&ui);
@@ -1869,7 +2198,9 @@ fn wire_complete(ui: &Ui) {
     {
         let ui = ui.clone();
         complete.on_open_folder(move || {
-            if let Some(v) = ui.complete_id.get().and_then(|i| ui.ctx.mgr.get(i)) {
+            if let Some(dir) = ui.complete_folder.borrow().clone() {
+                open_download(&dir);
+            } else if let Some(v) = ui.complete_id.get().and_then(|i| ui.ctx.mgr.get(i)) {
                 reveal_in_folder(&v);
             }
             close_complete(&ui);
@@ -1899,8 +2230,30 @@ fn wire_complete(ui: &Ui) {
     }
 }
 
+/// A playlist (or files added together) all done: one window for all.
+fn show_group_complete(ui: &Ui, group: u64, all: usize, done: usize, failed: usize) {
+    let Some(d) = ui.complete.upgrade() else { return };
+    let views: Vec<DownloadView> = ui.ctx.mgr.snapshot().into_iter().filter(|v| v.group == Some(group)).collect();
+    let Some(first) = views.iter().find(|v| v.status == Status::Completed).or(views.first()).cloned() else { return };
+    // the folder they went to (the one most of them share)
+    let folder = first.save_path.parent().map(Path::to_path_buf).unwrap_or_default();
+    let bytes: u64 = views.iter().filter(|v| v.status == Status::Completed).filter_map(|v| v.total_size).sum();
+    ui.complete_id.set(None);
+    *ui.complete_folder.borrow_mut() = Some(folder.clone());
+    let title = first.description.clone().filter(|t| !t.trim().is_empty()).unwrap_or_else(|| tf("{} files", &[&all]));
+    d.set_name(title.into());
+    d.set_url(if failed > 0 { tf("{} finished, {} could not be downloaded", &[&done, &failed]) } else { tf("All {} finished", &[&done]) }.into());
+    d.set_size(fmt_size(bytes).into());
+    d.set_path(folder.display().to_string().into());
+    d.set_kind(kind_for(&first.file_name).into());
+    d.set_ext(SharedString::new());
+    d.set_dont_show(false);
+    open_window!(d);
+}
+
 pub(crate) fn show_complete(ui: &Ui, id: u64) {
     if let (Some(v), Some(d)) = (ui.ctx.mgr.get(id), ui.complete.upgrade()) {
+        *ui.complete_folder.borrow_mut() = None;
         ui.complete_id.set(Some(id));
         d.set_name(v.file_name.clone().into());
         d.set_url(v.url.clone().into());
@@ -1948,7 +2301,37 @@ impl Drop for ModalGuard {
 
 pub(crate) fn message(text: &str) {
     let _g = ModalGuard::new();
-    crate::winfx::msg_box().set_title(APP).set_description(text).show();
+    crate::winfx::msg_box().set_title(APP).set_description(breakable(text)).show();
+}
+
+/// A text that can be wrapped anywhere it is long: words longer than 32
+/// letters (addresses, paths, error codes) get places to break (an invisible
+/// space), so a window with it never gets wider than the screen.
+pub(crate) fn breakable(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 16);
+    let mut run = 0;
+    for c in text.chars() {
+        if c.is_whitespace() {
+            run = 0;
+        } else {
+            run += 1;
+            if run > 32 {
+                out.push('\u{200B}');
+                run = 1;
+            }
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// "A file of this name is in the folder": what the user chose in the
+/// window ("Download File Info" shows the choice in itself: a message box
+/// over it, opened from its button, left it not answering on some computers).
+#[derive(Clone, Copy, PartialEq)]
+enum FileThere {
+    Replace,
+    Number,
 }
 
 pub(crate) fn ask(text: &str) -> bool {
@@ -1962,16 +2345,20 @@ pub(crate) fn ask(text: &str) -> bool {
 
 fn is_http_url(t: &str) -> Option<String> {
     let t = t.trim();
-    (t.starts_with("http://") || t.starts_with("https://"))
-        .then(|| t.to_string())
-        .filter(|s| !s.contains(char::is_whitespace))
+    is_download_address(t).then(|| t.to_string()).filter(|s| !s.contains(char::is_whitespace))
+}
+
+/// An address the program downloads from: http(s), or a file on an FTP server.
+pub(crate) fn is_download_address(t: &str) -> bool {
+    let l = t.trim_start().to_ascii_lowercase();
+    ["http://", "https://", "ftp://", "ftps://"].iter().any(|p| l.starts_with(p))
 }
 
 /// Every http(s) link in a block of text, one per line or separated by spaces.
 pub(crate) fn extract_links(text: &str) -> Vec<String> {
     text.split_whitespace()
         .map(|l| l.trim_matches(|c| c == '"' || c == '\'' || c == '<' || c == '>' || c == ','))
-        .filter(|l| (l.starts_with("http://") || l.starts_with("https://")) && url::Url::parse(l).is_ok())
+        .filter(|l| is_download_address(l) && url::Url::parse(l).is_ok())
         .map(|l| l.to_string())
         .collect()
 }
@@ -2205,7 +2592,7 @@ pub(crate) struct Look {
 impl Look {
     pub(crate) fn of(s: &Settings) -> Look {
         Look {
-            mode: s.theme.min(8) as i32,
+            mode: s.theme.min(12) as i32,
             scale: s.font_scale.clamp(80, 150) as f32 / 100.0,
             family: if FONTS.contains(&s.font_family.as_str()) { s.font_family.clone() } else { String::new() },
             background: s.background_image.clone(),
@@ -2282,6 +2669,11 @@ pub(crate) fn apply_look(ui: &Ui, look: &Look) {
     });
     for (d, _) in ui.progress.borrow().values() {
         set_theme_of(d.global::<Theme>(), look);
+    }
+    // the program's Windows menus too (the menu bar's lists, the tray menu,
+    // the list's right-click menu): dark with a dark look
+    if let Some(m) = ui.ctx.main.upgrade() {
+        winmenu::set_dark_menus(m.global::<Theme>().get_dark());
     }
     // the main window only: the picture behind it
     if let Some(m) = ui.ctx.main.upgrade() {
@@ -2395,9 +2787,12 @@ fn show_name_in_dialog(ctx: &Ctx, d: &AddDialog, name: &str, url: &str) -> Strin
     let cat = s.category_of(name, url);
     let path = s.dir_for(&cat).join(name).display().to_string();
     d.set_save_as(path.clone().into());
-    let cats = ctx.add_state.lock().unwrap().categories.clone();
+    let cats = ctx.add_state.lock_ok().categories.clone();
     d.set_category_index(cats.iter().position(|c| *c == cat).unwrap_or(0) as i32);
     d.set_category_name(t(&cat).into());
+    // a category with a remembered folder: the box stays ticked (shows it is
+    // remembered; untick it to forget)
+    d.set_remember_path(s.category_dirs.contains_key(&cat));
     d.set_kind(kind_for(name).into());
     d.set_ext(filename::extension(name).to_uppercase().into());
     path
@@ -2412,7 +2807,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     let Some(d) = ctx.add.upgrade() else { return };
     let s = ctx.mgr.settings();
     if d.window().is_visible() {
-        let mut st = ctx.add_state.lock().unwrap();
+        let mut st = ctx.add_state.lock_ok();
         // the same link again (a page can send it twice): nothing new to show;
         // another link waits until this one is started or cancelled
         if !url.is_empty() && st.origin_url != url && !st.waiting.iter().any(|p| p.url == url) {
@@ -2429,7 +2824,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     cats.extend(s.categories.iter().map(|c| c.name.clone()));
     let names: Vec<SharedString> = cats.iter().map(|c| t(c).into()).collect();
     d.set_category_names(ModelRc::new(VecModel::from(names)));
-    ctx.add_state.lock().unwrap().categories = cats;
+    ctx.add_state.lock_ok().categories = cats;
     let name = name_hint
         .clone()
         .filter(|n| !n.trim().is_empty())
@@ -2439,7 +2834,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     let path = show_name_in_dialog(ctx, &d, &name, &url);
     let login = headers.auth.clone().or_else(|| s.login_for(&url));
     {
-        let mut st = ctx.add_state.lock().unwrap();
+        let mut st = ctx.add_state.lock_ok();
         st.headers = headers;
         st.extra = extra;
         st.origin_url = url.clone();
@@ -2451,7 +2846,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     }
     d.set_url(url.clone().into());
     d.set_description(SharedString::new());
-    d.set_remember_path(false);
+    d.set_checksum(SharedString::new());
     d.set_size_text(SharedString::new());
     d.set_connections(s.connections() as i32);
     d.set_queue_names(queue_names(&s));
@@ -2468,6 +2863,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
         .into(),
     );
     d.set_info(t("Paste a link and press Check").into());
+    d.set_taken_name(SharedString::new());
     d.set_can_use_browser(false);
     d.set_info_error(false);
     d.set_probing(false);
@@ -2475,7 +2871,7 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
     // it already downloads while the window is open
     if !url.is_empty() && s.start_while_info && ctx.mgr.find_url(&url).is_none() {
         let path = PathBuf::from(d.get_save_as().as_str());
-        let st = ctx.add_state.lock().unwrap();
+        let st = ctx.add_state.lock_ok();
         let req = NewDownload {
             url: url.clone(),
             file_name: path.file_name().map(|n| n.to_string_lossy().into_owned()),
@@ -2484,13 +2880,14 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
             audio_url: st.extra.audio_url.clone(),
             source_page: st.extra.source_page.clone(),
             source_key: st.extra.source_key.clone(),
+            subs: st.extra.subs.clone(),
             early: true,
             start: true,
             ..Default::default()
         };
         drop(st);
         let id = ctx.mgr.add(req);
-        ctx.add_state.lock().unwrap().early_id = Some(id);
+        ctx.add_state.lock_ok().early_id = Some(id);
     }
     if !url.is_empty() {
         start_probe(ctx, url);
@@ -2500,14 +2897,14 @@ pub(crate) fn open_add_dialog(ctx: &Ctx, url: String, headers: RequestHeaders, n
 /// "Cancel" in Download File Info: the download that started meanwhile goes
 /// away completely, with its temporary files and the file itself.
 fn cancel_early(ctx: &Ctx) {
-    if let Some(id) = ctx.add_state.lock().unwrap().early_id.take() {
+    if let Some(id) = ctx.add_state.lock_ok().early_id.take() {
         ctx.mgr.discard(id);
     }
 }
 
 /// The window is free again: show the next link that came in meanwhile.
 fn open_next(ctx: &Ctx) {
-    let next = ctx.add_state.lock().unwrap().waiting.pop_front();
+    let next = ctx.add_state.lock_ok().waiting.pop_front();
     if let Some(p) = next {
         let ctx = ctx.clone();
         Timer::single_shot(Duration::from_millis(300), move || {
@@ -2516,16 +2913,25 @@ fn open_next(ctx: &Ctx) {
     }
 }
 
+/// The window was closed without downloading: the server's answer kept for
+/// the download is let go (its connection is not held any longer).
+fn forget_look(ctx: &Ctx) {
+    let url = ctx.add_state.lock_ok().origin_url.clone();
+    if !url.is_empty() {
+        swiftget_engine::http::drop_kept(&url);
+    }
+}
+
 /// The download started in the background for the open window, if any.
 pub(crate) fn early_download(ctx: &Ctx) -> Option<u64> {
-    ctx.add_state.lock().unwrap().early_id
+    ctx.add_state.lock_ok().early_id
 }
 
 /// Ask the server about the file in the background, then show the result.
 fn start_probe(ctx: &Ctx, url: String) {
     let Some(d) = ctx.add.upgrade() else { return };
     let (seq, mut headers, audio_url) = {
-        let mut st = ctx.add_state.lock().unwrap();
+        let mut st = ctx.add_state.lock_ok();
         st.probe_seq += 1;
         st.probe = None;
         let audio = st.extra.audio_url.clone().filter(|_| st.origin_url == url);
@@ -2549,7 +2955,7 @@ fn start_probe(ctx: &Ctx, url: String) {
         };
         let _ = slint::invoke_from_event_loop(move || {
             let Some(d) = ctx2.add.upgrade() else { return };
-            let mut st = ctx2.add_state.lock().unwrap();
+            let mut st = ctx2.add_state.lock_ok();
             if st.probe_seq != seq {
                 return; // the window was reused for something else meanwhile
             }
@@ -2559,7 +2965,7 @@ fn start_probe(ctx: &Ctx, url: String) {
                     if d.get_save_as().as_str() == st.auto_path && !st.auto_path.is_empty() {
                         drop(st);
                         let path = show_name_in_dialog(&ctx2, &d, &p.file_name, &url);
-                        st = ctx2.add_state.lock().unwrap();
+                        st = ctx2.add_state.lock_ok();
                         st.auto_path = path;
                     }
                     let has_audio = st.extra.audio_url.is_some() && st.origin_url == url;
@@ -2603,20 +3009,30 @@ fn start_probe(ctx: &Ctx, url: String) {
     });
 }
 
-/// Add the download from the "Download File Info" window.
-fn confirm_add(ui: &Ui, start: bool) {
+/// Add the download from the "Download File Info" window. `there`: what
+/// to do with a file of the same name in the folder (asked in the window
+/// first, when there is one).
+fn confirm_add(ui: &Ui, start: bool, there: Option<FileThere>) {
     let ctx = &ui.ctx;
     let Some(d) = ctx.add.upgrade() else { return };
     let url = d.get_url().trim().to_string();
-    if !(url.starts_with("http://") || url.starts_with("https://")) || url::Url::parse(&url).is_err() {
-        d.set_info(t("Please enter a valid http:// or https:// address").into());
+    if !is_download_address(&url) || url::Url::parse(&url).is_err() {
+        d.set_info(t("Please enter a valid http://, https:// or ftp:// address").into());
+        d.set_info_error(true);
+        return;
+    }
+    // the checksum the file must have: one that is none is said at once
+    let checksum_text = d.get_checksum().trim().to_string();
+    let checksum = swiftget_engine::checksum::Expected::parse(&checksum_text).map(|e| e.text());
+    if !checksum_text.is_empty() && checksum.is_none() {
+        d.set_info(t("This is not a checksum: paste its MD5, SHA-1, SHA-256, SHA-384 or SHA-512 value").into());
         d.set_info_error(true);
         return;
     }
     let save_as = PathBuf::from(d.get_save_as().trim());
     // the name as the program suggested it (its extension is the real one)
     let suggested = {
-        let st = ctx.add_state.lock().unwrap();
+        let st = ctx.add_state.lock_ok();
         let early = st.early_id.and_then(|id| ctx.mgr.get(id)).map(|v| v.file_name);
         let auto = Path::new(&st.auto_path).file_name().map(|n| n.to_string_lossy().into_owned());
         early.or(auto).or_else(|| st.probe.as_ref().map(|p| p.file_name.clone())).unwrap_or_default()
@@ -2626,24 +3042,60 @@ fn confirm_add(ui: &Ui, start: bool) {
         .map(|n| with_extension_of(&n.to_string_lossy(), &suggested))
         .filter(|n| !n.trim().is_empty());
     let dir = save_as.parent().map(Path::to_path_buf).filter(|p| !p.as_os_str().is_empty());
-    let settings = ctx.mgr.settings();
-    if d.get_remember_path() {
-        if let Some(dir) = &dir {
-            let mut s = settings.clone();
-            let key = ctx
-                .add_state
-                .lock()
-                .unwrap()
-                .categories
-                .get(d.get_category_index().max(0) as usize)
-                .cloned()
-                .unwrap_or_else(|| "General".into());
-            s.category_dirs.insert(key, dir.clone());
+    // a file of that name is in the folder already: the user says what to do
+    // (before, a number was put to the name without a word). The file the
+    // download that started with the window made itself is no other file:
+    // asked about it, "Replace" deleted the download's own file.
+    let own_early = {
+        let st = ctx.add_state.lock_ok();
+        st.early_id.and_then(|id| ctx.mgr.get(id)).map(|v| v.save_path)
+    };
+    let mut replace = false;
+    let name = match (&dir, name) {
+        (Some(dir), Some(n)) if dir.join(&n).is_file() && own_early.as_deref() != Some(dir.join(&n).as_path()) => match there {
+            None => {
+                d.set_taken_start(start);
+                d.set_taken_name(n.into());
+                return;
+            }
+            Some(FileThere::Replace) => {
+                // the old file stays until the new one is complete
+                replace = true;
+                Some(n)
+            }
+            Some(FileThere::Number) => {
+                let numbered = filename::unique_name(dir, &n);
+                d.set_save_as(dir.join(&numbered).display().to_string().into());
+                Some(numbered)
+            }
+        },
+        (_, n) => n,
+    };
+    d.set_taken_name(SharedString::new());
+    let key = ctx
+        .add_state
+        .lock()
+        .unwrap()
+        .categories
+        .get(d.get_category_index().max(0) as usize)
+        .cloned()
+        .unwrap_or_else(|| "General".into());
+    {
+        // ticked: this folder is the category's from now on; unticked where
+        // one was remembered: forgotten (the usual folder again)
+        let mut s = ctx.mgr.settings();
+        let changed = match (&dir, d.get_remember_path()) {
+            (Some(dir), true) => s.category_dirs.insert(key.clone(), dir.clone()).as_ref() != Some(dir),
+            (_, false) => s.category_dirs.remove(&key).is_some(),
+            _ => false,
+        };
+        if changed {
             let _ = ctx.mgr.set_settings(s);
         }
     }
+    let settings = ctx.mgr.settings();
     let req = {
-        let mut st = ctx.add_state.lock().unwrap();
+        let mut st = ctx.add_state.lock_ok();
         st.probe_seq += 1;
         let probe = if st.probe_url == url { st.probe.clone() } else { None };
         // the video extras belong to the original link only
@@ -2668,26 +3120,34 @@ fn confirm_add(ui: &Ui, start: bool) {
             audio_url: extra.audio_url,
             source_page: extra.source_page,
             source_key: extra.source_key,
+            subs: extra.subs,
             queue,
             description: (!description.is_empty()).then_some(description),
             pick_quality: None,
+            group: None,
             early: false,
             start,
             torrent_select: None,
             clip: None,
+            checksum: checksum.clone(),
+            replace,
         }
     };
     let _ = d.hide();
     open_next(ctx);
-    let early = ctx.add_state.lock().unwrap().early_id.take();
+    let early = ctx.add_state.lock_ok().early_id.take();
     if let Some(id) = early {
         if ctx.mgr.get(id).map(|v| v.url == url || v.parent_page.as_deref() == Some(url.as_str())).unwrap_or(false)
-            || ctx.add_state.lock().unwrap().origin_url == url
+            || ctx.add_state.lock_ok().origin_url == url
         {
             let dir = req.save_dir.clone().unwrap_or_else(|| settings.dir_for("General"));
             let name = req.file_name.clone().unwrap_or_default();
+            ctx.mgr.set_replace(id, req.replace);
             if let Err(e) = ctx.mgr.retarget(id, &dir, &name, req.description.clone(), req.headers.auth.clone()) {
                 message(&tf("Could not change where it is saved: {}", &[&format!("{e:#}")]));
+            }
+            if checksum.is_some() {
+                ctx.mgr.set_checksum(id, checksum.clone());
             }
             if start {
                 if ctx.mgr.get(id).map(|v| v.status == Status::Failed || v.status == Status::Paused).unwrap_or(false) {
@@ -2797,6 +3257,79 @@ pub(crate) fn show_progress_for_start(ui: &Ui, id: u64) {
                 d.window().set_minimized(true);
             }
         }
+        _ => {}
+    }
+}
+
+/// The right-click menu of a download, as a Windows menu: the same lines as
+/// the program's own one, those that can't be used now greyed out.
+fn row_menu(ui: &Ui, id: i32) {
+    use winmenu::Item;
+    let Some(main) = ui.ctx.main.upgrade() else { return };
+    let Some(v) = ui.ctx.mgr.get(id as u64) else { return };
+    let n = targets(ui, id as u64).len();
+    let state = state_of(v.status);
+    let done = state == 3;
+    let media = matches!(kind_for(&v.file_name), "video" | "audio");
+    const ACTIONS: [&str; 14] =
+        ["", "openwith", "preview", "clip", "folder", "resume", "stop", "restart", "refresh", "move", "copy", "sha256", "properties", "delete"];
+    let mut items = Vec::new();
+    if n > 1 {
+        items.push(Item::new(900, tf("{} downloads selected", &[&n]), false));
+    }
+    items.push(Item { bold: true, ..Item::new(100, if done { t("Open") } else { t("Show download progress") }, true) });
+    items.push(Item::new(1, t("Open with…"), done));
+    if !done && media {
+        items.push(Item::new(2, t("Play while downloading"), true));
+    }
+    if media && n <= 1 {
+        items.push(Item::new(3, t("Download a part of it…"), true));
+    }
+    items.push(Item::new(4, t("Open folder"), true));
+    items.push(Item::separator());
+    items.push(Item::new(5, t("Resume download"), state == 2 || state == 4 || n > 1));
+    items.push(Item::new(6, t("Stop download"), state == 0 || state == 1 || n > 1));
+    items.push(Item::new(7, t("Redownload"), true));
+    items.push(Item::new(8, t("Refresh download address…"), !done));
+    items.push(Item::new(9, t("Move / Rename…"), true));
+    items.push(Item::separator());
+    let mut queues: Vec<Item> = (0..ui.queues.row_count())
+        .filter_map(|i| ui.queues.row_data(i))
+        .map(|q| Item { checked: v.queue == Some(q.id as u64), ..Item::new(1000 + q.id.max(0) as u32, q.name.to_string(), true) })
+        .collect();
+    queues.push(Item::separator());
+    queues.push(Item::new(999, t("Delete from queue"), v.queue.is_some()));
+    items.push(Item { sub: queues, ..Item::new(0, t("Move to queue"), true) });
+    items.push(Item::separator());
+    items.push(Item::new(10, t("Copy address"), true));
+    items.push(Item::new(11, t("Check file (SHA-256)"), done));
+    items.push(Item::new(12, t("Properties"), true));
+    items.push(Item::separator());
+    items.push(Item::new(13, t("Remove"), true));
+    items.push(Item::separator());
+    items.push(Item::new(901, t("Select all"), true));
+    let dark = main.global::<Theme>().get_dark();
+    let picked = winmenu::popup(main.window(), &items, dark, i18n::is_rtl());
+    // A click that closed the menu may reach the list a moment later without
+    // its release: the list would think the button is held. Once Windows says
+    // it is not, the list lets go of it.
+    for wait in [150, 450] {
+        let weak = ui.ctx.main.clone();
+        slint::Timer::single_shot(Duration::from_millis(wait), move || {
+            if let Some(m) = weak.upgrade() {
+                if !winfx::left_button_down() {
+                    let _ = m.window().dispatch_event_with_result(slint::platform::WindowEvent::PointerExited);
+                }
+            }
+        });
+    }
+    let Some(picked) = picked else { return };
+    match picked {
+        100 => main.invoke_row_activated(id),
+        901 => main.invoke_select_all(),
+        999 => main.invoke_row_to_queue(id, -1),
+        q if q >= 1000 => main.invoke_row_to_queue(id, (q - 1000) as i32),
+        a if (a as usize) < ACTIONS.len() && a > 0 => main.invoke_row_action(id, ACTIONS[a as usize].into()),
         _ => {}
     }
 }
@@ -3153,7 +3686,9 @@ pub(crate) fn open_download(path: &std::path::Path) {
 
 /// An error of the engine in words the user understands, in their language.
 pub(crate) fn err_text(e: &str) -> String {
-    if e.contains("needs a login or an age check") {
+    if e.contains(swiftget_engine::ytdlp::TOO_MANY) {
+        t("YouTube is refusing subtitles for a moment (too many requests). Try again in a few minutes.")
+    } else if e.contains("needs a login or an age check") {
         t("This video needs a login or an age check. Open it once in the browser where you are signed in (with the Ezoo Download extension), then try again.")
     } else if e.contains("BitLocker") || e.contains("-2144272384") {
         t("The drive of the download folder is locked by BitLocker. Unlock it in Windows, or choose another folder (right-click the download > Properties).")
@@ -3165,6 +3700,10 @@ pub(crate) fn err_text(e: &str) -> String {
     } else if let Some(rest) = e.split("the server can't resume, starting again in ").nth(1) {
         let secs = rest.split(' ').next().unwrap_or("?");
         tf("The server had trouble and can't resume this file, so it starts again from the beginning in {} s.", &[&secs])
+    } else if e.contains(swiftget_engine::http::CAPTCHA) {
+        t("The site asks to confirm you are not a robot. Open the link in the browser, confirm there, then click Resume.")
+    } else if e.contains(swiftget_engine::TORRENT_DRY_TEXT) {
+        t("Connected to people who send nothing yet (they don't have the missing pieces, or they are busy). Ezoo Download keeps looking for others who have the file.")
     } else if e.contains("server answered HTTP 403") || e.contains("server answered HTTP 401") {
         t("The server refused Ezoo Download (it lets only the browser in). The link was opened in the browser, which hands it back with the site's sign-in; if the site still refuses, the browser downloads it itself.")
     } else if e.contains("DRM") {
@@ -3182,6 +3721,8 @@ pub(crate) fn err_text(e: &str) -> String {
             "Not enough free space on the disk {}: the file needs {} more, only {} is free. Choose a folder on another disk (right-click the download > Move / Rename), or free some space, then click Resume.",
             &[&disk, &need, &free],
         )
+    } else if e.contains("the site gave a list of pieces of a video stream") || e.contains("the site gave a web page, not the video") {
+        t("The site gave a page instead of the video (it protects its videos, or the link expired), so no broken file was kept. Play the video on its page and use the Ezoo Download button that appears on it.")
     } else if e.contains("the downloaded data is gone") {
         t("The downloaded data is gone: its temporary file was removed while it downloaded (an antivirus or a cleaning program?). Click Redownload; if it happens again, allow the download folder in the antivirus.")
     } else if e.contains("ffmpeg could not cut the part") {
@@ -3192,6 +3733,14 @@ pub(crate) fn err_text(e: &str) -> String {
         t("The new link gives another file, so nothing more was written. Right-click the download and use \"Refresh download address\".")
     } else if e.contains("the link has expired or the file was removed") {
         t("The link has expired or the file was removed. Right-click the download and use \"Refresh download address\".")
+    } else if e.contains("the downloaded file is damaged: its checksum") {
+        t("The downloaded file is damaged: its checksum is not the one it should have. Click Redownload.")
+    } else if e.contains(swiftget_engine::http_download::FILE_CHANGED) {
+        t("The file on the server changed since the download began, so its parts would not fit together. Click Redownload.")
+    } else if e.contains("the link opens one web page after another") {
+        t("The link opens one web page after another, not a file. Open it in the browser and download it from there.")
+    } else if e.contains("file names that lead out of its folder") {
+        t("This torrent has file names that lead out of its folder, so it was stopped to keep your other files safe.")
     } else {
         e.to_string()
     }
@@ -3234,6 +3783,7 @@ fn row_of(v: &DownloadView, sel: bool) -> DownloadRow {
     DownloadRow {
         id: v.id as i32,
         name: v.file_name.clone().into(),
+        name_rtl: i18n::rtl_text(&v.file_name),
         kind: if v.kind == DownloadKind::Torrent { "torrent" } else { kind_for(&v.file_name) }.into(),
         category: v.category.clone().into(),
         queue: v.queue.map(|q| q.to_string()).unwrap_or_default().into(),
@@ -3267,7 +3817,9 @@ fn in_view(v: &DownloadView, view: &str) -> bool {
             } else if let Some(c) = other.strip_prefix("fin:") {
                 v.category == c && v.status == Status::Completed
             } else if let Some(q) = other.strip_prefix("queue:") {
-                v.queue.map(|x| x.to_string()).as_deref() == Some(q)
+                // a queue shows what is still to come: a finished download
+                // stays in "All" and "Finished" (as the queue's count says)
+                v.queue.map(|x| x.to_string()).as_deref() == Some(q) && v.status != Status::Completed
             } else {
                 true
             }
@@ -3448,7 +4000,9 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
     d.set_show_details(settings.progress_details);
     {
         let saved = saved_size(&ui.ctx.mgr, "progress");
-        let width = saved.map(|s| s.0).unwrap_or(500.0).max(440.0);
+        // the 3D looks show the ring and the cards: a little wider
+        let least = if settings.theme >= 9 { 600.0 } else { 440.0 };
+        let width = saved.map(|s| s.0).unwrap_or(500.0).max(least);
         let small = d.get_content_height();
         let height = if settings.progress_details { saved.map(|s| s.1).unwrap_or(0.0).max(small) } else { small };
         d.window().set_size(slint::LogicalSize::new(width, height.max(120.0)));
@@ -3556,9 +4110,143 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
     }
     let segs = Rc::new(VecModel::<SegView>::default());
     d.set_segs(ModelRc::from(segs.clone()));
+    if v.kind == DownloadKind::Torrent {
+        wire_torrent_tab(ui, &d, id, &v);
+    }
     fill_details(&d, &segs, &v);
     open_window!(d);
     ui.progress.borrow_mut().insert(id, (d, segs));
+}
+
+/// The "Torrent" tab of a torrent's window: its files (each can be left out
+/// while it runs), people, trackers (one can be added), its pieces, check
+/// again, its magnet link.
+fn wire_torrent_tab(ui: &Ui, d: &DetailsDialog, id: u64, v: &DownloadView) {
+    d.set_is_torrent(true);
+    d.set_t_files(ModelRc::new(VecModel::<TFileRow>::default()));
+    d.set_t_peers(ModelRc::new(VecModel::<TPeerRow>::default()));
+    d.set_t_trackers(ModelRc::new(VecModel::<SharedString>::default()));
+    d.set_t_pieces(ModelRc::new(VecModel::<PieceRun>::default()));
+    d.set_t_first_last(ui.ctx.mgr.torrent_first_last(id));
+    let _ = v;
+    {
+        let (mgr, w) = (ui.ctx.mgr.clone(), d.as_weak());
+        d.on_t_file_toggled(move |i| {
+            let Some(d) = w.upgrade() else { return };
+            let files = d.get_t_files();
+            let Some(m) = files.as_any().downcast_ref::<VecModel<TFileRow>>() else { return };
+            let Some(mut row) = m.row_data(i as usize) else { return };
+            row.selected = !row.selected;
+            m.set_row_data(i as usize, row);
+            let rows: Vec<TFileRow> = m.iter().collect();
+            if !rows.iter().any(|r| r.selected) {
+                // at least one file
+                if let Some(mut r) = m.row_data(i as usize) {
+                    r.selected = true;
+                    m.set_row_data(i as usize, r);
+                }
+                d.set_t_note(t("Check at least one file").into());
+                return;
+            }
+            let select = (!rows.iter().all(|r| r.selected))
+                .then(|| rows.iter().filter(|r| r.selected).map(|r| r.index.to_string()).collect::<Vec<_>>().join(","));
+            mgr.set_torrent_files(id, select);
+            d.set_t_note(t("The torrent goes on with the files checked.").into());
+        });
+    }
+    {
+        let (mgr, w) = (ui.ctx.mgr.clone(), d.as_weak());
+        d.on_t_add_tracker(move || {
+            let Some(d) = w.upgrade() else { return };
+            let tr = d.get_t_new_tracker().trim().to_string();
+            if mgr.add_torrent_tracker(id, &tr) {
+                d.set_t_new_tracker(SharedString::new());
+                d.set_t_note(t("Tracker added.").into());
+            } else {
+                d.set_t_note(t("This is not a tracker address (udp://, http:// or https://).").into());
+            }
+        });
+    }
+    {
+        let (mgr, w) = (ui.ctx.mgr.clone(), d.as_weak());
+        d.on_t_first_last_changed(move || {
+            if let Some(d) = w.upgrade() {
+                mgr.set_torrent_first_last(id, d.get_t_first_last());
+            }
+        });
+    }
+    {
+        let (mgr, w) = (ui.ctx.mgr.clone(), d.as_weak());
+        d.on_t_recheck(move || {
+            mgr.recheck_torrent(id);
+            if let Some(d) = w.upgrade() {
+                d.set_t_note(t("Every piece on the disk is checked again, then it goes on.").into());
+            }
+        });
+    }
+    {
+        let (mgr, w) = (ui.ctx.mgr.clone(), d.as_weak());
+        d.on_t_copy_magnet(move || {
+            let Some(d) = w.upgrade() else { return };
+            match mgr.magnet_link(id) {
+                Some(m) => {
+                    if let Ok(mut c) = arboard::Clipboard::new() {
+                        let _ = c.set_text(m);
+                    }
+                    d.set_t_note(t("The magnet link was copied.").into());
+                }
+                None => d.set_t_note(t("The magnet link could not be made.").into()),
+            }
+        });
+    }
+}
+
+/// The Torrent tab's lists, as the torrent is now (rows changed in place,
+/// so the lists keep where they were scrolled to).
+fn fill_torrent_tab(d: &DetailsDialog, mgr: &Manager, v: &DownloadView) {
+    let Some(live) = mgr.torrent_live(v.id) else { return };
+    fn put<T: Clone + PartialEq + 'static>(model: ModelRc<T>, rows: Vec<T>) {
+        let Some(m) = model.as_any().downcast_ref::<VecModel<T>>() else { return };
+        if m.row_count() != rows.len() {
+            m.set_vec(rows);
+            return;
+        }
+        for (i, r) in rows.into_iter().enumerate() {
+            if m.row_data(i).as_ref() != Some(&r) {
+                m.set_row_data(i, r);
+            }
+        }
+    }
+    let base = v.save_path.clone();
+    let files: Vec<TFileRow> = live
+        .files
+        .iter()
+        .map(|f| TFileRow {
+            index: f.index as i32,
+            name: f.path.strip_prefix(base.parent().unwrap_or(&base)).unwrap_or(&f.path).display().to_string().into(),
+            size: fmt_size(f.size).into(),
+            done: if f.size > 0 { (f.done.min(f.size) as f64 / f.size as f64) as f32 } else { 0.0 },
+            selected: f.selected,
+        })
+        .collect();
+    put(d.get_t_files(), files);
+    let peers: Vec<TPeerRow> = live
+        .peers
+        .iter()
+        .map(|p| TPeerRow {
+            address: p.address.clone().into(),
+            down: format!("{}/s", fmt_size(p.down)).into(),
+            up: format!("{}/s", fmt_size(p.up)).into(),
+            // (not known of every person: not shown)
+            have: if p.have < 0.0 { SharedString::new() } else { format!("{:.0}%", p.have * 100.0).into() },
+            seeder: p.seeder,
+        })
+        .collect();
+    put(d.get_t_peers(), peers);
+    put(d.get_t_trackers(), live.trackers.iter().map(|t| SharedString::from(t.as_str())).collect());
+    put(d.get_t_pieces(), live.pieces.iter().map(|(a, b, h)| PieceRun { from: *a, to: *b, here: *h }).collect());
+    let ratio = if v.downloaded > 0 { live.uploaded as f64 / v.downloaded as f64 } else { 0.0 };
+    d.set_t_summary(tf("Sent to others: {} (ratio {})", &[&fmt_size(live.uploaded), &format!("{ratio:.2}")]).into());
 }
 
 /// The X of a download's window: the download stops (it can be resumed).
@@ -3597,8 +4285,23 @@ fn close_progress(map: &Rc<RefCell<HashMap<u64, ProgressWin>>>, id: u64) {
     });
 }
 
+#[cfg(test)]
+mod drawing_tests {
+    #[test]
+    fn ring_and_speed() {
+        assert_eq!(super::ring_path(0.0), "");
+        assert_eq!(super::ring_path(0.5), "M 50 7 A 43 43 0 0 1 50.00 93.00");
+        assert!(super::ring_path(0.75).starts_with("M 50 7 A 43 43 0 1 1 7.00"));
+        let (line, area) = super::speed_paths([0.0, 10.0].into_iter());
+        assert!(line.starts_with("M 196.6 29.0 L 200.0 3.0"), "{line}");
+        assert!(area.ends_with("L 200 30 L 196.6 30 Z"));
+        assert_eq!(super::speed_paths([5.0].into_iter()).0, "");
+    }
+}
+
 fn update_progress_windows(ui: &Ui) {
     let ids: Vec<u64> = ui.progress.borrow().keys().copied().collect();
+    SPEEDS.with(|m| m.borrow_mut().retain(|id, _| ids.contains(id)));
     for id in ids {
         match ui.ctx.mgr.get(id) {
             // finished: the "complete" window takes over
@@ -3608,6 +4311,9 @@ fn update_progress_windows(ui: &Ui) {
                 tray::update_download(id, &tip, progress);
                 if let Some((d, segs)) = ui.progress.borrow().get(&id) {
                     fill_details(d, segs, &v);
+                    if v.kind == DownloadKind::Torrent {
+                        fill_torrent_tab(d, &ui.ctx.mgr, &v);
+                    }
                     // also on the window's taskbar button (seen when it is minimized)
                     winfx::taskbar_progress(d.window(), taskbar_state(&v));
                 }
@@ -3646,7 +4352,60 @@ fn step_text(st: swiftget_engine::Step) -> String {
         Step::ToMp3 => "Making the MP3 file",
         Step::Move => "Moving the file to its folder",
         Step::Cut => "Cutting the part",
+        Step::Check => "Checking the file",
     })
+}
+
+/// The progress ring of the download window (a circle of radius 43 in a
+/// 100 x 100 box, from the top, clockwise).
+fn ring_path(p: f64) -> String {
+    let p = p.clamp(0.0, 1.0);
+    if p <= 0.001 {
+        return String::new();
+    }
+    if p >= 0.999 {
+        return "M 50 7 A 43 43 0 1 1 50 93 A 43 43 0 1 1 50 7".into();
+    }
+    let a = p * std::f64::consts::TAU;
+    let (x, y) = (50.0 + 43.0 * a.sin(), 50.0 - 43.0 * a.cos());
+    format!("M 50 7 A 43 43 0 {} 1 {x:.2} {y:.2}", u8::from(p > 0.5))
+}
+
+thread_local! {
+    // the speeds of the last minute of each open download window
+    static SPEEDS: RefCell<HashMap<u64, std::collections::VecDeque<f64>>> = RefCell::new(HashMap::new());
+}
+const SPEED_SAMPLES: usize = 60;
+
+/// The speed of the last minute as a line and the area under it (200 x 30).
+fn speed_drawing(id: u64, speed: f64) -> (String, String) {
+    SPEEDS.with(|m| {
+        let mut m = m.borrow_mut();
+        let q = m.entry(id).or_default();
+        q.push_back(speed.max(0.0));
+        while q.len() > SPEED_SAMPLES {
+            q.pop_front();
+        }
+        speed_paths(q.iter().copied())
+    })
+}
+
+fn speed_paths(values: impl Iterator<Item = f64>) -> (String, String) {
+    let v: Vec<f64> = values.collect();
+    if v.len() < 2 {
+        return (String::new(), String::new());
+    }
+    let top = v.iter().copied().fold(0.0, f64::max).max(1.0);
+    let step = 200.0 / (SPEED_SAMPLES - 1) as f64;
+    // the newest on the right
+    let x0 = 200.0 - step * (v.len() - 1) as f64;
+    let pts: Vec<(f64, f64)> = v.iter().enumerate().map(|(i, s)| (x0 + step * i as f64, 29.0 - 26.0 * s / top)).collect();
+    let mut line = format!("M {:.1} {:.1}", pts[0].0, pts[0].1);
+    for (x, y) in &pts[1..] {
+        line += &format!(" L {x:.1} {y:.1}");
+    }
+    let area = format!("{line} L 200 30 L {:.1} 30 Z", pts[0].0);
+    (line, area)
 }
 
 fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) {
@@ -3688,6 +4447,11 @@ fn fill_details(d: &DetailsDialog, model: &VecModel<SegView>, v: &DownloadView) 
     d.set_resumable_ok(v.resumable);
     d.set_error(err_text(v.error.as_deref().unwrap_or_default()).into());
     d.set_progress(pct);
+    // the 3D looks draw these
+    d.set_ring_path(ring_path(pct as f64).into());
+    let (line, area) = speed_drawing(v.id, v.speed);
+    d.set_speed_line(line.into());
+    d.set_speed_area(area.into());
     match v.step {
         Some((st, f)) => {
             d.set_step(format!("{}: {:.0}%", step_text(st), f * 100.0).into());

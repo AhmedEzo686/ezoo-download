@@ -27,8 +27,18 @@ cbc = "0.1"
 regex = "1"
 filetime = "0.2"
 sha2 = "0.10"
+# yt-dlp's folder build comes as a .zip (unzip.rs)
+flate2 = "1"
+crc32fast = "1"
 # Ed25519 check of signed updates (selfupdate.rs)
 ring = "0.17"
+# torrents (bt.rs), inside the program. Its own TLS is left out: the HTTP
+# trackers use the system's (SChannel on Windows) and SHA-1 comes from the
+# system too, so building needs nothing more than Rust
+librqbit = { version = "9.1", default-features = false }
+librqbit-core = { version = "9.1", default-features = false, features = ["sha1-crypto-hash"] }
+librqbit-sha1-wrapper = { version = "9.1", default-features = false, features = ["sha1-crypto-hash"] }
+reqwest-bt = { package = "reqwest", version = "0.13", default-features = false, features = ["native-tls"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [
@@ -38,7 +48,12 @@ windows-sys = { version = "0.59", features = [
     "Win32_Storage_FileSystem",
     "Win32_System_Power",
     "Win32_Security_Cryptography",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
+native-tls = "0.2"
+tokio-native-tls = "0.3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }

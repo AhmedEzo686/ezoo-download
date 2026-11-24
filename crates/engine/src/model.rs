@@ -44,7 +44,7 @@ pub enum DownloadKind {
     /// Separate video and audio streams (YouTube style, "DASH"):
     /// both are downloaded, then merged into one file with ffmpeg
     Dash,
-    /// a .torrent file or a magnet link, shared with other computers (aria2)
+    /// a .torrent file or a magnet link, shared with other computers
     Torrent,
 }
 
@@ -61,6 +61,8 @@ pub enum Step {
     Move,
     /// the part of a video cut out
     Cut,
+    /// the finished file compared with its checksum
+    Check,
 }
 
 impl Step {
@@ -71,6 +73,7 @@ impl Step {
             3 => Step::ToMp3,
             4 => Step::Move,
             5 => Step::Cut,
+            6 => Step::Check,
             _ => return None,
         })
     }
@@ -81,6 +84,7 @@ impl Step {
             Step::ToMp3 => 3,
             Step::Move => 4,
             Step::Cut => 5,
+            Step::Check => 6,
         }
     }
 }
@@ -179,6 +183,13 @@ pub struct RequestHeaders {
     /// encrypted on the disk (secret.rs)
     #[serde(default, with = "crate::secret::pair")]
     pub auth: Option<(String, String)>,
+    /// a form's download: what the form sends (base64), asked with POST;
+    /// encrypted on the disk like cookies
+    #[serde(default, with = "crate::secret::opt", skip_serializing_if = "Option::is_none")]
+    pub post: Option<String>,
+    /// the form's kind of data ("application/x-www-form-urlencoded"...)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub post_type: Option<String>,
 }
 
 /// What we learn about a URL before downloading it.
@@ -197,6 +208,8 @@ pub struct ProbeResult {
     /// the server refused the request as it was (HTTP 403 and the like) and
     /// took it with these headers instead: the download uses them too
     pub headers_used: Option<RequestHeaders>,
+    /// the checksum the server sent with the file ("sha256:..."), if any
+    pub digest: Option<String>,
 }
 
 impl ProbeResult {
@@ -225,6 +238,9 @@ pub struct NewDownload {
     pub source_key: Option<String>,
     /// put it in this download queue
     pub queue: Option<u64>,
+    /// added together with others (a playlist, a batch): one "finished"
+    /// window for all of them
+    pub group: Option<u64>,
     /// the user's note from the download dialog
     pub description: Option<String>,
     /// a video page (playlist item): find its links when it starts, in this
@@ -238,6 +254,14 @@ pub struct NewDownload {
     pub torrent_select: Option<String>,
     /// only this part of the video / sound
     pub clip: Option<Clip>,
+    /// the checksum the finished file must have (what the user pasted)
+    pub checksum: Option<String>,
+    /// a file of this name in the folder is replaced by this one once it
+    /// is complete (the user said so; until then the old file stays)
+    pub replace: bool,
+    /// subtitles to fetch next to the video once it is done:
+    /// "srt:ar,en-orig" (the format, then yt-dlp's names of the languages)
+    pub subs: Option<String>,
 }
 
 /// Persisted state of one download.
@@ -271,6 +295,9 @@ pub struct DownloadRecord {
     pub auto_name: bool,
     #[serde(default)]
     pub description: Option<String>,
+    /// added together with others (a playlist, a batch)
+    #[serde(default)]
+    pub group: Option<u64>,
     /// this download's own speed limit in KB/s
     #[serde(default)]
     pub speed_limit_kb: Option<u64>,
@@ -326,9 +353,30 @@ pub struct DownloadRecord {
     /// it runs; a magnet link only knows them then)
     #[serde(default)]
     pub torrent_files: Vec<String>,
+    /// torrents: trackers the user added
+    #[serde(default)]
+    pub torrent_trackers: Vec<String>,
+    /// torrents: the first and last pieces of each file first
+    #[serde(default)]
+    pub torrent_first_last: bool,
+    /// torrents: check every piece on the disk at the next start
+    #[serde(default)]
+    pub torrent_recheck: bool,
     /// only this part of the video / sound ("Download a part")
     #[serde(default)]
     pub clip: Option<Clip>,
+    /// the checksum the finished file must have ("sha256:..."): the user's,
+    /// else the one the server sent
+    #[serde(default)]
+    pub checksum: Option<String>,
+    /// the file of this name in the folder is replaced when this one is
+    /// complete (the user chose "Replace it"); the old one stays until then
+    #[serde(default)]
+    pub replace_file: bool,
+    /// subtitles chosen for this video ("srt:ar,en"): fetched next to it
+    /// when it is done (instead of Options > Downloads' languages)
+    #[serde(default)]
+    pub subs: Option<String>,
 }
 
 impl DownloadRecord {
@@ -400,7 +448,7 @@ impl DownloadRecord {
     /// Every temporary file/folder this download may leave behind.
     pub fn temp_paths(&self) -> Vec<PathBuf> {
         if self.kind == DownloadKind::Torrent {
-            // aria2's notes of what it has
+            // the notes an older version (aria2) kept of what it has
             return vec![self.save_dir.join(format!("{}.aria2", self.file_name))];
         }
         vec![self.part_path(), self.hls_temp_dir(), self.video_part_path(), self.audio_part_path()]
@@ -449,6 +497,9 @@ pub struct DownloadView {
     pub queue: Option<u64>,
     pub finished_at: Option<DateTime<Utc>>,
     pub description: Option<String>,
+    pub group: Option<u64>,
+    /// the checksum the finished file must have ("sha256:...")
+    pub checksum: Option<String>,
     pub speed_limit_kb: Option<u64>,
     pub on_complete: crate::config::AfterDone,
     pub added_at: DateTime<Utc>,

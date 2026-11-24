@@ -1,19 +1,14 @@
 //! Torrents (.torrent files and magnet links).
 //!
-//! The sharing itself is done by aria2 (`aria2c.exe`, a small, well known
-//! open-source download program that ships with Ezoo Download in the tools
-//! folder). It runs hidden, only while Ezoo Download runs, and only answers
-//! on this computer (127.0.0.1, with a random password per start). Ezoo
-//! Download adds, watches, stops and removes the torrents through its
-//! JSON-RPC interface and shows them like every other download.
+//! Reading .torrent files and magnet links, and what the windows show of a
+//! running torrent. The sharing itself is in [`crate::bt`] (librqbit, inside
+//! the program).
 //!
 //! By default nothing is shared (seeded) after a torrent is complete; the
 //! user can choose minutes of sharing in Options > Torrents.
 
-use anyhow::{anyhow, bail, Context};
-use serde_json::{json, Value};
+use anyhow::{anyhow, bail};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 // ------------------------------------------------------------------ bencode
 
@@ -137,10 +132,107 @@ pub struct TorrentInfo {
     pub name: String,
     pub files: Vec<TorrentFile>,
     pub total: u64,
+    /// several files (in a folder named `name`), or one
+    pub multi: bool,
+    /// the trackers it names
+    pub trackers: Vec<String>,
+    /// its id (the SHA-1 of its "info" part, as a magnet link names it)
+    pub info_hash: Option<String>,
+}
+
+/// More files than any real torrent has: refused (a file made to hurt).
+const MAX_FILES: usize = 200_000;
+
+/// A part of a path in a torrent as Windows can keep it safely: no "..",
+/// no name of a device (CON, NUL...), none of \ / : * ? " < > |, no dot or
+/// space at the end.
+pub fn safe_part(part: &str) -> String {
+    let p = part.trim();
+    if p.is_empty() || p == "." || p == ".." {
+        return "_".into();
+    }
+    let s = crate::filename::sanitize(p);
+    if s.is_empty() || s.chars().all(|c| c == '.') {
+        "_".into()
+    } else {
+        s
+    }
+}
+
+/// The files whose path in the torrent is not safe to write as it is: their
+/// number and the path to write them at instead (from the save folder, as
+/// aria2's "index-out" wants it). Empty: every path is fine.
+pub fn safe_paths(info: &TorrentInfo) -> Vec<(usize, String)> {
+    let name = safe_part(&info.name);
+    let name_changed = name != info.name;
+    let mut out = Vec::new();
+    for f in &info.files {
+        let parts: Vec<&str> = f.path.split('/').collect();
+        let safe: Vec<String> = parts.iter().map(|p| safe_part(p)).collect();
+        let changed = name_changed || parts.iter().zip(&safe).any(|(a, b)| *a != b.as_str());
+        if !changed {
+            continue;
+        }
+        let rel = if info.multi { format!("{name}/{}", safe.join("/")) } else { name.clone() };
+        out.push((f.index, rel));
+    }
+    out
+}
+
+/// A path written by the torrent program stays inside `dir`.
+pub fn stays_inside(path: &Path, dir: &Path) -> bool {
+    use std::path::Component;
+    // "dir/./name" as aria2 writes it; a path given from the folder
+    let clean = |p: &Path| p.components().filter(|c| !matches!(c, Component::CurDir)).collect::<PathBuf>();
+    let (path, dir) = (clean(path), clean(dir));
+    let rel = if path.is_absolute() {
+        match path.strip_prefix(&dir) {
+            Ok(r) => r.to_path_buf(),
+            Err(_) => return false,
+        }
+    } else {
+        path
+    };
+    rel.components().all(|c| matches!(c, Component::Normal(_)))
+}
+
+/// Where the "info" part of a .torrent file is (its bytes make the id).
+fn info_span(data: &[u8]) -> Option<(usize, usize)> {
+    let mut r = Reader { data, pos: 0, depth: 0 };
+    if r.peek().ok()? != b'd' {
+        return None;
+    }
+    r.pos += 1;
+    while r.peek().ok()? != b'e' {
+        let Ben::Bytes(k) = r.value().ok()? else { return None };
+        let start = r.pos;
+        r.value().ok()?;
+        if k == b"info" {
+            return Some((start, r.pos));
+        }
+    }
+    None
+}
+
+/// The magnet link of a .torrent file (its id, name and trackers).
+pub fn magnet_of(data: &[u8]) -> Option<String> {
+    let info = parse_torrent(data).ok()?;
+    let hash = info.info_hash?;
+    let enc = |s: &str| percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string();
+    let mut m = format!("magnet:?xt=urn:btih:{hash}&dn={}", enc(&info.name));
+    for t in info.trackers.iter().take(20) {
+        m.push_str("&tr=");
+        m.push_str(&enc(t));
+    }
+    Some(m)
 }
 
 /// Read a .torrent file.
 pub fn parse_torrent(data: &[u8]) -> anyhow::Result<TorrentInfo> {
+    // a description, never more (the biggest real ones are a few MB)
+    if data.len() > 32 << 20 {
+        bail!("not a torrent file");
+    }
     let root = Reader { data, pos: 0, depth: 0 }.value()?;
     let info = root.get("info").ok_or_else(|| anyhow!("not a torrent file"))?;
     let name = info
@@ -149,6 +241,10 @@ pub fn parse_torrent(data: &[u8]) -> anyhow::Result<TorrentInfo> {
         .and_then(Ben::text)
         .unwrap_or_else(|| "torrent".into());
     let mut files = Vec::new();
+    let multi = info.get("files").is_some();
+    if info.get("files").is_some_and(|l| l.list().len() > MAX_FILES) {
+        bail!("this torrent has too many files");
+    }
     if let Some(list) = info.get("files") {
         for (n, f) in list.list().iter().enumerate() {
             let parts = f.get("path.utf-8").or_else(|| f.get("path")).map(Ben::list).unwrap_or(&[]);
@@ -171,8 +267,21 @@ pub fn parse_torrent(data: &[u8]) -> anyhow::Result<TorrentInfo> {
     if files.is_empty() {
         bail!("this torrent has no files");
     }
-    let total = files.iter().map(|f| f.size).sum();
-    Ok(TorrentInfo { name, files, total })
+    let total = files.iter().fold(0u64, |a, f| a.saturating_add(f.size));
+    let mut trackers: Vec<String> = Vec::new();
+    for t in root.get("announce").and_then(Ben::text).into_iter().chain(
+        root.get("announce-list").map(Ben::list).unwrap_or(&[]).iter().flat_map(|tier| tier.list().iter().filter_map(Ben::text)),
+    ) {
+        let t = t.trim().to_string();
+        if !t.is_empty() && t.len() < 1024 && !trackers.contains(&t) {
+            trackers.push(t);
+        }
+    }
+    let info_hash = info_span(data).map(|(a, b)| {
+        let d = ring::digest::digest(&ring::digest::SHA1_FOR_LEGACY_USE_ONLY, &data[a..b]);
+        d.as_ref().iter().map(|x| format!("{x:02x}")).collect()
+    });
+    Ok(TorrentInfo { name, files, total, multi, trackers, info_hash })
 }
 
 /// A magnet link of a torrent ("magnet:?xt=urn:btih:...").
@@ -196,36 +305,9 @@ pub fn magnet_name(uri: &str) -> Option<String> {
     }).filter(|n| !n.is_empty())
 }
 
-fn base64(data: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-    for c in data.chunks(3) {
-        let n = (u32::from(c[0]) << 16) | (u32::from(*c.get(1).unwrap_or(&0)) << 8) | u32::from(*c.get(2).unwrap_or(&0));
-        out.push(T[(n >> 18) as usize & 63] as char);
-        out.push(T[(n >> 12) as usize & 63] as char);
-        out.push(if c.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
-        out.push(if c.len() > 2 { T[n as usize & 63] as char } else { '=' });
-    }
-    out
-}
+// --------------------------------------------------------------- running
 
-// --------------------------------------------------------------------- aria2
-
-struct Daemon {
-    port: u16,
-    secret: String,
-    child: std::process::Child,
-}
-
-/// The hidden aria2 that shares the torrents (started when first needed).
-pub struct Aria2 {
-    client: reqwest::Client,
-    daemon: tokio::sync::Mutex<Option<Daemon>>,
-    /// folder for aria2's own files (the DHT list)
-    data_dir: PathBuf,
-}
-
-/// The state of one torrent, as aria2 reports it.
+/// The state of one torrent.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TorrentStatus {
     /// "active", "waiting", "paused", "error", "complete", "removed"
@@ -243,15 +325,63 @@ pub struct TorrentStatus {
     /// a magnet link got its file list: the torrent itself goes on here
     pub followed_by: Option<String>,
     pub error: Option<String>,
+    /// how many pieces, and which are here (hex, a bit a piece)
+    pub pieces: u32,
+    pub bitfield: String,
+    /// the trackers it asks
+    pub trackers: Vec<String>,
+    /// bytes sent to others
+    pub upload_total: u64,
 }
 
-fn num(v: &Value) -> u64 {
-    v.as_str().and_then(|s| s.parse().ok()).or_else(|| v.as_u64()).unwrap_or(0)
+/// One person a torrent is connected to.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Peer {
+    pub address: String,
+    pub down: u64,
+    pub up: u64,
+    /// how much of the torrent they have (0..1; below 0: not known)
+    pub have: f32,
+    pub seeder: bool,
+}
+
+/// How much of the pieces a bitfield (hex) says are there (0..1).
+pub fn share_of(bitfield: &str) -> f32 {
+    if bitfield.is_empty() {
+        return 0.0;
+    }
+    let ones: u32 = bitfield.chars().filter_map(|c| c.to_digit(16)).map(|d| d.count_ones()).sum();
+    ones as f32 / (bitfield.len() as f32 * 4.0)
+}
+
+/// Which pieces are here, as up to `n` runs: (from, to, here) in 0..1.
+pub fn piece_runs(bitfield: &str, pieces: u32, n: usize) -> Vec<(f32, f32, bool)> {
+    if pieces == 0 || bitfield.is_empty() || n == 0 {
+        return Vec::new();
+    }
+    let has = |i: u32| -> bool {
+        let c = bitfield.as_bytes().get((i / 4) as usize).and_then(|c| (*c as char).to_digit(16)).unwrap_or(0);
+        c & (8 >> (i % 4)) != 0
+    };
+    let cells = (pieces as usize).min(n);
+    let mut out: Vec<(f32, f32, bool)> = Vec::new();
+    for cell in 0..cells {
+        let a = (cell as u64 * pieces as u64 / cells as u64) as u32;
+        let b = (((cell as u64 + 1) * pieces as u64 / cells as u64) as u32).max(a + 1);
+        // a cell is "here" when all its pieces are
+        let here = (a..b).all(has);
+        let (from, to) = (cell as f32 / cells as f32, (cell + 1) as f32 / cells as f32);
+        match out.last_mut() {
+            Some(last) if last.2 == here => last.1 = to,
+            _ => out.push((from, to, here)),
+        }
+    }
+    out
 }
 
 /// Public trackers added to every torrent (the torrent's own come first).
 /// Long-running, open ones that answer most torrents.
-const PUBLIC_TRACKERS: &[&str] = &[
+pub const PUBLIC_TRACKERS: &[&str] = &[
     "udp://tracker.opentrackr.org:1337/announce",
     "udp://open.stealth.si:80/announce",
     "udp://tracker.torrent.eu.org:451/announce",
@@ -271,274 +401,36 @@ pub struct AddOptions {
     pub dir: PathBuf,
     /// files to get, 1-based ("1,3-5"); `None` = all
     pub select: Option<String>,
-    /// minutes of sharing after it is complete (0 = none)
-    pub seed_minutes: u32,
-    /// KB/s, 0 = no limit
+    /// the download's own limit, KB/s (0 = only the limit of all downloads)
     pub download_limit_kb: u64,
-    pub upload_limit_kb: u64,
-    /// check the pieces already on the disk first
+    /// check every piece on the disk again (not what was noted of them)
     pub check: bool,
+    /// the first and last pieces of the biggest file first (a video plays sooner)
+    pub first_last: bool,
+    /// trackers the user added (besides the torrent's own and the public ones)
+    pub trackers: Vec<String>,
 }
 
-impl Aria2 {
-    pub fn new(data_dir: &Path) -> Aria2 {
-        // straight to 127.0.0.1, never through a proxy
-        let client = reqwest::Client::builder().no_proxy().http1_title_case_headers().timeout(Duration::from_secs(20)).build().unwrap_or_default();
-        Aria2 { client, daemon: tokio::sync::Mutex::new(None), data_dir: data_dir.to_path_buf() }
-    }
-
-    async fn ensure(&self) -> anyhow::Result<(u16, String)> {
-        let mut guard = self.daemon.lock().await;
-        if let Some(d) = guard.as_mut() {
-            if matches!(d.child.try_wait(), Ok(None)) {
-                return Ok((d.port, d.secret.clone()));
-            }
-        }
-        let tool = crate::mux::find_tool("aria2c").ok_or_else(|| {
-            anyhow!("aria2c.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again")
-        })?;
-        let port = std::net::TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
-        let secret = random_secret();
-        let _ = std::fs::create_dir_all(&self.data_dir);
-        let dht = self.data_dir.join("dht.dat");
-        // what aria2 says went wrong (a peer it can't reach, a full disk...),
-        // kept small: begun again when it gets big
-        let log = self.data_dir.join("aria2.log");
-        if std::fs::metadata(&log).map(|m| m.len() > 2 << 20).unwrap_or(false) {
-            let _ = std::fs::rename(&log, self.data_dir.join("aria2.old.log"));
-        }
-        let mut cmd = std::process::Command::new(&tool);
-        cmd.args([
-            "--enable-rpc=true",
-            "--rpc-listen-all=false",
-            "--rpc-allow-origin-all=false",
-            "--rpc-max-request-size=32M",
-            "--continue=true",
-            "--file-allocation=none",
-            "--seed-time=0",
-            "--bt-save-metadata=false",
-            "--follow-torrent=mem",
-            "--follow-metalink=false",
-            "--auto-file-renaming=false",
-            "--allow-overwrite=false",
-            "--max-concurrent-downloads=64",
-            "--enable-dht=true",
-            "--bt-enable-lpd=true",
-            "--enable-peer-exchange=true",
-            "--bt-max-peers=150",
-            // below this speed aria2 keeps looking for more people (its own
-            // 50K made a torrent stay slow with the first few it found)
-            "--bt-request-peer-speed-limit=20M",
-            "--console-log-level=error",
-            "--summary-interval=0",
-            "--quiet=true",
-            "--check-certificate=true",
-            "--disk-cache=32M",
-            // many magnet links bring no working tracker (or none at all):
-            // well-known public trackers find the people who share it
-            "--bt-tracker-connect-timeout=10",
-            "--bt-tracker-timeout=20",
-            "--log-level=warn",
-        ])
-        .arg(format!("--bt-tracker={}", PUBLIC_TRACKERS.join(",")))
-        .arg(format!("--log={}", log.display()))
-        .arg(format!("--rpc-listen-port={port}"))
-        .arg(format!("--rpc-secret={secret}"))
-        .arg(format!("--stop-with-process={}", std::process::id()))
-        .arg(format!("--dht-file-path={}", dht.display()))
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-        crate::mux::hide_window(&mut cmd);
-        let child = cmd.spawn().context("could not start aria2c")?;
-        *guard = Some(Daemon { port, secret: secret.clone(), child });
-        drop(guard);
-        // ready when it answers
-        for _ in 0..50 {
-            if self.raw_call(port, &secret, "aria2.getVersion", vec![]).await.is_ok() {
-                return Ok((port, secret));
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-        bail!("aria2c did not start")
-    }
-
-    async fn raw_call(&self, port: u16, secret: &str, method: &str, mut params: Vec<Value>) -> anyhow::Result<Value> {
-        params.insert(0, json!(format!("token:{secret}")));
-        let body = json!({ "jsonrpc": "2.0", "id": "ezoo", "method": method, "params": params });
-        let bytes = self
-            .client
-            .post(format!("http://127.0.0.1:{port}/jsonrpc"))
-            .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .body(serde_json::to_vec(&body)?)
-            .send()
-            .await?
-            .bytes()
-            .await?;
-        let r: Value = serde_json::from_slice(&bytes).context("aria2 answered something unexpected")?;
-        if let Some(e) = r.get("error") {
-            bail!("{}", e["message"].as_str().unwrap_or("aria2 error"));
-        }
-        Ok(r["result"].clone())
-    }
-
-    async fn call(&self, method: &str, params: Vec<Value>) -> anyhow::Result<Value> {
-        let (port, secret) = self.ensure().await?;
-        self.raw_call(port, &secret, method, params).await
-    }
-
-    /// Start a torrent; gives aria2's id for it.
-    pub async fn add(&self, source: &str, o: &AddOptions) -> anyhow::Result<String> {
-        let mut opts = json!({
-            "dir": o.dir.to_string_lossy(),
-            "seed-time": o.seed_minutes.to_string(),
-            "max-download-limit": format!("{}K", o.download_limit_kb),
-            "max-upload-limit": format!("{}K", o.upload_limit_kb),
-            "bt-remove-unselected-file": "true",
-            "pause-metadata": "false",
-        });
-        if o.check {
-            opts["check-integrity"] = json!("true");
-        }
-        if let Some(sel) = o.select.as_deref().filter(|s| !s.is_empty()) {
-            opts["select-file"] = json!(sel);
-        }
-        let gid = if is_magnet(source) {
-            self.call("aria2.addUri", vec![json!([source.trim()]), opts]).await?
-        } else {
-            let data = std::fs::read(source).context("the .torrent file can't be read")?;
-            parse_torrent(&data)?;
-            self.call("aria2.addTorrent", vec![json!(base64(&data)), json!([]), opts]).await?
-        };
-        gid.as_str().map(String::from).ok_or_else(|| anyhow!("aria2 did not take the torrent"))
-    }
-
-    pub async fn status(&self, gid: &str) -> anyhow::Result<TorrentStatus> {
-        let keys = json!([
-            "status", "totalLength", "completedLength", "downloadSpeed", "uploadSpeed", "connections",
-            "numSeeders", "seeder", "bittorrent", "followedBy", "errorMessage", "errorCode"
-        ]);
-        let r = self.call("aria2.tellStatus", vec![json!(gid), keys]).await?;
-        let name = r["bittorrent"]["info"]["name"].as_str().map(String::from).filter(|n| !n.is_empty());
-        Ok(TorrentStatus {
-            status: r["status"].as_str().unwrap_or("").to_string(),
-            total: num(&r["totalLength"]),
-            done: num(&r["completedLength"]),
-            speed: num(&r["downloadSpeed"]),
-            upload_speed: num(&r["uploadSpeed"]),
-            connections: num(&r["connections"]) as u32,
-            seeders: num(&r["numSeeders"]) as u32,
-            seeding: r["seeder"].as_str() == Some("true"),
-            name,
-            followed_by: r["followedBy"].as_array().and_then(|a| a.first()).and_then(|g| g.as_str()).map(String::from),
-            error: r["errorMessage"].as_str().filter(|m| !m.is_empty()).map(String::from),
-        })
-    }
-
-    /// The file list of a magnet link before it is downloaded: only the
-    /// torrent's own description is fetched from the people who share it,
-    /// into `dir` (a .torrent file, given back). Gives up after `wait`.
-    pub async fn metadata(&self, magnet: &str, dir: &Path, wait: Duration) -> anyhow::Result<PathBuf> {
-        if !is_magnet(magnet) {
-            bail!("not a magnet link");
-        }
-        std::fs::create_dir_all(dir)?;
-        let opts = json!({
-            "dir": dir.to_string_lossy(),
-            "bt-metadata-only": "true",
-            "bt-save-metadata": "true",
-            "follow-torrent": "false",
-            "seed-time": "0",
-        });
-        let gid = self.call("aria2.addUri", vec![json!([magnet.trim()]), opts]).await?;
-        let gid = gid.as_str().map(String::from).ok_or_else(|| anyhow!("aria2 did not take the link"))?;
-        let started = std::time::Instant::now();
-        let result = loop {
-            if started.elapsed() > wait {
-                break Err(anyhow!("nobody sent the file list in time"));
-            }
-            tokio::time::sleep(Duration::from_millis(700)).await;
-            let st = match self.status(&gid).await {
-                Ok(s) => s,
-                Err(e) => break Err(e),
-            };
-            match st.status.as_str() {
-                "complete" => {
-                    let found = std::fs::read_dir(dir)?
-                        .filter_map(|e| e.ok())
-                        .map(|e| e.path())
-                        .find(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("torrent")));
-                    break found.ok_or_else(|| anyhow!("the file list was not saved"));
-                }
-                "error" | "removed" => break Err(anyhow!("{}", st.error.unwrap_or_else(|| "the file list could not be fetched".into()))),
-                _ => {}
-            }
-        };
-        self.remove(&gid).await;
-        result
-    }
-
-    /// Stop it now (what is here stays, it goes on from there next time).
-    pub async fn remove(&self, gid: &str) {
-        if self.daemon.lock().await.is_none() {
-            return;
-        }
-        let _ = self.call("aria2.forceRemove", vec![json!(gid)]).await;
-        // forget it, so the same torrent can be added again
-        for _ in 0..20 {
-            if self.call("aria2.removeDownloadResult", vec![json!(gid)]).await.is_ok() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-    }
-
-    /// The files of a torrent once aria2 knows them, with how much of each
-    /// is here.
-    pub async fn files(&self, gid: &str) -> anyhow::Result<Vec<FileState>> {
-        let r = self.call("aria2.getFiles", vec![json!(gid)]).await?;
-        Ok(r.as_array()
-            .map(|a| {
-                a.iter()
-                    .map(|f| FileState {
-                        path: PathBuf::from(f["path"].as_str().unwrap_or("")),
-                        size: num(&f["length"]),
-                        done: num(&f["completedLength"]),
-                        selected: f["selected"].as_str() == Some("true"),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default())
-    }
+/// An address a tracker can have (udp, http, https; no spaces or commas).
+pub fn is_tracker(t: &str) -> bool {
+    let l = t.trim().to_ascii_lowercase();
+    (l.starts_with("udp://") || l.starts_with("http://") || l.starts_with("https://"))
+        && t.len() < 1024
+        && !t.contains([',', ' ', '\n', '\r'])
+        && url::Url::parse(t.trim()).is_ok()
 }
 
 /// One file of a running torrent.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FileState {
+    /// its number in the torrent (1-based)
+    pub index: usize,
     pub path: PathBuf,
     pub size: u64,
     pub done: u64,
     /// one of the files the user wants (the others only get the bits of
     /// pieces they share with those)
     pub selected: bool,
-}
-
-impl Drop for Aria2 {
-    fn drop(&mut self) {
-        if let Some(d) = self.daemon.get_mut().as_mut() {
-            let _ = d.child.kill();
-        }
-    }
-}
-
-fn random_secret() -> String {
-    use ring::rand::SecureRandom;
-    let mut b = [0u8; 16];
-    if ring::rand::SystemRandom::new().fill(&mut b).is_err() {
-        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-        b = (t ^ u128::from(std::process::id())).to_le_bytes();
-    }
-    b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
 #[cfg(test)]
@@ -567,6 +459,53 @@ mod tests {
             TorrentFile { path: "readme.txt".into(), size: 5, index: 2 },
         ]);
         assert_eq!(i.total, 105);
+        assert!(i.multi);
+        assert_eq!(i.trackers, vec!["http://t/a".to_string()]);
+        assert_eq!(i.info_hash.as_deref().map(str::len), Some(40));
+        assert!(safe_paths(&i).is_empty(), "nothing to change");
+    }
+
+    #[test]
+    fn unsafe_names_are_written_safely() {
+        let t = format!(
+            "d4:infod5:filesld6:lengthi1e4:pathl{}{}eed6:lengthi1e4:pathl{}eed6:lengthi1e4:pathl{}eee4:name{}ee",
+            ben_str(".."),
+            ben_str("evil.exe"),
+            ben_str("CON"),
+            ben_str("ok.txt"),
+            ben_str("Show")
+        );
+        let i = parse_torrent(t.as_bytes()).unwrap();
+        let out = safe_paths(&i);
+        assert_eq!(out.len(), 2, "{out:?}");
+        assert_eq!(out[0], (1, "Show/_/evil.exe".to_string()));
+        assert!(!out[1].1.ends_with("/CON"), "{out:?}");
+        assert!(out.iter().all(|(_, p)| !p.split('/').any(|x| x == "..")));
+        // a torrent whose own name leads out
+        let t = format!("d4:infod6:lengthi3e4:name{}ee", ben_str("../../x.exe"));
+        let i = parse_torrent(t.as_bytes()).unwrap();
+        let out = safe_paths(&i);
+        assert_eq!(out.len(), 1);
+        assert!(!out[0].1.contains(['/', '\\']) && out[0].1 != "..", "a name, never a way out: {out:?}");
+        assert!(stays_inside(Path::new("/d/a/b.txt"), Path::new("/d")));
+        assert!(!stays_inside(Path::new("/d/../e.txt"), Path::new("/d")));
+        assert!(!stays_inside(Path::new("/e/x"), Path::new("/d")));
+        assert!(stays_inside(Path::new("/d/./a/b"), Path::new("/d/")));
+    }
+
+    #[test]
+    fn magnets_trackers_and_pieces() {
+        let t = format!("d8:announce{}4:infod6:lengthi3e4:name{}ee", ben_str("udp://t.test:1/a"), ben_str("a b"));
+        let m = magnet_of(t.as_bytes()).unwrap();
+        assert!(m.starts_with("magnet:?xt=urn:btih:") && m.contains("&dn=a%20b") && m.contains("&tr=udp%3A%2F%2Ft%2Etest%3A1%2Fa"), "{m}");
+        assert!(is_magnet(&m));
+        assert!(is_tracker("udp://tracker.test:80/announce"));
+        assert!(!is_tracker("udp://a,b"));
+        assert!(!is_tracker("file:///etc/passwd"));
+        assert!((share_of("f0") - 0.5).abs() < 1e-6);
+        // 8 pieces, the first 4 here
+        let runs = piece_runs("f0", 8, 100);
+        assert_eq!(runs, vec![(0.0, 0.5, true), (0.5, 1.0, false)]);
     }
 
     #[test]
@@ -591,12 +530,4 @@ mod tests {
         assert_eq!(magnet_name("magnet:?xt=urn:btih:00"), None);
     }
 
-    #[test]
-    fn base64_like_everyone() {
-        assert_eq!(base64(b""), "");
-        assert_eq!(base64(b"f"), "Zg==");
-        assert_eq!(base64(b"fo"), "Zm8=");
-        assert_eq!(base64(b"foo"), "Zm9v");
-        assert_eq!(base64(b"foobar"), "Zm9vYmFy");
-    }
 }

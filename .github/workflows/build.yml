@@ -41,7 +41,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q mingw-w64 nasm pkg-config make
+          sudo apt-get install -y -q -o Acquire::Retries=5 mingw-w64 nasm pkg-config make
           git clone -q --depth 1 --branch "$FFMPEG_TAG" https://github.com/FFmpeg/FFmpeg ffmpeg-src
           test "$(git -C ffmpeg-src rev-parse HEAD)" = "$FFMPEG_COMMIT" || { echo "::error::ffmpeg source is not the expected commit"; exit 1; }
           curl -sSfL -o lame.tar.gz "$LAME_URL"
@@ -53,7 +53,10 @@ jobs:
           echo "$FFMPEG_TAG ($FFMPEG_COMMIT), LAME 3.100, OpenH264 $OPENH264_TAG" > ffmpeg-out/ffmpeg-version.txt
       - name: Test files for our ffmpeg (made with the system's full ffmpeg)
         run: |
-          sudo apt-get install -y -q ffmpeg >/dev/null
+          # a fresh package list (with the cached build no update ran), and
+          # only what ffmpeg needs (not the graphics drivers it suggests)
+          sudo apt-get update -q >/dev/null
+          sudo apt-get install -y -q -o Acquire::Retries=5 --no-install-recommends ffmpeg >/dev/null
           mkdir -p ffmpeg-test && cd ffmpeg-test
           F="ffmpeg -hide_banner -loglevel error -y"
           V="-f lavfi -i testsrc2=size=320x180:rate=25:duration=4"; A="-f lavfi -i sine=frequency=500:duration=4:sample_rate=48000"
@@ -168,6 +171,7 @@ jobs:
           $p = "build-cache/stage"
           New-Item -ItemType Directory -Force "$p/tools", "dist" | Out-Null
           Copy-Item target/release/EzooDownload.exe $p
+          Copy-Item target/release/ezoo-host.exe $p
           Copy-Item THIRD-PARTY-NOTICES.txt $p
           Copy-Item LICENSE "$p/LICENSE.txt"
           Copy-Item -Recurse extension "$p/extension"
@@ -216,14 +220,6 @@ jobs:
           $yWant = ($ySumText -split "`n" | Where-Object { $_ -match "^([0-9a-fA-F]{64})\s+\*?yt-dlp\.exe\s*$" } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1)
           $yGot = (Get-FileHash "$p/tools/yt-dlp.exe" -Algorithm SHA256).Hash
           if (-not $yWant -or $yGot -ne $yWant.ToUpper()) { throw "yt-dlp.exe does not match its published SHA-256" }
-          # aria2 (torrents): one fixed build, checked against its known SHA-256
-          Invoke-WebRequest "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" -OutFile aria2.zip
-          if ((Get-FileHash aria2.zip -Algorithm SHA256).Hash -ne "67D015301EEF0B612191212D564C5BB0A14B5B9C4796B76454276A4D28D9B288") { throw "aria2.zip does not match its SHA-256" }
-          Expand-Archive aria2.zip -DestinationPath aria2-tmp
-          $a2 = Get-ChildItem aria2-tmp -Recurse -Filter aria2c.exe | Select-Object -First 1
-          if ((Get-FileHash $a2.FullName -Algorithm SHA256).Hash -ne "BE2099C214F63A3CB4954B09A0BECD6E2E34660B886D4C898D260FEBFE9D70C2") { throw "aria2c.exe does not match its SHA-256" }
-          Copy-Item $a2.FullName "$p/tools/"
-          Copy-Item (Get-ChildItem aria2-tmp -Recurse -Filter COPYING | Select-Object -First 1).FullName "$p/tools/aria2-COPYING.txt"
           choco install innosetup -y --no-progress
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DMyAppVersion=$version" installer\ezoo.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
@@ -257,13 +253,11 @@ jobs:
           Copy-Item ffmpeg-out/ffmpeg.exe dist/ffmpeg.exe
           $files = @("dist/EzooDownload-Setup.exe", "dist/version.json", "dist/ffmpeg.exe")
           if (Test-Path dist/ezoo-download-firefox.xpi) { $files += "dist/ezoo-download-firefox.xpi", "dist/firefox-updates.json" }
+          # everyone can check their copy is the one published (an antivirus
+          # warning about an unknown new file can be checked against this)
+          $sums = foreach ($f in $files) { "{0}  {1}" -f (Get-FileHash $f -Algorithm SHA256).Hash.ToLower(), (Split-Path $f -Leaf) }
+          [IO.File]::WriteAllText("$PWD/dist/SHA256SUMS.txt", (($sums -join "`n") + "`n"))
+          $files += "dist/SHA256SUMS.txt"
           gh release create "v$env:VERSION" @files --repo "${{ github.repository }}" --target "${{ github.sha }}" --title "Ezoo Download $env:VERSION" --notes "Ezoo Download $env:VERSION" --latest
           if ($LASTEXITCODE -ne 0) { throw "could not create the release" }
-          # only the newest release stays: older ones (and their tags) go
-          $tags = gh release list --repo "${{ github.repository }}" --limit 100 --json tagName -q '.[].tagName'
-          foreach ($t in $tags) {
-            if ($t -and $t -ne "v$env:VERSION") {
-              Write-Host "Removing old release $t"
-              gh release delete $t --repo "${{ github.repository }}" --yes --cleanup-tag
-            }
-          }
+          # older releases stay as they are (a way back, and their links keep working)

@@ -238,6 +238,7 @@ pub(crate) fn open_properties(ui: &Ui, id: u64) {
     d.set_url(v.url.clone().into());
     d.set_referer(v.referer().to_string().into());
     d.set_description(v.description.clone().unwrap_or_default().into());
+    d.set_checksum(v.checksum.clone().unwrap_or_default().into());
     d.set_use_login(v.headers.auth.is_some());
     d.set_user(v.headers.auth.as_ref().map(|a| a.0.clone()).unwrap_or_default().into());
     d.set_password(v.headers.auth.as_ref().map(|a| a.1.clone()).unwrap_or_default().into());
@@ -250,11 +251,17 @@ fn save_properties(ui: &Ui) {
     let Some(v) = ui.ctx.mgr.get(id) else { return };
     let auth = (d.get_use_login() && !d.get_user().trim().is_empty())
         .then(|| (d.get_user().trim().to_string(), d.get_password().to_string()));
+    let checksum = d.get_checksum().trim().to_string();
+    if !checksum.is_empty() && swiftget_engine::checksum::Expected::parse(&checksum).is_none() {
+        d.set_message(t("This is not a checksum: paste its MD5, SHA-1, SHA-256, SHA-384 or SHA-512 value").into());
+        return;
+    }
     let edit = DetailsEdit {
         url: (v.status != Status::Completed).then(|| d.get_url().trim().to_string()),
         referer: Some(d.get_referer().trim().to_string()),
         description: Some(d.get_description().trim().to_string()),
         auth,
+        checksum: Some(checksum),
     };
     if let Err(e) = ui.ctx.mgr.update_details(id, edit) {
         d.set_message(format!("{e:#}").into());
@@ -331,14 +338,25 @@ pub(crate) fn start_countdown(ui: &Ui, action: AfterDone) {
 }
 
 pub(crate) fn tick_countdown(ui: &Ui) {
+    // a file still being put together (joined, checked, moved): the time
+    // waits for it, then starts again from the beginning
+    let waiting = if ui.power.borrow().is_some() { ui.ctx.mgr.finishing() } else { None };
     let left = {
         let mut p = ui.power.borrow_mut();
         let Some((_, left)) = p.as_mut() else { return };
-        *left -= 1;
+        if waiting.is_some() {
+            *left = COUNTDOWN;
+        } else {
+            *left -= 1;
+        }
         *left
     };
     if let Some(d) = ui.countdown.upgrade() {
         d.set_seconds_left(left.max(0));
+        d.set_waiting_text(match &waiting {
+            Some(name) => tf("Waiting for \"{}\" to be finished first (its parts are being put together).", &[name]).into(),
+            None => SharedString::new(),
+        });
     }
     if left <= 0 {
         power_now(ui);
@@ -346,6 +364,13 @@ pub(crate) fn tick_countdown(ui: &Ui) {
 }
 
 fn power_now(ui: &Ui) {
+    // ("Now" while a file is still being put together: it waits for it)
+    if ui.ctx.mgr.finishing().is_some() {
+        if let Some(p) = ui.power.borrow_mut().as_mut() {
+            p.1 = 1;
+        }
+        return;
+    }
     let Some((action, _)) = ui.power.borrow_mut().take() else { return };
     if let Some(d) = ui.countdown.upgrade() {
         let _ = d.hide();
@@ -366,11 +391,16 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-const WHATS_NEW: [&str; 4] = [
-    "The Firefox add-on stays up to date: when the add-on in Firefox is older than the program, Ezoo Download says so and opens the new one (click \"Add\" in Firefox).",
-    "Download File Info shows the whole size of a video whose picture and sound come apart (the same size as in the add-in), with the size of each.",
-    "The add-in downloads whole videos; \"Download a part of a video\" is in the program for now (Tasks > Download a part of a video).",
-    "Messages of the add-in in Arabic read right to left, and the setup never puts an older Firefox add-on back.",
+pub(crate) const WHATS_NEW: [&str; 9] = [
+    "Windows that lost their picture (after another window covered them, after coming back from next to the clock, after the screen woke up) are drawn again whole: no more half-empty or see-through windows.",
+    "Download File Info has a box for the file name, and a file of the same name in the folder is asked about inside the window (no more window that stops answering after Cancel). \"Replace it\" keeps the old file until the new one is complete.",
+    "The add-in has two new tabs: \"With subtitles\" (the video with its subtitles in the language you choose) and \"Subtitles\" (all of a video's subtitles, or the ones you choose), as SRT or VTT.",
+    "Subtitles are asked for one language at a time with a short pause, and a language the site refuses for a moment is asked for again by itself.",
+    "Videos made for children download now, and the video qualities show up faster.",
+    "Playlists: a Size column, a Video column you can make wider or narrower, \"Oldest first\" numbering, and videos downloaded before are not added again.",
+    "A queue shows only what is still to come, and a file dragged from the list to a folder on the same drive is moved, as in Windows.",
+    "Fewer antivirus warnings: the program and its setup no longer start Windows tools out of sight, and every release lists the SHA-256 of its files.",
+    "The Site Grabber finds more of a page's files (pictures in several sizes, addresses in buttons and in page details, links written without quotes), asks about addresses with no file name, and says when a page makes its links in the browser.",
 ];
 
 thread_local! {
@@ -619,11 +649,13 @@ pub(crate) fn import_list(ui: &Ui, kind: &str) {
         return message(&t("No download addresses were found in this file."));
     }
     let mut added = 0;
+    let group = Some(ui.ctx.mgr.new_group());
     for it in items {
         if ui.ctx.mgr.find_url(&it.url).is_some() {
             continue;
         }
         ui.ctx.mgr.add(NewDownload {
+            group,
             url: it.url,
             file_name: it.file_name,
             headers: RequestHeaders {

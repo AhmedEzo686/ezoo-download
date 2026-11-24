@@ -54,6 +54,12 @@ pub struct GrabProgress {
     pub pages_queued: AtomicUsize,
     pub files: AtomicUsize,
     pub current: Mutex<String>,
+    /// pages the site didn't give (refused, not found, no answer)
+    pub pages_failed: AtomicUsize,
+    /// the start page has almost no links of its own but scripts: its
+    /// links are made in the browser (the add-in's "Download all links"
+    /// sees them, a program asking the site doesn't)
+    pub made_by_scripts: std::sync::atomic::AtomicBool,
 }
 
 const PAGE_EXTS: [&str; 13] =
@@ -73,8 +79,24 @@ fn anchor_re() -> &'static Regex {
 fn attr_re() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| {
-        Regex::new(r#"(?i)\b(?:src|href|data-src|data-href|poster)\s*=\s*(?:"([^"]*)"|'([^']*)')"#).unwrap()
+        // every attribute that may hold an address, quoted or not
+        Regex::new(
+            r#"(?i)[\s"'](src|href|poster|action|content|data|value|data-[a-z0-9_-]*(?:src|href|url|file|link|download|video|audio|original))\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`]+))"#,
+        )
+        .unwrap()
     })
+}
+
+/// srcset="a.jpg 1x, b.jpg 2x" (pictures in several sizes: all of them)
+fn srcset_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r#"(?i)\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)')"#).unwrap())
+}
+
+/// <base href="...">: the address the page's own links start from
+fn base_re() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| Regex::new(r#"(?i)<base\b[^>]*?\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#).unwrap())
 }
 
 fn tag_re() -> &'static Regex {
@@ -94,7 +116,16 @@ fn decode_entities(s: &str) -> String {
 
 /// Every link of an HTML page as (absolute address, link text).
 pub fn extract_links(html: &str, base: &str) -> Vec<(String, String)> {
-    let Ok(base) = url::Url::parse(base) else { return Vec::new() };
+    let Ok(mut base) = url::Url::parse(base) else { return Vec::new() };
+    // a page that says where its links start from
+    if let Some(c) = base_re().captures(html) {
+        let b = c.get(1).or(c.get(2)).or(c.get(3)).map(|m| decode_entities(m.as_str().trim())).unwrap_or_default();
+        if let Ok(u) = base.join(&b) {
+            if matches!(u.scheme(), "http" | "https") {
+                base = u;
+            }
+        }
+    }
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     let mut push = |raw: &str, text: String| {
@@ -124,8 +155,23 @@ pub fn extract_links(html: &str, base: &str) -> Vec<(String, String)> {
         push(href, text);
     }
     for c in attr_re().captures_iter(html) {
-        let v = c.get(1).or(c.get(2)).map(|m| m.as_str()).unwrap_or("");
+        let name = c.get(1).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_default();
+        let v = c.get(2).or(c.get(3)).or(c.get(4)).map(|m| m.as_str()).unwrap_or("").trim();
+        // content=, value=, action= hold other things too: only a full
+        // address or one from the site's root
+        let loose = matches!(name.as_str(), "content" | "value" | "action" | "data");
+        if (loose && !(v.starts_with("http") || v.starts_with("//") || (v.starts_with('/') && v.len() > 1))) || v.contains(' ') {
+            continue;
+        }
         push(v, String::new());
+    }
+    for c in srcset_re().captures_iter(html) {
+        let v = c.get(1).or(c.get(2)).map(|m| m.as_str()).unwrap_or("");
+        for part in v.split(',') {
+            if let Some(u) = part.split_whitespace().next() {
+                push(u, String::new());
+            }
+        }
     }
     // addresses written as text (lists of links in a post, a note, JSON in
     // a script): many pages have their file links only like that
@@ -162,7 +208,29 @@ fn allowed(opts: &GrabOptions, url: &str) -> bool {
     opts.include.iter().all(|p| p.is_empty()) || opts.include.iter().any(|p| !p.is_empty() && wildcard_match(p, url))
 }
 
-async fn fetch_page(client: &Client, url: &str, opts: &GrabOptions) -> Option<(String, String)> {
+/// What an address gave: a page to read, or a file (its name from the server).
+enum Fetched {
+    Page(String, String),
+    File { url: String, name: String },
+}
+
+/// The name a file answer gives itself (the server's, else its address's).
+fn answer_name(resp: &reqwest::Response) -> String {
+    resp.headers()
+        .get(reqwest::header::CONTENT_DISPOSITION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(filename::from_content_disposition)
+        .or_else(|| filename::from_url(resp.url().as_str()))
+        .map(|n| filename::sanitize(&n))
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| "download".into())
+}
+
+fn is_page_type(ct: &str) -> bool {
+    ct.is_empty() || ct.contains("html") || ct.contains("xml")
+}
+
+async fn fetch_page(client: &Client, url: &str, opts: &GrabOptions) -> Option<Fetched> {
     let resp = request(client, url, &opts.headers, &opts.user_agent).send_ordered().await.ok()?;
     if !resp.status().is_success() {
         return None;
@@ -173,8 +241,17 @@ async fn fetch_page(client: &Client, url: &str, opts: &GrabOptions) -> Option<(S
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_ascii_lowercase();
-    if !(ct.is_empty() || ct.contains("html") || ct.contains("xml")) {
-        return None;
+    let attached = resp
+        .headers()
+        .get(reqwest::header::CONTENT_DISPOSITION)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.to_ascii_lowercase().contains("attachment"));
+    // an address with no file name of its own ("get.php?id=5", "/file/abc")
+    // that answers with a file: a file (only its first bytes were read)
+    if attached || !is_page_type(&ct) {
+        // no extension in the name: the one of its type ("77" + application/pdf)
+        let name = filename::ensure_extension(answer_name(&resp), Some(&ct));
+        return Some(Fetched::File { url: resp.url().to_string(), name });
     }
     let final_url = resp.url().to_string();
     // read at most 4 MB of a page
@@ -186,8 +263,49 @@ async fn fetch_page(client: &Client, url: &str, opts: &GrabOptions) -> Option<(S
             break;
         }
     }
-    Some((final_url, String::from_utf8_lossy(&body).into_owned()))
+    Some(Fetched::Page(final_url, String::from_utf8_lossy(&body).into_owned()))
 }
+
+/// What a link turned out to be when the server was asked.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Checked {
+    /// a file: the server's name for it and its size
+    File { name: String, size: Option<u64> },
+    /// a web page
+    Page,
+    /// no good (not found, refused...): why, in short
+    Gone(String),
+}
+
+/// Ask the server what a link is, without downloading it.
+pub async fn check_link(client: &Client, url: &str, headers: &RequestHeaders, ua: &str) -> Checked {
+    let asked = tokio::time::timeout(std::time::Duration::from_secs(20), crate::http::probe_quick(client, url, headers, ua)).await;
+    crate::http::drop_kept(url);
+    match asked {
+        Ok(Ok(p)) => {
+            let ct = p.content_type.clone().unwrap_or_default().to_ascii_lowercase();
+            if (ct.contains("html") || ct.contains("xhtml")) && p.kind == crate::model::DownloadKind::Http {
+                Checked::Page
+            } else {
+                Checked::File { name: p.file_name.clone(), size: p.total_size }
+            }
+        }
+        Ok(Err(e)) => Checked::Gone(format!("{e:#}").chars().take(120).collect()),
+        Err(_) => Checked::Gone("no answer".into()),
+    }
+}
+
+/// Worth asking the server about: an address that names no file but looks
+/// like a download ("download.php?id=5", "/get/123", "?dl=1").
+pub fn looks_like_download(url: &str, text: &str) -> bool {
+    let l = url.to_ascii_lowercase();
+    let t = text.to_lowercase();
+    let words = ["download", "/dl/", "dl=", "/get/", "get.php", "file", "attachment", "/d/", "mirror", "fetch"];
+    words.iter().any(|w| l.contains(w)) || ["download", "تحميل", "تنزيل"].iter().any(|w| t.contains(w))
+}
+
+/// Links beyond the levels to explore that are asked whether they are files.
+const MAX_ASKED: usize = 300;
 
 /// Explore the site and return the files found (in the order found).
 pub async fn crawl(
@@ -207,9 +325,10 @@ pub async fn crawl(
     let mut found: Vec<FoundFile> = Vec::new();
     let mut seen_files: HashSet<String> = HashSet::new();
     let mut seen_pages: HashSet<String> = HashSet::new();
-    // (url, level, on another site)
-    let mut queue: VecDeque<(String, u32, bool)> = VecDeque::new();
-    queue.push_back((opts.start_url.clone(), 0, false));
+    // (url, level, on another site, only to see whether it is a file)
+    let mut queue: VecDeque<(String, u32, bool, bool)> = VecDeque::new();
+    queue.push_back((opts.start_url.clone(), 0, false, false));
+    let mut asked = 0usize;
     seen_pages.insert(opts.start_url.clone());
     progress.pages_queued.store(1, Ordering::Relaxed);
     let parallel = opts.parallel.clamp(1, 10);
@@ -223,7 +342,7 @@ pub async fn crawl(
             }
         }
         let mut tasks = tokio::task::JoinSet::new();
-        for (url, level, foreign) in batch {
+        for (url, level, foreign, only_ask) in batch {
             let client = client.clone();
             let opts2 = opts.clone();
             if let Ok(mut c) = progress.current.lock() {
@@ -231,17 +350,44 @@ pub async fn crawl(
             }
             tasks.spawn(async move {
                 let page = fetch_page(&client, &url, &opts2).await;
-                (url, level, foreign, page)
+                (url, level, foreign, only_ask, page)
             });
         }
         while let Some(res) = tokio::select! {
             r = tasks.join_next() => r,
             _ = cancel.cancelled() => None,
         } {
-            let Ok((url, level, foreign, page)) = res else { continue };
+            let Ok((url, level, foreign, only_ask, page)) = res else { continue };
             progress.pages_done.fetch_add(1, Ordering::Relaxed);
-            let Some((page_url, html)) = page else { continue };
-            for (link, text) in extract_links(&html, &page_url) {
+            let (page_url, html) = match page {
+                Some(Fetched::Page(u, h)) if !only_ask => (u, h),
+                Some(Fetched::File { url: file_url, name }) => {
+                    let ext = filename::extension(&name);
+                    let new = seen_files.insert(url.clone()) | seen_files.insert(file_url.clone());
+                    if wanted_ext(&opts, &ext) && new {
+                        let f = FoundFile { url: url.clone(), name, ext, text: String::new(), page: url.clone() };
+                        progress.files.fetch_add(1, Ordering::Relaxed);
+                        on_file(f.clone());
+                        found.push(f);
+                    }
+                    continue;
+                }
+                None => {
+                    progress.pages_failed.fetch_add(1, Ordering::Relaxed);
+                    continue;
+                }
+                _ => continue,
+            };
+            let links = extract_links(&html, &page_url);
+            // the start page: links made in the browser by its scripts?
+            if level == 0 {
+                let own = links.iter().filter(|(l, _)| url::Url::parse(l).is_ok_and(|u| u.host_str().unwrap_or("").eq_ignore_ascii_case(&start_host))).count();
+                let scripts = html.matches("<script").count();
+                if own < 5 && scripts >= 3 {
+                    progress.made_by_scripts.store(true, Ordering::Relaxed);
+                }
+            }
+            for (link, text) in links {
                 let Ok(u) = url::Url::parse(&link) else { continue };
                 let host = u.host_str().unwrap_or("").to_ascii_lowercase();
                 let ext = ext_of(&u);
@@ -260,7 +406,27 @@ pub async fn crawl(
                         && seen_pages.len() < opts.max_pages.max(1)
                         && seen_pages.insert(link.clone())
                     {
-                        queue.push_back((link, next_level, !same));
+                        queue.push_back((link, next_level, !same, false));
+                        progress.pages_queued.fetch_add(1, Ordering::Relaxed);
+                    } else if asked < MAX_ASKED
+                        && ext.is_empty()
+                        && (looks_like_download(&link, &text) || (same && asked < MAX_ASKED / 2 && !u.query().is_some_and(|q| q.len() > 120)))
+                        && seen_pages.insert(link.clone())
+                    {
+                        // too deep to explore, but an address with no file
+                        // name may be a file ("/media/123"): only asked; the
+                        // ones that look like downloads first
+                        asked += 1;
+                        if looks_like_download(&link, &text) {
+                            queue.push_front((link, next_level, !same, true));
+                        } else {
+                            queue.push_back((link, next_level, !same, true));
+                        }
+                        progress.pages_queued.fetch_add(1, Ordering::Relaxed);
+                    } else if asked < MAX_ASKED && looks_like_download(&link, &text) && seen_pages.insert(link.clone()) {
+                        // a page address (".php") that looks like a download
+                        asked += 1;
+                        queue.push_back((link, next_level, !same, true));
                         progress.pages_queued.fetch_add(1, Ordering::Relaxed);
                     }
                     continue;
@@ -327,5 +493,28 @@ mod tests {
         assert!(urls.contains(&"https://example.com/dir/page2.html"));
         assert!(!urls.iter().any(|u| u.contains("mailto") || u.ends_with("#top")));
         assert_eq!(l.iter().find(|(u, _)| u.ends_with("a.pdf")).unwrap().1, "Document A");
+    }
+
+    #[test]
+    fn more_kinds_of_links() {
+        let html = r#"<html><head><base href="https://cdn.example.com/files/">
+            <meta property="og:video" content="https://v.example.com/clip.mp4">
+            <meta name="description" content="a page about things"></head>
+            <img srcset="small.jpg 1x, big.jpg 2x"> <video src=movie.webm></video>
+            <a href=report.pdf>Report <a data-download-url="/get/zip9.zip">x</a>
+            <button data-file="setup.exe">Get</button> <form action="send.php"></form> <input value="12">"#;
+        let links: Vec<String> = super::extract_links(html, "https://www.example.com/page").into_iter().map(|(l, _)| l).collect();
+        for want in [
+            "https://cdn.example.com/files/report.pdf",
+            "https://cdn.example.com/files/small.jpg",
+            "https://cdn.example.com/files/big.jpg",
+            "https://cdn.example.com/files/movie.webm",
+            "https://cdn.example.com/get/zip9.zip",
+            "https://cdn.example.com/files/setup.exe",
+            "https://v.example.com/clip.mp4",
+        ] {
+            assert!(links.iter().any(|l| l == want), "{want} missing in {links:?}");
+        }
+        assert!(!links.iter().any(|l| l.contains("about%20things") || l.ends_with("/12") || l.ends_with("send.php")), "{links:?}");
     }
 }

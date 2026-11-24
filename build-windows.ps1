@@ -62,7 +62,21 @@ Write-Host "Version $version"
 
 # ---------------------------------------------------------------- 3. build
 # a running copy would lock the files we replace
-Get-Process EzooDownload, SwiftGet -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process EzooDownload, SwiftGet, ezoo-host -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# ffmpeg is not in the setup: the program fetches the one of the GitHub
+# release on its first start and uses it only when its SHA-256 is the one
+# written into the program here (GitHub's own build sets it itself)
+if (-not $env:EZOO_FFMPEG_SHA256) {
+    $relFfmpeg = Join-Path $PSScriptRoot "build-cache\release-ffmpeg.exe"
+    New-Item -ItemType Directory -Force (Split-Path $relFfmpeg) | Out-Null
+    try {
+        Invoke-WebRequest "https://github.com/AhmedEzo686/ezoo-download/releases/latest/download/ffmpeg.exe" -OutFile $relFfmpeg
+        $env:EZOO_FFMPEG_SHA256 = (Get-FileHash $relFfmpeg -Algorithm SHA256).Hash.ToLower()
+        Write-Host "ffmpeg of the release: $env:EZOO_FFMPEG_SHA256"
+    } catch {
+        Write-Warning "Could not reach the release's ffmpeg: this build will not get ffmpeg by itself."
+    }
+}
 Step "Building EzooDownload.exe (first time: 5-15 minutes)"
 cargo build --release
 if ($LASTEXITCODE -ne 0) { Fail "The build failed. Scroll up to see the first red 'error' lines." }
@@ -71,7 +85,7 @@ if ($LASTEXITCODE -ne 0) { Fail "The build failed. Scroll up to see the first re
 # The result is ONE file: dist\EzooDownload-Setup.exe (+ dist\version.json
 # for the GitHub release). Everything that goes into the setup is gathered
 # first in build-cache\stage, which is not part of the result:
-#   EzooDownload.exe, tools\yt-dlp.exe + ffmpeg.exe, extension, extension-firefox
+#   EzooDownload.exe, ezoo-host.exe, tools\yt-dlp.exe + ffmpeg.exe, extension, extension-firefox
 Step "Preparing the files for the setup"
 $dist = Join-Path $PSScriptRoot "dist"
 $cache = Join-Path $PSScriptRoot "build-cache"
@@ -88,6 +102,8 @@ foreach ($old in @("extension", "portable", "store", "redist")) {
 }
 
 Copy-Item "target\release\EzooDownload.exe" $stage -Force
+# the helper the browser starts to talk to the program (no port)
+Copy-Item "target\release\ezoo-host.exe" $stage -Force
 foreach ($name in @("extension", "extension-firefox")) {
     $to = Join-Path $stage $name
     if (Test-Path $to) { Remove-Item -Recurse -Force $to }
@@ -99,8 +115,8 @@ Copy-Item -Force "$stage\extension-firefox\manifest.firefox.json" "$stage\extens
 Remove-Item "$stage\extension-firefox\manifest.firefox.json" -Force
 Remove-Item "$stage\extension\manifest.firefox.json" -Force -ErrorAction SilentlyContinue
 
-# yt-dlp (finds video links) and aria2 (torrents): downloaded once into
-# build-cache, the app keeps yt-dlp updated by itself afterwards
+# yt-dlp (finds video links): downloaded once into build-cache, the app
+# keeps it updated by itself afterwards
 # The SHA-256 of a file from a checksum list ("<sha256>  <name>" lines), checked.
 function Assert-Sha256($file, $sumsUrl, $name) {
     $text = (Invoke-WebRequest $sumsUrl -UseBasicParsing).Content
@@ -125,6 +141,12 @@ if (Test-Path "$ours\ffmpeg.exe") {
     Remove-Item "$cache\ffmpeg.exe", "$cache\ffmpeg-version.txt" -Force -ErrorAction SilentlyContinue
     Write-Host "The old big ffmpeg was removed. Put our small ffmpeg.exe in tools\ffmpeg\win64 (it comes with the source zip, or from a GitHub build)." -ForegroundColor Yellow
 }
+# the release's own ffmpeg (fetched above for its SHA-256) is the one put in
+# the setup: the same file the program would fetch again if it went missing
+$relFfmpeg = Join-Path $cache "release-ffmpeg.exe"
+if ((Test-Path $relFfmpeg) -and $env:EZOO_FFMPEG_SHA256 -and ((Get-FileHash $relFfmpeg -Algorithm SHA256).Hash.ToLower() -eq $env:EZOO_FFMPEG_SHA256)) {
+    Copy-Item $relFfmpeg "$cache\ffmpeg.exe" -Force
+}
 if (-not (Test-Path "$cache\yt-dlp.exe")) {
     Step "Downloading yt-dlp (finds the links of videos)"
     try {
@@ -135,21 +157,6 @@ if (-not (Test-Path "$cache\yt-dlp.exe")) {
         Assert-Sha256 "$cache\yt-dlp.exe" $ytSums.browser_download_url "yt-dlp.exe"
     } catch {
         Write-Host "Could not download yt-dlp now. Ezoo Download gets it by itself later." -ForegroundColor Yellow
-    }
-}
-if (-not (Test-Path "$cache\aria2c.exe")) {
-    Step "Downloading aria2 (torrents)"
-    try {
-        $zip = Join-Path $cache "aria2.zip"
-        Invoke-WebRequest "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip" -OutFile $zip
-        if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne "67D015301EEF0B612191212D564C5BB0A14B5B9C4796B76454276A4D28D9B288") { throw "aria2.zip does not match its SHA-256" }
-        $tmp = Join-Path $cache "aria2-tmp"
-        Expand-Archive $zip -DestinationPath $tmp -Force
-        Copy-Item (Get-ChildItem $tmp -Recurse -Filter aria2c.exe | Select-Object -First 1).FullName "$cache\aria2c.exe" -Force
-        Copy-Item (Get-ChildItem $tmp -Recurse -Filter COPYING | Select-Object -First 1).FullName "$cache\aria2-COPYING.txt" -Force
-        Remove-Item $tmp -Recurse -Force
-    } catch {
-        Write-Host "Could not download aria2 now. Ezoo Download gets it by itself later." -ForegroundColor Yellow
     }
 }
 # Visual C++ runtime: the program already carries it (static CRT, see
@@ -195,7 +202,10 @@ if ((Test-Path $signedXpi) -and ((Get-XpiVersion $signedXpi) -eq $extVersion)) {
 if (-not (Test-Path $xpiOut)) {
     Write-Warning "No signed Firefox add-on $extVersion yet: this setup has none (the release signs it). Firefox users of this build add it from the folder."
 }
-foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "openh264-LICENSE.txt", "aria2c.exe", "aria2-COPYING.txt")) {
+# the helpers go into the setup (both checked on VirusTotal: our ffmpeg 0/71,
+# the official yt-dlp 1/48); the program still fetches one again by itself
+# if it ever goes missing (checked by SHA-256)
+foreach ($f in @("ffmpeg.exe", "yt-dlp.exe", "ffmpeg-version.txt", "ffmpeg-LICENSE.txt", "lame-COPYING.txt", "openh264-LICENSE.txt")) {
     if (Test-Path "$cache\$f") { Copy-Item "$cache\$f" $tools -Force }
 }
 
@@ -218,6 +228,7 @@ function Sign-File($file) {
 if ($signtool) {
     Step "Signing EzooDownload.exe"
     Sign-File "$stage\EzooDownload.exe"
+    Sign-File "$stage\ezoo-host.exe"
 }
 
 

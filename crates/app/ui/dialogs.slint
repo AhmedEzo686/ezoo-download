@@ -537,6 +537,7 @@ export component PropertiesDialog inherits ThemedWindow {
     in-out property <string> url;
     in-out property <string> referer;
     in-out property <string> description;
+    in-out property <string> checksum;
     in-out property <bool> use-login;
     in-out property <string> user;
     in-out property <string> password;
@@ -668,6 +669,17 @@ export component PropertiesDialog inherits ThemedWindow {
                 col: Theme.rtl ? 0 : 1;
                 row: 3;
                 text <=> root.description;
+            }
+            Label {
+                col: Theme.rtl ? 1 : 0;
+                row: 4;
+                text: @tr("Checksum");
+            }
+            LineEdit {
+                col: Theme.rtl ? 0 : 1;
+                row: 4;
+                placeholder-text: @tr("MD5 / SHA-1 / SHA-256 (optional)");
+                text <=> root.checksum;
             }
         }
         CheckBox {
@@ -909,6 +921,8 @@ export component CountdownDialog inherits ThemedWindow {
     in property <string> action-text: "shut down the computer";
     in property <int> seconds-left: 30;
     in property <int> seconds-total: 30;
+    // a file still being put together: the time starts after it
+    in property <string> waiting-text;
     callback now();
     callback stop();
     VerticalLayout {
@@ -923,6 +937,11 @@ export component CountdownDialog inherits ThemedWindow {
         }
         Label {
             text: @tr("Ezoo Download will {} in {} seconds.", root.action-text, root.seconds-left);
+            wrap: word-wrap;
+        }
+        if root.waiting-text != "": Label {
+            text: root.waiting-text;
+            color: Theme.warn;
             wrap: word-wrap;
         }
         Rectangle {
@@ -988,6 +1007,7 @@ export component SchedulerDialog inherits ThemedWindow {
     in-out property <bool> d5;
     in-out property <bool> d6;
     in-out property <bool> on-startup;
+    in-out property <bool> wake;
     in-out property <bool> stop-enabled;
     in-out property <string> stop-time;
     in-out property <int> parallel: 1;
@@ -1202,6 +1222,10 @@ export component SchedulerDialog inherits ThemedWindow {
                             text: @tr("Sun");
                             checked <=> root.d6;
                         }
+                    }
+                    CheckBox {
+                        text: @tr("Wake the computer from sleep to start it");
+                        checked <=> root.wake;
                     }
                     CheckBox {
                         text: @tr("Start the queue when Ezoo Download starts");
@@ -1655,6 +1679,7 @@ export component GrabberDialog inherits ThemedWindow {
                             }
                             Cell {
                                 text: l.name;
+                                horizontal-alignment: l.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                                 width: 256px;
                             }
                             Cell {
@@ -2002,6 +2027,7 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <bool> show-start-dialog;
     in-out property <bool> start-while-info;
     in-out property <bool> complete-dialog;
+    in-out property <bool> complete-each;
     in-out property <bool> ask-remove: true;
     // 0 128k, 1 192k, 2 256k, 3 320k
     in-out property <int> mp3-index: 1;
@@ -2048,11 +2074,14 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <string> sound-qdone;
     // Speed limiter
     in-out property <bool> limiter-on;
+    in-out property <bool> limit-only-active;
     in-out property <int> speed-limit;
     in-out property <bool> limiter-startup;
     // Torrents tab
     in-out property <int> seed-minutes;
+    in-out property <int> seed-ratio;
     in-out property <int> torrent-upload;
+    in-out property <bool> torrent-main;
     in property <string> message;
 
     callback browse(string);
@@ -2109,7 +2138,7 @@ export component SettingsDialog inherits ThemedWindow {
                         }
                         ComboBox {
                             width: 200px;
-                            model: [@tr("Light"), @tr("Dark"), @tr("Ocean blue"), @tr("Midnight purple"), @tr("Forest green"), @tr("Black"), @tr("Sunset"), @tr("Teal night"), @tr("Rose")];
+                            model: [@tr("Light"), @tr("Dark"), @tr("Ocean blue"), @tr("Midnight purple"), @tr("Forest green"), @tr("Black"), @tr("Sunset"), @tr("Teal night"), @tr("Rose"), @tr("3D"), @tr("Aurora glass"), @tr("Soft clay"), @tr("Cyber neon")];
                             current-index <=> root.theme;
                         }
                         Rectangle {
@@ -2510,6 +2539,11 @@ export component SettingsDialog inherits ThemedWindow {
                         checked <=> root.complete-dialog;
                     }
                     CheckBox {
+                        enabled: root.complete-dialog;
+                        text: @tr("For a playlist or several files added together: one window for each file (not one at the end)");
+                        checked <=> root.complete-each;
+                    }
+                    CheckBox {
                         text: @tr("Ask before removing downloads from the list");
                         checked <=> root.ask-remove;
                     }
@@ -2652,7 +2686,7 @@ export component SettingsDialog inherits ThemedWindow {
                             col: Theme.rtl ? 0 : 1;
                             row: 1;
                             minimum: 1;
-                            maximum: 32;
+                            maximum: 64;
                             value <=> root.connections;
                         }
                         Label {
@@ -2701,7 +2735,7 @@ export component SettingsDialog inherits ThemedWindow {
                         SpinBox {
                             width: 90px;
                             minimum: 1;
-                            maximum: 32;
+                            maximum: 64;
                             value <=> root.server-conns;
                         }
                         Button {
@@ -3007,6 +3041,10 @@ export component SettingsDialog inherits ThemedWindow {
                         text: @tr("Always turn on the speed limiter when Ezoo Download starts");
                         checked <=> root.limiter-startup;
                     }
+                    CheckBox {
+                        text: @tr("Limit only while I use the computer (full speed after a minute without the mouse or keyboard)");
+                        checked <=> root.limit-only-active;
+                    }
                     Hint {
                         text: @tr("Every download can also have its own limit: its progress window > Speed Limiter tab.");
                     }
@@ -3015,6 +3053,13 @@ export component SettingsDialog inherits ThemedWindow {
                     padding: 14px;
                     spacing: 10px;
                     alignment: start;
+                    CheckBox {
+                        text: @tr("Make Ezoo Download the main program for torrents");
+                        checked <=> root.torrent-main;
+                    }
+                    Hint {
+                        text: @tr("On: magnet links and .torrent files open in Ezoo Download, from the browser and from Windows. Off: they stay with the browser and your own torrent program.");
+                    }
                     HRow {
                         spacing: 8px;
                         Label {
@@ -3031,6 +3076,20 @@ export component SettingsDialog inherits ThemedWindow {
                     }
                     Hint {
                         text: @tr("0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent.");
+                    }
+                    HRow {
+                        spacing: 8px;
+                        Label {
+                            text: @tr("Stop sharing once it sent (times what it received)");
+                        }
+                        ComboBox {
+                            width: 110px;
+                            model: [@tr("No limit"), "0.5", "1", "1.5", "2", "3", "5"];
+                            current-index <=> root.seed-ratio;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
                     }
                     HRow {
                         spacing: 8px;
@@ -3253,6 +3312,7 @@ export component TorrentDialog inherits ThemedWindow {
                             }
                             Cell {
                                 text: f.name;
+                                horizontal-alignment: f.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                                 horizontal-stretch: 1;
                             }
                             Cell {
@@ -3341,7 +3401,7 @@ export component PlaylistDialog inherits ThemedWindow {
     in property <bool> front;
     always-on-top: root.front;
     title: @tr("Download a playlist");
-    preferred-width: 780px;
+    preferred-width: 880px;
     preferred-height: 600px;
     in-out property <string> url;
     in property <bool> busy;
@@ -3352,9 +3412,16 @@ export component PlaylistDialog inherits ThemedWindow {
     in-out property <string> folder;
     in-out property <int> parallel: 2;
     in-out property <bool> numbered: true;
+    // number 1 is the last video of the list (lists that put the newest first)
+    in-out property <bool> oldest-first;
     in-out property <bool> start-now: true;
+    // the videos' subtitles too (Options > Downloads, the same switch)
+    in-out property <bool> subtitles;
     in property <string> checked-text;
     in property <string> message;
+    // the width of the "Video" column (its edge in the header is dragged)
+    in-out property <length> name-w: 380px;
+    callback quality-changed();
     callback fetch();
     callback toggle(int);
     callback check-all(bool);
@@ -3445,11 +3512,22 @@ export component PlaylistDialog inherits ThemedWindow {
                         }
                         HeaderCell {
                             text: @tr("Video");
-                            horizontal-stretch: 1;
+                            width: root.name-w;
+                            adjustable: true;
+                            resized(w) => {
+                                root.name-w = max(120px, w);
+                            }
+                        }
+                        HeaderCell {
+                            text: @tr("Size");
+                            width: 90px;
                         }
                         HeaderCell {
                             text: @tr("Length");
                             width: 80px;
+                        }
+                        Rectangle {
+                            horizontal-stretch: 1;
                         }
                     }
                 }
@@ -3494,13 +3572,23 @@ export component PlaylistDialog inherits ThemedWindow {
                             }
                             Cell {
                                 text: e.name;
-                                horizontal-stretch: 1;
+                                horizontal-alignment: e.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                                width: root.name-w - 4px;
+                            }
+                            Cell {
+                                text: e.size;
+                                width: 86px;
+                                color: Theme.muted;
+                                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.left : TextHorizontalAlignment.right;
                             }
                             Cell {
                                 text: e.ext;
                                 width: 76px;
                                 color: Theme.muted;
                                 horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.left : TextHorizontalAlignment.right;
+                            }
+                            Rectangle {
+                                horizontal-stretch: 1;
                             }
                         }
                     }
@@ -3529,6 +3617,9 @@ export component PlaylistDialog inherits ThemedWindow {
                     width: 240px;
                     model: [@tr("Best quality (MP4)"), @tr("2160p 4K"), @tr("1440p 2K"), @tr("1080p Full HD"), @tr("720p HD"), @tr("480p SD"), @tr("360p SD"), "240p", "144p", @tr("Audio only (M4A)"), @tr("Audio MP3")];
                     current-index <=> root.quality;
+                    selected(v) => {
+                        root.quality-changed();
+                    }
                 }
                 Label {
                     text: @tr("Files at the same time");
@@ -3536,7 +3627,8 @@ export component PlaylistDialog inherits ThemedWindow {
                 SpinBox {
                     width: 90px;
                     minimum: 1;
-                    maximum: 8;
+                    // more at once and the site asks to confirm you are not a robot
+                    maximum: 3;
                     value <=> root.parallel;
                 }
                 Rectangle {
@@ -3570,9 +3662,17 @@ export component PlaylistDialog inherits ThemedWindow {
                 text: @tr("Number the files");
                 checked <=> root.numbered;
             }
+            if root.numbered: CheckBox {
+                text: @tr("Oldest first");
+                checked <=> root.oldest-first;
+            }
             CheckBox {
                 text: @tr("Start now");
                 checked <=> root.start-now;
+            }
+            CheckBox {
+                text: @tr("Subtitles too");
+                checked <=> root.subtitles;
             }
             Text {
                 text: root.message != "" ? root.message : root.checked-text;
@@ -3696,6 +3796,7 @@ export component BrowserDialog inherits ThemedWindow {
     callback open-folder();
     callback copy-folder();
     callback repair();
+    callback test-link();
     callback close-window();
     VerticalLayout {
         padding: 16px;
@@ -3755,6 +3856,12 @@ export component BrowserDialog inherits ThemedWindow {
             }
             // the add-in shows nothing / does not answer: its files are put
             // back and it starts again by itself
+            Button {
+                text: @tr("Test the link");
+                clicked => {
+                    root.test-link();
+                }
+            }
             Button {
                 text: @tr("Repair the add-in");
                 clicked => {

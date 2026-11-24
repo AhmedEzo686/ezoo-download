@@ -14,6 +14,9 @@ pub(crate) struct Lists {
 
 const KEYS: [&str; 4] = ["alt", "ctrl", "shift", "none"];
 
+/// "Stop sharing once it sent": the choices of Options > Torrents (0 = no limit).
+const RATIOS: [f32; 7] = [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0];
+
 fn key_index(k: &str) -> i32 {
     KEYS.iter().position(|x| *x == k).unwrap_or(3) as i32
 }
@@ -83,6 +86,7 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_show_start_dialog(s.show_start_dialog);
     d.set_start_while_info(s.start_while_info);
     d.set_complete_dialog(s.show_complete_dialog);
+    d.set_complete_each(s.complete_each_in_group);
     d.set_ask_remove(s.ask_before_remove);
     d.set_subtitles(s.subtitles);
     d.set_subtitle_langs(s.subtitle_langs.clone().into());
@@ -134,8 +138,11 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_limiter_on(s.speed_limit_on);
     d.set_speed_limit(s.speed_limit_kb.clamp(1, 1_000_000) as i32);
     d.set_limiter_startup(s.limiter_on_startup);
+    d.set_limit_only_active(s.limit_only_active);
     d.set_seed_minutes(s.torrent_seed_minutes.min(10080) as i32);
+    d.set_seed_ratio(RATIOS.iter().position(|r| (*r - s.torrent_seed_ratio).abs() < 0.01).unwrap_or(0) as i32);
     d.set_torrent_upload(s.torrent_upload_kb.min(1_000_000) as i32);
+    d.set_torrent_main(s.torrent_main);
     show_lists(ui, d);
 }
 
@@ -149,7 +156,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     }
     // General
     s.language = crate::i18n::LANGS[(d.get_language().max(0) as usize).min(crate::i18n::LANGS.len() - 1)].0.into();
-    s.theme = d.get_theme().clamp(0, 8) as u32;
+    s.theme = d.get_theme().clamp(0, 12) as u32;
     s.opacity = (d.get_window_opacity().round() as u32).clamp(50, 100);
     s.font_scale = (d.get_text_size().round() as u32).clamp(80, 150);
     s.font_family = crate::FONTS.get(d.get_font_index().max(0) as usize).copied().unwrap_or("").to_string();
@@ -189,6 +196,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.show_start_dialog = d.get_show_start_dialog();
     s.start_while_info = d.get_start_while_info();
     s.show_complete_dialog = d.get_complete_dialog();
+    s.complete_each_in_group = d.get_complete_each();
     s.ask_before_remove = d.get_ask_remove();
     s.subtitles = d.get_subtitles();
     s.subtitle_langs = d.get_subtitle_langs().trim().chars().take(60).collect();
@@ -206,7 +214,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     }
     // Connection
     s.connection_type = d.get_connection_type().clamp(0, 2) as u32;
-    s.connections = d.get_connections().clamp(1, 32) as u32;
+    s.connections = d.get_connections().clamp(1, 64) as u32;
     s.max_active = d.get_max_active().clamp(0, 100) as u32;
     s.retries = d.get_retries().max(0) as u32;
     s.quota_on = d.get_quota_on();
@@ -235,15 +243,18 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.speed_limit_on = d.get_limiter_on();
     s.speed_limit_kb = d.get_speed_limit().max(1) as u64;
     s.limiter_on_startup = d.get_limiter_startup();
+    s.limit_only_active = d.get_limit_only_active();
     s.torrent_seed_minutes = d.get_seed_minutes().max(0) as u32;
+    s.torrent_seed_ratio = RATIOS.get(d.get_seed_ratio().max(0) as usize).copied().unwrap_or(0.0);
     s.torrent_upload_kb = d.get_torrent_upload().max(0) as u64;
+    s.torrent_main = d.get_torrent_main();
     Ok(s)
 }
 
 /// The look the Options window shows now (not saved yet).
 fn look_of(d: &SettingsDialog) -> crate::Look {
     crate::Look {
-        mode: d.get_theme().clamp(0, 8),
+        mode: d.get_theme().clamp(0, 12),
         scale: (d.get_text_size().round() as u32).clamp(80, 150) as f32 / 100.0,
         family: crate::FONTS.get(d.get_font_index().max(0) as usize).copied().unwrap_or("").to_string(),
         background: d.get_bg_image().to_string(),
@@ -362,7 +373,7 @@ pub(crate) fn wire(ui: &Ui) {
             }
             {
                 let mut l = ui2.options_lists.borrow_mut();
-                let conns = d.get_server_conns().clamp(1, 32) as u32;
+                let conns = d.get_server_conns().clamp(1, 64) as u32;
                 match l.servers.iter_mut().find(|s| s.host.eq_ignore_ascii_case(&host)) {
                     Some(s) => s.connections = conns,
                     None => l.servers.push(ServerLimit { host, connections: conns }),
@@ -458,6 +469,7 @@ pub(crate) fn wire(ui: &Ui) {
                     // settings that only take effect at the next start
                     let drawing_changed = s.gpu_drawing != old.gpu_drawing;
                     let theme = s.theme as i32;
+                    let torrents_changed = s.torrent_main != old.torrent_main;
                     let view = s.clone();
                     if let Err(e) = ui2.ctx.mgr.set_settings(s) {
                         d.set_message(tf("Could not save: {}", &[&format!("{e:#}")]).into());
@@ -465,6 +477,9 @@ pub(crate) fn wire(ui: &Ui) {
                     }
                     apply_theme(&ui2, theme);
                     apply_view_settings(&ui2, &view);
+                    if torrents_changed {
+                        crate::assoc::torrents(view.torrent_main);
+                    }
                     crate::change_language(&ui2, crate::i18n::effective(&view.language));
                     let _ = d.hide();
                     refresh(&ui2);

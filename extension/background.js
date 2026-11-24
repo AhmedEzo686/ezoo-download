@@ -30,6 +30,8 @@ function apiUrl(port, path) {
 // (Firefox keeps its own copy of the add-on)
 const IS_FIREFOX = typeof navigator !== "undefined" && /Firefox\//.test(navigator.userAgent || "");
 const ADDIN_HEADERS = { "X-Ezoo-Ext": chrome.runtime.getManifest().version, "X-Ezoo-Browser": IS_FIREFOX ? "firefox" : "chromium" };
+// who this add-in is: the program lets it start its helper (see below)
+if (!IS_FIREFOX && chrome.runtime.id) ADDIN_HEADERS["X-Ezoo-Id"] = chrome.runtime.id;
 
 async function plainFetch(url, opts = {}, ms = 1500) {
   const ctrl = new AbortController();
@@ -40,6 +42,147 @@ async function plainFetch(url, opts = {}, ms = 1500) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ---------------------------------------------------------------- the program's helper
+// The program puts a small helper of its own on this computer and tells the
+// browser about it ("native messaging"): the browser starts it and the add-in
+// talks to it through the browser itself, not over the network. Nothing the
+// browser does about pages reaching this computer, and no port kept by
+// another program or by Windows, stands in the way. Without the helper (an
+// older program, Firefox before the user allowed it) the port is used, as
+// before; when the helper can't reach the program, the port is tried too.
+const HOST = "com.ezoo.download";
+// asked for by the user (a download, the program's window): the helper may
+// open the program when it is closed
+const START_PATHS = new Set(["/add", "/links", "/playlist", "/show", "/open-torrent"]);
+let helper = null; // { port, pending, heard }
+let helperOffUntil = 0;
+let helperSeq = 0;
+let helperQuiet = null;
+
+async function helperAllowed() {
+  if (Date.now() < helperOffUntil) return false;
+  if (IS_FIREFOX) {
+    // Firefox: only once the user said yes in the add-in's window
+    try {
+      if (!(await chrome.permissions.contains({ permissions: ["nativeMessaging"] }))) return false;
+    } catch {
+      return false;
+    }
+  }
+  return typeof chrome.runtime.connectNative === "function";
+}
+
+function helperOpen() {
+  if (helper) return helper;
+  let port;
+  try {
+    port = chrome.runtime.connectNative(HOST);
+  } catch {
+    helperOffUntil = Date.now() + 60000;
+    return null;
+  }
+  const me = { port, pending: new Map(), heard: false };
+  port.onMessage.addListener((m) => {
+    me.heard = true;
+    const p = m && me.pending.get(m.id);
+    if (!p) return;
+    me.pending.delete(m.id);
+    clearTimeout(p.timer);
+    p.resolve(m);
+  });
+  port.onDisconnect.addListener(() => {
+    void (chrome.runtime && chrome.runtime.lastError);
+    if (helper === me) helper = null;
+    // never said a word: there is no helper on this computer (yet)
+    if (!me.heard) helperOffUntil = Date.now() + 60000;
+    for (const p of me.pending.values()) {
+      clearTimeout(p.timer);
+      p.resolve(null);
+    }
+    me.pending.clear();
+  });
+  helper = me;
+  return me;
+}
+
+/** After a quiet while the helper is let go (it ends; the browser may rest). */
+function helperRestLater() {
+  clearTimeout(helperQuiet);
+  helperQuiet = setTimeout(() => {
+    if (!helper) return;
+    if (helper.pending.size) return helperRestLater();
+    try {
+      helper.port.disconnect();
+    } catch {
+      /* gone already */
+    }
+    helper = null;
+  }, 120000);
+}
+
+function helperAsk(msg, wait) {
+  return new Promise((resolve) => {
+    const h = helperOpen();
+    if (!h) return resolve(null);
+    const id = ++helperSeq;
+    const timer = setTimeout(() => {
+      h.pending.delete(id);
+      resolve({ id, error: "timeout" });
+    }, wait + 2000);
+    h.pending.set(id, { resolve, timer });
+    try {
+      h.port.postMessage({ ...msg, id });
+    } catch {
+      h.pending.delete(id);
+      clearTimeout(timer);
+      resolve(null);
+    }
+    helperRestLater();
+  });
+}
+
+function helperResponse(status, body) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => JSON.parse(body || "null"),
+    text: async () => body || "",
+  };
+}
+
+/** A request through the helper; null = not this way (the port is tried). */
+async function viaHelper(path, opts, ms) {
+  if (path === "/pair" || path === "/quit" || !(await helperAllowed())) return null;
+  const start = START_PATHS.has(path) || !!opts.startApp;
+  const m = await helperAsk(
+    {
+      method: (opts.method || "GET").toUpperCase(),
+      path,
+      headers: Object.assign({}, ADDIN_HEADERS, opts.headers || {}),
+      body: typeof opts.body === "string" ? opts.body : null,
+      ms,
+      start,
+    },
+    // opening the program takes a few seconds
+    start ? Math.max(ms, 30000) : ms
+  );
+  if (!m) return null;
+  // the program said no to the helper's key: the add-in's own way is tried
+  // (never a dead end because of the helper)
+  if (m.status === 401) return null;
+  if (typeof m.status === "number") {
+    linkState = "ok";
+    return helperResponse(m.status, m.body);
+  }
+  if (m.error === "timeout") {
+    const e = new Error("Ezoo Download took too long to answer");
+    e.name = "AbortError";
+    throw e;
+  }
+  // "down" (the program is closed), "big" (an answer too big for the helper)
+  return null;
 }
 
 // ---------------------------------------------------------------- the program's key
@@ -133,6 +276,8 @@ async function fetchWithTimeout(url, opts = {}, ms = 1500) {
   if (!m) return plainFetch(url, opts, ms);
   const frontPort = Number(m[1]);
   const path = m[2];
+  const helped = await viaHelper(path, opts, ms);
+  if (helped) return helped;
   if (FRONT_PATHS.has(path)) return plainFetch(url, opts, ms);
   const method = (opts.method || "GET").toUpperCase();
   const send = async (l) => {
@@ -299,23 +444,71 @@ async function followAppVersion() {
 }
 followAppVersion();
 
+// "are you there": on the known port, else on the program's own port (the
+// known one may be kept by another program or by Windows); a busy computer
+// may take a moment, so it is asked twice before the program is "not running"
 async function appAlive() {
   const { port } = await getOpts();
+  const ask = async (p, ms) => {
+    try {
+      const r = await plainFetch(apiUrl(p, "/ping"), { headers: { "X-SwiftGet": "1" } }, ms);
+      return r.ok;
+    } catch {
+      return false;
+    }
+  };
   try {
-    const r = await fetchWithTimeout(apiUrl(port, "/ping"), { headers: { "X-SwiftGet": "1" } }, 800);
-    if (r.ok) followAppVersion();
-    return r.ok;
+    const h = await viaHelper("/ping", { headers: { "X-SwiftGet": "1" } }, 3000);
+    if (h && h.ok) {
+      followAppVersion();
+      return true;
+    }
   } catch {
-    return false;
+    /* the port is asked below */
   }
+  for (const ms of [1500, 4000]) {
+    if (await ask(port, ms)) {
+      followAppVersion();
+      return true;
+    }
+    const l = await programLink(true);
+    if (l && l.port && l.port !== port && (await ask(l.port, ms))) return true;
+  }
+  return false;
 }
 
-async function cookieHeader(url) {
+/**
+ * The site's cookies as the browser sends them. `store`: the cookie store of
+ * the window (a private window, a Firefox container) the file came from.
+ */
+async function cookieHeader(url, store) {
   try {
-    const cookies = await chrome.cookies.getAll({ url });
+    const q = store ? { url, storeId: store } : { url };
+    const cookies = await chrome.cookies.getAll(q);
     return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
   } catch {
     return "";
+  }
+}
+
+/** The cookie store of a download / a tab: a private window has its own. */
+async function storeOf(item) {
+  if (!item) return undefined;
+  if (item.cookieStoreId) return item.cookieStoreId;
+  if (!item.incognito) return undefined;
+  try {
+    const stores = await chrome.cookies.getAllCookieStores();
+    const tabs = await chrome.tabs.query({});
+    const privateTabs = new Set(tabs.filter((t) => t.incognito).map((t) => t.id));
+    const s =
+      stores.find((st) => (st.tabIds || []).some((id) => privateTabs.has(id))) ||
+      // the private store when no private tab is open any more (the
+      // download's tab closed): the one that is not the normal one
+      stores.find((st) => st.id === "firefox-private") ||
+      stores.find((st) => st.id !== "0" && st.id !== "firefox-default");
+    return s ? s.id : undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -357,6 +550,24 @@ const DRM_TEXTS = {
   ru: "🔒 Это видео защищено сайтом (DRM): ни одна программа не может его скачать. Его можно смотреть только на сайте.",
   en: "🔒 This video is protected by its site (DRM): no download program can save it. It can only be watched on the site.",
 };
+// Telegram Web plays its videos through its own page (a "stream" address
+// that exists only inside that page): no program can download it from
+// outside, Telegram's own download button can.
+const TELEGRAM_TEXTS = {
+  ar: "الفيديو ده في تيليجرام ويب مينفعش يتحمّل من برا الصفحة. نزّله من زرار التحميل بتاع تيليجرام نفسه (⋮ ← تنزيل).",
+  fr: "Cette vidéo de Telegram Web ne peut pas être téléchargée hors de la page. Utilisez le bouton de téléchargement de Telegram (⋮ → Télécharger).",
+  es: "Este vídeo de Telegram Web no se puede descargar fuera de la página. Usa el botón de descarga de Telegram (⋮ → Descargar).",
+  de: "Dieses Video in Telegram Web lässt sich nicht außerhalb der Seite laden. Nutze den Download-Knopf von Telegram (⋮ → Herunterladen).",
+  pt: "Este vídeo do Telegram Web não pode ser baixado fora da página. Use o botão de download do próprio Telegram (⋮ → Baixar).",
+  tr: "Telegram Web'deki bu video sayfanın dışından indirilemez. Telegram'ın kendi indirme düğmesini kullanın (⋮ → İndir).",
+  ru: "Это видео в Telegram Web нельзя скачать вне страницы. Используйте кнопку загрузки самого Telegram (⋮ → Скачать).",
+  en: "This Telegram Web video can't be downloaded outside the page. Use Telegram's own download button (⋮ → Download).",
+};
+const isTelegramStream = (url) => /^https:\/\/web\.telegram\.org\/(?:[a-z]\/)?stream\//i.test(url || "");
+function telegramText() {
+  const lang = String((navigator.language || "en")).slice(0, 2).toLowerCase();
+  return TELEGRAM_TEXTS[lang] || TELEGRAM_TEXTS.en;
+}
 const isDrm = (text) => /\bDRM\b|drm protected|widevine|playready/i.test(text || "");
 function drmText() {
   const lang = String((navigator.language || "en")).slice(0, 2).toLowerCase();
@@ -392,6 +603,86 @@ try {
   /* no request headers here: the cookies and the page still go along */
 }
 
+// ---------------------------------------------------------------- forms
+// A file a form's button gives (POST): the app asks for it the same way, with
+// the form's data. What it sent is kept for two minutes. A form with a file in
+// it (an upload) can't be sent again: its download stays in the browser.
+const FORMS = new Map();
+const FORM_LIMIT = 64 * 1024;
+function forgetOld(map, ms) {
+  const old = Date.now() - ms;
+  for (const [k, v] of map) if (v.at < old) map.delete(k);
+}
+function formOf(d) {
+  const rb = d.requestBody;
+  if (!rb) return { body: null };
+  if (rb.formData) {
+    const p = new URLSearchParams();
+    for (const [k, values] of Object.entries(rb.formData)) for (const v of values) p.append(k, String(v));
+    const body = p.toString();
+    return body.length > FORM_LIMIT ? { body: null } : { body, fields: true };
+  }
+  if (Array.isArray(rb.raw) && rb.raw.length && rb.raw.every((x) => x.bytes)) {
+    const size = rb.raw.reduce((n, x) => n + x.bytes.byteLength, 0);
+    if (size > FORM_LIMIT) return { body: null };
+    const all = new Uint8Array(size);
+    let at = 0;
+    for (const x of rb.raw) {
+      all.set(new Uint8Array(x.bytes), at);
+      at += x.bytes.byteLength;
+    }
+    try {
+      return { body: new TextDecoder("utf-8", { fatal: true }).decode(all) };
+    } catch {
+      return { body: null };
+    }
+  }
+  return { body: null };
+}
+try {
+  const loads = { urls: ["<all_urls>"], types: ["main_frame", "sub_frame"] };
+  chrome.webRequest.onBeforeRequest.addListener(
+    (d) => {
+      if (d.method !== "POST") return;
+      forgetOld(FORMS, 120000);
+      FORMS.set(d.url, { ...formOf(d), at: Date.now(), id: d.requestId });
+    },
+    loads,
+    ["requestBody"]
+  );
+  chrome.webRequest.onBeforeSendHeaders.addListener(
+    (d) => {
+      if (d.method !== "POST") return;
+      const f = FORMS.get(d.url);
+      const ct = (d.requestHeaders || []).find((h) => h.name.toLowerCase() === "content-type");
+      if (f && f.id === d.requestId && ct && ct.value) f.type = ct.value;
+    },
+    loads,
+    ["requestHeaders"]
+  );
+} catch (_) {
+  /* no form data here: such downloads stay in the browser */
+}
+
+const b64 = (text) => {
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+};
+
+/**
+ * The form posted to `url` a moment ago, as the app sends it again:
+ * undefined = no form; null = one that can't be sent again (a file in it).
+ */
+function formFor(url) {
+  const f = url && FORMS.get(url);
+  if (!f || Date.now() - f.at > 120000) return undefined;
+  // multipart: the browser gives its fields without its files
+  if (f.body === null || (f.fields && /multipart/i.test(f.type || ""))) return null;
+  return { post: b64(f.body), postType: f.fields ? "application/x-www-form-urlencoded" : f.type || "" };
+}
+
 /** What the browser sent for `url` (or the first of `urls` it knows). */
 function browserRequest(...urls) {
   for (const u of urls) {
@@ -401,7 +692,7 @@ function browserRequest(...urls) {
   return null;
 }
 
-async function sendToApp({ url, audioUrl, referrer, fileName, headers, sourcePage, sourceKey, alsoUrl, clip }) {
+async function sendToApp({ url, audioUrl, referrer, fileName, headers, sourcePage, sourceKey, alsoUrl, clip, store, form, subs }) {
   const { port } = await getOpts();
   // the browser's own request for this file: its headers go along (the app
   // keeps its own Accept / Range); its cookie is the one the site really got
@@ -417,10 +708,12 @@ async function sendToApp({ url, audioUrl, referrer, fileName, headers, sourcePag
     sourcePage: sourcePage || null,
     sourceKey: sourceKey || null,
     referrer: referrer || (sentReferer && sentReferer.value) || null,
-    cookies: (sentCookie && sentCookie.value) || (await cookieHeader(url)),
+    cookies: (sentCookie && sentCookie.value) || (await cookieHeader(url, store)),
     userAgent: (sentUa && sentUa.value) || navigator.userAgent,
     fileName: fileName || null,
     clip: clip || null,
+    subs: subs || null,
+    ...(form ? form : {}),
   };
   const r = await fetchWithTimeout(
     apiUrl(port, "/add"),
@@ -490,6 +783,9 @@ function wanted(cfg, url, fileName, mime, keys) {
   }
   if ((cfg.skipSites || []).some((s) => hostMatches(host, s))) return false;
   if ((cfg.skipAddresses || []).some((a) => wildcard(a, url))) return false;
+  // a .torrent file: only when Ezoo Download is the main torrent program
+  const isTorrent = extensionOf(fileName) === "torrent" || extensionOf(new URL(url).pathname) === "torrent" || /bittorrent/i.test(mime || "");
+  if (isTorrent) return cfg.torrents !== false;
   const exts = cfg.captureExts || [];
   if (!exts.length) return true;
   let ext = extensionOf(fileName) || extensionOf(new URL(url).pathname);
@@ -577,33 +873,53 @@ function isNewDownload(item) {
   return true;
 }
 
-/** Should Ezoo Download take this browser download? */
-async function shouldTake(item) {
+// Why the last download stayed with the browser (the toolbar window says it).
+async function leftToBrowser(why, item) {
+  try {
+    const name = baseName(item && item.filename) || ((item && (item.finalUrl || item.url)) || "").split(/[?#]/)[0].split("/").pop() || "";
+    await chrome.storage.local.set({ lastLeft: { why, name: name.slice(0, 120), at: Date.now() } });
+  } catch {
+    /* nothing to say it with */
+  }
+}
+
+/**
+ * Should Ezoo Download take this browser download? `{ take, why }`: why it
+ * stays with the browser (said in the toolbar window), or "" when nothing
+ * needs saying (sending is off, not a new download...).
+ */
+async function decide(item) {
+  const no = (why) => ({ take: false, why });
   const opts = await getOpts();
-  if (!opts.enabled || !opts.intercept) return false;
+  if (!opts.enabled || !opts.intercept) return no("");
   const url = item.finalUrl || item.url;
-  if (!url || !/^https?:/i.test(url)) return false; // blob:, data:, file: stay in the browser
-  if (!isNewDownload(item)) return false;
-  if (await takeBypass(url)) return false;
+  if (!url || !/^https?:/i.test(url)) return no(""); // blob:, data:, file: stay in the browser
+  // Telegram's own download of a video: only its page can give the file
+  if (isTelegramStream(url) || isTelegramStream(item.url)) return no("");
+  if (!isNewDownload(item)) return no("");
+  if (await takeBypass(url)) return no("");
   // the browser's PDF viewer saving the PDF it shows: the browser asks where
   // to save it anyway (that window can't be stopped), so it keeps it rather
   // than two windows asking at once
-  if (await shownInPdfViewer(item)) return false;
+  if (await shownInPdfViewer(item)) return no("");
   // already handed to the app by the click on its link: the browser's copy goes
-  if ((await justTaken(item.url)) || (await justTaken(url))) return true;
-  if (opts.minSizeKB > 0 && item.totalBytes > 0 && item.totalBytes < opts.minSizeKB * 1024) return false;
-  if (!(await appAlive())) return false; // app not running: let the browser handle it
+  if ((await justTaken(item.url)) || (await justTaken(url))) return { take: true, why: "", already: true };
+  if (opts.minSizeKB > 0 && item.totalBytes > 0 && item.totalBytes < opts.minSizeKB * 1024) return no("small");
+  // a form with a file in it can't be sent again
+  const form = formFor(item.url);
+  if (form === null) return no("form");
+  if (!(await appAlive())) return no("not-running"); // app not running: let the browser handle it
   const cfg = await getConfig();
-  if (!wanted(cfg, url, baseName(item.filename), item.mime, currentKeys())) return false;
-  if (await appSaysBrowser([item.url, url])) return false; // the user chose the browser for it
+  if (!wanted(cfg, url, baseName(item.filename), item.mime, currentKeys())) return no("rules");
+  if (await appSaysBrowser([item.url, url])) return no(""); // the user chose the browser for it
   // a link that works once only (the browser just used it) or only with
-  // the page's own sign-in (ChatGPT, iLovePDF...): it stays in the browser
-  if (!(await appCanFetch(url, item))) return false;
-  return true;
+  // the page's own sign-in: it stays in the browser
+  if (!(await appCanFetch(form ? item.url : url, item, form))) return no("cant-fetch");
+  return { take: true, why: "", form };
 }
 
 /** Can the program get this file with the browser's sign-in? (a short look; when it can't tell, yes) */
-async function appCanFetch(url, item) {
+async function appCanFetch(url, item, form) {
   const { port } = await getOpts();
   try {
     const sent = browserRequest(url, item.url);
@@ -612,9 +928,10 @@ async function appCanFetch(url, item) {
     const body = {
       url,
       referrer: item.referrer || (pick("referer") && pick("referer").value) || null,
-      cookies: (pick("cookie") && pick("cookie").value) || (await cookieHeader(url)),
+      cookies: (pick("cookie") && pick("cookie").value) || (await cookieHeader(url, await storeOf(item))),
       userAgent: (pick("user-agent") && pick("user-agent").value) || navigator.userAgent,
       headers: passOn && passOn.length ? passOn : null,
+      ...(form ? form : {}),
     };
     const r = await fetchWithTimeout(
       apiUrl(port, "/check"),
@@ -641,37 +958,99 @@ async function shownInPdfViewer(item) {
   }
 }
 
-/** Take it from the browser and give it to the app. */
-async function takeOver(item) {
-  const url = item.finalUrl || item.url;
-  try {
-    await chrome.downloads.cancel(item.id);
-    await chrome.downloads.erase({ id: item.id });
-  } catch (_) {
-    /* already finished or gone */
-  }
-  if (await sentRecently(url)) return;
-  try {
-    await sendToApp({ url, alsoUrl: item.url, referrer: item.referrer, fileName: baseName(item.filename) });
-  } catch (e) {
-    // the app may have got it anyway (it was only slow to answer): never
-    // hand it to the browser as well, that showed the file twice
-    if (e && e.name === "AbortError") return;
-    // the app could not be reached: give the download back to the browser, once
-    await addBypass(url);
-    chrome.downloads.download({ url });
+// Tabs opened in the last seconds: one opened only for a download (a link
+// with target="_blank") is closed when the app takes the download.
+const NEW_TABS = new Map();
+chrome.tabs.onCreated.addListener((tab) => {
+  forgetOld(NEW_TABS, 15000);
+  NEW_TABS.set(tab.id, { at: Date.now() });
+});
+async function closeEmptyTab(urls, tabId) {
+  forgetOld(NEW_TABS, 15000);
+  const ids = tabId >= 0 ? [tabId] : [...NEW_TABS.keys()];
+  for (const id of ids) {
+    if (!NEW_TABS.has(id)) continue;
+    try {
+      const tab = await chrome.tabs.get(id);
+      const at = tab.pendingUrl || tab.url || "";
+      // only a tab opened for the file's own address (or still empty), never one the user opened
+      if (urls.includes(at) || ((at === "" || at === "about:blank") && tabId >= 0)) {
+        NEW_TABS.delete(id);
+        await chrome.tabs.remove(id);
+      }
+    } catch {
+      NEW_TABS.delete(id);
+    }
   }
 }
 
+/** The browser's own copy of a download the app has: gone without a trace. */
+async function dropBrowserCopy(item) {
+  if (item.id === undefined) return;
+  try {
+    await chrome.downloads.cancel(item.id);
+  } catch {
+    /* finished already */
+  }
+  try {
+    const [d] = await chrome.downloads.search({ id: item.id });
+    if (d && d.state === "complete" && d.exists !== false) await chrome.downloads.removeFile(item.id);
+  } catch {
+    /* gone already */
+  }
+  try {
+    await chrome.downloads.erase({ id: item.id });
+  } catch {
+    /* gone already */
+  }
+  closeEmptyTab([item.url, item.finalUrl].filter(Boolean)).catch(() => {});
+}
+
+/**
+ * Give the download to the app; only once the app has it does the browser's
+ * own copy go (a link that works once is never lost). True: the app took it.
+ */
+async function takeOver(item, decided) {
+  const url = item.finalUrl || item.url;
+  const d = decided || { take: true };
+  if (d.already || (await sentRecently(url))) {
+    await dropBrowserCopy(item);
+    return true;
+  }
+  try {
+    // a form's download goes from the form's own address (its answer may send it on)
+    await sendToApp({
+      url: d.form ? item.url : url,
+      alsoUrl: item.url,
+      referrer: item.referrer,
+      fileName: baseName(item.filename),
+      store: await storeOf(item),
+      form: d.form,
+    });
+  } catch (e) {
+    // the app may have got it anyway (it was only slow to answer): never
+    // shown twice
+    if (e && e.name === "AbortError") {
+      await dropBrowserCopy(item);
+      return true;
+    }
+    // the app could not be reached: the browser keeps it
+    await leftToBrowser("not-running", item);
+    return false;
+  }
+  await dropBrowserCopy(item);
+  return true;
+}
+
 /** A file link the page caught a click on: to the app, or back to the page. */
-async function takeLink(url, referrer) {
+async function takeLink(url, referrer, store) {
   if (!/^https?:/i.test(url || "")) throw new Error("not a web address");
   const opts = await getOpts();
   if (!opts.enabled || !opts.intercept) throw new Error("sending is off");
   if (!(await appAlive())) throw new Error("Ezoo Download is not running");
   if (await appSaysBrowser([url])) throw new Error("the browser keeps it");
   // the same link clicked twice in a row: once is enough
-  if (!(await sentRecently(url))) await sendToApp({ url, referrer });
+  if (!(await sentRecently(url))) await sendToApp({ url, referrer, store });
   // the browser may still start it (a second handler of the page): not again
   await addBypassTaken(url);
   return true;
@@ -691,7 +1070,9 @@ async function justTaken(url) {
 
 // Chrome, Edge, Brave, Opera: decided before the browser asks where to
 // save it, so its own "Save as" window never shows up for files the app
-// takes. Firefox has no such moment: there it is decided when it starts.
+// takes. The browser's download waits meanwhile and goes on if the app does
+// not take it. Firefox has no such moment: its download is paused while the
+// app is asked, and resumed if the app does not take it.
 const DECIDE_EARLY = !!(chrome.downloads.onDeterminingFilename && chrome.downloads.onDeterminingFilename.addListener);
 if (DECIDE_EARLY) {
   chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
@@ -706,16 +1087,21 @@ if (DECIDE_EARLY) {
         }
       }
     };
-    // never leave the browser waiting long
-    const guard = setTimeout(keep, 7000);
-    shouldTake(item)
-      .then((take) => {
-        clearTimeout(guard);
-        if (take && !answered) {
-          answered = true;
-          return takeOver(item);
+    // never leave the browser waiting long (the download goes on with it,
+    // and is still taken over if the app takes it afterwards)
+    const guard = setTimeout(keep, 9000);
+    decide(item)
+      .then(async (d) => {
+        if (!d.take) {
+          clearTimeout(guard);
+          keep();
+          if (d.why) await leftToBrowser(d.why, item);
+          return;
         }
-        keep();
+        const taken = await takeOver(item, d);
+        clearTimeout(guard);
+        if (taken) answered = true;
+        else keep();
       })
       .catch(() => {
         clearTimeout(guard);
@@ -725,10 +1111,98 @@ if (DECIDE_EARLY) {
   });
 }
 
+// Firefox: page loads decided from their answer (below), not asked again
+// when they become a download
+const DECIDED = new Map();
+
 chrome.downloads.onCreated.addListener(async (item) => {
   if (DECIDE_EARLY) return;
-  if (await shouldTake(item)) await takeOver(item);
+  forgetOld(DECIDED, 120000);
+  if (DECIDED.has(item.url) || DECIDED.has(item.finalUrl)) return;
+  // paused while the app is asked: nothing is saved twice
+  let paused = false;
+  try {
+    await chrome.downloads.pause(item.id);
+    paused = true;
+  } catch {
+    /* not pausable (no resume on that server) or finished already */
+  }
+  const d = await decide(item).catch(() => ({ take: false, why: "" }));
+  const taken = d.take && (await takeOver(item, d));
+  if (!taken) {
+    if (d.why) await leftToBrowser(d.why, item);
+    if (paused) chrome.downloads.resume(item.id).catch(() => {});
+  }
 });
+
+// Firefox: a file is caught from the answer to the page load, before Firefox
+// asks what to do with it (and downloads it behind that window): the load
+// waits while the app is asked, and is stopped if the app takes it.
+const SHOWN_BY_BROWSER = /^(text\/|image\/|video\/|audio\/|multipart\/|application\/(pdf|xhtml\+xml|xml|json|javascript|x-javascript|ecmascript|ogg|x-xpinstall|[\w.+-]+\+(xml|json))$)/;
+function nameInDisposition(cd) {
+  const star = /filename\*\s*=\s*[\w-]+'[^']*'([^;]+)/i.exec(cd);
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].trim().replace(/^"|"$/g, ""));
+    } catch {
+      /* the plain name below */
+    }
+  }
+  const plain = /(?:^|;)\s*filename\s*=\s*("((?:[^"\\]|\\.)*)"|[^;]+)/i.exec(cd);
+  if (!plain) return "";
+  return (plain[2] !== undefined ? plain[2].replace(/\\(.)/g, "$1") : plain[1]).trim();
+}
+async function fileAnswer(d) {
+  if (d.method !== "GET" && d.method !== "POST") return {};
+  const code = d.statusCode || 0;
+  if (code < 200 || code > 299 || code === 204 || code === 205 || code === 206) return {};
+  const get = (n) => (((d.responseHeaders || []).find((h) => h.name.toLowerCase() === n) || {}).value || "").trim();
+  const mime = get("content-type").split(";")[0].trim().toLowerCase();
+  const cd = get("content-disposition");
+  if (!/^attachment/i.test(cd) && (!mime || SHOWN_BY_BROWSER.test(mime))) return {};
+  let name = nameInDisposition(cd);
+  if (!name) {
+    try {
+      name = decodeURIComponent(d.url.split(/[?#]/)[0].split("/").pop() || "");
+    } catch {
+      name = d.url.split(/[?#]/)[0].split("/").pop() || "";
+    }
+  }
+  const size = get("content-encoding") ? 0 : Number(get("content-length")) || 0;
+  const sent = browserRequest(d.url);
+  const ref = sent && sent.find((h) => /^referer$/i.test(h.name));
+  const item = {
+    url: d.url,
+    finalUrl: d.url,
+    filename: name.split(/[\\/]/).pop() || "",
+    mime,
+    totalBytes: size,
+    referrer: (ref && ref.value) || d.originUrl || "",
+    incognito: !!d.incognito,
+    cookieStoreId: d.cookieStoreId,
+  };
+  forgetOld(DECIDED, 120000);
+  DECIDED.set(d.url, { at: Date.now() });
+  const dec = await decide(item).catch(() => ({ take: false, why: "" }));
+  if (!dec.take) {
+    if (dec.why) await leftToBrowser(dec.why, item);
+    return {};
+  }
+  if (!(await takeOver(item, dec))) return {};
+  closeEmptyTab([d.url], d.tabId).catch(() => {});
+  return { cancel: true };
+}
+if (!DECIDE_EARLY && IS_FIREFOX) {
+  try {
+    chrome.webRequest.onHeadersReceived.addListener(
+      (d) => fileAnswer(d).catch(() => ({})),
+      { urls: ["<all_urls>"], types: ["main_frame", "sub_frame"] },
+      ["blocking", "responseHeaders"]
+    );
+  } catch (_) {
+    /* no blocking here: downloads are decided when they start */
+  }
+}
 
 // ---------------------------------------------------------------- per-tab state
 // media_<tab>: generic files found on the page
@@ -742,10 +1216,12 @@ async function readTab(tabId) {
 }
 
 function optionItems(resolved, source) {
+  // the video's subtitles go with every quality (the "With subtitles" tab)
+  const subtitles = resolved.subtitles || [];
   return resolved.options.map((o) => ({
     label: o.label,
     sub: o.sub,
-    yt: { ...o, title: resolved.title, source },
+    yt: { ...o, title: resolved.title, source, subtitles },
   }));
 }
 
@@ -986,6 +1462,7 @@ chrome.webRequest.onHeadersReceived.addListener(
     const url = d.url;
     if (!/^https?:/i.test(url)) return;
     if (/googlevideo\.com/i.test(url)) return; // YouTube has its own handler below
+    if (isTelegramStream(url)) return; // only Telegram's own page can play it
     const h = headerMap(d.responseHeaders);
     const type = (h["content-type"] || "").toLowerCase();
     const isHls = HLS_TYPE.test(type) || /\.m3u8(\?|$)/i.test(url);
@@ -1065,7 +1542,17 @@ chrome.webRequest.onBeforeRequest.addListener(
   { urls: ["*://*.googlevideo.com/videoplayback*"] }
 );
 
-async function downloadVideo(option, pageTitle, pageUrl, clip) {
+// a part of a video as the page sent it: two times in seconds, the end
+// after the start (else nothing)
+function partOf(c) {
+  if (!c || typeof c !== "object") return null;
+  const start = Number(c.start);
+  const end = Number(c.end);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > 7 * 24 * 3600) return null;
+  return { start, end, exact: c.exact === true };
+}
+
+async function downloadVideo(option, pageTitle, pageUrl, clip, store, subs) {
   const title = cleanYoutubeTitle(option.title || pageTitle);
   const name = option.quality === "mp3" ? `${title}.mp3` : `${title} [${option.quality}].${option.ext}`;
   await sendToApp({
@@ -1077,7 +1564,28 @@ async function downloadVideo(option, pageTitle, pageUrl, clip) {
     sourcePage: option.source,
     sourceKey: option.key,
     clip,
+    store,
+    subs,
   });
+}
+
+// "Subtitles": only the subtitles of a video, saved by the app in its video
+// folder (a little while: the app asks the site for each of them)
+async function sendSubtitles(page, langs, format, title) {
+  if (!/^https?:/i.test(page || "") || !Array.isArray(langs) || !langs.length) throw new Error("no subtitles were chosen");
+  const { port } = await getOpts();
+  const r = await fetchWithTimeout(
+    apiUrl(port, "/subtitles"),
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-SwiftGet": "1" },
+      body: JSON.stringify({ url: page, langs, format: format === "vtt" ? "vtt" : "srt", title: cleanYoutubeTitle(title || "") }),
+    },
+    125000
+  );
+  const data = await r.json();
+  if (!data.ok) throw new Error(data.error || "no subtitles");
+  return data;
 }
 
 async function sendPlaylist(url) {
@@ -1101,11 +1609,12 @@ chrome.storage.onChanged.addListener((ch, area) => {
 // Ask the app (yt-dlp) for the qualities of a video page.
 const resolving = new Map(); // tabId -> page being resolved
 
-async function askApp(page, referer) {
+async function askApp(page, referer, startApp = false) {
   const { port } = await getOpts();
   const r = await fetchWithTimeout(
     apiUrl(port, "/resolve"),
     {
+      startApp,
       method: "POST",
       headers: { "Content-Type": "application/json", "X-SwiftGet": "1" },
       body: JSON.stringify({ url: page, cookieList: await cookieList(referer || page), referer: referer || null }),
@@ -1114,7 +1623,7 @@ async function askApp(page, referer) {
   );
   const data = await r.json();
   return data.ok
-    ? { resolved: { title: data.title, site: data.site, options: data.options } }
+    ? { resolved: { title: data.title, site: data.site, options: data.options, subtitles: data.subtitles || [] } }
     : { resolveError: data.error || "unknown error" };
 }
 
@@ -1182,10 +1691,12 @@ async function resolvePage(tabId, page, embedded = false) {
 
 /** The bubble of a video that is not the page's main one was clicked. */
 async function resolveOneVideo(msg, tab) {
+  if (isTelegramStream(msg.src) || isTelegramStream(msg.resolve)) return { error: telegramText() };
   // a DASH stream of the page: its own qualities
   if (msg.resolve && /^https?:/i.test(msg.resolve)) {
     try {
-      const r = await askApp(msg.resolve, tab && tab.url);
+      // the user asked (a player's own menu): a closed program is opened
+      const r = await askApp(msg.resolve, tab && tab.url, true);
       if (r.resolved && r.resolved.options.length) return { items: optionItems(r.resolved, msg.resolve) };
       return { error: r.resolveError || "Can't get this video" };
     } catch (e) {
@@ -1326,7 +1837,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
   const url = info.linkUrl || info.srcUrl;
   if (!url || !/^https?:/i.test(url)) return;
-  sendToApp({ url, referrer: info.pageUrl }).catch((e) => console.warn("Ezoo Download:", e));
+  storeOf(tab)
+    .then((store) => sendToApp({ url, referrer: info.pageUrl, store }))
+    .catch((e) => console.warn("Ezoo Download:", e));
 });
 
 // ---------------------------------------------------------------- messages from page/popup
@@ -1344,11 +1857,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const item = msg.item || {};
       // a video inside a frame (embedded player): that frame's page
       const referrer = sender.frameId && msg.referrer ? msg.referrer : sender.tab ? sender.tab.url : msg.referrer;
-      // whole videos only: "Download a part" is in the program for now, and
-      // no part chosen earlier is ever sent with a download
-      if (item.yt) return reply(downloadVideo(item.yt, msg.title, referrer, null), sendResponse);
-      return reply(sendToApp({ url: item.url, referrer, fileName: msg.fileName }), sendResponse);
+      // a part only from the "✂ Part" tab (the whole video never carries one)
+      const clip = msg.part ? partOf(msg.clip) : null;
+      if (msg.part && !clip) return reply(Promise.reject(new Error("the part is not right")), sendResponse);
+      return reply(
+        storeOf(sender.tab).then((store) =>
+          item.yt
+            ? downloadVideo(item.yt, msg.title, referrer, clip, store, typeof msg.subs === "string" ? msg.subs.slice(0, 1000) : null)
+            : sendToApp({ url: item.url, referrer, fileName: msg.fileName, clip, store })
+        ),
+        sendResponse
+      );
     }
+    case "swiftget-subtitles":
+      sendSubtitles(msg.page, msg.langs, msg.format, msg.title)
+        .then((d) => sendResponse({ ok: true, count: d.count, note: d.note || "" }))
+        .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
+      return true;
     case "swiftget-get-media":
       itemsForTab(msg.tabId).then(sendResponse);
       return true;
@@ -1388,12 +1913,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return true;
     case "swiftget-link":
       // a file link clicked in a page: straight to the app
-      return reply(takeLink(msg.url, sender.tab ? sender.tab.url : ""), sendResponse);
+      return reply(
+        storeOf(sender.tab).then((store) => takeLink(msg.url, sender.tab ? sender.tab.url : "", store)),
+        sendResponse
+      );
     case "swiftget-magnet":
       // a torrent's magnet link clicked on a page
       return reply(
-        getOpts().then((o) => {
+        getOpts().then(async (o) => {
           if (!o.enabled || !o.intercept) throw new Error("sending is off");
+          // Options > Torrents: Ezoo Download is not the main torrent program
+          const cfg = await getConfig();
+          if (cfg && cfg.torrents === false) throw new Error("torrents are not taken");
           return sendToApp({ url: msg.url, referrer: sender.tab ? sender.tab.url : "" });
         }),
         sendResponse

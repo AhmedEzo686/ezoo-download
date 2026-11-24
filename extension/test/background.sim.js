@@ -2,7 +2,7 @@
 // node extension/test/background.sim.js
 const fs = require("fs"), path = require("path"), vm = require("vm"), assert = require("assert");
 const dir = path.join(__dirname, "..");
-const listeners = {}; const on = (n) => ({ addListener: (f) => (listeners[n] = f) });
+const listeners = {}; const all = {}; const on = (n) => ({ addListener: (f) => { (all[n] = all[n] || []).push(f); listeners[n] = f; } });
 const session = {}; const localStore = {}; let reloads = 0; let pingExt = null; const sent = []; const tabMsgs = []; let tabUrl = "https://www.youtube.com/watch?v=AAAAAAAAAAA";
 const chrome = {
   storage: {
@@ -14,14 +14,15 @@ const chrome = {
       remove: async (k) => { for (const x of [].concat(k)) delete session[x]; },
     },
   },
-  downloads: { onCreated: on("dl"), onDeterminingFilename: on("det"), cancel: async (id) => { cancelled.push(id); }, erase: async () => {}, download: (o) => browserDl.push(o.url) },
-  webRequest: { onHeadersReceived: on("headers"), onBeforeRequest: on("before") },
-  tabs: { onUpdated: on("upd"), onRemoved: on("rm"), get: async (id) => ({ id, url: tabUrl }), query: async () => [{ id: 7 }],
+  downloads: { onCreated: on("dl"), onDeterminingFilename: on("det"), cancel: async (id) => { cancelled.push(id); }, erase: async () => {}, download: (o) => browserDl.push(o.url),
+               search: async () => [], removeFile: async () => {} },
+  webRequest: { onHeadersReceived: on("headers"), onBeforeRequest: on("before"), onBeforeSendHeaders: on("beforeSend"), onSendHeaders: on("sendHeaders") },
+  tabs: { onUpdated: on("upd"), onRemoved: on("rm"), onCreated: on("tabNew"), get: async (id) => ({ id, url: tabUrl }), query: async () => [{ id: 7 }], remove: async () => {},
           sendMessage: async (id, m) => tabMsgs.push(m) },
   action: { setBadgeBackgroundColor: () => {}, setBadgeText: async () => {} },
   runtime: { onInstalled: on("inst"), onStartup: on("start"), onMessage: on("msg"), getManifest: () => ({ version: "1.0.4" }), reload: () => { reloads++; }, getURL: (p) => "chrome-extension://sim/" + p },
   contextMenus: { removeAll: () => {}, create: () => {}, onClicked: on("ctx") },
-  cookies: { getAll: async () => [] },
+  cookies: { getAll: async (q) => (q.storeId === "1" ? [{ name: "private", value: "yes" }] : []), getAllCookieStores: async () => [{ id: "0", tabIds: [7] }, { id: "1", tabIds: [9] }] },
 };
 const ytCalls = []; const browserDl = []; const cancelled = []; const suggested = []; let appDown = false;
 const fetch = async (url, opts = {}) => {
@@ -48,7 +49,7 @@ const fetch = async (url, opts = {}) => {
   }
   return { ok: true, status: 200 };
 };
-const ctx = { chrome, fetch, AbortController, TextEncoder, crypto: globalThis.crypto, setTimeout, clearTimeout, navigator: { userAgent: "TestUA" }, console, URL,
+const ctx = { chrome, fetch, AbortController, TextEncoder, TextDecoder, URLSearchParams, btoa, crypto: globalThis.crypto, setTimeout, clearTimeout, navigator: { userAgent: "TestUA" }, console, URL,
   importScripts: (...f) => f.forEach((x) => vm.runInContext(fs.readFileSync(path.join(dir, x), "utf8"), ctx)) };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(dir, "background.js"), "utf8"), ctx);
@@ -147,13 +148,42 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   await dl({ url: "https://example.com/new.pdf" });
   assert.strictEqual(sent.length, before + 1, "a new download goes to the app once");
   appDown = true;
-  await dl({ url: "https://example.com/fail.pdf" });
-  assert.deepStrictEqual(browserDl, ["https://example.com/fail.pdf"], "given back to the browser once");
-  await dl({ url: "https://example.com/fail.pdf", byExtensionId: "self" });
-  await dl({ url: "https://example.com/fail.pdf" }); // same address right after: the browser keeps it
-  assert.strictEqual(browserDl.length, 1, "no loop");
+  {
+    const n = cancelled.length;
+    await dl({ url: "https://example.com/fail.pdf" });
+    assert.strictEqual(cancelled.length, n, "the app did not take it: the browser's own download goes on");
+    assert.deepStrictEqual(browserDl, [], "never asked for a second time");
+    assert.strictEqual(localStore.lastLeft.why, "not-running", "why it stayed is kept for the toolbar window");
+  }
   appDown = false;
   console.log("browser downloads: restored ones ignored, no repeats, no loop");
+  // a form's download: sent with what the form sent; one with a file in it stays
+  {
+    const url = "https://forms.example/export";
+    for (const f of all.before) f({ method: "POST", url, requestId: "r1", type: "main_frame", requestBody: { formData: { id: ["7"], name: ["a b"] } } });
+    for (const f of all.beforeSend) f({ method: "POST", url, requestId: "r1", requestHeaders: [{ name: "Content-Type", value: "application/x-www-form-urlencoded" }] });
+    const n = sent.length;
+    await dl({ url, finalUrl: "https://files.example/report.csv", filename: "C:\\x\\report.csv" });
+    const req = sent[n];
+    assert(req, "the form's download went to the app");
+    assert.strictEqual(req.url, url, "from the form's own address");
+    assert.strictEqual(Buffer.from(req.post, "base64").toString(), "id=7&name=a+b");
+    assert.strictEqual(req.postType, "application/x-www-form-urlencoded");
+    const up = "https://forms.example/upload";
+    for (const f of all.before) f({ method: "POST", url: up, requestId: "r2", type: "main_frame", requestBody: { formData: { f: ["x"] } } });
+    for (const f of all.beforeSend) f({ method: "POST", url: up, requestId: "r2", requestHeaders: [{ name: "Content-Type", value: "multipart/form-data; boundary=x" }] });
+    await dl({ url: up, filename: "C:\\x\\out.zip" });
+    assert.strictEqual(sent.length, n + 1, "a form with a file in it stays in the browser");
+    assert.strictEqual(localStore.lastLeft.why, "form");
+    console.log("forms: the app posts the same data; an upload form stays in the browser");
+  }
+  // a private window: its own cookies go along
+  {
+    const n = sent.length;
+    await dl({ url: "https://example.com/private.zip", incognito: true });
+    assert.strictEqual(sent[n].cookies, "private=yes", "the private window's cookies");
+    console.log("private window: its own cookies");
+  }
   // add-in reloads itself once when the program brings a newer one
   pingExt = "1.0.5"; delete session.versionCheckAt;
   await ctx.followAppVersion(); await tick();

@@ -1,4 +1,4 @@
-; Ezoo Download — Windows installer (Inno Setup 6)
+﻿; Ezoo Download — Windows installer (Inno Setup 6)
 ; Built automatically by BUILD.bat -> dist\EzooDownload-Setup.exe
 ;
 ; Installs for the current user (no admin needed) into
@@ -49,19 +49,107 @@ ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
 RestartApplications=no
 
+; the language of the setup is also the language of the program: asked
+; once, at the first install (Windows' own language is chosen at first);
+; an update keeps it and asks nothing
+ShowLanguageDialog=yes
+UsePreviousLanguage=yes
+LanguageDetectionMethod=uilanguage
+
 [Languages]
-Name: "english"; MessagesFile: "compiler:Default.isl"
+; the names are the program's own language codes (see [Registry])
+Name: "en"; MessagesFile: "compiler:Default.isl"
+#if FileExists(AddBackslash(CompilerPath) + "Languages\Arabic.isl")
+Name: "ar"; MessagesFile: "compiler:Languages\Arabic.isl"
+#else
+Name: "ar"; MessagesFile: "lang\Arabic.isl"
+#endif
+Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
+Name: "de"; MessagesFile: "compiler:Languages\German.isl"
+Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
+Name: "pt"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
+Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
+Name: "tr"; MessagesFile: "compiler:Languages\Turkish.isl"
+
+[CustomMessages]
+en.GroupShortcuts=Shortcuts:
+en.TaskDesktop=Create a desktop shortcut
+en.GroupStartup=Startup:
+en.TaskAutostart=Start Ezoo Download when Windows starts (recommended)
+en.GroupTorrents=Torrents:
+en.TaskTorrents=Make Ezoo Download the main program for torrents (.torrent files and magnet links)
+en.RunNow=Open Ezoo Download now
+en.SystemFiles=Installing required system files...
+ar.GroupShortcuts=الاختصارات:
+ar.TaskDesktop=إنشاء اختصار على سطح المكتب
+ar.GroupStartup=بدء التشغيل:
+ar.TaskAutostart=تشغيل Ezoo Download مع بدء Windows (مُستحسن)
+ar.GroupTorrents=التورنت:
+ar.TaskTorrents=جعل Ezoo Download البرنامج الرئيسي للتورنت (ملفات ‎.torrent وروابط magnet)
+ar.RunNow=فتح Ezoo Download الآن
+ar.SystemFiles=جارٍ تثبيت ملفات النظام المطلوبة...
+fr.GroupShortcuts=Raccourcis :
+fr.TaskDesktop=Créer un raccourci sur le Bureau
+fr.GroupStartup=Démarrage :
+fr.TaskAutostart=Lancer Ezoo Download au démarrage de Windows (recommandé)
+fr.GroupTorrents=Torrents :
+fr.TaskTorrents=Faire d'Ezoo Download le programme principal pour les torrents (fichiers .torrent et liens magnet)
+fr.RunNow=Ouvrir Ezoo Download maintenant
+fr.SystemFiles=Installation des fichiers système nécessaires...
+de.GroupShortcuts=Verknüpfungen:
+de.TaskDesktop=Desktop-Verknüpfung erstellen
+de.GroupStartup=Systemstart:
+de.TaskAutostart=Ezoo Download beim Start von Windows starten (empfohlen)
+de.GroupTorrents=Torrents:
+de.TaskTorrents=Ezoo Download zum Hauptprogramm für Torrents machen (.torrent-Dateien und Magnet-Links)
+de.RunNow=Ezoo Download jetzt öffnen
+de.SystemFiles=Benötigte Systemdateien werden installiert...
+es.GroupShortcuts=Accesos directos:
+es.TaskDesktop=Crear un acceso directo en el escritorio
+es.GroupStartup=Inicio:
+es.TaskAutostart=Iniciar Ezoo Download al iniciar Windows (recomendado)
+es.GroupTorrents=Torrents:
+es.TaskTorrents=Hacer de Ezoo Download el programa principal para torrents (archivos .torrent y enlaces magnet)
+es.RunNow=Abrir Ezoo Download ahora
+es.SystemFiles=Instalando los archivos del sistema necesarios...
+pt.GroupShortcuts=Atalhos:
+pt.TaskDesktop=Criar um atalho na área de trabalho
+pt.GroupStartup=Inicialização:
+pt.TaskAutostart=Iniciar o Ezoo Download com o Windows (recomendado)
+pt.GroupTorrents=Torrents:
+pt.TaskTorrents=Tornar o Ezoo Download o programa principal para torrents (arquivos .torrent e links magnet)
+pt.RunNow=Abrir o Ezoo Download agora
+pt.SystemFiles=Instalando os arquivos de sistema necessários...
+ru.GroupShortcuts=Ярлыки:
+ru.TaskDesktop=Создать ярлык на рабочем столе
+ru.GroupStartup=Автозапуск:
+ru.TaskAutostart=Запускать Ezoo Download вместе с Windows (рекомендуется)
+ru.GroupTorrents=Торренты:
+ru.TaskTorrents=Сделать Ezoo Download основной программой для торрентов (файлы .torrent и magnet-ссылки)
+ru.RunNow=Открыть Ezoo Download сейчас
+ru.SystemFiles=Установка необходимых системных файлов...
+tr.GroupShortcuts=Kısayollar:
+tr.TaskDesktop=Masaüstü kısayolu oluştur
+tr.GroupStartup=Başlangıç:
+tr.TaskAutostart=Ezoo Download'ı Windows ile başlat (önerilir)
+tr.GroupTorrents=Torrentler:
+tr.TaskTorrents=Ezoo Download'ı torrentler için ana program yap (.torrent dosyaları ve magnet bağlantıları)
+tr.RunNow=Ezoo Download'ı şimdi aç
+tr.SystemFiles=Gerekli sistem dosyaları yükleniyor...
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
-Name: "autostart"; Description: "Start Ezoo Download when Windows starts (recommended)"; GroupDescription: "Startup:"
-Name: "torrents"; Description: "Open .torrent files and magnet links with Ezoo Download"; GroupDescription: "Torrents:"
+Name: "desktopicon"; Description: "{cm:TaskDesktop}"; GroupDescription: "{cm:GroupShortcuts}"
+Name: "autostart"; Description: "{cm:TaskAutostart}"; GroupDescription: "{cm:GroupStartup}"
+Name: "torrents"; Description: "{cm:TaskTorrents}"; GroupDescription: "{cm:GroupTorrents}"
 
 [Files]
 Source: "{#Stage}\{#MyAppExe}"; DestDir: "{app}"; Flags: ignoreversion
+; the helper the browser starts (the program copies it into its data folder)
+Source: "{#Stage}\ezoo-host.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Stage}\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Stage}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-; the helpers go into {app}\tools; the app updates them there by itself
+; the helpers (our own ffmpeg, the official yt-dlp) go into {app}\tools; the
+; program keeps them updated there (and fetches one again if it goes missing)
 Source: "{#Stage}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#Stage}\extension\*"; DestDir: "{app}\extension"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Stage}\extension-firefox\*"; DestDir: "{app}\extension-firefox"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -76,6 +164,9 @@ Source: "..\build-cache\redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: dont
 ; older versions kept the helpers next to the program
 Type: files; Name: "{app}\yt-dlp.exe"
 Type: files; Name: "{app}\ffmpeg.exe"
+; torrents are shared by the program itself now: the old helper goes
+Type: files; Name: "{app}\tools\aria2c.exe"
+Type: files; Name: "{app}\tools\aria2-COPYING.txt"
 ; the browser add-in is put in again whole: nothing of an older version
 ; stays behind to clash with the new one (the folder is the same, so the
 ; browser keeps the add-in; the program writes its key in again at start)
@@ -94,8 +185,24 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExe}"; Tasks: deskto
 [Registry]
 ; tells the app the installer already decided about "start with Windows"
 Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: "Installed"; ValueData: "1"; Flags: uninsdeletekey
+; the first start of the program takes these (its own settings win later)
+Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: "Language"; ValueData: "{language}"
+Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: "Torrents"; ValueData: "1"; Tasks: torrents
+Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: "Torrents"; ValueData: "0"; Tasks: not torrents
 ; start in the background (next to the clock) when the user signs in
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "EzooDownload"; ValueData: """{app}\{#MyAppExe}"" --background"; Flags: uninsdeletevalue; Tasks: autostart
+; the choice only: the program itself adds (or not) its "start with Windows"
+; on its first start, the setup writes nothing that starts with Windows
+Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: "Autostart"; ValueData: "1"; Tasks: autostart
+Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: "Autostart"; ValueData: "0"; Tasks: not autostart
+; removed with the program (the value the program added)
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "EzooDownload"; Flags: uninsdeletevalue dontcreatekey
+; the browsers' entry for the program's helper (the program fills it in at
+; start): gone again when Ezoo Download is removed
+Root: HKCU; Subkey: "Software\Google\Chrome\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Chromium\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Microsoft\Edge\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Mozilla\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
 ; "Open Ezoo Download" in the browser add-in (ezoo-download://open). The
 ; address given by the browser is never passed to the program.
 Root: HKCU; Subkey: "Software\Classes\ezoo-download"; ValueType: string; ValueName: ""; ValueData: "URL:Ezoo Download"; Flags: uninsdeletekey
@@ -116,18 +223,18 @@ Root: HKCU; Subkey: "Software\Classes\magnet\DefaultIcon"; ValueType: string; Va
 Root: HKCU; Subkey: "Software\Classes\magnet\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExe}"" ""%1"""; Tasks: torrents
 
 [Run]
-Filename: "{app}\{#MyAppExe}"; Description: "Open Ezoo Download now"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExe}"; Description: "{cm:RunNow}"; Flags: nowait postinstall skipifsilent
 ; after an automatic update: start the new version again
 Filename: "{app}\{#MyAppExe}"; Flags: nowait; Check: IsAutoUpdate
 
 
 [UninstallRun]
-Filename: "{cmd}"; Parameters: "/C taskkill /IM {#MyAppExe} /F"; Flags: runhidden; RunOnceId: "StopEzoo"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\extension"
 Type: filesandordirs; Name: "{app}\extension-firefox"
 Type: filesandordirs; Name: "{app}\tools"
+Type: filesandordirs; Name: "{userappdata}\Ezoo\EzooDownload\data\host"
 
 [Code]
 function IsAutoUpdate: Boolean;
@@ -161,7 +268,7 @@ begin
   except
     exit;
   end;
-  WizardForm.StatusLabel.Caption := 'Installing required system files...';
+  WizardForm.StatusLabel.Caption := CustomMessage('SystemFiles');
   { needs administrator rights: Windows asks once. If that is refused the
     program still works, it carries its own copy of these files. }
   ShellExec('runas', ExpandConstant('{tmp}\vc_redist.x64.exe'), '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, Code);
@@ -171,15 +278,15 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
+  begin
     InstallRuntime;
+  end;
 end;
 
-{ true while EzooDownload.exe still runs }
+{ true while EzooDownload.exe still runs (it keeps this mark while open) }
 function AppRunning: Boolean;
-var
-  Code: Integer;
 begin
-  Result := Exec(ExpandConstant('{cmd}'), '/C tasklist /NH /FI "IMAGENAME eq {#MyAppExe}" | find /I "{#MyAppExe}" >nul', '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
+  Result := CheckForMutexes('EzooDownload.Running');
 end;
 
 { ask the open program to close by itself: it saves the list and the
@@ -199,29 +306,29 @@ begin
   end;
 end;
 
-function PrepareToInstall(var NeedsRestart: Boolean): String;
+{ the running program locks its files: it is asked to close by itself (it
+  saves the list and the downloads); one that does not is closed by
+  Windows' own Restart Manager (CloseApplications above) }
+procedure CloseApp;
 var
-  Code, I: Integer;
+  I: Integer;
 begin
-  { the running program locks its files: close it before copying }
-  if AppRunning then
+  AskAppToQuit;
+  for I := 1 to 30 do
   begin
-    AskAppToQuit;
-    for I := 1 to 20 do
-    begin
-      if not AppRunning then break;
-      Sleep(500);
-    end;
+    if not AppRunning then break;
+    Sleep(500);
   end;
-  if AppRunning then
-  begin
-    Exec(ExpandConstant('{cmd}'), '/C taskkill /IM {#MyAppExe} >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, Code);
-    Sleep(2000);
-  end;
-  if AppRunning then
-  begin
-    Exec(ExpandConstant('{cmd}'), '/C taskkill /F /IM {#MyAppExe} >nul 2>&1', '', SW_HIDE, ewWaitUntilTerminated, Code);
-    Sleep(800);
-  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  CloseApp;
   Result := '';
+end;
+
+function InitializeUninstall: Boolean;
+begin
+  CloseApp;
+  Result := True;
 end;

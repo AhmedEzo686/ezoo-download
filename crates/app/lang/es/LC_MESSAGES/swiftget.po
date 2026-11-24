@@ -346,6 +346,18 @@ msgstr "Noche turquesa"
 msgid "Rose"
 msgstr "Rosa"
 
+msgid "3D"
+msgstr "3D"
+
+msgid "Aurora glass"
+msgstr "Cristal aurora"
+
+msgid "Soft clay"
+msgstr "Arcilla suave"
+
+msgid "Cyber neon"
+msgstr "Neón cyber"
+
 msgid "Appearance…"
 msgstr "Apariencia…"
 
@@ -463,6 +475,9 @@ msgstr "Comprobar"
 msgid "Category"
 msgstr "Categoría"
 
+msgid "The name the file gets"
+msgstr "El nombre que tendrá el archivo"
+
 msgid "Save As"
 msgstr "Guardar como"
 
@@ -472,6 +487,12 @@ msgstr "Recordar esta ruta para la categoría \"{}\""
 msgid "optional note"
 msgstr "nota opcional"
 
+msgid "Checksum"
+msgstr "Suma de comprobación"
+
+msgid "MD5 / SHA-1 / SHA-256 (optional)"
+msgstr "MD5 / SHA-1 / SHA-256 (opcional)"
+
 msgid "Use authorization"
 msgstr "Usar autorización"
 
@@ -480,6 +501,15 @@ msgstr "Usuario"
 
 msgid "Password"
 msgstr "Contraseña"
+
+msgid "A file named \"{}\" is already in this folder. Replace it, save the new one with a numbered name, or change the name above."
+msgstr "Ya hay un archivo llamado \"{}\" en esta carpeta. Reemplázalo, guarda el nuevo con un número o cambia el nombre arriba."
+
+msgid "Replace it"
+msgstr "Reemplazar"
+
+msgid "New name (numbered)"
+msgstr "Nombre nuevo (numerado)"
 
 msgid "Checking the address…"
 msgstr "Comprobando la dirección…"
@@ -597,6 +627,27 @@ msgstr "Mostrar la ventana \"Descarga completada\""
 
 msgid "You get 30 seconds to cancel before the computer shuts down, sleeps or hibernates."
 msgstr "Tiene 30 segundos para cancelar antes de que el equipo se apague, se suspenda o hiberne."
+
+msgid "Files"
+msgstr "Archivos"
+
+msgid "People"
+msgstr "Pares"
+
+msgid "Trackers"
+msgstr "Trackers"
+
+msgid "Add tracker"
+msgstr "Añadir tracker"
+
+msgid "First and last pieces first"
+msgstr "Primeras y últimas piezas primero"
+
+msgid "Check the files again"
+msgstr "Volver a comprobar los archivos"
+
+msgid "Copy magnet link"
+msgstr "Copiar enlace magnet"
 
 msgid "<< Hide details"
 msgstr "<< Ocultar detalles"
@@ -798,6 +849,9 @@ msgstr "Sáb"
 
 msgid "Sun"
 msgstr "Dom"
+
+msgid "Wake the computer from sleep to start it"
+msgstr "Despertar el ordenador de la suspensión para iniciarla"
 
 msgid "Start the queue when Ezoo Download starts"
 msgstr "Iniciar la cola cuando se abra Ezoo Download"
@@ -1147,6 +1201,9 @@ msgstr "Mostrar la ventana \"Información del archivo\" para las descargas del n
 msgid "Start downloading immediately while showing \"Download File Info\""
 msgstr "Empezar a descargar en seguida mientras se muestra \"Información del archivo\""
 
+msgid "For a playlist or several files added together: one window for each file (not one at the end)"
+msgstr "Para una lista de reproducción o varios archivos añadidos juntos: una ventana por archivo (no una sola al final)"
+
 msgid "Ask before removing downloads from the list"
 msgstr "Preguntar antes de quitar descargas de la lista"
 
@@ -1312,14 +1369,29 @@ msgstr "Activar el limitador de velocidad"
 msgid "Always turn on the speed limiter when Ezoo Download starts"
 msgstr "Activar siempre el limitador al iniciar Ezoo Download"
 
+msgid "Limit only while I use the computer (full speed after a minute without the mouse or keyboard)"
+msgstr "Limitar solo mientras uso el ordenador (velocidad completa tras un minuto sin ratón ni teclado)"
+
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "Cada descarga puede tener también su propio límite: su ventana de progreso > pestaña Limitador de velocidad."
+
+msgid "Make Ezoo Download the main program for torrents"
+msgstr "Hacer de Ezoo Download el programa principal para torrents"
+
+msgid "On: magnet links and .torrent files open in Ezoo Download, from the browser and from Windows. Off: they stay with the browser and your own torrent program."
+msgstr "Activado: los enlaces magnet y los archivos .torrent se abren en Ezoo Download, desde el navegador y desde Windows. Desactivado: se quedan con el navegador y tu propio programa de torrents."
 
 msgid "Keep sharing a finished torrent for (minutes)"
 msgstr "Seguir compartiendo un torrent terminado durante (minutos)"
 
 msgid "0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent."
 msgstr "0 = parar en cuanto lleguen todos los archivos. Compartir más tiempo ayuda a quienes descargan el mismo torrent."
+
+msgid "Stop sharing once it sent (times what it received)"
+msgstr "Dejar de compartir tras enviar (veces lo recibido)"
+
+msgid "No limit"
+msgstr "Sin límite"
 
 msgid "Maximum upload speed (KB/s, 0 = no limit)"
 msgstr "Velocidad máxima de subida (KB/s, 0 = sin límite)"
@@ -1408,6 +1480,12 @@ msgstr "Archivos a la vez"
 msgid "Number the files"
 msgstr "Numerar los archivos"
 
+msgid "Oldest first"
+msgstr "Lo más antiguo primero"
+
+msgid "Subtitles too"
+msgstr "También subtítulos"
+
 msgid "Not installed on this computer"
 msgstr "No instalado en este equipo"
 
@@ -1419,6 +1497,9 @@ msgstr "Haga clic en su navegador:"
 
 msgid "Almost done:"
 msgstr "Casi listo:"
+
+msgid "Test the link"
+msgstr "Probar la conexión"
 
 msgid "Repair the add-in"
 msgstr "Reparar el complemento"

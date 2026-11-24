@@ -346,6 +346,18 @@ msgstr "Бирюзовая ночь"
 msgid "Rose"
 msgstr "Розовая"
 
+msgid "3D"
+msgstr "3D"
+
+msgid "Aurora glass"
+msgstr "Северное стекло"
+
+msgid "Soft clay"
+msgstr "Мягкая глина"
+
+msgid "Cyber neon"
+msgstr "Кибер-неон"
+
 msgid "Appearance…"
 msgstr "Оформление…"
 
@@ -463,6 +475,9 @@ msgstr "Проверить"
 msgid "Category"
 msgstr "Категория"
 
+msgid "The name the file gets"
+msgstr "Имя, с которым сохранится файл"
+
 msgid "Save As"
 msgstr "Сохранить как"
 
@@ -472,6 +487,12 @@ msgstr "Запомнить этот путь для категории \"{}\""
 msgid "optional note"
 msgstr "примечание (необязательно)"
 
+msgid "Checksum"
+msgstr "Контрольная сумма"
+
+msgid "MD5 / SHA-1 / SHA-256 (optional)"
+msgstr "MD5 / SHA-1 / SHA-256 (необязательно)"
+
 msgid "Use authorization"
 msgstr "Использовать авторизацию"
 
@@ -480,6 +501,15 @@ msgstr "Логин"
 
 msgid "Password"
 msgstr "Пароль"
+
+msgid "A file named \"{}\" is already in this folder. Replace it, save the new one with a numbered name, or change the name above."
+msgstr "Файл \"{}\" уже есть в этой папке. Замените его, сохраните новый с номером или измените имя выше."
+
+msgid "Replace it"
+msgstr "Заменить"
+
+msgid "New name (numbered)"
+msgstr "Новое имя (с номером)"
 
 msgid "Checking the address…"
 msgstr "Проверка адреса…"
@@ -597,6 +627,27 @@ msgstr "Показывать окно \"Загрузка завершена\""
 
 msgid "You get 30 seconds to cancel before the computer shuts down, sleeps or hibernates."
 msgstr "У вас будет 30 секунд на отмену, прежде чем компьютер выключится или перейдёт в спящий режим или гибернацию."
+
+msgid "Files"
+msgstr "Файлы"
+
+msgid "People"
+msgstr "Участники"
+
+msgid "Trackers"
+msgstr "Трекеры"
+
+msgid "Add tracker"
+msgstr "Добавить трекер"
+
+msgid "First and last pieces first"
+msgstr "Сначала первые и последние фрагменты"
+
+msgid "Check the files again"
+msgstr "Проверить файлы заново"
+
+msgid "Copy magnet link"
+msgstr "Копировать magnet-ссылку"
 
 msgid "<< Hide details"
 msgstr "<< Скрыть подробности"
@@ -798,6 +849,9 @@ msgstr "Сб"
 
 msgid "Sun"
 msgstr "Вс"
+
+msgid "Wake the computer from sleep to start it"
+msgstr "Выводить компьютер из сна для запуска"
 
 msgid "Start the queue when Ezoo Download starts"
 msgstr "Запускать очередь при запуске Ezoo Download"
@@ -1147,6 +1201,9 @@ msgstr "Показывать окно \"Сведения о файле\" для 
 msgid "Start downloading immediately while showing \"Download File Info\""
 msgstr "Сразу начинать загрузку, показывая \"Сведения о файле\""
 
+msgid "For a playlist or several files added together: one window for each file (not one at the end)"
+msgstr "Для плейлиста или нескольких файлов, добавленных вместе: окно для каждого файла (а не одно в конце)"
+
 msgid "Ask before removing downloads from the list"
 msgstr "Спрашивать перед удалением загрузок из списка"
 
@@ -1312,14 +1369,29 @@ msgstr "Включить ограничитель скорости"
 msgid "Always turn on the speed limiter when Ezoo Download starts"
 msgstr "Всегда включать ограничитель при запуске Ezoo Download"
 
+msgid "Limit only while I use the computer (full speed after a minute without the mouse or keyboard)"
+msgstr "Ограничивать только пока я пользуюсь компьютером (полная скорость после минуты без мыши и клавиатуры)"
+
 msgid "Every download can also have its own limit: its progress window > Speed Limiter tab."
 msgstr "У каждой загрузки может быть свой лимит: её окно хода загрузки > вкладка «Ограничитель скорости»."
+
+msgid "Make Ezoo Download the main program for torrents"
+msgstr "Сделать Ezoo Download основной программой для торрентов"
+
+msgid "On: magnet links and .torrent files open in Ezoo Download, from the browser and from Windows. Off: they stay with the browser and your own torrent program."
+msgstr "Вкл.: magnet-ссылки и файлы .torrent открываются в Ezoo Download — из браузера и из Windows. Выкл.: они остаются браузеру и вашей программе для торрентов."
 
 msgid "Keep sharing a finished torrent for (minutes)"
 msgstr "Раздавать завершённый торрент ещё (минут)"
 
 msgid "0 = stop as soon as all files are here. Sharing longer helps the others who download the same torrent."
 msgstr "0 = остановиться, как только все файлы получены. Раздача подольше помогает тем, кто качает тот же торрент."
+
+msgid "Stop sharing once it sent (times what it received)"
+msgstr "Прекращать раздачу, когда отдано (во столько раз больше полученного)"
+
+msgid "No limit"
+msgstr "Без ограничения"
 
 msgid "Maximum upload speed (KB/s, 0 = no limit)"
 msgstr "Наибольшая скорость отдачи (КБ/с, 0 = без ограничения)"
@@ -1408,6 +1480,12 @@ msgstr "Файлов одновременно"
 msgid "Number the files"
 msgstr "Нумеровать файлы"
 
+msgid "Oldest first"
+msgstr "Сначала старые"
+
+msgid "Subtitles too"
+msgstr "И субтитры"
+
 msgid "Not installed on this computer"
 msgstr "Не установлен на этом компьютере"
 
@@ -1419,6 +1497,9 @@ msgstr "Нажмите на свой браузер:"
 
 msgid "Almost done:"
 msgstr "Почти готово:"
+
+msgid "Test the link"
+msgstr "Проверить связь"
 
 msgid "Repair the add-in"
 msgstr "Восстановить дополнение"
