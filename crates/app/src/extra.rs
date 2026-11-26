@@ -391,16 +391,11 @@ pub(crate) fn is_web_address(s: &str) -> bool {
 }
 
 /// What the newest version brings (shown once after an automatic update).
-pub(crate) const WHATS_NEW: [&str; 9] = [
-    "Windows that lost their picture (after another window covered them, after coming back from next to the clock, after the screen woke up) are drawn again whole: no more half-empty or see-through windows.",
-    "Download File Info has a box for the file name, and a file of the same name in the folder is asked about inside the window (no more window that stops answering after Cancel). \"Replace it\" keeps the old file until the new one is complete.",
-    "The add-in has two new tabs: \"With subtitles\" (the video with its subtitles in the language you choose) and \"Subtitles\" (all of a video's subtitles, or the ones you choose), as SRT or VTT.",
-    "Subtitles are asked for one language at a time with a short pause, and a language the site refuses for a moment is asked for again by itself.",
-    "Videos made for children download now, and the video qualities show up faster.",
-    "Playlists: a Size column, a Video column you can make wider or narrower, \"Oldest first\" numbering, and videos downloaded before are not added again.",
-    "A queue shows only what is still to come, and a file dragged from the list to a folder on the same drive is moved, as in Windows.",
-    "Fewer antivirus warnings: the program and its setup no longer start Windows tools out of sight, and every release lists the SHA-256 of its files.",
-    "The Site Grabber finds more of a page's files (pictures in several sizes, addresses in buttons and in page details, links written without quotes), asks about addresses with no file name, and says when a page makes its links in the browser.",
+pub(crate) const WHATS_NEW: [&str; 4] = [
+    "Ezoo Download now has a version for Windows 7, 8 and 8.1 (32-bit and 64-bit) with everything the program does: its own setup, EzooDownload-Setup-Windows-7-8-8.1.exe.",
+    "Fewer antivirus warnings: the program no longer looks at the clipboard every second. Windows tells it when something was copied, and it reads the clipboard only when watching it is turned on.",
+    "The add-in works in Firefox 115 too (the last Firefox for Windows 7, 8 and 8.1), and asks once for the sites it needs when Firefox does not give them by itself.",
+    "The setup no longer shows an error on its last page on Windows 7, and the setup for Windows 10 and 11 says so when it is opened on an older Windows.",
 ];
 
 thread_local! {
