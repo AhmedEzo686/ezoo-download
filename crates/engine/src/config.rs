@@ -439,6 +439,13 @@ pub struct Settings {
     /// the port the add-in really talks to (chosen at random on this
     /// computer; `browser_port` only answers "are you there" and pairing)
     pub api_port: u16,
+    /// a debrid account in use: "" = none. Host links are resolved through
+    /// it before the download starts.
+    #[serde(default)]
+    pub debrid_provider: String,
+    /// one token per debrid provider, sealed on the disk
+    #[serde(default, with = "crate::secret::map")]
+    pub debrid_tokens: std::collections::BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -545,14 +552,39 @@ impl Default for Settings {
             support_asked_at: 0,
             api_token: String::new(),
             api_port: 0,
+            debrid_provider: String::new(),
+            debrid_tokens: std::collections::BTreeMap::new(),
         }
     }
 }
 
 impl Settings {
+    /// The token of this provider ("" when there is none).
+    pub fn debrid_token(&self, provider: &str) -> String {
+        self.debrid_tokens.get(provider).cloned().unwrap_or_default()
+    }
+
     pub fn load(path: &Path) -> Settings {
         // broken (the power went off while it was saved): its last good copy
         let mut s: Settings = crate::store::read_json_kept(path).unwrap_or_default();
+        // older versions had one token for every provider (before per-provider
+        // tokens): move it into the map of the provider that was in use
+        if s.debrid_tokens.is_empty() {
+            let text = std::fs::read_to_string(path).unwrap_or_default();
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                if let (Some(provider), Some(token)) = (v["debrid_provider"].as_str(), v["debrid_token"].as_str()) {
+                    let token = crate::secret::open(token);
+                    if !provider.is_empty() && !token.is_empty() {
+                        s.debrid_tokens.insert(provider.to_string(), token);
+                    }
+                }
+            }
+        }
+        if s.debrid_provider.is_empty() {
+            if let Some(first) = s.debrid_tokens.keys().next() {
+                s.debrid_provider = first.clone();
+            }
+        }
         if s.version < 2 {
             // v2: full speed by default (32 connections, no limit on downloads)
             s.connections = 32;

@@ -29,6 +29,10 @@ function apiUrl(port, path) {
 // when the Firefox add-on is older than the program and must be updated
 // (Firefox keeps its own copy of the add-on)
 const IS_FIREFOX = typeof navigator !== "undefined" && /Firefox\//.test(navigator.userAgent || "");
+// The program is the same on Windows, Linux and macOS; only the tools next to
+// it carry ".exe" on Windows. Nothing else in the add-in depends on the system.
+const IS_WINDOWS = /Windows/i.test(navigator.userAgent || "");
+const toolName = (name) => (IS_WINDOWS ? `${name}.exe` : name);
 const ADDIN_HEADERS = { "X-Ezoo-Ext": chrome.runtime.getManifest().version, "X-Ezoo-Browser": IS_FIREFOX ? "firefox" : "chromium" };
 // who this add-in is: the program lets it start its helper (see below)
 if (!IS_FIREFOX && chrome.runtime.id) ADDIN_HEADERS["X-Ezoo-Id"] = chrome.runtime.id;
@@ -1092,9 +1096,13 @@ async function justTaken(url) {
 // takes. The browser's download waits meanwhile and goes on if the app does
 // not take it. Firefox has no such moment: its download is paused while the
 // app is asked, and resumed if the app does not take it.
-const DECIDE_EARLY = !!(chrome.downloads.onDeterminingFilename && chrome.downloads.onDeterminingFilename.addListener);
+// Look the event up by name: Firefox does not implement it, and this file
+// still has to load there (the check below keeps it out).
+const DETERMINING = "onDeterminingFilename";
+const onDetermining = chrome.downloads[DETERMINING];
+const DECIDE_EARLY = !!(onDetermining && onDetermining.addListener);
 if (DECIDE_EARLY) {
-  chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  onDetermining.addListener((item, suggest) => {
     let answered = false;
     const keep = () => {
       if (!answered) {
@@ -1281,7 +1289,7 @@ async function itemsForTab(tabId) {
         } else if (yt.sabr) {
           items.push({
             label: "This video needs Ezoo Download",
-            sub: "Open Ezoo Download (with yt-dlp.exe next to it) and reload the page",
+            sub: `Open Ezoo Download (${IS_WINDOWS ? `with ${toolName("yt-dlp")} next to it` : "yt-dlp is set up automatically"}) and reload the page`,
             disabled: true,
           });
         }
@@ -1509,7 +1517,9 @@ chrome.webRequest.onHeadersReceived.addListener(
       ext: isHls ? "ts" : (type.split("/")[1] || "mp4").split(";")[0].replace("x-matroska", "mkv").replace("mpeg", "mp3"),
     });
   },
-  { urls: ["<all_urls>"] },
+  // Only requests that can carry a video: pages, frames, players and
+  // fetch/XHR. Images, scripts, styles and fonts never carry one.
+  { urls: ["<all_urls>"], types: ["main_frame", "sub_frame", "object", "xmlhttprequest", "media", "other"] },
   ["responseHeaders"]
 );
 

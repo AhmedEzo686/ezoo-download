@@ -1,12 +1,12 @@
-﻿; Ezoo Download — Windows installer (Inno Setup 6)
+﻿; EDM — Windows installer (Inno Setup 6)
 ; Built automatically by BUILD.bat -> dist\EzooDownload-Setup.exe
 ;
 ; Installs for the current user (no admin needed) into
-;   %LOCALAPPDATA%\Programs\Ezoo Download
+;   %LOCALAPPDATA%\Programs\EDM
 ; so yt-dlp can update itself. Adds a Start Menu folder, an optional desktop
 ; shortcut, "start with Windows", and a normal uninstaller.
 
-#define MyAppName "Ezoo Download"
+#define MyAppName "EDM"
 #define MyAppExe "EzooDownload.exe"
 ; BUILD.bat passes the version of Cargo.toml: /DMyAppVersion=1.0.1
 ; the files that go into the setup (gathered by BUILD.bat / the CI)
@@ -23,7 +23,7 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher=Ahmed Ezzat
-DefaultDirName={localappdata}\Programs\Ezoo Download
+DefaultDirName={localappdata}\Programs\EDM
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
@@ -45,7 +45,7 @@ SetupIconFile=..\crates\app\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExe}
 VersionInfoVersion={#MyAppVersion}
 VersionInfoCompany=Ezoo
-VersionInfoDescription=Ezoo Download Setup
+VersionInfoDescription=EDM Setup
 VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 VersionInfoCopyright=Copyright (C) 2026 Ahmed Ezzat
@@ -87,66 +87,66 @@ Name: "tr"; MessagesFile: "compiler:Languages\Turkish.isl"
 en.GroupShortcuts=Shortcuts:
 en.TaskDesktop=Create a desktop shortcut
 en.GroupStartup=Startup:
-en.TaskAutostart=Start Ezoo Download when Windows starts (recommended)
+en.TaskAutostart=Start EDM when Windows starts (recommended)
 en.GroupTorrents=Torrents:
-en.TaskTorrents=Make Ezoo Download the main program for torrents (.torrent files and magnet links)
-en.RunNow=Open Ezoo Download now
+en.TaskTorrents=Make EDM the main program for torrents (.torrent files and magnet links)
+en.RunNow=Open EDM now
 en.SystemFiles=Installing required system files...
 ar.GroupShortcuts=الاختصارات:
 ar.TaskDesktop=إنشاء اختصار على سطح المكتب
 ar.GroupStartup=بدء التشغيل:
-ar.TaskAutostart=تشغيل Ezoo Download مع بدء Windows (مُستحسن)
+ar.TaskAutostart=تشغيل EDM مع بدء Windows (مُستحسن)
 ar.GroupTorrents=التورنت:
-ar.TaskTorrents=جعل Ezoo Download البرنامج الرئيسي للتورنت (ملفات ‎.torrent وروابط magnet)
-ar.RunNow=فتح Ezoo Download الآن
+ar.TaskTorrents=جعل EDM البرنامج الرئيسي للتورنت (ملفات ‎.torrent وروابط magnet)
+ar.RunNow=فتح EDM الآن
 ar.SystemFiles=جارٍ تثبيت ملفات النظام المطلوبة...
 fr.GroupShortcuts=Raccourcis :
 fr.TaskDesktop=Créer un raccourci sur le Bureau
 fr.GroupStartup=Démarrage :
-fr.TaskAutostart=Lancer Ezoo Download au démarrage de Windows (recommandé)
+fr.TaskAutostart=Lancer EDM au démarrage de Windows (recommandé)
 fr.GroupTorrents=Torrents :
-fr.TaskTorrents=Faire d'Ezoo Download le programme principal pour les torrents (fichiers .torrent et liens magnet)
-fr.RunNow=Ouvrir Ezoo Download maintenant
+fr.TaskTorrents=Faire d'EDM le programme principal pour les torrents (fichiers .torrent et liens magnet)
+fr.RunNow=Ouvrir EDM maintenant
 fr.SystemFiles=Installation des fichiers système nécessaires...
 de.GroupShortcuts=Verknüpfungen:
 de.TaskDesktop=Desktop-Verknüpfung erstellen
 de.GroupStartup=Systemstart:
-de.TaskAutostart=Ezoo Download beim Start von Windows starten (empfohlen)
+de.TaskAutostart=EDM beim Start von Windows starten (empfohlen)
 de.GroupTorrents=Torrents:
-de.TaskTorrents=Ezoo Download zum Hauptprogramm für Torrents machen (.torrent-Dateien und Magnet-Links)
-de.RunNow=Ezoo Download jetzt öffnen
+de.TaskTorrents=EDM zum Hauptprogramm für Torrents machen (.torrent-Dateien und Magnet-Links)
+de.RunNow=EDM jetzt öffnen
 de.SystemFiles=Benötigte Systemdateien werden installiert...
 es.GroupShortcuts=Accesos directos:
 es.TaskDesktop=Crear un acceso directo en el escritorio
 es.GroupStartup=Inicio:
-es.TaskAutostart=Iniciar Ezoo Download al iniciar Windows (recomendado)
+es.TaskAutostart=Iniciar EDM al iniciar Windows (recomendado)
 es.GroupTorrents=Torrents:
-es.TaskTorrents=Hacer de Ezoo Download el programa principal para torrents (archivos .torrent y enlaces magnet)
-es.RunNow=Abrir Ezoo Download ahora
+es.TaskTorrents=Hacer de EDM el programa principal para torrents (archivos .torrent y enlaces magnet)
+es.RunNow=Abrir EDM ahora
 es.SystemFiles=Instalando los archivos del sistema necesarios...
 pt.GroupShortcuts=Atalhos:
 pt.TaskDesktop=Criar um atalho na área de trabalho
 pt.GroupStartup=Inicialização:
-pt.TaskAutostart=Iniciar o Ezoo Download com o Windows (recomendado)
+pt.TaskAutostart=Iniciar o EDM com o Windows (recomendado)
 pt.GroupTorrents=Torrents:
-pt.TaskTorrents=Tornar o Ezoo Download o programa principal para torrents (arquivos .torrent e links magnet)
-pt.RunNow=Abrir o Ezoo Download agora
+pt.TaskTorrents=Tornar o EDM o programa principal para torrents (arquivos .torrent e links magnet)
+pt.RunNow=Abrir o EDM agora
 pt.SystemFiles=Instalando os arquivos de sistema necessários...
 ru.GroupShortcuts=Ярлыки:
 ru.TaskDesktop=Создать ярлык на рабочем столе
 ru.GroupStartup=Автозапуск:
-ru.TaskAutostart=Запускать Ezoo Download вместе с Windows (рекомендуется)
+ru.TaskAutostart=Запускать EDM вместе с Windows (рекомендуется)
 ru.GroupTorrents=Торренты:
-ru.TaskTorrents=Сделать Ezoo Download основной программой для торрентов (файлы .torrent и magnet-ссылки)
-ru.RunNow=Открыть Ezoo Download сейчас
+ru.TaskTorrents=Сделать EDM основной программой для торрентов (файлы .torrent и magnet-ссылки)
+ru.RunNow=Открыть EDM сейчас
 ru.SystemFiles=Установка необходимых системных файлов...
 tr.GroupShortcuts=Kısayollar:
 tr.TaskDesktop=Masaüstü kısayolu oluştur
 tr.GroupStartup=Başlangıç:
-tr.TaskAutostart=Ezoo Download'ı Windows ile başlat (önerilir)
+tr.TaskAutostart=EDM'ı Windows ile başlat (önerilir)
 tr.GroupTorrents=Torrentler:
-tr.TaskTorrents=Ezoo Download'ı torrentler için ana program yap (.torrent dosyaları ve magnet bağlantıları)
-tr.RunNow=Ezoo Download'ı şimdi aç
+tr.TaskTorrents=EDM'ı torrentler için ana program yap (.torrent dosyaları ve magnet bağlantıları)
+tr.RunNow=EDM'ı şimdi aç
 tr.SystemFiles=Gerekli sistem dosyaları yükleniyor...
 
 [Tasks]
@@ -214,15 +214,15 @@ Root: HKCU; Subkey: "Software\Ezoo\EzooDownload"; ValueType: string; ValueName: 
 ; removed with the program (the value the program added)
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "EzooDownload"; Flags: uninsdeletevalue dontcreatekey
 ; the browsers' entry for the program's helper (the program fills it in at
-; start): gone again when Ezoo Download is removed
+; start): gone again when EDM is removed
 Root: HKCU; Subkey: "Software\Google\Chrome\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Chromium\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Microsoft\Edge\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\BraveSoftware\Brave-Browser\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Mozilla\NativeMessagingHosts\com.ezoo.download"; ValueType: none; Flags: uninsdeletekey
-; "Open Ezoo Download" in the browser add-in (ezoo-download://open). The
+; "Open EDM" in the browser add-in (ezoo-download://open). The
 ; address given by the browser is never passed to the program.
-Root: HKCU; Subkey: "Software\Classes\ezoo-download"; ValueType: string; ValueName: ""; ValueData: "URL:Ezoo Download"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\ezoo-download"; ValueType: string; ValueName: ""; ValueData: "URL:EDM"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\ezoo-download"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\ezoo-download\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyAppExe},0"
 Root: HKCU; Subkey: "Software\Classes\ezoo-download\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExe}"" --from-browser"

@@ -201,7 +201,7 @@ fn chromium_manifest(host: &Path, ids: &BTreeSet<String>) -> String {
     let origins: Vec<String> = ids.iter().map(|i| format!("chrome-extension://{i}/")).collect();
     serde_json::to_string_pretty(&serde_json::json!({
         "name": NAME,
-        "description": "Ezoo Download",
+        "description": "EDM",
         "path": host.display().to_string(),
         "type": "stdio",
         "allowed_origins": origins,
@@ -212,7 +212,7 @@ fn chromium_manifest(host: &Path, ids: &BTreeSet<String>) -> String {
 fn firefox_manifest(host: &Path) -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "name": NAME,
-        "description": "Ezoo Download",
+        "description": "EDM",
         "path": host.display().to_string(),
         "type": "stdio",
         "allowed_extensions": [crate::browser::firefox_addon_id()],

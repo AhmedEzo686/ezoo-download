@@ -1,0 +1,46 @@
+Ezoo Download 1.1.6 — build the Windows installer on Windows 11
+================================================================
+
+What you need
+-------------
+- Windows 10/11 with winget (App Installer from the Microsoft Store).
+- An internet connection the first time (a few GB of downloads).
+- The signing key file (ezoo-update-key.txt). It is NOT in this zip:
+  copy it next to this file and name it  signing-key.txt
+  Without it the installer is built, but version.json has no signature and
+  the self-updater will refuse it.
+
+Steps
+-----
+1. Unpack this folder anywhere (not inside Program Files).
+2. Copy ezoo-update-key.txt here as  signing-key.txt
+   (one line, 64 hex characters, nothing else).
+3. Double-click BUILD-WINDOWS.cmd
+   (it asks for Administrator when it installs the C++ Build Tools).
+4. The first run installs Visual Studio C++ Build Tools, Rust and Inno Setup,
+   and downloads ffmpeg, yt-dlp and aria2c. 20-40 minutes.
+5. The result:
+      dist\EzooDownload-Setup.exe
+      dist\version.json          (signed, "sig" is 128 hex characters)
+
+Afterwards
+----------
+- Send both files back (or upload them yourself) to the GitHub release
+  v1.1.6. The installer's version.json points at
+  https://github.com/aelrased/ezoo-download/releases/download/v1.1.6/EzooDownload-Setup.exe
+  so they must be uploaded there for the self-updater to work.
+- Keep signing-key.txt private. Anyone with it can sign updates.
+
+بناء نسخة ويندوز 11 محليًا
+---------------------------
+1. فك الضغط في أي مجلد (مش جوه Program Files).
+2. انسخ ملف المفتاح `ezoo-update-key.txt` جنب الملفات وسمّيه `signing-key.txt`.
+3. دوس دبل كليك على BUILD-WINDOWS.cmd
+   (هيطلب صلاحية أدمن وقت تثبيت C++ Build Tools).
+4. أول مرة: تثبيت Visual Studio C++ Build Tools + Rust + Inno Setup، وتنزيل
+   ffmpeg و yt-dlp و aria2c (٢٠–٤٠ دقيقة).
+5. الناتج:
+      dist\EzooDownload-Setup.exe
+      dist\version.json          (موقّع — "sig" طوله 128)
+6. ارفع الملفين على إصدار v1.1.6 على GitHub عشان التحديث الذاتي يشتغل.
+7. حافظ على سرية ملف المفتاح.

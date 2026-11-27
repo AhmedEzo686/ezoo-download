@@ -25,6 +25,7 @@ tokio-util = "0.7"
 # (HTTP 403, "challenge") however the request itself looks
 reqwest = { version = "0.12", features = ["native-tls-alpn"] }
 chrono = { version = "0.4", features = ["serde"] }
+libc = "0.2"
 directories = "5"
 url = "2"
 percent-encoding = "2"

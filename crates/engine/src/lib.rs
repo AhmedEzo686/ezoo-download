@@ -12,6 +12,7 @@ pub mod checksum;
 pub mod clip;
 pub mod clipserve;
 pub mod config;
+pub mod debrid;
 pub mod ef2;
 pub mod fileio;
 pub mod filename;

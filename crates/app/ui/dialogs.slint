@@ -1,4 +1,4 @@
-// Ezoo Download – the classic download manager's extra windows:
+// EDM – the classic download manager's extra windows:
 // Options, Scheduler (queues), File Properties, Columns, Category properties,
 // Find, Duplicate link, Shutdown countdown, Site Grabber / Download all
 // links, Tip of the day and Refresh download address.
@@ -913,7 +913,7 @@ export component ConfirmDialog inherits ThemedWindow {
 // ------------------------------------------------------------------ shut down / sleep countdown
 
 export component CountdownDialog inherits ThemedWindow {
-    title: @tr("Ezoo Download");
+    title: @tr("EDM");
     preferred-width: 420px;
     always-on-top: true;
     // always in front already; kept so every window can be brought forward the same way
@@ -936,7 +936,7 @@ export component CountdownDialog inherits ThemedWindow {
             color: Theme.ok;
         }
         Label {
-            text: @tr("Ezoo Download will {} in {} seconds.", root.action-text, root.seconds-left);
+            text: @tr("EDM will {} in {} seconds.", root.action-text, root.seconds-left);
             wrap: word-wrap;
         }
         if root.waiting-text != "": Label {
@@ -1228,7 +1228,7 @@ export component SchedulerDialog inherits ThemedWindow {
                         checked <=> root.wake;
                     }
                     CheckBox {
-                        text: @tr("Start the queue when Ezoo Download starts");
+                        text: @tr("Start the queue when EDM starts");
                         checked <=> root.on-startup;
                     }
                     Rectangle {
@@ -1261,7 +1261,7 @@ export component SchedulerDialog inherits ThemedWindow {
                             text: @tr("When the queue is done");
                         }
                         ComboBox {
-                            model: [@tr("Do nothing"), @tr("Exit Ezoo Download"), @tr("Sleep"), @tr("Shut down the computer"), @tr("Hibernate")];
+                            model: [@tr("Do nothing"), @tr("Exit EDM"), @tr("Sleep"), @tr("Shut down the computer"), @tr("Hibernate")];
                             current-index <=> root.when-done;
                         }
                         Rectangle {
@@ -1502,7 +1502,7 @@ export component GrabberDialog inherits ThemedWindow {
                     }
                 }
                 Hint {
-                    text: @tr("Some pages make their links only in the browser (with scripts, or as plain text). For them: open the page in the browser, right-click it and choose \"Download all links with Ezoo Download\": every link you see there is collected.");
+                    text: @tr("Some pages make their links only in the browser (with scripts, or as plain text). For them: open the page in the browser, right-click it and choose \"Download all links with EDM\": every link you see there is collected.");
                 }
                 HRow {
                     spacing: 8px;
@@ -1889,7 +1889,7 @@ export component RefreshDialog inherits ThemedWindow {
             overflow: elide;
         }
         Label {
-            text: @tr("1. Open the web page where you got this file.\n2. Click the download link there again (or start the video).\n3. Ezoo Download takes the new address and continues from where it stopped.");
+            text: @tr("1. Open the web page where you got this file.\n2. Click the download link there again (or start the video).\n3. EDM takes the new address and continues from where it stopped.");
             wrap: word-wrap;
         }
         if root.page != "": HRow {
@@ -1979,7 +1979,7 @@ export component SettingsDialog inherits ThemedWindow {
     // set for a moment so the window comes in front of the browser
     in property <bool> front;
     always-on-top: root.front;
-    title: @tr("Ezoo Download – Options");
+    title: @tr("EDM – Options");
     preferred-width: 820px;
     preferred-height: 600px;
 
@@ -2060,6 +2060,17 @@ export component SettingsDialog inherits ThemedWindow {
     in-out property <string> proxy-user;
     in-out property <string> proxy-password;
     in-out property <string> proxy-bypass;
+    // Debrid account: host links are resolved through it before downloading
+    in-out property <int> debrid-provider;
+    in-out property <string> debrid-token;
+    in-out property <string> debrid-state;
+    changed debrid-provider => {
+        root.debrid-provider-changed();
+    }
+    callback debrid-connect();
+    callback debrid-remove();
+    callback debrid-provider-changed();
+    callback debrid-paste();
     // Site logins
     in property <[PairRow]> login-rows;
     in-out property <int> login-current: -1;
@@ -2111,7 +2122,7 @@ export component SettingsDialog inherits ThemedWindow {
                 VerticalLayout {
                     padding: 3px;
                     alignment: start;
-                    for t[i] in [@tr("General"), @tr("File Types"), @tr("Save To"), @tr("Downloads"), @tr("Connection"), @tr("Proxy / Server"), @tr("Site Logins"), @tr("Sounds"), @tr("Speed Limiter"), @tr("Appearance"), @tr("Torrents")]: SideTab {
+                    for t[i] in [@tr("General"), @tr("File Types"), @tr("Save To"), @tr("Downloads"), @tr("Connection"), @tr("Proxy / Server"), @tr("Site Logins"), @tr("Sounds"), @tr("Speed Limiter"), @tr("Appearance"), @tr("Torrents"), @tr("Debrid")]: SideTab {
                         text: t;
                         active: root.tab == i;
                         clicked => {
@@ -2273,7 +2284,7 @@ export component SettingsDialog inherits ThemedWindow {
                         }
                     }
                     CheckBox {
-                        text: @tr("Launch Ezoo Download on Windows startup");
+                        text: @tr("Launch EDM on Windows startup");
                         checked <=> root.start-with-windows;
                     }
                     CheckBox {
@@ -2319,12 +2330,12 @@ export component SettingsDialog inherits ThemedWindow {
                         text: @tr("Browser integration");
                     }
                     Hint {
-                        text: @tr("Chrome and Edge: load the \"extension\" folder in chrome://extensions (Developer mode > Load unpacked). Downloads, videos and the right click menu then go to Ezoo Download.");
+                        text: @tr("Chrome and Edge: load the \"extension\" folder in chrome://extensions (Developer mode > Load unpacked). Downloads, videos and the right click menu then go to EDM.");
                     }
                     HRow {
                         spacing: 8px;
                         Button {
-                            text: @tr("Add Ezoo Download to my browser…");
+                            text: @tr("Add EDM to my browser…");
                             clicked => {
                                 root.open-extension-folder();
                             }
@@ -2350,7 +2361,7 @@ export component SettingsDialog inherits ThemedWindow {
                     HRow {
                         spacing: 8px;
                         Label {
-                            text: @tr("Hold this key to force Ezoo Download to take a link");
+                            text: @tr("Hold this key to force EDM to take a link");
                         }
                         ComboBox {
                             width: 100px;
@@ -3026,11 +3037,11 @@ export component SettingsDialog inherits ThemedWindow {
                     HRow {
                         spacing: 8px;
                         Label {
-                            text: @tr("Maximum download speed (KB/s)");
+                            text: @tr("Maximum download speed (MB/s)");
                         }
                         SpinBox {
                             minimum: 1;
-                            maximum: 1000000;
+                            maximum: 1000;
                             value <=> root.speed-limit;
                         }
                         Rectangle {
@@ -3038,7 +3049,7 @@ export component SettingsDialog inherits ThemedWindow {
                         }
                     }
                     CheckBox {
-                        text: @tr("Always turn on the speed limiter when Ezoo Download starts");
+                        text: @tr("Always turn on the speed limiter when EDM starts");
                         checked <=> root.limiter-startup;
                     }
                     CheckBox {
@@ -3054,11 +3065,11 @@ export component SettingsDialog inherits ThemedWindow {
                     spacing: 10px;
                     alignment: start;
                     CheckBox {
-                        text: @tr("Make Ezoo Download the main program for torrents");
+                        text: @tr("Make EDM the main program for torrents");
                         checked <=> root.torrent-main;
                     }
                     Hint {
-                        text: @tr("On: magnet links and .torrent files open in Ezoo Download, from the browser and from Windows. Off: they stay with the browser and your own torrent program.");
+                        text: @tr("On: magnet links and .torrent files open in EDM, from the browser and from Windows. Off: they stay with the browser and your own torrent program.");
                     }
                     HRow {
                         spacing: 8px;
@@ -3107,6 +3118,55 @@ export component SettingsDialog inherits ThemedWindow {
                     }
                     Hint {
                         text: @tr("While a torrent downloads it also sends pieces to others (that is how torrents work). A limit keeps your internet free for other things.");
+                    }
+                }
+
+                // ---------------- Debrid
+                if root.tab == 11: VerticalLayout {
+                    padding: 14px;
+                    spacing: 10px;
+                    alignment: start;
+                    Label {
+                        text: @tr("Host links (Rapidgator, 1fichier, Turbobit...) through your own debrid account:");
+                    }
+                    HRow {
+                        spacing: 8px;
+                        ComboBox {
+                            width: 180px;
+                            model: [@tr("Real-Debrid"), @tr("AllDebrid"), "TorBox"];
+                            current-index <=> root.debrid-provider;
+                        }
+                        LineEdit {
+                            width: 380px;
+                            text <=> root.debrid-token;
+                            input-type: InputType.password;
+                            placeholder-text: @tr("API token");
+                        }
+                        Button {
+                            text: @tr("Paste");
+                            clicked => { root.debrid-paste(); }
+                        }
+                    }
+                    HRow {
+                        spacing: 8px;
+                        Button {
+                            text: @tr("Connect");
+                            primary: true;
+                            clicked => { root.debrid-connect(); }
+                        }
+                        Button {
+                            text: @tr("Remove");
+                            clicked => { root.debrid-remove(); }
+                        }
+                    }
+                    Text {
+                        text: root.debrid-state;
+                        color: Theme.muted;
+                        font-size: 12px * Theme.font-scale;
+                        wrap: word-wrap;
+                    }
+                    Hint {
+                        text: @tr("Where the token is: real-debrid.com/apitoken (private token) or alldebrid.com/apikeys. It is kept encrypted on this computer.");
                     }
                 }
             }
@@ -3787,7 +3847,7 @@ export component BrowserDialog inherits ThemedWindow {
     // set for a moment so the window comes in front of the browser
     in property <bool> front;
     always-on-top: root.front;
-    title: @tr("Add Ezoo Download to your browser");
+    title: @tr("Add EDM to your browser");
     preferred-width: 880px;
     in property <[BrowserRow]> browsers;
     in property <string> steps;
@@ -3897,7 +3957,7 @@ export component AboutDialog inherits ThemedWindow {
     // set for a moment so the window comes in front of the browser
     in property <bool> front;
     always-on-top: root.front;
-    title: @tr("About Ezoo Download");
+    title: @tr("About EDM");
     preferred-width: 420px;
     in property <string> version;
     callback open-link(string);
@@ -3914,7 +3974,7 @@ export component AboutDialog inherits ThemedWindow {
             }
         }
         Text {
-            text: "Ezoo Download";
+            text: "EDM";
             horizontal-alignment: center;
             font-size: 20px * Theme.font-scale;
             font-weight: 700;
@@ -3959,7 +4019,7 @@ export component AboutDialog inherits ThemedWindow {
             }
         }
         Text {
-            text: @tr("Download Ezoo Download only from its official page.");
+            text: @tr("Download EDM only from its official page.");
             horizontal-alignment: center;
             font-size: 11px * Theme.font-scale;
             color: Theme.muted;
@@ -3973,7 +4033,7 @@ export component AboutDialog inherits ThemedWindow {
             color: Theme.text;
         }
         Text {
-            text: @tr("Like Ezoo Download? You can support its development:");
+            text: @tr("Like EDM? You can support its development:");
             horizontal-alignment: center;
             font-size: 12px * Theme.font-scale;
             color: Theme.muted;
@@ -4277,7 +4337,7 @@ export component ClipDialog inherits ThemedWindow {
 export component SupportDialog inherits ThemedWindow {
     in property <bool> front;
     always-on-top: root.front;
-    title: @tr("Support Ezoo Download");
+    title: @tr("Support EDM");
     preferred-width: 460px;
     preferred-height: 250px;
     min-width: 400px;
@@ -4304,7 +4364,7 @@ export component SupportDialog inherits ThemedWindow {
                 horizontal-stretch: 1;
                 Text {
                     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
-                    text: @tr("Did Ezoo Download save you time?");
+                    text: @tr("Did EDM save you time?");
                     font-size: 14px * Theme.font-scale;
                     font-weight: 700;
                     color: Theme.text;
@@ -4355,7 +4415,7 @@ export component SupportDialog inherits ThemedWindow {
 export component WhatsNewDialog inherits ThemedWindow {
     in property <bool> front;
     always-on-top: root.front;
-    title: @tr("What's new in Ezoo Download");
+    title: @tr("What's new in EDM");
     preferred-width: 560px;
     preferred-height: 560px;
     min-width: 440px;
@@ -4437,7 +4497,7 @@ export component WhatsNewDialog inherits ThemedWindow {
                 padding: 12px;
                 spacing: 8px;
                 Text {
-                    text: @tr("Ezoo Download is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal or InstaPay. Thank you!");
+                    text: @tr("EDM is free and has no ads. If it helps you and you would like to support its development, you can send a gift with PayPal or InstaPay. Thank you!");
                     color: Theme.text;
                     wrap: word-wrap;
                     horizontal-alignment: root.side;

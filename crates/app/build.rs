@@ -20,8 +20,8 @@ fn main() {
         let version = env!("CARGO_PKG_VERSION");
         let mut res = winresource::WindowsResource::new();
         res.set_icon("icon.ico");
-        res.set("ProductName", "Ezoo Download");
-        res.set("FileDescription", "Ezoo Download");
+        res.set("ProductName", "EDM");
+        res.set("FileDescription", "EDM");
         res.set("CompanyName", "Ezoo");
         res.set("LegalCopyright", "Copyright (C) 2026 Ahmed Ezzat");
         res.set("OriginalFilename", "EzooDownload.exe");
@@ -32,7 +32,7 @@ fn main() {
             r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity type="win32" name="Ezoo.EzooDownload" version="1.0.0.0" processorArchitecture="*"/>
-  <description>Ezoo Download - download manager</description>
+  <description>EDM - download manager</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>

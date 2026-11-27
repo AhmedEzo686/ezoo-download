@@ -3,7 +3,7 @@ name = "swiftget"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Ezoo Download – download manager (desktop app)"
+description = "EDM – download manager (desktop app)"
 build = "build.rs"
 
 [features]
@@ -11,6 +11,7 @@ build = "build.rs"
 legacy = ["swiftget-engine/legacy"]
 
 [dependencies]
+ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"] }
 swiftget-engine = { path = "../engine" }
 anyhow.workspace = true
 serde.workspace = true

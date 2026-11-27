@@ -1,0 +1,15 @@
+[package]
+name = "ezoo-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ezoo: command line and MCP server for Ezoo Download"
+
+[[bin]]
+name = "ezoo"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde_json.workspace = true
+swiftget-engine = { path = "../engine" }
