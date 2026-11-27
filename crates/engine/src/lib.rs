@@ -8,13 +8,16 @@
 //! The UI only needs [`Manager`].
 
 pub mod category;
-pub mod debrid;
+pub mod checksum;
 pub mod clip;
 pub mod clipserve;
 pub mod config;
+pub mod debrid;
 pub mod ef2;
 pub mod fileio;
 pub mod filename;
+pub mod bt;
+pub mod ftp;
 pub mod grabber;
 pub mod hls;
 pub mod http;
@@ -28,11 +31,15 @@ pub mod secret;
 pub mod segments;
 pub mod selfupdate;
 pub mod store;
+pub mod sync;
 pub mod system;
 pub mod tools;
 pub mod torrent;
+pub mod unzip;
 pub mod ytdlp;
 
+/// the HTTP library of the engine, for callers that hand its client around
+pub use reqwest;
 pub use config::{AfterDone, Schedule, Settings};
-pub use manager::{default_data_dir, ClipSource, DetailsEdit, Event, Manager, PreviewSource};
+pub use manager::{default_data_dir, ClipSource, DetailsEdit, Event, Manager, PreviewSource, TORRENT_DRY_TEXT};
 pub use model::*;

@@ -10,6 +10,12 @@ use std::process::Command;
 /// folder wins, then one next to EzooDownload.exe, then PATH.
 pub fn find_tool(name: &str) -> Option<PathBuf> {
     let exe_name = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
+    // yt-dlp: its folder build first (it starts much faster)
+    if name == "yt-dlp" {
+        if let Some(p) = crate::tools::ytdlp_folder_build() {
+            return Some(p);
+        }
+    }
     if let Some(p) = crate::tools::bundled(name) {
         return Some(p);
     }

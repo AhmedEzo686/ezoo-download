@@ -11,16 +11,26 @@
 #   tools/ffmpeg/build.sh <ffmpeg source dir> <lame source dir> <openh264 source dir> <out dir>
 #
 # Needs a mingw-w64 cross compiler (x86_64-w64-mingw32-gcc / -clang on PATH).
+#
+# LEGACY=1: the 32-bit build for Windows 7 / 8 / 8.1 (the legacy build of
+# the program, tools/legacy): i686-w64-mingw32, and only what Windows 7 has
 set -euo pipefail
 FF_SRC=$(realpath "$1"); LAME_SRC=$(realpath "$2"); H264_SRC=$(realpath "$3"); OUT=$(realpath -m "$4")
-HOST=x86_64-w64-mingw32
+if [ "${LEGACY:-0}" = 1 ]; then
+  HOST=i686-w64-mingw32; FF_ARCH=x86; H264_ARCH=i386; HIGH_VA=""
+  WIN7="-D_WIN32_WINNT=0x0601 -DWINVER=0x0601"
+else
+  HOST=x86_64-w64-mingw32; FF_ARCH=x86_64; H264_ARCH=x86_64; HIGH_VA="-Wl,--high-entropy-va"
+  WIN7=""
+fi
 JOBS=$(nproc 2>/dev/null || echo 4)
 WORK=$(mktemp -d)
 PREFIX="$WORK/prefix"
 mkdir -p "$PREFIX" "$OUT"
 CC=${CC:-$HOST-gcc}
 command -v "$CC" >/dev/null || CC=$HOST-clang
-export CFLAGS="-O2 -fno-strict-aliasing"
+export CFLAGS="-O2 -fno-strict-aliasing $WIN7"
+export CXXFLAGS="-O2 $WIN7"
 
 echo "== LAME"
 cp -r "$LAME_SRC" "$WORK/lame"
@@ -35,7 +45,7 @@ cp -r "$H264_SRC" "$WORK/openh264"
 cd "$WORK/openh264"
 CXX=${CXX:-${CC%gcc}g++}
 case "$CC" in *clang) CXX=${CC}++ ;; esac
-make -j"$JOBS" OS=mingw_nt ARCH=x86_64 CC="$CC" CXX="$CXX" AR=$HOST-ar \
+make -j"$JOBS" OS=mingw_nt ARCH=$H264_ARCH CC="$CC" CXX="$CXX" AR=$HOST-ar \
   PREFIX="$PREFIX" install-static >/dev/null 2>&1 || { echo "OpenH264 failed"; exit 1; }
 
 echo "== ffmpeg"
@@ -43,11 +53,11 @@ echo "== ffmpeg"
 export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig" PKG_CONFIG_PATH=""
 mkdir -p "$WORK/ff" && cd "$WORK/ff"
 "$FF_SRC/configure" \
-  --prefix="$PREFIX" --target-os=mingw32 --arch=x86_64 --enable-cross-compile \
+  --prefix="$PREFIX" --target-os=mingw32 --arch=$FF_ARCH --enable-cross-compile \
   --cross-prefix=$HOST- --cc="$CC" \
   --pkg-config=pkg-config --pkg-config-flags=--static \
-  --extra-cflags="-I$PREFIX/include" \
-  --extra-ldflags="-L$PREFIX/lib -static -Wl,--dynamicbase -Wl,--nxcompat -Wl,--high-entropy-va" \
+  --extra-cflags="-I$PREFIX/include $WIN7" \
+  --extra-ldflags="-L$PREFIX/lib -static -Wl,--dynamicbase -Wl,--nxcompat $HIGH_VA" \
   --disable-everything --disable-autodetect --disable-doc \
   --disable-ffplay --disable-ffprobe --disable-debug \
   --disable-avdevice --disable-hwaccels --disable-iconv --disable-zlib --disable-bzlib --disable-lzma \

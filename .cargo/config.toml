@@ -9,3 +9,11 @@ rustflags = ["-C", "target-feature=+crt-static"]
 
 [target.aarch64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+# The Windows 7 / 8 / 8.1 build: one 32-bit program for all of them
+# (tools/legacy/build.sh). Built with MinGW; the C runtime is msvcrt.dll,
+# which every Windows has, and libgcc is built in
+[target.i686-win7-windows-gnu]
+linker = "i686-w64-mingw32-gcc"
+ar = "i686-w64-mingw32-ar"
+rustflags = ["-C", "link-args=-static-libgcc -static"]

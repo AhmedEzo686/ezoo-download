@@ -72,6 +72,45 @@ async function init() {
   scale.addEventListener("input", () => save(Number(scale.value)));
   document.getElementById("scaleReset").addEventListener("click", () => save(100));
 
+  // why the last download stayed in the browser (the last ten minutes)
+  const WHY = {
+    "not-running": "Ezoo Download was not running or did not answer.",
+    small: "it is smaller than the size set in the add-in's settings.",
+    rules: "Ezoo Download's Options leave this kind of file, or this site, to the browser.",
+    "cant-fetch": "the site gives this file to the browser only (a sign-in of the page, or a link that works once).",
+    form: "it comes from a form that sends a file, which can't be sent again.",
+  };
+  chrome.storage.local.get({ lastLeft: null }, ({ lastLeft }) => {
+    const box = document.getElementById("left");
+    if (!lastLeft || !WHY[lastLeft.why] || Date.now() - lastLeft.at > 10 * 60 * 1000) return;
+    const name = lastLeft.name ? `"${lastLeft.name}"` : "The last download";
+    box.textContent = `${name} stayed in the browser: ${WHY[lastLeft.why]}`;
+    box.hidden = false;
+  });
+
+  // the button was turned off on this site (from its own help): back on
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    let site = "";
+    try {
+      site = new URL((tabs && tabs[0] && tabs[0].url) || "").hostname.toLowerCase();
+    } catch {
+      return;
+    }
+    chrome.storage.local.get({ noButtonSites: [] }, ({ noButtonSites }) => {
+      if (!site || !(noButtonSites || []).includes(site)) return;
+      const again = document.createElement("button");
+      again.className = "act";
+      again.textContent = `Show the video button on ${site} again`;
+      again.addEventListener("click", () => {
+        chrome.storage.local.set({ noButtonSites: noButtonSites.filter((h) => h !== site) }, () => {
+          again.textContent = "Done - reload the page";
+          again.disabled = true;
+        });
+      });
+      document.querySelector("section").appendChild(again);
+    });
+  });
+
   chrome.runtime.sendMessage({ type: "swiftget-status" }, (res) => {
     const el = document.getElementById("status");
     const ok = res && res.ok;
@@ -106,6 +145,45 @@ async function init() {
       document.querySelector("section").appendChild(open);
     }
   });
+
+  // Firefox before 127 (Firefox 115 ESR, the last one on Windows 7 / 8 /
+  // 8.1) does not give the add-in the sites when it is added: until the
+  // user allows them it sees no page, no video and no download
+  if (/Firefox\//.test(navigator.userAgent) && chrome.permissions) {
+    chrome.permissions.contains({ origins: ["<all_urls>"] }).then((has) => {
+      if (has) return;
+      const sites = document.createElement("button");
+      sites.className = "act";
+      sites.textContent = "Allow Ezoo Download on all sites";
+      sites.title = "Firefox asks once: without it the add-in sees no page, video or download";
+      sites.addEventListener("click", () => {
+        chrome.permissions.request({ origins: ["<all_urls>"] }).then((yes) => {
+          sites.textContent = yes ? "Allowed on all sites ✔" : "Not allowed";
+          sites.disabled = !!yes;
+        }, () => {});
+      });
+      document.querySelector("section").prepend(sites);
+    }, () => {});
+  }
+
+  // Firefox: the add-in talks to the program through the program's helper
+  // only once the user allows it (once); until then it uses the port
+  if (/Firefox\//.test(navigator.userAgent) && chrome.permissions) {
+    chrome.permissions.contains({ permissions: ["nativeMessaging"] }).then((has) => {
+      if (has) return;
+      const direct = document.createElement("button");
+      direct.className = "act";
+      direct.textContent = "Connect directly (recommended)";
+      direct.title = "Firefox asks once: the add-in then talks to Ezoo Download without a port";
+      direct.addEventListener("click", () => {
+        chrome.permissions.request({ permissions: ["nativeMessaging"] }).then((yes) => {
+          direct.textContent = yes ? "Connected directly ✔" : "Not allowed";
+          direct.disabled = !!yes;
+        });
+      });
+      document.querySelector("section").appendChild(direct);
+    }, () => {});
+  }
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;

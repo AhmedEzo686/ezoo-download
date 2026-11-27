@@ -51,7 +51,7 @@ fn decrypt(key: &[u8], iv: &[u8; 16], data: &mut Vec<u8>) -> anyhow::Result<()> 
 /// (offset, length) of it. Also gives the address it came from in the end
 /// (after redirects): what the list's own addresses are relative to.
 async fn fetch_full(shared: &Shared, job: &HlsJob, url: &str, range: Option<(u64, u64)>) -> anyhow::Result<(Vec<u8>, String)> {
-    let mut rb = request(&shared.client(), url, &job.headers, &job.user_agent);
+    let mut rb = request(&crate::http::client_for(&shared.client(), url), url, &job.headers, &job.user_agent);
     if let Some((off, len)) = range {
         rb = rb.header(reqwest::header::RANGE, format!("bytes={}-{}", off, off + len.max(1) - 1));
     }
@@ -198,8 +198,15 @@ pub async fn run(
                                 .unwrap_or_else(|| (parts[i].sequence as u128).to_be_bytes());
                             decrypt(key, &iv, &mut data)?;
                         }
+                        // on the disk before it counts as there (a power
+                        // cut left empty pieces that were taken as done)
                         let tmp = path.with_extension("tmp");
-                        std::fs::write(&tmp, &data)?;
+                        {
+                            use std::io::Write;
+                            let mut f = std::fs::File::create(&tmp)?;
+                            f.write_all(&data)?;
+                            f.sync_data()?;
+                        }
                         std::fs::rename(&tmp, &path)?;
                         Ok::<u64, anyhow::Error>(data.len() as u64)
                     };

@@ -8,6 +8,7 @@
 //! way while the last one is handed over: big video sites send a piece at
 //! a time quickly, but slow down a single endless request.
 
+use crate::sync::LockOk;
 use crate::http::SendOrdered;
 use crate::http::{request, Progress, Shared};
 use crate::model::RequestHeaders;
@@ -50,7 +51,7 @@ pub struct Ticket {
 
 impl Drop for Ticket {
     fn drop(&mut self) {
-        self.table.lock().unwrap().remove(&self.token);
+        self.table.lock_ok().remove(&self.token);
     }
 }
 
@@ -94,7 +95,7 @@ fn server() -> anyhow::Result<&'static (u16, Table)> {
 pub async fn open(shared: Arc<Shared>, src: Source, progress: Arc<Progress>) -> anyhow::Result<Ticket> {
     let (port, table) = server()?;
     let token = crate::secret::random_token();
-    table.lock().unwrap().insert(token.clone(), Arc::new(Entry { src, shared, progress }));
+    table.lock_ok().insert(token.clone(), Arc::new(Entry { src, shared, progress }));
     Ok(Ticket { url: format!("http://127.0.0.1:{port}/c/{token}"), token, table: table.clone() })
 }
 
@@ -152,7 +153,7 @@ async fn serve(mut sock: TcpStream, table: Table) -> anyhow::Result<()> {
         return reply_status(&mut sock, "405 Method Not Allowed", "").await;
     }
     let token = path.strip_prefix("/c/").unwrap_or("");
-    let Some(entry) = table.lock().unwrap().get(token).cloned() else {
+    let Some(entry) = table.lock_ok().get(token).cloned() else {
         return reply_status(&mut sock, "404 Not Found", "").await;
     };
     let mut asked: Option<(u64, Option<u64>)> = None;

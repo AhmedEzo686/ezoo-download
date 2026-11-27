@@ -40,7 +40,57 @@
   // the video button in full screen too (the add-in's window); off: hidden there
   let showInFullscreen = false;
   const panelAllowed = () =>
-    switchedOn && panel.enabled !== false && !(panel.skipSites || []).some((s) => hostMatches(location.hostname.toLowerCase(), s));
+    switchedOn &&
+    !noButtonHere &&
+    panel.enabled !== false &&
+    !(panel.skipSites || []).some((s) => hostMatches(location.hostname.toLowerCase(), s));
+  // a press of the user (or the same press passed on by early.js), never one a
+  // page's script made up
+  const userPress = (e) => !!e && (e.isTrusted || !!(globalThis.__ezooReplayed && globalThis.__ezooReplayed.has(e)));
+  // "Don't show it on this site", and where the user put it on this site
+  const SITE = location.hostname.toLowerCase();
+  let noButtonHere = false;
+  let sitePlace = null;
+  try {
+    chrome.storage.local.get({ noButtonSites: [], buttonPlaces: {} }, (o) => {
+      noButtonHere = !!(o && (o.noButtonSites || []).includes(SITE));
+      sitePlace = (o && o.buttonPlaces && o.buttonPlaces[SITE]) || null;
+      if (noButtonHere) removeAll();
+    });
+  } catch (_) {
+    /* storage not reachable: shown, at its usual place */
+  }
+  const PRIVATE = !!(chrome.extension && chrome.extension.inIncognitoContext);
+  function keepPlace(p) {
+    sitePlace = p;
+    // never in a private window (it would keep the site's name)
+    if (PRIVATE) return;
+    try {
+      chrome.storage.local.get({ buttonPlaces: {} }, (o) => {
+        const all = (o && o.buttonPlaces) || {};
+        delete all[SITE];
+        all[SITE] = p;
+        const sites = Object.keys(all);
+        for (const s of sites.slice(0, Math.max(0, sites.length - 200))) delete all[s];
+        chrome.storage.local.set({ buttonPlaces: all });
+      });
+    } catch (_) {
+      /* not kept: it stays there on this page */
+    }
+  }
+  function noButtonOnThisSite() {
+    noButtonHere = true;
+    removeAll();
+    try {
+      chrome.storage.local.get({ noButtonSites: [] }, (o) => {
+        const list = ((o && o.noButtonSites) || []).filter((h) => h !== SITE);
+        list.push(SITE);
+        chrome.storage.local.set({ noButtonSites: list.slice(-500) });
+      });
+    } catch (_) {
+      /* only for this page then */
+    }
+  }
 
   const fmtSize = (n) => {
     if (!n) return "";
@@ -138,6 +188,7 @@
   const VIDEO_PAGE = [
     /youtube\.com\/(watch|shorts\/|live\/|embed\/)/i,
     /youtube-nocookie\.com\/embed\//i,
+    /youtubekids\.com\/watch/i,
     /tiktok\.com\/@[^/]+\/(video|photo)\//i,
     /instagram\.com\/(reels?|p|tv)\//i,
     /facebook\.com\/(.+\/videos\/|watch|reel\/|share\/[vr]\/|plugins\/video)/i,
@@ -373,6 +424,50 @@
     .clip .acts { display: flex; gap: 6px; margin-top: 6px; }
     .clip .pick { margin-top: 8px; font-weight: 600; color: #334; }
     .cliprow .t { color: #1d63d6; }
+    /* "⬇ Whole video" / "✂ Part" (the part in orange) */
+    .tabs { display: flex; border-bottom: 1px solid #e3e8ef; background: #f4f6fa; }
+    .tab { flex: 1; text-align: center; padding: 7px 4px; cursor: default; color: #5b6575; font-weight: 600; border-bottom: 3px solid transparent; }
+    .tab:hover { background: #eef2f8; }
+    .tab.on { color: #1d63d6; border-bottom-color: #1d63d6; background: #fff; }
+    .tab.part.on { color: #e8590c; border-bottom-color: #e8590c; }
+    /* "💬 With subtitles" / "📝 Subtitles" */
+    .subbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f6f8fb; border-bottom: 1px solid #e8ecf2; color: #334; }
+    .subbar select { flex: 1; min-width: 0; font: inherit; padding: 3px 4px; border: 1px solid #c9d1dc; border-radius: 4px; background: #fff; color: #1f2733; }
+    .subbar select.fmt { flex: none; width: 64px; }
+    .subbar .all { font-weight: 700; display: flex; align-items: center; gap: 6px; }
+    .subbar .push { margin-left: auto; }
+    .subs { max-height: 220px; overflow: auto; }
+    .subs label { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid #f0f2f5; color: #1f2733; cursor: default; }
+    .subs label b { font-weight: 700; }
+    .subs .code { color: #6b7686; }
+    .subs .auto { font-size: 10px; color: #a06b00; background: #fff4dc; border-radius: 3px; padding: 1px 4px; }
+    .subgo { margin: 9px 12px; background: #1d63d6; color: #fff; text-align: center; border-radius: 6px; padding: 8px; font-weight: 700; cursor: default; }
+    .subgo.off { background: #9db6e0; }
+    .subnote { font-size: 10.5px; color: #6b7686; padding: 0 12px 9px; }
+    .cut { padding: 9px 12px 11px; background: #fff; }
+    .cut .lead { color: #e8590c; font-weight: 700; margin-bottom: 8px; }
+    .cut .times { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+    .cut .times b { font-weight: 700; color: #1f2733; }
+    .cut input[type=text] { width: 58px; font: inherit; text-align: center; padding: 3px 4px; border: 1px solid #c9d1dc; border-radius: 4px; color: #1f2733; background: #fff; }
+    .cut input.bad { border-color: #d1342f; }
+    .cut .now { color: #e8590c; cursor: default; white-space: nowrap; font-size: 10.5px; }
+    .cut .now:hover { text-decoration: underline; }
+    .cut .len { margin-left: auto; font-weight: 700; color: #1f2733; }
+    .cut .len.err { color: #d1342f; }
+    .cut .seg { display: inline-flex; border: 1px solid #e8590c; border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+    .cut .seg span { padding: 3px 10px; color: #e8590c; cursor: default; background: #fff; }
+    .cut .seg span + span { border-left: 1px solid #e8590c; }
+    .cut .seg span.on { background: #e8590c; color: #fff; }
+    .cut .qs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .cut .qs span { padding: 3px 9px; border: 1px solid #c9d1dc; border-radius: 4px; color: #1f2733; cursor: default; background: #fff; font-weight: 600; }
+    .cut .qs span:hover { border-color: #e8590c; }
+    .cut .qs span.on { border-color: #e8590c; background: #fff3eb; color: #e8590c; }
+    .cut .acts { display: flex; gap: 8px; }
+    .cut .pv { padding: 6px 10px; border-radius: 5px; background: #fff3eb; color: #e8590c; cursor: default; white-space: nowrap; }
+    .cut .pv:hover { background: #ffe4d2; }
+    .cut .go { flex: 1; text-align: center; padding: 6px 10px; border-radius: 5px; color: #fff; font-weight: 700; cursor: default;
+               background: linear-gradient(#f57a2e, #e05a0c); box-shadow: 0 2px 6px rgba(224,90,12,.35); }
+    .cut .go:hover { background: linear-gradient(#ff8a3d, #e8630f); }
     /* looks */
     .dark .btn { background: linear-gradient(#3a3f47, #23272e); border-color: #15181c; }
     .dark .btn:hover, .dark .btn.open { background: linear-gradient(#454b55, #2a2f37); }
@@ -400,10 +495,12 @@
     .icon .ico { width: 16px; height: 16px; }`;
 
   function isMain(video) {
-    return TOP && video === biggestVideo();
+    // a player in a frame the page covers (below): it is the page's video
+    return TOP && (video.tagName === "IFRAME" || video === biggestVideo());
   }
 
   function directSrc(video) {
+    if (video.tagName === "IFRAME") return "";
     const src = video.currentSrc || video.src || "";
     return /^https?:/i.test(src) && !/\.m3u8|\.mpd/i.test(src) ? src : "";
   }
@@ -434,6 +531,8 @@
     host.style.setProperty("--z", String(zoom));
     host.style.setProperty("--o", String(solid));
     const root = host.attachShadow({ mode: "closed" });
+    // early.js keeps the page's own player from taking presses on it
+    (globalThis.__ezooRoots = globalThis.__ezooRoots || new WeakMap()).set(host, root);
     const svgNs = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(svgNs, "svg");
     svg.setAttribute("class", "ico");
@@ -456,19 +555,26 @@
         el(
           "div",
           { class: "btn", id: "main" },
-          el("span", { class: "part", id: "grab" }, svg, spin, el("span", { id: "label", text: tr("Download this video") }), el("span", { class: "caret", text: "▼" })),
-          el("span", { class: "side", id: "help", title: tr("Help"), text: "?" }),
-          el("span", { class: "side", id: "close", title: tr("Hide"), text: "✕" })
+          el(
+            "span",
+            { class: "part", id: "grab", tabindex: "0", role: "button", "aria-haspopup": "true", "aria-label": tr("Download this video") },
+            svg,
+            spin,
+            el("span", { id: "label", text: tr("Download this video") }),
+            el("span", { class: "caret", text: "▼" })
+          ),
+          el("span", { class: "side", id: "help", title: tr("Help"), text: "?", tabindex: "0", role: "button", "aria-label": tr("Help") }),
+          el("span", { class: "side", id: "close", title: tr("Hide"), text: "✕", tabindex: "0", role: "button", "aria-label": tr("Hide") })
         ),
         list
       )
     );
-    const b = { host, root, video, open: false, own: null, loading: false, dx: null, dy: null, help: false };
+    const b = { host, root, video, open: false, own: null, loading: false, dx: null, dy: null, help: false, place: sitePlace, auto: null };
     const grab = root.getElementById("grab");
     // drag: move it anywhere on the video; a short press is a click
     let down = null;
     grab.addEventListener("mousedown", (e) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || !userPress(e)) return;
       const hr = host.getBoundingClientRect();
       down = { x: e.clientX, y: e.clientY, ox: e.clientX - hr.left, oy: e.clientY - hr.top, moved: false };
       e.preventDefault();
@@ -483,21 +589,65 @@
       b.dy = e.clientY - down.oy - r.top;
       placeOne(b);
     });
-    addEventListener("mouseup", () => {
-      if (!down) return;
+    const up = (e) => {
+      if (!down || !userPress(e)) return;
       const wasDrag = down.moved;
       down = null;
       root.getElementById("main").classList.remove("drag");
-      if (!wasDrag) clicked(b);
-    });
-    root.getElementById("help").addEventListener("click", () => {
+      if (!wasDrag) return clicked(b);
+      // dropped: it goes to the nearest edge of the video, and stays there on
+      // this site (its other videos, next time too)
+      const r = video.getBoundingClientRect();
+      const main = root.getElementById("main").getBoundingClientRect();
+      const roomX = Math.max(1, r.width - main.width - 16);
+      const roomY = Math.max(1, r.height - main.height - 16);
+      const at = { x: Math.min(1, Math.max(0, (b.dx - 8) / roomX)), y: Math.min(1, Math.max(0, (b.dy - 8) / roomY)) };
+      b.place = snapToEdge(at);
+      b.dx = null;
+      b.dy = null;
+      keepPlace(b.place);
+      placeOne(b);
+    };
+    addEventListener("mouseup", up);
+    // heard here when the page's player keeps it from the window (early.js)
+    root.addEventListener("mouseup", up);
+    const press = (id, run) => {
+      const x = root.getElementById(id);
+      x.addEventListener("click", (e) => userPress(e) && run());
+      x.addEventListener("keydown", (e) => {
+        if ((e.key === "Enter" || e.key === " ") && e.isTrusted) {
+          e.preventDefault();
+          e.stopPropagation();
+          run();
+        }
+      });
+    };
+    press("help", () => {
       b.help = !b.help;
       b.open = true;
       renderOne(b);
     });
-    root.getElementById("close").addEventListener("click", () => {
+    press("close", () => {
       b.dismissed = true;
       host.remove();
+    });
+    // the keyboard: Enter / Space opens it like a click
+    grab.addEventListener("keydown", (e) => {
+      if ((e.key === "Enter" || e.key === " ") && e.isTrusted) {
+        e.preventDefault();
+        e.stopPropagation();
+        clicked(b);
+      }
+    });
+    // one player for many videos (the previews of a home page, a feed): a
+    // new video in it forgets what was found for the one before
+    // (only when it really is another video: a site's own player changes
+    // its blob: source and empties itself often for the same video)
+    video.addEventListener("emptied", () => {
+      if (stale(b)) forget(b);
+    });
+    video.addEventListener("loadstart", () => {
+      if (stale(b)) forget(b);
     });
     layer().appendChild(host);
     bubbles.set(video, b);
@@ -506,18 +656,50 @@
     return b;
   }
 
-  // the part panel is switched off in the add-in (see renderOne)
-  const PARTS_IN_ADDIN = false;
+
+  // which video a player shows now: its own link, else its own file (a
+  // blob: source says nothing: the site makes a new one for the same video)
+  function videoKey(video) {
+    return ownLink(video) || directSrc(video) || "";
+  }
+
+  // what was found (or is being looked up) is for another video now
+  function stale(b) {
+    const key = videoKey(b.video);
+    if (b.own) return b.ownFor !== key;
+    if (b.loading) return b.asked !== key;
+    return false;
+  }
+
+  // what was found belongs to another video of this player now
+  function forget(b) {
+    if (!b.own && !b.loading) return;
+    b.own = null;
+    b.ownFor = "";
+    b.loading = false;
+    b.open = false;
+    renderOne(b);
+  }
 
   function itemsOf(b) {
+    if (b.own && b.ownFor !== videoKey(b.video)) {
+      b.own = null;
+      b.ownFor = "";
+    }
     if (b.own) return b.own;
-    return isMain(b.video) ? items : [];
+    // the page's own video only: a player that shows another video (a
+    // preview on a home page) is looked up for that video
+    if (!isMain(b.video)) return [];
+    const mine = ownLink(b.video);
+    return !mine || isVideoPage(location.href) || mine === cleanLink(location.href) ? items : [];
   }
 
   function lookUp(b, stream) {
     // another video on the page (or nothing found for it yet): look it up now
     b.loading = true;
     b.open = true;
+    const asked = videoKey(b.video);
+    b.asked = asked;
     renderOne(b, tr("Looking for the video qualities…"));
     chrome.runtime.sendMessage(
       // its own post / video link, or its own file; the page only when
@@ -538,7 +720,13 @@
           if (/not running/i.test(res.error)) return notRunning(b, () => lookUp(b, stream));
           return renderOne(b, res.error, true);
         }
+        // the player went on to another video meanwhile: not its qualities
+        if (videoKey(b.video) !== asked) {
+          b.open = false;
+          return renderOne(b);
+        }
         b.own = res.items || [];
+        b.ownFor = asked;
         renderOne(b);
       }
     );
@@ -649,7 +837,7 @@
     const list = itemsOf(b);
     const usable = list.filter((i) => !i.disabled);
     const busy = b.loading || (!usable.length && list.some((i) => i.disabled && /Getting/.test(i.label)));
-    b.root.getElementById("label").textContent = usable.length > 1 ? `Download this video (${usable.length})` : tr("Download this video");
+    b.root.getElementById("label").textContent = usable.length > 1 ? tr(`Download this video (${usable.length})`) : tr("Download this video");
     b.root.getElementById("spin").hidden = !busy;
     b.root.querySelector("svg").style.display = busy ? "none" : "";
     b.root.getElementById("main").classList.toggle("open", b.open);
@@ -660,9 +848,13 @@
       box.appendChild(
         el("div", {
           class: "help",
-          text: "Click the button to choose a quality. Drag it to move it on the video. ✕ hides it for this video. Its size can be changed in the Ezoo Download add-in menu.",
+          text: "Click the button (or press Enter on it) to choose a quality. Drag it to an edge of the video: it stays there on this site. ✕ hides it for this video. Its size can be changed in the Ezoo Download add-in menu.",
         })
       );
+      const never = el("div", { class: "act", tabindex: "0", role: "button", text: "Don't show the button on this site" });
+      never.addEventListener("click", (e) => userPress(e) && noButtonOnThisSite());
+      never.addEventListener("keydown", (e) => e.key === "Enter" && e.isTrusted && noButtonOnThisSite());
+      box.appendChild(never);
     }
     if (note) {
       // dir "auto": a note in Arabic reads right to left (its full stop at the end)
@@ -681,11 +873,45 @@
     }
     const title = (list.find((m) => m.yt && m.yt.title) || {}).yt;
     box.appendChild(el("div", { class: "head", dir: "auto", title: (title && title.title) || cleanTitle(), text: (title && title.title) || cleanTitle() }));
-    // "Download a part of this video" stays in the program only for now
-    // (Tasks > Download a part of a video); the add-in offers whole videos
-    const partOk = PARTS_IN_ADDIN && usable.some(canCut);
-    if (b.clipMode && partOk) {
-      box.appendChild(clipPanel(b));
+    // the tabs: the whole video, the video with its subtitles, its
+    // subtitles only, or a part of it
+    const partOk = usable.some(canCut);
+    const withSubs = usable.find((m) => m.yt && Array.isArray(m.yt.subtitles) && m.yt.subtitles.length);
+    const subs = withSubs ? withSubs.yt.subtitles : [];
+    if (!subs.length) b.subTab = "";
+    const partTab = b.clipMode && partOk;
+    const mode = partTab ? "part" : b.subTab || "whole";
+    if (partOk || subs.length) {
+      const tab = (key, text) => {
+        const t = el("div", { class: "tab" + (key === "part" ? " part" : "") + (mode === key ? " on" : ""), text });
+        t.addEventListener("click", () => {
+          if (mode === key) return;
+          const part = key === "part";
+          b.clipMode = part;
+          b.subTab = part || key === "whole" ? "" : key;
+          if (part && !b.clip) {
+            const v = b.video;
+            const at = Math.floor(v.currentTime || 0);
+            const dur = Number.isFinite(v.duration) ? v.duration : 0;
+            b.clip = { from: at, to: dur ? Math.min(dur, at + 30) : at + 30, exact: false };
+          }
+          if (!part) stopPart(b);
+          renderOne(b);
+        });
+        return t;
+      };
+      const tabs = [tab("whole", "⬇ Whole video")];
+      if (subs.length) tabs.push(tab("with", "💬 With subtitles"), tab("subs", "📝 Subtitles"));
+      if (partOk) tabs.push(tab("part", "✂ Part"));
+      box.appendChild(el("div", { class: "tabs" }, ...tabs));
+    }
+    if (mode === "subs") {
+      box.appendChild(subtitlesPanel(b, subs, withSubs.yt));
+      return;
+    }
+    if (mode === "with") box.appendChild(subtitleBar(b, subs));
+    if (partTab) {
+      box.appendChild(clipPanel(b, usable));
     } else {
       const all = downloadAllOf(b, usable);
       if (all) {
@@ -693,29 +919,12 @@
         row.addEventListener("click", all.run);
         box.appendChild(row);
       }
-      if (partOk) {
-        const row = el(
-          "div",
-          { class: "item cliprow" },
-          el("span", { class: "num", text: "✂" }),
-          el("div", { class: "body" }, el("div", { class: "t", text: tr("Download a part of this video…") }), el("div", { class: "s", text: tr("Only the part you choose is downloaded") }))
-        );
-        row.addEventListener("click", () => {
-          b.clipMode = true;
-          if (!b.clip) {
-            const v = b.video;
-            const at = Math.floor(v.currentTime || 0);
-            const dur = Number.isFinite(v.duration) ? v.duration : 0;
-            b.clip = { from: at, to: dur ? Math.min(dur, at + 30) : at + 30, exact: false };
-          }
-          renderOne(b);
-        });
-        box.appendChild(row);
-      }
     }
+    if (partTab) return;
     let n = 0;
-    list.forEach((m) => {
-      if (b.clipMode && partOk && !canCut(m)) return;
+    const shown = mode === "with" ? list.filter((m) => m.yt && !m.disabled && !isAudioOnly(m.yt)) : list;
+    const send = (m) => (mode === "with" ? download(b, m, subsChoice(b, subs)) : download(b, m));
+    shown.forEach((m) => {
       const d = describe(m);
       const t = el("div", { class: "t" }, el("span", { text: d.main }));
       if (d.tag) t.append(el("span", { class: "tag " + d.tag.replace(/\s/g, "").replace(/^(\d)K$/, "K$1"), text: d.tag }));
@@ -727,9 +936,123 @@
         el("span", { class: "num", text: m.disabled ? "" : `${++n}.` }),
         el("div", { class: "body" }, t, el("div", { class: "s", text: sub }))
       );
-      if (!m.disabled) row.addEventListener("click", () => (b.clipMode && partOk ? downloadPart(b, m) : download(b, m)));
+      if (!m.disabled) {
+        row.setAttribute("tabindex", "0");
+        row.setAttribute("role", "button");
+        row.addEventListener("click", () => send(m));
+        row.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && e.isTrusted) {
+            e.preventDefault();
+            send(m);
+          }
+        });
+      }
       box.appendChild(row);
     });
+  }
+
+  // a choice of sound only (no picture: no subtitles to go with it)
+  function isAudioOnly(y) {
+    return y.quality === "mp3" || y.quality === "audio" || /^audio\|/.test(y.key || "");
+  }
+
+  // the language picked for "With subtitles": the one picked before, else
+  // the browser's language, else Arabic / English, else the first
+  function subLangOf(b, subs) {
+    if (subs.some((s) => s.code === b.subLang)) return b.subLang;
+    const lang = (navigator.language || "").split("-")[0].toLowerCase();
+    const by = (code) => subs.find((s) => s.code === code || s.code === `${code}-orig`);
+    const pick = by(lang) || by("ar") || by("en") || subs[0];
+    return pick ? pick.code : "";
+  }
+
+  // what "With subtitles" sends with the video: "srt:ar"
+  function subsChoice(b, subs) {
+    const lang = subLangOf(b, subs);
+    return lang ? `${b.subFmt === "vtt" ? "vtt" : "srt"}:${lang}` : null;
+  }
+
+  function fmtSelect(b) {
+    const f = el("select", { class: "fmt", "aria-label": "Subtitle format" }, el("option", { value: "srt", text: "SRT" }), el("option", { value: "vtt", text: "VTT" }));
+    f.value = b.subFmt === "vtt" ? "vtt" : "srt";
+    keepKeys(f);
+    f.addEventListener("change", () => (b.subFmt = f.value));
+    return f;
+  }
+
+  const subName = (s) => `${s.name}${s.code && s.name !== s.code ? ` (${s.code.replace(/-orig$/, "")})` : ""}${s.auto ? " · auto" : ""}`;
+
+  // "💬 With subtitles": the language and the format, above the qualities
+  function subtitleBar(b, subs) {
+    const lang = el("select", { "aria-label": "Subtitle language" });
+    for (const s of subs) lang.appendChild(el("option", { value: s.code, text: subName(s) }));
+    lang.value = subLangOf(b, subs);
+    keepKeys(lang);
+    lang.addEventListener("change", () => (b.subLang = lang.value));
+    return el("div", { class: "subbar" }, el("span", { text: "Subtitles" }), lang, fmtSelect(b));
+  }
+
+  // "📝 Subtitles": the video's subtitles only, all or some of them
+  function subtitlesPanel(b, subs, yt) {
+    if (!b.subPick || ![...b.subPick].every((c) => subs.some((s) => s.code === c))) b.subPick = new Set(subs.map((s) => s.code));
+    const pick = b.subPick;
+    const go = el("div", { class: "subgo", tabindex: "0", role: "button" });
+    const boxes = [];
+    const all = el("input", { type: "checkbox" });
+    const show = () => {
+      all.checked = pick.size === subs.length;
+      all.indeterminate = pick.size > 0 && pick.size < subs.length;
+      boxes.forEach(([c, s]) => (c.checked = pick.has(s.code)));
+      go.textContent = pick.size ? `⬇ Download ${pick.size} subtitle file${pick.size > 1 ? "s" : ""}` : "Choose the subtitles you want";
+      go.classList.toggle("off", !pick.size);
+    };
+    all.addEventListener("change", () => {
+      pick.clear();
+      if (all.checked) subs.forEach((s) => pick.add(s.code));
+      show();
+    });
+    const list = el("div", { class: "subs" });
+    for (const s of subs) {
+      const c = el("input", { type: "checkbox" });
+      c.addEventListener("change", () => {
+        if (c.checked) pick.add(s.code);
+        else pick.delete(s.code);
+        show();
+      });
+      boxes.push([c, s]);
+      const label = el("label", {}, c, el("b", { dir: "auto", text: s.name }), el("span", { class: "code", text: `(${s.code.replace(/-orig$/, "")})` }));
+      if (s.auto) label.append(el("span", { class: "auto", text: "auto" }));
+      list.appendChild(label);
+    }
+    const run = () => {
+      if (!pick.size || b.subBusy) return;
+      b.subBusy = true;
+      go.textContent = pick.size > 3 ? "Getting the subtitles… (a pause between languages, so YouTube doesn't refuse)" : "Getting the subtitles…";
+      go.classList.add("off");
+      chrome.runtime.sendMessage(
+        { type: "swiftget-subtitles", page: yt.source, langs: [...pick], format: b.subFmt === "vtt" ? "vtt" : "srt", title: yt.title || cleanTitle() },
+        (res) => {
+          b.subBusy = false;
+          if (chrome.runtime.lastError || !res) return notRunning(b, run);
+          if (!res.ok) return flashOne(b, res.error || "No subtitles were found.", true);
+          const saved = `${res.count} subtitle file${res.count > 1 ? "s" : ""} saved in the video folder ✔`;
+          // some languages refused for now (the site wants a pause)
+          flashOne(b, res.note ? `${saved} ${res.note}` : saved, !!res.note);
+        }
+      );
+    };
+    go.addEventListener("click", run);
+    go.addEventListener("keydown", (e) => e.key === "Enter" && e.isTrusted && run());
+    const box = el(
+      "div",
+      {},
+      el("div", { class: "subbar" }, el("label", { class: "all" }, all, el("span", { text: `All subtitles (${subs.length})` })), el("span", { class: "push", text: "Format" }), fmtSelect(b)),
+      list,
+      go
+    );
+    if (subs.some((s) => s.auto)) box.appendChild(el("div", { class: "subnote", text: "auto = made by the site itself (not by the video's makers)" }));
+    show();
+    return box;
   }
 
   // a quality that can be cut: a video / sound the app downloads itself
@@ -744,18 +1067,36 @@
     for (const t of ["keydown", "keyup", "keypress"]) input.addEventListener(t, (e) => e.stopPropagation());
   }
 
-  // From / To, the kind of cut, a look at the part on the page's own player
-  function clipPanel(b) {
+  // a short name of a quality for the part ("1080p", "MP3")
+  function chipOf(m) {
+    const y = m.yt;
+    if (y) {
+      if (y.quality === "mp3") return "MP3";
+      if (y.quality === "audio" || /^audio\|/.test(y.key || "")) return (y.ext || "M4A").toUpperCase();
+      return (y.quality || (y.ext || "MP4").toUpperCase()) + (y.codec ? " " + y.codec : "");
+    }
+    const h = heightOf(m.label || "");
+    return h ? `${h}p` : (m.ext || (m.url || "").split("?")[0].split(".").pop() || "file").toUpperCase();
+  }
+
+  // The "✂ Part" tab: From / To, quick or exact, the quality, a look at the
+  // part on the page's own player, and its own button
+  function clipPanel(b, usable) {
     const c = b.clip;
     const v = b.video;
     const dur = Number.isFinite(v.duration) ? v.duration : 0;
-    const len = el("div", { class: "len" });
+    const choices = usable.filter(canCut);
+    if (!choices.some((m) => m === b.cutPick)) {
+      b.cutPick = choices.find((m) => m.yt && m.yt.quality === "720p") || choices.find((m) => heightOf(m.label || "") === 720) || choices[0];
+    }
+    const len = el("span", { class: "len" });
+    const ok = () => c.to > c.from && (!dur || c.from < dur);
     const showLen = () => {
-      const ok = c.to > c.from && (!dur || c.from < dur);
-      len.textContent = ok ? `Length of the part: ${clock(c.to - c.from)}` : "The end must come after the start.";
-      len.classList.toggle("err", !ok);
+      len.textContent = ok() ? clock(c.to - c.from) : "!";
+      len.title = ok() ? "Length of the part" : "The end must come after the start.";
+      len.classList.toggle("err", !ok());
     };
-    const timeRow = (label, key) => {
+    const time = (label, key) => {
       const input = el("input", { type: "text", value: clock(c[key]), "aria-label": label });
       keepKeys(input);
       input.addEventListener("input", () => {
@@ -773,34 +1114,54 @@
         input.classList.remove("bad");
         showLen();
       });
-      return el("div", { class: "row" }, el("b", { text: label }), input, now);
+      return { label: el("b", { text: label }), input, now };
     };
-    const kind = (exact, title, words) => {
-      const r = el("input", { type: "radio", name: "cut" });
-      r.checked = c.exact === exact;
-      r.addEventListener("change", () => (c.exact = exact));
-      return el("label", {}, r, el("span", {}, el("span", { text: title }), el("small", { text: words })));
+    const from = time("From", "from");
+    const to = time("To", "to");
+    const seg = el("div", { class: "seg" });
+    const showSeg = () => {
+      seg.replaceChildren();
+      for (const [exact, text, words] of [
+        [false, "Quick cut", "Takes seconds, the quality stays as it is; it may start a second or two early."],
+        [true, "Exact cut", "Starts on the very second you chose; the picture is made again, so it takes longer."],
+      ]) {
+        const k = el("span", { class: c.exact === exact ? "on" : "", text, title: words });
+        k.addEventListener("click", () => {
+          c.exact = exact;
+          showSeg();
+        });
+        seg.appendChild(k);
+      }
     };
-    const preview = el("span", { class: "btn2", text: tr("▶ Preview the part") });
+    const qs = el("div", { class: "qs" });
+    const showQs = () => {
+      qs.replaceChildren();
+      for (const m of choices) {
+        const d = describe(m);
+        const q = el("span", { class: m === b.cutPick ? "on" : "", text: chipOf(m), title: [d.main, d.sub].filter(Boolean).join(" · ") });
+        q.addEventListener("click", () => {
+          b.cutPick = m;
+          showQs();
+        });
+        qs.appendChild(q);
+      }
+    };
+    const preview = el("span", { class: "pv", text: "▶ Preview" });
     preview.addEventListener("click", () => playPart(b));
-    const back = el("span", { class: "btn2", text: tr("← Back") });
-    back.addEventListener("click", () => {
-      b.clipMode = false;
-      stopPart(b);
-      renderOne(b);
-    });
+    const go = el("span", { class: "go", text: "✂ Download the part" });
+    go.addEventListener("click", () => b.cutPick && downloadPart(b, b.cutPick));
     const box = el(
       "div",
-      { class: "clip" },
-      timeRow("From", "from"),
-      timeRow("To", "to"),
-      len,
-      kind(false, "Quick cut (recommended)", "Takes seconds, the quality stays as it is; the part may start a second or two before your time."),
-      kind(true, "Exact cut", "Starts on the very second you chose; the picture is made again, so it takes longer."),
-      el("div", { class: "acts" }, preview, back),
-      el("div", { class: "pick", text: tr("Choose the quality of the part:") })
+      { class: "cut" },
+      el("div", { class: "lead", text: tr("Only the part you choose is downloaded") }),
+      el("div", { class: "times" }, from.label, from.input, to.label, to.input, to.now, len),
+      seg,
+      qs,
+      el("div", { class: "acts" }, preview, go)
     );
     showLen();
+    showSeg();
+    showQs();
     return box;
   }
 
@@ -840,7 +1201,7 @@
     const fileName = `${cleanTitle()}.${m.ext || "mp4"}`;
     stopPart(b);
     chrome.runtime.sendMessage(
-      { type: "swiftget-download", item: m, title: document.title, fileName, referrer: location.href, clip },
+      { type: "swiftget-download", item: m, title: document.title, fileName, referrer: location.href, clip, part: true },
       (res) => {
         if (chrome.runtime.lastError || !res || !res.ok) notRunning(b, () => downloadPart(b, m));
         else {
@@ -849,6 +1210,60 @@
         }
       }
     );
+  }
+
+  // a free place (fractions of the video, after a drag) put on its nearest
+  // edge; near a corner, in the corner
+  function snapToEdge(at) {
+    const d = { left: at.x, right: 1 - at.x, top: at.y, bottom: 1 - at.y };
+    const edge = Object.keys(d).reduce((a, k) => (d[a] <= d[k] ? a : k));
+    const c = (n) => (n < 0.08 ? 0 : n > 0.92 ? 1 : n);
+    if (edge === "left") return { x: 0, y: c(at.y) };
+    if (edge === "right") return { x: 1, y: c(at.y) };
+    if (edge === "top") return { x: c(at.x), y: 0 };
+    return { x: c(at.x), y: 1 };
+  }
+
+  // is one of the page's own buttons (much smaller than the video) under this spot?
+  function onPageControl(b, left, top, w, h, r) {
+    const area = (x) => Math.max(0, x.width) * Math.max(0, x.height);
+    const small = (e) => area(e.getBoundingClientRect()) < area(r) / 5;
+    const points = [[left + w / 2, top + h / 2], [left + 3, top + 3], [left + w - 3, top + 3]];
+    for (const [px, py] of points) {
+      let list = [];
+      try {
+        list = document.elementsFromPoint(px, py);
+      } catch (_) {
+        return false;
+      }
+      for (const e of list) {
+        if (e === b.host) continue;
+        if (e === b.video || e.contains(b.video)) break;
+        const c = e.closest && e.closest("button, [role=button], a[href], input, select");
+        if (c && !c.contains(b.video) && small(c)) return true;
+      }
+    }
+    return false;
+  }
+
+  // where the button sits on its video: the user's place on this site, else
+  // the top right corner, or the top left one when a button of the page's
+  // own is there (kept a moment, so it does not jump about)
+  function spotFor(b, r, w, h) {
+    if (b.place) return b.place;
+    const now = Date.now();
+    if (b.auto && b.auto.v === b.video && now - b.auto.t < 600) return b.auto.at;
+    let at = { x: 1, y: 0 };
+    for (const c of [{ x: 1, y: 0 }, { x: 0, y: 0 }]) {
+      const left = r.left + 8 + c.x * Math.max(0, r.width - w - 16);
+      const top = r.top + 8 + c.y * Math.max(0, r.height - h - 16);
+      if (!onPageControl(b, left, top, w, h, r)) {
+        at = c;
+        break;
+      }
+    }
+    b.auto = { v: b.video, at, t: now };
+    return at;
   }
 
   function placeOne(b) {
@@ -869,8 +1284,17 @@
     const mainRect = b.root.getElementById("main").getBoundingClientRect();
     const w = mainRect.width || 62;
     const h = mainRect.height || 22;
-    let x = b.dx == null ? r.right - w - 8 : r.left + b.dx;
-    let y = b.dy == null ? r.top + 8 : r.top + b.dy;
+    let x;
+    let y;
+    if (b.dx != null) {
+      // being dragged
+      x = r.left + b.dx;
+      y = r.top + b.dy;
+    } else {
+      const at = spotFor(b, r, w, h);
+      x = r.left + 8 + at.x * Math.max(0, r.width - w - 16);
+      y = r.top + 8 + at.y * Math.max(0, r.height - h - 16);
+    }
     x = Math.max(r.left, Math.min(x, r.right - 60));
     y = Math.max(r.top, Math.min(y, r.bottom - h));
     const left = Math.max(4, Math.min(x, innerWidth - w));
@@ -891,8 +1315,8 @@
   function place() {
     if (!panelAllowed()) return;
     // This runs in every frame of every tab, several times a second. A page
-    // with no video and no panel has nothing to place, so it is only looked
-    // at now and then (a player built later is still found).
+    // with no video and no panel has nothing to place, so look now and then
+    // (a player built later is still found).
     if (!bubbles.size && !items.length && !document.querySelector("video") && Date.now() - probedAt < 4000) return;
     probedAt = Date.now();
     const vids = allVideos().filter((v) => {
@@ -917,6 +1341,30 @@
       }
       if (!b.dismissed) placeOne(b);
     }
+    // the video plays in a frame the page lays a see-through layer over
+    // (Google Drive): the frame's own button can be seen but never pressed,
+    // so this page shows one over the frame (with what was found for it)
+    if (TOP && items.length && !vids.length) {
+      for (const f of coveredPlayers()) {
+        const b = bubbles.get(f) || makeBubble(f);
+        if (!b.dismissed) placeOne(b);
+      }
+    }
+  }
+
+  // big frames whose top right corner (where the button is) the page covers
+  function coveredPlayers() {
+    const out = [];
+    for (const f of document.querySelectorAll("iframe")) {
+      const r = f.getBoundingClientRect();
+      if (r.width < 300 || r.height < 170 || r.bottom < 60 || r.top > innerHeight - 60) continue;
+      const x = Math.min(r.right - 40, innerWidth - 5);
+      const y = Math.max(r.top + 16, 5);
+      const top = document.elementFromPoint(x, y);
+      if (top && top !== f && !(bubbles.get(f) && top === bubbles.get(f).host)) out.push(f);
+      if (out.length >= 2) break;
+    }
+    return out;
   }
 
   function flashOne(b, text, isError) {
@@ -928,15 +1376,15 @@
     }, 2500);
   }
 
-  function download(b, m) {
+  function download(b, m, subs) {
     // a stream whose qualities are not known yet: ask the app for them
     if (m.resolve) return lookUp(b, m.resolve);
     const fileName = `${cleanTitle()}.${m.ext || "mp4"}`;
     chrome.runtime.sendMessage(
-      { type: "swiftget-download", item: m, title: document.title, fileName, referrer: location.href },
+      { type: "swiftget-download", item: m, title: document.title, fileName, referrer: location.href, subs: subs || null },
       (res) => {
-        if (chrome.runtime.lastError || !res || !res.ok) notRunning(b, () => download(b, m));
-        else flashOne(b, "Sent to Ezoo Download ✔", false);
+        if (chrome.runtime.lastError || !res || !res.ok) notRunning(b, () => download(b, m, subs));
+        else flashOne(b, subs ? "Sent to Ezoo Download with its subtitles ✔" : "Sent to Ezoo Download ✔", false);
       }
     );
   }
@@ -968,8 +1416,8 @@
       linkRules = chrome.runtime.lastError ? null : res || null;
     });
   refreshLinkRules();
-  // every frame asked the add-in for the rules once a minute; once is enough,
-  // and the top page asks again when they change
+  // every frame asked once a minute; once is enough, the top page asks again
+  // when the rules change
   if (TOP) setInterval(refreshLinkRules, 60000);
   // shown by the browser itself, not downloaded: never taken from a click
   // pages and pictures open in the browser; a PDF too, unless PDF is one of
@@ -1004,6 +1452,11 @@
     if (forced || ext === "torrent") return true;
     return (r.exts || []).some((x) => wildcard(x, ext));
   }
+  // Heard after the page's own click code (not before it, and the click is
+  // not stopped): file sites often make their link work in that code (a
+  // request saying "the download starts", a cookie); stopped, the link stayed
+  // "403 Forbidden" for the program while the browser and other programs got
+  // the file. Only the browser's own download is held back.
   addEventListener(
     "click",
     (e) => {
@@ -1013,7 +1466,6 @@
       const href = String(a.href);
       if (!wantedLink(e, href)) return;
       e.preventDefault();
-      e.stopPropagation();
       chrome.runtime.sendMessage({ type: "swiftget-link", url: href }, (res) => {
         // not taken (the app is closed, the user chose the browser): the browser's way
         if (chrome.runtime.lastError || !res || !res.ok) {
@@ -1027,7 +1479,7 @@
         }
       });
     },
-    true
+    false
   );
 
   // magnet links of torrents go to Ezoo Download (Alt + click: to the browser)
@@ -1100,6 +1552,21 @@
       for (const a of root.querySelectorAll("a[href]")) if (inSel(a)) add(a.href, a.innerText || a.title);
       for (const el of root.querySelectorAll("img[src], video[src], audio[src], source[src], embed[src]")) {
         if (inSel(el)) add(el.src, el.alt || el.title || "");
+      }
+      // buttons and boxes that keep their file's address in data-* (many
+      // download pages): made absolute against the page
+      for (const el of root.querySelectorAll("[data-href], [data-url], [data-download], [data-file], [data-link]")) {
+        if (!inSel(el)) continue;
+        for (const k of ["href", "url", "download", "file", "link"]) {
+          const v = el.dataset && el.dataset[k];
+          if (v && !/^(javascript|data):/i.test(v)) {
+            try {
+              add(new URL(v, location.href).href, el.innerText || el.title || "");
+            } catch (_) {
+              /* not an address */
+            }
+          }
+        }
       }
     }
     // addresses written as plain text (pages that show a list of links, a

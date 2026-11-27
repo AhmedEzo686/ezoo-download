@@ -75,6 +75,7 @@ fn select(ui: &Ui, d: &SchedulerDialog, id: u64) {
     d.set_d5(sc.days[5]);
     d.set_d6(sc.days[6]);
     d.set_on_startup(sc.on_startup);
+    d.set_wake(sc.wake);
     d.set_stop_enabled(sc.stop_enabled);
     d.set_stop_time(sc.stop_time.clone().into());
     d.set_parallel(q.max_parallel.clamp(1, 32) as i32);
@@ -156,6 +157,7 @@ fn read(d: &SchedulerDialog, mut q: QueueDef) -> Result<QueueDef, String> {
     q.schedule.once_date = date;
     q.schedule.days = [d.get_d0(), d.get_d1(), d.get_d2(), d.get_d3(), d.get_d4(), d.get_d5(), d.get_d6()];
     q.schedule.on_startup = d.get_on_startup();
+    q.schedule.wake = d.get_wake();
     q.schedule.stop_enabled = d.get_stop_enabled();
     q.schedule.stop_time = stop;
     q.max_parallel = d.get_parallel().clamp(1, 32) as u32;

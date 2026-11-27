@@ -45,6 +45,8 @@
   .open { margin-top: 8px; }
   .act { margin-top: 8px; display: block; width: 100%; padding: 6px 10px; border: 1px solid #1d63d6; background: #1d63d6; color: #fff; border-radius: 6px; font: inherit; cursor: pointer; }
   .act:disabled { opacity: .7; }
+  .left { margin: 0; padding: 8px 16px; background: #fff8e6; border-bottom: 1px solid #f0e2b8; font-size: 12.5px; color: #6b5a1e; }
+  .left[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -54,6 +56,7 @@
     <span class="dot" id="status">checking…</span>
     <button class="gear" id="settings" title="Settings">⚙</button>
   </header>
+  <p class="left" id="left" hidden></p>
   <div class="switch">
     <div>
       <b id="onText">Ezoo Download is on</b>

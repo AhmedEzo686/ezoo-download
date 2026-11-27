@@ -232,6 +232,7 @@ fn detect() -> Vec<Browser> {
 /// folder is put back in order from this copy first.
 const EXTENSION_FILES: &[(&str, &[u8])] = &[
     ("background.js", include_bytes!("../../../extension/background.js")),
+    ("early.js", include_bytes!("../../../extension/early.js")),
     ("content.js", include_bytes!("../../../extension/content.js")),
     ("yt-core.js", include_bytes!("../../../extension/yt-core.js")),
     ("popup.html", include_bytes!("../../../extension/popup.html")),
@@ -358,6 +359,38 @@ fn in_downloads(dir: &Path, firefox: bool) -> PathBuf {
     }
 }
 
+/// The Chromium add-in folders of this program (next to it, and the copy in
+/// its data folder where it could not write there): an add-in loaded from
+/// one of them gets its id from that folder.
+pub(crate) fn extension_folders() -> Vec<PathBuf> {
+    let mut all = Vec::new();
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+        all.push(dir.join("extension"));
+    }
+    all.push(swiftget_engine::default_data_dir().join("extension"));
+    all.into_iter().filter(|p| p.is_dir()).collect()
+}
+
+/// The id of our Firefox add-on (from its manifest).
+pub(crate) fn firefox_addon_id() -> String {
+    serde_json::from_slice::<serde_json::Value>(MANIFEST_FIREFOX)
+        .ok()
+        .and_then(|v| v["browser_specific_settings"]["gecko"]["id"].as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// The same extension in a folder the browser's file window opens at.
+fn in_downloads(dir: &Path, firefox: bool) -> PathBuf {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else { return dir.to_path_buf() };
+    let base = if home.join("Downloads").is_dir() { home.join("Downloads") } else { home };
+    let target = base.join(if firefox { "EzooDownload-extension-firefox" } else { "EzooDownload-extension" });
+    if put_extension(&target, firefox) {
+        target
+    } else {
+        dir.to_path_buf()
+    }
+}
+
 /// The signed Firefox add-on next to the program, when the release has one
 /// (a package puts it in /usr/share/ezoodownload instead).
 fn firefox_xpi() -> Option<PathBuf> {
@@ -366,21 +399,66 @@ fn firefox_xpi() -> Option<PathBuf> {
     for d in ["/usr/share/ezoodownload", "/usr/local/share/ezoodownload"] {
         candidates.push(Path::new(d).join(FIREFOX_XPI));
     }
-    candidates.push(swiftget_engine::default_data_dir().join(FIREFOX_XPI));
+    candidates.push(fetched_xpi());
     candidates.into_iter().find(|p| p.exists())
+}
+
+/// The signed Firefox add-on of this very version, fetched from the
+/// release when the setup had none (a build made before Mozilla signed it).
+fn fetched_xpi() -> PathBuf {
+    swiftget_engine::default_data_dir().join(format!("ezoo-download-firefox-{}.xpi", env!("CARGO_PKG_VERSION")))
+}
+
+/// Gets the signed add-on of this version from the official release page.
+async fn fetch_firefox_xpi(proxy: swiftget_engine::http::ProxyConfig) -> anyhow::Result<PathBuf> {
+    let url = format!(
+        "https://github.com/AhmedEzo686/ezoo-download/releases/download/v{}/{FIREFOX_XPI}",
+        env!("CARGO_PKG_VERSION")
+    );
+    let bytes = swiftget_engine::http::fetch_small(&proxy, &url).await?;
+    // a zip (an add-on), not a web page
+    anyhow::ensure!(bytes.starts_with(b"PK"), "not an add-on");
+    let path = fetched_xpi();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let part = path.with_extension("xpi.part");
+    std::fs::write(&part, &bytes)?;
+    std::fs::rename(&part, &path)?;
+    Ok(path)
+}
+
+/// Firefox opens the signed add-on ("Add Ezoo Download?"); fetched first
+/// when this program has none. `done` gets what to show (`Err`: why not).
+fn open_signed_in_firefox(ui: &Ui, exe: PathBuf, done: impl FnOnce(Result<PathBuf, String>) + Send + 'static) {
+    if let Some(xpi) = firefox_xpi() {
+        let _ = std::process::Command::new(&exe).arg(&xpi).spawn();
+        return done(Ok(xpi));
+    }
+    let proxy = swiftget_engine::http::ProxyConfig::from_settings(&ui.ctx.mgr.settings());
+    ui.ctx.rt.spawn(async move {
+        let r = fetch_firefox_xpi(proxy).await;
+        if let Ok(xpi) = &r {
+            let _ = std::process::Command::new(&exe).arg(xpi).spawn();
+        }
+        done(r.map_err(|e| format!("{e:#}")));
+    });
 }
 
 /// "Update the Firefox add-on": Firefox opens the signed add-on of this
 /// program and asks "Add Ezoo Download?" (the new one takes the old one's
 /// place). Without the file (a build without it): the browsers window.
 pub(crate) fn update_firefox_addon(ui: &Ui) {
-    let firefox = detect().into_iter().find(|b| b.firefox).and_then(|b| b.exe);
-    match (firefox, firefox_xpi()) {
-        (Some(exe), Some(xpi)) => {
-            let _ = std::process::Command::new(&exe).arg(&xpi).spawn();
+    let Some(exe) = detect().into_iter().find(|b| b.firefox).and_then(|b| b.exe) else { return open(ui) };
+    open_signed_in_firefox(ui, exe, move |r| {
+        if r.is_err() {
+            let _ = slint::invoke_from_event_loop(|| HOME.with(|h| {
+                if let Some(ui) = h.borrow().as_ref() {
+                    open(ui);
+                }
+            }));
         }
-        _ => open(ui),
-    }
+    });
 }
 
 pub(crate) fn open(ui: &Ui) {
@@ -430,13 +508,28 @@ fn add(ui: &Ui, i: usize) {
         return;
     }
     if b.firefox {
-        if let Some(xpi) = firefox_xpi() {
-            // the signed add-on: Firefox asks "Add Ezoo Download?" and keeps it
-            let _ = std::process::Command::new(&exe).arg(&xpi).spawn();
-            d.set_folder(xpi.display().to_string().into());
-            d.set_steps(t("Firefox opened the Ezoo Download add-on.\n1. Click \"Add\" in the message Firefox shows.\n2. Then click \"OK\".\n\nThe add-on is signed by Mozilla, so it stays in Firefox after you close it and updates by itself.").into());
-            return;
+        // the signed add-on (fetched from the official page when this
+        // program has none): Firefox asks "Add Ezoo Download?" and keeps it.
+        // Never the temporary add-on, which Firefox drops when it closes
+        if firefox_xpi().is_none() {
+            d.set_steps(t("Getting the signed Firefox add-on from the official page…").into());
         }
+        let w = d.as_weak();
+        open_signed_in_firefox(ui, exe, move |r| {
+            let _ = slint::invoke_from_event_loop(move || {
+                let Some(d) = w.upgrade() else { return };
+                match r {
+                    Ok(xpi) => {
+                        d.set_folder(xpi.display().to_string().into());
+                        d.set_steps(t("Firefox opened the Ezoo Download add-on.\n1. Click \"Add\" in the message Firefox shows.\n2. Then click \"OK\".\n\nThe add-on is signed by Mozilla, so it stays in Firefox after you close it and updates by itself.").into());
+                    }
+                    Err(e) => d.set_steps(
+                        tf("The Firefox add-on could not be fetched ({}). Check the internet and click Firefox again.", &[&crate::err_text(&e)]).into(),
+                    ),
+                }
+            });
+        });
+        return;
     }
     let Some(dir) = extension_dir(b.firefox) else {
         d.set_steps(t("The extension folder was not found next to EzooDownload.exe. Install Ezoo Download again.").into());
@@ -444,17 +537,8 @@ fn add(ui: &Ui, i: usize) {
     };
     // A folder in Downloads is easy to pick in the browser's "Load unpacked"
     // window; a hidden one under ~/.local is not (a Flatpak browser may not
-    // resolve it at all). The same files, one more copy.
+    // resolve it at all).
     let dir = in_downloads(&dir, b.firefox);
-    if !b.firefox {
-        // the packed add-on too, for the browsers that take a .crx by dropping it
-        if let Some(me) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
-            let crx = me.join("ezoo-download-chrome.crx");
-            if crx.is_file() {
-                let _ = std::fs::copy(&crx, dir.join("ezoo-download-chrome.crx"));
-            }
-        }
-    }
     let path = dir.display().to_string();
     if let Ok(mut c) = arboard::Clipboard::new() {
         let _ = c.set_text(path.clone());
@@ -469,7 +553,13 @@ fn add(ui: &Ui, i: usize) {
     d.set_steps(steps.into());
 }
 
+thread_local! {
+    /// the program, for work that ends on another thread
+    static HOME: std::cell::RefCell<Option<Ui>> = const { std::cell::RefCell::new(None) };
+}
+
 pub(crate) fn wire(ui: &Ui) {
+    HOME.with(|h| *h.borrow_mut() = Some(ui.clone()));
     let Some(d) = ui.browsers.upgrade() else { return };
     {
         let ui = ui.clone();
@@ -496,6 +586,7 @@ pub(crate) fn wire(ui: &Ui) {
             }
         });
     }
+    d.on_test_link(|| crate::message(&link_report()));
     {
         d.on_repair(move || {
             let ok = repair_extension();
@@ -514,4 +605,37 @@ pub(crate) fn wire(ui: &Ui) {
             }
         });
     }
+}
+
+/// "Test the link": what works between the browsers and the program, and
+/// what to do about what does not.
+pub(crate) fn link_report() -> String {
+    use std::sync::atomic::Ordering;
+    let now = crate::api::now_secs();
+    let ago = |at: u64| at > 0 && now.saturating_sub(at) < 15 * 60;
+    let mark = |ok: bool| if ok { "✔" } else { "✖" };
+    let mut lines = vec![t("Link between the browsers and Ezoo Download:"), String::new()];
+    let main = crate::api::MAIN_PORT.load(Ordering::Relaxed);
+    lines.push(format!("{} {}", mark(main != 0), t("The program answers the add-in")));
+    if !crate::api::FRONT_OPEN.load(Ordering::Relaxed) {
+        lines.push(format!("• {}", t("Its usual port is kept by another program or by Windows: the add-in uses the program's own port (nothing to do).")));
+    }
+    let (helper, browsers) = crate::nativehost::report();
+    lines.push(format!("{} {}", mark(helper), t("The browsers' helper is in place")));
+    for (name, ok) in &browsers {
+        lines.push(format!("   {} {}", mark(*ok), tf("{} knows the helper", &[name])));
+    }
+    let seen = crate::api::ADDIN_SEEN.load(Ordering::Relaxed);
+    let helped = crate::api::HELPER_SEEN.load(Ordering::Relaxed);
+    lines.push(format!("{} {}", mark(ago(seen)), t("An add-in talked to the program in the last 15 minutes")));
+    lines.push(format!("{} {}", mark(ago(helped)), t("...through the browsers' helper")));
+    lines.push(String::new());
+    if !ago(seen) {
+        lines.push(t("No add-in talked lately: open the browser, make sure the Ezoo Download add-in is on (Extensions page), then click a download link and test again."));
+    } else if !ago(helped) {
+        lines.push(t("The add-in talks through the port only. In Firefox: the add-in's window > \"Connect directly\". In other browsers: reload the add-in once (Extensions page)."));
+    } else {
+        lines.push(t("Everything works."));
+    }
+    lines.join("\n")
 }

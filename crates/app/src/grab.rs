@@ -1,5 +1,6 @@
 //! Site Grabber and "Download all links" (both use the same window).
 
+use swiftget_engine::sync::LockOk;
 use crate::open_window;
 use crate::*;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,6 +18,10 @@ struct Item {
     text: String,
     page: String,
     is_page: bool,
+    /// the server's size, once asked
+    size: Option<u64>,
+    /// the server said it is no good (not found...): why
+    gone: Option<String>,
 }
 
 #[derive(Default)]
@@ -32,10 +37,18 @@ pub(crate) struct GrabUi {
     exploring: bool,
     /// links mode: the page and its cookies
     headers: RequestHeaders,
+    /// answers of the server about links (address, what it is)
+    answers: Arc<Mutex<Vec<(String, grabber::Checked)>>>,
+    /// links still being asked about
+    asking: Arc<std::sync::atomic::AtomicUsize>,
+    asking_cancel: Option<CancellationToken>,
 }
 
 fn item_from(url: &str, text: &str, page: &str) -> Item {
-    let name = filename::from_url(url).unwrap_or_else(|| "download".into());
+    named_item(url, filename::from_url(url).unwrap_or_else(|| "download".into()), text, page)
+}
+
+fn named_item(url: &str, name: String, text: &str, page: &str) -> Item {
     let ext = filename::extension(&name);
     let is_page = grabber::is_page_ext(&ext);
     Item {
@@ -47,7 +60,83 @@ fn item_from(url: &str, text: &str, page: &str) -> Item {
         text: text.trim().chars().take(200).collect(),
         page: page.to_string(),
         is_page,
+        size: None,
+        gone: None,
     }
+}
+
+/// What the server said about a link: a file (its real name and size), a
+/// page, or no good.
+fn apply_answer(it: &mut Item, c: &grabber::Checked) {
+    match c {
+        grabber::Checked::File { name, size } => {
+            let was_page = it.is_page;
+            if !name.is_empty() && name != "download" {
+                let t = named_item(&it.url, name.clone(), &it.text, &it.page);
+                it.name = t.name;
+                it.ext = t.ext;
+                it.kind = t.kind;
+            }
+            it.is_page = false;
+            it.size = *size;
+            // a link that only looked like a page is a file: wanted
+            if was_page {
+                it.checked = true;
+            }
+        }
+        grabber::Checked::Page => {
+            it.is_page = true;
+            it.kind = "text";
+            it.checked = false;
+        }
+        grabber::Checked::Gone(why) => {
+            it.gone = Some(why.clone());
+            it.checked = false;
+        }
+    }
+}
+
+/// Ask the server about the links (a few at a time, two per site): which
+/// are files, their real names and sizes, which are gone.
+fn ask_about(ui: &Ui, links: Vec<String>, headers: RequestHeaders) {
+    if links.is_empty() {
+        return;
+    }
+    let (answers, asking, cancel) = {
+        let mut g = ui.grab_state.borrow_mut();
+        if let Some(c) = g.asking_cancel.take() {
+            c.cancel();
+        }
+        let c = CancellationToken::new();
+        g.asking_cancel = Some(c.clone());
+        g.asking.store(links.len(), Ordering::Relaxed);
+        (g.answers.clone(), g.asking.clone(), c)
+    };
+    let client = ui.ctx.mgr.client();
+    let ua = ui.ctx.mgr.settings().user_agent.clone();
+    ui.ctx.rt.spawn(async move {
+        let all = Arc::new(tokio::sync::Semaphore::new(6));
+        let mut hosts: std::collections::HashMap<String, Arc<tokio::sync::Semaphore>> = Default::default();
+        let mut jobs = tokio::task::JoinSet::new();
+        for url in links {
+            let host = url::Url::parse(&url).ok().and_then(|u| u.host_str().map(str::to_string)).unwrap_or_default();
+            let per = hosts.entry(host).or_insert_with(|| Arc::new(tokio::sync::Semaphore::new(2))).clone();
+            let (all, client, headers, ua, answers, asking, cancel) =
+                (all.clone(), client.clone(), headers.clone(), ua.clone(), answers.clone(), asking.clone(), cancel.clone());
+            jobs.spawn(async move {
+                let _a = per.acquire_owned().await;
+                let _b = all.acquire_owned().await;
+                if !cancel.is_cancelled() {
+                    let c = grabber::check_link(&client, &url, &headers, &ua).await;
+                    if !cancel.is_cancelled() {
+                        answers.lock_ok().push((url, c));
+                    }
+                }
+                asking.fetch_sub(1, Ordering::Relaxed);
+            });
+        }
+        while jobs.join_next().await.is_some() {}
+    });
 }
 
 fn type_ok(it: &Item, filter: i32) -> bool {
@@ -63,13 +152,20 @@ fn type_ok(it: &Item, filter: i32) -> bool {
 }
 
 fn row(it: &Item) -> LinkRow {
+    let ext = match (&it.gone, it.size) {
+        (Some(_), _) => "✗".to_string(),
+        (None, Some(n)) if n > 0 => format!("{}  {}", it.ext, swiftget_engine::model::fmt_size(n)),
+        _ => it.ext.clone(),
+    };
     LinkRow {
         checked: it.checked,
         name: it.name.clone().into(),
+        rtl: crate::i18n::rtl_text(&it.name),
         kind: it.kind.into(),
-        ext: it.ext.clone().into(),
-        text: it.text.clone().into(),
+        ext: ext.trim().into(),
+        text: it.gone.clone().unwrap_or_else(|| it.text.clone()).into(),
         url: it.url.clone().into(),
+        size: SharedString::new(),
     }
 }
 
@@ -110,6 +206,11 @@ fn reset(ui: &Ui, d: &GrabberDialog, links_mode: bool) {
     g.progress = None;
     g.headers = RequestHeaders::default();
     g.incoming = Arc::new(Mutex::new(Vec::new()));
+    if let Some(c) = g.asking_cancel.take() {
+        c.cancel();
+    }
+    g.answers = Default::default();
+    g.asking = Default::default();
     drop(g);
     let s = ui.ctx.mgr.settings();
     d.set_links_mode(links_mode);
@@ -155,6 +256,20 @@ pub(crate) fn open_links(ui: &Ui, l: api::LinksRequest) {
         }
     }
     d.set_start_url(l.page.clone().into());
+    // the files: their real names and sizes; the links that look like pages
+    // but may be downloads ("get.php?id=5"): whether they are files
+    let (ask, headers) = {
+        let g = ui.grab_state.borrow();
+        let ask: Vec<String> = g
+            .all
+            .iter()
+            .filter(|i| !i.is_page || grabber::looks_like_download(&i.url, &i.text))
+            .map(|i| i.url.clone())
+            .take(400)
+            .collect();
+        (ask, g.headers.clone())
+    };
+    ask_about(ui, ask, headers);
     show(ui);
     bring_to_front(&ui.ctx);
     open_window!(d);
@@ -162,19 +277,39 @@ pub(crate) fn open_links(ui: &Ui, l: api::LinksRequest) {
 
 /// New files from the explorer, and its counters (10 times a second).
 pub(crate) fn poll(ui: &Ui) {
+    let answers: Vec<(String, grabber::Checked)> = std::mem::take(&mut *ui.grab_state.borrow().answers.lock_ok());
+    if !answers.is_empty() {
+        {
+            let mut g = ui.grab_state.borrow_mut();
+            let at: std::collections::HashMap<String, usize> = g.all.iter().enumerate().map(|(i, it)| (it.url.clone(), i)).collect();
+            for (url, c) in &answers {
+                if let Some(&i) = at.get(url) {
+                    apply_answer(&mut g.all[i], c);
+                }
+            }
+        }
+        show(ui);
+    }
+    if let Some(d) = ui.grabber.upgrade() {
+        let left = ui.grab_state.borrow().asking.load(Ordering::Relaxed);
+        if d.get_links_mode() {
+            d.set_progress_text(if left > 0 { tf("Asking the server about the links: {} left", &[&left]).into() } else { SharedString::new() });
+        }
+    }
     let (new, progress, finished) = {
         let g = ui.grab_state.borrow();
         if !g.exploring {
             return;
         }
-        let new: Vec<FoundFile> = std::mem::take(&mut *g.incoming.lock().unwrap());
+        let new: Vec<FoundFile> = std::mem::take(&mut *g.incoming.lock_ok());
         (new, g.progress.clone(), g.finished.load(Ordering::Relaxed))
     };
     let Some(d) = ui.grabber.upgrade() else { return };
     if !new.is_empty() {
         let mut g = ui.grab_state.borrow_mut();
         for f in new {
-            g.all.push(item_from(&f.url, &f.text, &f.page));
+            let name = if f.name.is_empty() { filename::from_url(&f.url).unwrap_or_else(|| "download".into()) } else { f.name.clone() };
+            g.all.push(named_item(&f.url, name, &f.text, &f.page));
         }
         drop(g);
         show(ui);
@@ -185,6 +320,15 @@ pub(crate) fn poll(ui: &Ui) {
             "{} of {} pages explored  ·  {} files found",
             &[&p.pages_done.load(Ordering::Relaxed), &p.pages_queued.load(Ordering::Relaxed), &p.files.load(Ordering::Relaxed)],
         ) + &if finished { t("  ·  done") } else { format!("  ·  {current}") };
+        // why some may be missing
+        let failed = p.pages_failed.load(Ordering::Relaxed);
+        let mut text = text;
+        if failed > 0 {
+            text += &tf("  ·  {} pages refused by the site", &[&failed]);
+        }
+        if finished && p.made_by_scripts.load(Ordering::Relaxed) {
+            text += &t("  ·  This page makes its links in the browser: open it there and use right-click > \"Download all links with Ezoo Download\" to get all of them.");
+        }
         d.set_progress_text(text.into());
     }
     if finished {
@@ -231,7 +375,19 @@ pub(crate) fn wire(ui: &Ui) {
                 exclude: Vec::new(),
                 max_pages: 2000,
                 parallel: d.get_parallel().clamp(1, 10) as usize,
-                headers: RequestHeaders { auth: s.login_for(&start), ..Default::default() },
+                headers: {
+                    // the site the browser handed over: its cookies, so pages
+                    // behind a sign-in show their files
+                    let from_browser = ui.grab_state.borrow().headers.clone();
+                    let host = |u: &str| url::Url::parse(u).ok().and_then(|u| u.host_str().map(str::to_ascii_lowercase));
+                    let same = from_browser.referer.as_deref().and_then(host).is_some_and(|h| Some(h) == host(&start));
+                    RequestHeaders {
+                        auth: s.login_for(&start),
+                        cookies: if same { from_browser.cookies.clone() } else { None },
+                        user_agent: if same { from_browser.user_agent.clone() } else { None },
+                        ..Default::default()
+                    }
+                },
                 user_agent: s.user_agent.clone(),
             };
             let progress = Arc::new(GrabProgress::default());
@@ -256,7 +412,7 @@ pub(crate) fn wire(ui: &Ui) {
             let client = ui.ctx.mgr.client();
             ui.ctx.rt.spawn(async move {
                 let sink = incoming.clone();
-                grabber::crawl(client, opts, progress, cancel, move |f| sink.lock().unwrap().push(f)).await;
+                grabber::crawl(client, opts, progress, cancel, move |f| sink.lock_ok().push(f)).await;
                 finished.store(true, Ordering::Relaxed);
             });
         });
@@ -325,6 +481,7 @@ pub(crate) fn wire(ui: &Ui) {
             let folder = d.get_folder().trim().to_string();
             let use_text = d.get_use_text();
             let mut added = 0;
+            let group = Some(ui.ctx.mgr.new_group());
             for it in items {
                 if ui.ctx.mgr.find_url(&it.url).is_some() {
                     continue;
@@ -339,6 +496,7 @@ pub(crate) fn wire(ui: &Ui) {
                     headers: h,
                     queue: Some(queue),
                     description: (use_text && !it.text.is_empty()).then(|| it.text.clone()),
+                    group,
                     start: false,
                     ..Default::default()
                 });

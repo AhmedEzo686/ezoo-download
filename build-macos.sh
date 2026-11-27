@@ -63,11 +63,21 @@ done
 iconutil -c icns "$iconset/AppIcon.iconset" -o "$app/Contents/Resources/EzooDownload.icns"
 rm -rf "$iconset"
 
-# the browser extension, next to the app: no writes into the bundle later
+# the browser extension, next to the app: no writes into the bundle later.
+# build-linux.sh makes extension-firefox while staging; make it here too when
+# the Mac build runs on its own.
+made_firefox=false
+if [[ ! -d extension-firefox ]]; then
+    cp -R extension extension-firefox
+    made_firefox=true
+fi
 for name in extension extension-firefox; do
     cp -R "$name" "$app/Contents/Resources/$name"
     rm -rf "$app/Contents/Resources/$name/test"
 done
+if [[ "$made_firefox" == true ]]; then
+    rm -rf extension-firefox
+fi
 mv "$app/Contents/Resources/extension-firefox/manifest.firefox.json" \
    "$app/Contents/Resources/extension-firefox/manifest.json"
 rm -f "$app/Contents/Resources/extension/manifest.firefox.json"

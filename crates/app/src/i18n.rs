@@ -213,6 +213,15 @@ const AR: &[(&str, &str)] = &[
     ),
     ("Give the category a name", "اكتب اسماً للتصنيف"),
     ("A category with this name already exists", "يوجد تصنيف بهذا الاسم بالفعل"),
+    ("The add-in talks to the program directly, without a port: no more \"Ezoo Download is not running\" while it runs, and a closed program is opened for a download.", "الإضافة تتكلم مع البرنامج مباشرة بدون منفذ: لم تعد تظهر رسالة \"Ezoo Download is not running\" والبرنامج يعمل، والبرنامج المغلق يُفتح من أجل التحميل."),
+    ("A power cut no longer loses the download list, the end of a download is never held by one slow connection, and a file that is already in the folder asks whether to replace it.", "انقطاع الكهرباء لم يعد يضيّع قائمة التحميلات، ونهاية التحميل لا يعطّلها اتصال بطيء واحد، والملف الموجود بالفعل في المجلد يسألك هل تستبدله."),
+    ("Replace it", "استبداله"),
+    ("New name (numbered)", "اسم جديد (برقم)"),
+    ("Cancel", "إلغاء"),
+    ("The file \"{}\" is already in this folder.\nReplace it, or save the new one with a numbered name?", "الملف \"{}\" موجود بالفعل في هذا المجلد.\nهل تريد استبداله، أم حفظ الجديد باسم برقم؟"),
+    ("Could not replace the file: {}", "تعذّر استبدال الملف: {}"),
+    ("Select all", "تحديد الكل"),
+    ("The site gave a page instead of the video (it protects its videos, or the link expired), so no broken file was kept. Play the video on its page and use the Ezoo Download button that appears on it.", "أعطى الموقع صفحة بدل الفيديو (الموقع يحمي فيديوهاته، أو انتهت صلاحية الرابط)، لذلك لم يُحفظ ملف تالف. شغّل الفيديو في صفحته واستخدم زر Ezoo Download الذي يظهر عليه."),
     (
         "This category comes with Ezoo Download and can't be deleted (you can change its file types in Properties).",
         "هذا التصنيف أساسي في Ezoo Download ولا يمكن حذفه (يمكنك تغيير أنواع ملفاته من الخصائص).",
@@ -543,6 +552,23 @@ const AR: &[(&str, &str)] = &[
     ("Choose where to save it", "اختر مكان الحفظ"),
     ("Show download progress", "عرض تقدّم التحميل"),
     ("Stop download", "إيقاف التحميل"),
+    ("The Site Grabber finds more of a page's files (pictures in several sizes, addresses in buttons and in page details, links written without quotes), asks about addresses with no file name, and says when a page makes its links in the browser.", "مستكشف المواقع يجد ملفات أكثر في الصفحة (الصور بأحجامها المختلفة، والعناوين داخل الأزرار وتفاصيل الصفحة، والروابط المكتوبة بلا علامات تنصيص)، ويسأل عن العناوين التي لا اسم ملف فيها، ويخبرك عندما تصنع الصفحة روابطها داخل المتصفح."),
+    ("  ·  {} pages refused by the site", "  ·  {} صفحات رفضها الموقع"),
+    ("  ·  This page makes its links in the browser: open it there and use right-click > \"Download all links with Ezoo Download\" to get all of them.", "  ·  هذه الصفحة تصنع روابطها داخل المتصفح: افتحها هناك واستخدم زر الفأرة الأيمن > \"Download all links with Ezoo Download\" لجلبها كلها."),
+    ("Windows that lost their picture (after another window covered them, after coming back from next to the clock, after the screen woke up) are drawn again whole: no more half-empty or see-through windows.", "النوافذ التي فقدت صورتها (بعد أن غطّتها نافذة أخرى، أو بعد عودتها من بجوار الساعة، أو بعد استيقاظ الشاشة) تُرسم من جديد كاملة: لا مزيد من النوافذ الفارغة جزئيًا أو الشفافة."),
+    ("Download File Info has a box for the file name, and a file of the same name in the folder is asked about inside the window (no more window that stops answering after Cancel). \"Replace it\" keeps the old file until the new one is complete.", "نافذة معلومات التحميل فيها خانة لاسم الملف، ووجود ملف بنفس الاسم في المجلد يُسأل عنه داخل النافذة نفسها (لا مزيد من توقف النافذة بعد الإلغاء). و\"استبداله\" يُبقي الملف القديم حتى يكتمل الجديد."),
+    ("The add-in has two new tabs: \"With subtitles\" (the video with its subtitles in the language you choose) and \"Subtitles\" (all of a video's subtitles, or the ones you choose), as SRT or VTT.", "في الإضافة تبويبان جديدان: \"مع الترجمة\" (الفيديو مع ترجمته باللغة التي تختارها) و\"الترجمات\" (كل ترجمات الفيديو أو ما تختاره منها)، بصيغة SRT أو VTT."),
+    ("Subtitles are asked for one language at a time with a short pause, and a language the site refuses for a moment is asked for again by itself.", "الترجمات تُطلب لغةً لغة مع توقف قصير بينها، واللغة التي يرفضها الموقع مؤقتًا تُطلب من جديد تلقائيًا."),
+    ("Videos made for children download now, and the video qualities show up faster.", "فيديوهات الأطفال تُحمَّل الآن، وجودات الفيديو تظهر أسرع."),
+    ("Playlists: a Size column, a Video column you can make wider or narrower, \"Oldest first\" numbering, and videos downloaded before are not added again.", "قوائم التشغيل: عمود للحجم، وعمود الفيديو يمكن توسيعه أو تضييقه، وترقيم \"الأقدم أولًا\"، والفيديوهات التي حُمّلت من قبل لا تُضاف مرة أخرى."),
+    ("A queue shows only what is still to come, and a file dragged from the list to a folder on the same drive is moved, as in Windows.", "قائمة الانتظار تعرض ما لم يكتمل فقط، والملف المسحوب من القائمة إلى مجلد على نفس القرص يُنقل كما في ويندوز."),
+    ("Ezoo Download now has a version for Windows 7, 8 and 8.1 (32-bit and 64-bit) with everything the program does: its own setup, EzooDownload-Setup-Windows-7-8-8.1.exe.", "أصبح لـ Ezoo Download إصدار لويندوز 7 و8 و8.1 (32-بت و64-بت) بكل ما يفعله البرنامج، وله مثبّت خاص: EzooDownload-Setup-Windows-7-8-8.1.exe."),
+    ("Fewer antivirus warnings: the program no longer looks at the clipboard every second. Windows tells it when something was copied, and it reads the clipboard only when watching it is turned on.", "تحذيرات أقل من برامج الحماية: لم يعد البرنامج ينظر في الحافظة كل ثانية. ويندوز يخبره عندما يُنسخ شيء، ولا يقرأ الحافظة إلا إذا كانت مراقبتها مفعّلة."),
+    ("The add-in works in Firefox 115 too (the last Firefox for Windows 7, 8 and 8.1), and asks once for the sites it needs when Firefox does not give them by itself.", "الإضافة تعمل الآن في فايرفوكس 115 أيضًا (آخر فايرفوكس لويندوز 7 و8 و8.1)، وتطلب مرة واحدة إذن المواقع التي تحتاجها عندما لا يعطيها فايرفوكس من نفسه."),
+    ("The setup no longer shows an error on its last page on Windows 7, and the setup for Windows 10 and 11 says so when it is opened on an older Windows.", "لم يعد المثبّت يعرض خطأ في صفحته الأخيرة على ويندوز 7، ومثبّت ويندوز 10 و11 يوضّح ذلك إذا فُتح على ويندوز أقدم."),
+    ("Fewer antivirus warnings: the program and its setup no longer start Windows tools out of sight, and every release lists the SHA-256 of its files.", "تحذيرات أقل من برامج الحماية: البرنامج ومثبّته لم يعودا يشغّلان أدوات ويندوز في الخفاء، وكل إصدار ينشر بصمة SHA-256 لملفاته."),
+    ("YouTube is refusing subtitles for a moment (too many requests). Try again in a few minutes.", "يوتيوب يرفض الترجمات مؤقتًا (طلبات كثيرة). حاول مرة أخرى بعد دقائق."),
+    ("Some languages were refused for now (too many requests): {}. Try them again in a few minutes.", "بعض اللغات رُفضت مؤقتًا (طلبات كثيرة): {}. جرّبها مرة أخرى بعد دقائق."),
     ("This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.", "هذا التورنت يعمل بالفعل (قد يكون ما زال يشارك ملفاته). انتظر قليلًا، أو اخرج من Ezoo Download وافتحه مرة أخرى."),
     ("The browser add-in can be paused from its own window, without turning it off in the browser's extensions page.", "يمكن إيقاف إضافة المتصفح مؤقتًا من نافذتها نفسها، دون تعطيلها من صفحة الإضافات في المتصفح."),
     ("Ezoo Download will restart now to show its windows in the direction of the new language. Downloads continue after it opens.\n\nRestart now?", "سيُعاد تشغيل Ezoo Download الآن لتظهر نوافذه باتجاه اللغة الجديدة. التحميلات تكمل بعد فتحه.\n\nإعادة التشغيل الآن؟"),
@@ -591,6 +617,10 @@ const AR: &[(&str, &str)] = &[
     ("The speed limiter goes on and off with a click in the status bar, and \"Move to queue\" opens in a list of its own.", "محدد السرعة يعمل ويتوقف بضغطة في شريط الحالة، و\"نقل إلى قائمة الانتظار\" تُفتح في قائمة خاصة بها."),
     ("The link stopped working. A new one is fetched in {} s and checked before the download goes on.", "الرابط توقف عن العمل. سيتم جلب رابط جديد خلال {} ثانية وفحصه قبل أن يكمل التحميل."),
     ("A file with this name is already in that folder, so nothing was moved. Choose another name.", "يوجد ملف بنفس الاسم في هذا المجلد، لذلك لم يتم النقل. اختر اسمًا آخر."),
+    ("Downloading videos on this Windows needs an update from Microsoft (KB2999226, the Universal C Runtime). Ezoo Download offers it now: click Yes in its window (or install it from Windows Update).", "تحميل الفيديوهات على هذا الإصدار من ويندوز يحتاج تحديثًا من مايكروسوفت (KB2999226، مكتبة Universal C Runtime). يعرضه عليك Ezoo Download الآن: اضغط نعم في نافذته (أو ثبّته من Windows Update)."),
+    ("Downloading videos on this Windows needs an update from Microsoft (KB2999226, the Universal C Runtime).\n\nDownload it from Microsoft and open it now? Windows asks before it installs it.", "تحميل الفيديوهات على هذا الإصدار من ويندوز يحتاج تحديثًا من مايكروسوفت (KB2999226، مكتبة Universal C Runtime).\n\nهل تريد تحميله من مايكروسوفت وفتحه الآن؟ سيسألك ويندوز قبل أن يثبّته."),
+    ("Open this file to install the update: {}", "افتح هذا الملف لتثبيت التحديث: {}"),
+    ("The update could not be downloaded ({}). Install KB2999226 from Windows Update.", "تعذّر تحميل التحديث ({}). ثبّت KB2999226 من Windows Update."),
     ("ffmpeg.exe (it joins the video and the sound) is missing and could not be downloaded again. Allow it in your antivirus or install Ezoo Download again, then click Resume: nothing downloaded is lost.", "برنامج ffmpeg.exe (الذي يدمج الصورة والصوت) غير موجود ولم يمكن تحميله مرة أخرى. اسمح به في برنامج الحماية أو ثبّت Ezoo Download من جديد، ثم اضغط استئناف: لن يضيع شيء مما تم تحميله."),
     ("Downloads never wait for ever any more: when a server stops answering, Ezoo Download asks again by itself, so a video or a file no longer stays at 0 KB/s or never starts, and Pause / Resume is not needed.", "التحميل لم يعد ينتظر إلى الأبد: عندما يتوقف السيرفر عن الرد يعيد Ezoo Download الطلب وحده، فلا يقف الفيديو أو الملف على 0 كيلوبايت ولا يبقى دون أن يبدأ، ولا حاجة للإيقاف ثم الاستئناف."),
     ("When Ezoo Download is open but does not answer, opening it again offers to close it and start it fresh; an update shows its small window and never closes the program again and again.", "إذا كان Ezoo Download مفتوحًا لكنه لا يستجيب، فتحه مرة أخرى يعرض إغلاقه وتشغيله من جديد؛ والتحديث يُظهر نافذته الصغيرة ولا يُغلق البرنامج مرة بعد مرة."),
@@ -666,6 +696,73 @@ const AR: &[(&str, &str)] = &[
     ("The file list did not come yet: all files will be downloaded (they show once it starts).", "لم تصل قائمة الملفات بعد: سيتم تحميل كل الملفات (تظهر بعد بدء التحميل)."),
     ("Torrents: a magnet link shows its files first so you can choose them, and torrents find more people to download from. Links that work only in the browser (ChatGPT files, iLovePDF and other links that work once or need the page's sign-in) stay in the browser instead of failing.", "التورنت: رابط المغناطيس يعرض ملفاته أولًا لتختار منها، والتورنت يجد أشخاصًا أكثر للتحميل منهم. الروابط التي تعمل في المتصفح فقط (ملفات ChatGPT وiLovePDF وغيرها من الروابط التي تعمل مرة واحدة أو تحتاج تسجيل دخول الصفحة) تبقى في المتصفح بدل أن تفشل."),
     ("Facebook and Instagram: videos of closed groups and friends-only posts are found with the browser's sign-in, an AV1 video (sound without picture in older players) says so, and sites that drop extra connections get fewer by themselves.", "فيسبوك وإنستجرام: فيديوهات الجروبات المغلقة ومنشورات الأصدقاء فقط تُجلب بتسجيل دخول المتصفح، وفيديو AV1 (صوت بدون صورة في المشغّلات القديمة) ينبّهك لذلك، والمواقع التي تقطع الاتصالات الزائدة تحصل على اتصالات أقل تلقائيًا."),
+    ("The site asks to confirm you are not a robot. Open the link in the browser, confirm there, then click Resume.", "الموقع يطلب التأكد من أنك لست روبوتًا. افتح الرابط في المتصفح وأكّد هناك، ثم اضغط استكمال."),
+    ("Connected to people who send nothing yet (they don't have the missing pieces, or they are busy). Ezoo Download keeps looking for others who have the file.", "متصل بأجهزة لا ترسل شيئًا حتى الآن (ليس لديها الأجزاء الناقصة، أو أنها مشغولة). Ezoo Download يواصل البحث عن آخرين لديهم الملف."),
+    ("Getting the signed Firefox add-on from the official page…", "جارٍ جلب إضافة Firefox الموقّعة من الصفحة الرسمية…"),
+    ("The Firefox add-on could not be fetched ({}). Check the internet and click Firefox again.", "تعذر جلب إضافة Firefox ‏({}). تأكد من الإنترنت واضغط Firefox مرة أخرى."),
+    ("Check file (SHA-256)", "فحص الملف (SHA-256)"),
+    ("Copy address", "نسخ الرابط"),
+    ("Delete from queue", "حذف من قائمة الانتظار"),
+    ("Download a part of it…", "تحميل جزء منه…"),
+    ("Move / Rename…", "نقل / إعادة تسمية…"),
+    ("Move to queue", "نقل إلى قائمة الانتظار"),
+    ("Open folder", "فتح المجلد"),
+    ("Open with…", "فتح باستخدام…"),
+    ("Open", "فتح"),
+    ("Play while downloading", "تشغيل أثناء التحميل"),
+    ("Properties", "الخصائص"),
+    ("Redownload", "إعادة التحميل"),
+    ("Refresh download address…", "تحديث رابط التحميل…"),
+    ("Remove", "حذف"),
+    ("Resume download", "استئناف التحميل"),
+    ("{} downloads selected", "تم تحديد {} تحميلات"),
+    ("Four new 3D looks (View): 3D, Aurora glass, Soft clay and Cyber neon, with raised buttons, colored pictures, downloads on floating cards and a new download window with a progress ring and the speed.", "أربعة أشكال جديدة ثلاثية الأبعاد (عرض): ثلاثي الأبعاد 3D، وزجاج الشفق، وصلصال ناعم، ونيون سايبر، بأزرار بارزة وصور ملونة وتحميلات على بطاقات طافية ونافذة تحميل جديدة فيها دائرة تقدم ورسم للسرعة."),
+    ("The setup asks for the language of the program at the first install, and can let torrents through the Windows firewall.", "برنامج التثبيت يسأل عن لغة البرنامج عند أول تثبيت، ويمكنه السماح للتورنت بالمرور من جدار حماية Windows."),
+    ("Options > Torrents: make Ezoo Download the main program for torrents, or leave magnet links and .torrent files to your own torrent program.", "الخيارات > التورنت: اجعل Ezoo Download البرنامج الرئيسي للتورنت، أو اترك روابط magnet وملفات ‎.torrent لبرنامج التورنت الخاص بك."),
+    ("A torrent that is connected but gets nothing looks for other people by itself, and says why it waits.", "التورنت المتصل الذي لا يصله شيء يبحث عن أجهزة أخرى وحده، ويوضح سبب الانتظار."),
+    ("Playlists: names in the program's language, right-to-left names shown from the right, a few videos at a time, and a video that fails is tried again by itself.", "قوائم التشغيل: الأسماء بلغة البرنامج، والأسماء العربية تظهر من اليمين، وبضعة فيديوهات في المرة الواحدة، والفيديو الذي يفشل يُعاد تحميله وحده."),
+    ("The add-in has one tab for the whole video and one for a part of it, and it never downloads the video that played before in the same player.", "إضافة المتصفح فيها تبويب للفيديو كامل وتبويب لجزء منه، ولا تحمّل أبدًا الفيديو الذي كان يعمل قبله في نفس المشغل."),
+    ("The right-click menu of the list is a real Windows menu that is never cut off, in the look of the program.", "قائمة الزر الأيمن في القائمة أصبحت قائمة Windows حقيقية لا تُقطع أبدًا، بنفس شكل البرنامج."),
+    ("Sites that refuse extra connections: the download goes on with fewer. Up to 64 connections. A site that asks for a robot check says so, and the Firefox add-on is fetched from the official page when it is missing.", "المواقع التي ترفض الاتصالات الإضافية: التحميل يكمل باتصالات أقل. حتى 64 اتصالًا. الموقع الذي يطلب التأكد من أنك لست روبوتًا يوضح ذلك، وإضافة Firefox تُجلب من الصفحة الرسمية عندما تكون غير موجودة."),
+    ("Link between the browsers and Ezoo Download:", "الربط بين المتصفحات و Ezoo Download:"),
+    ("The program answers the add-in", "البرنامج يرد على الإضافة"),
+    ("Its usual port is kept by another program or by Windows: the add-in uses the program's own port (nothing to do).", "المنفذ المعتاد يستخدمه برنامج آخر أو ويندوز: الإضافة تستخدم المنفذ الخاص بالبرنامج (لا داعي لعمل شيء)."),
+    ("The browsers' helper is in place", "مساعد المتصفحات موجود"),
+    ("{} knows the helper", "{} يعرف المساعد"),
+    ("An add-in talked to the program in the last 15 minutes", "تواصلت إضافة مع البرنامج خلال آخر 15 دقيقة"),
+    ("...through the browsers' helper", "...عن طريق مساعد المتصفحات"),
+    ("No add-in talked lately: open the browser, make sure the Ezoo Download add-in is on (Extensions page), then click a download link and test again.", "لم تتواصل أي إضافة مؤخرًا: افتح المتصفح وتأكد أن إضافة Ezoo Download مفعّلة (صفحة الإضافات)، ثم اضغط على رابط تحميل واختبر مرة أخرى."),
+    ("The add-in talks through the port only. In Firefox: the add-in's window > \"Connect directly\". In other browsers: reload the add-in once (Extensions page).", "الإضافة تتواصل عن طريق المنفذ فقط. في فايرفوكس: نافذة الإضافة > \"Connect directly\". في المتصفحات الأخرى: أعد تحميل الإضافة مرة واحدة (صفحة الإضافات)."),
+    ("Everything works.", "كل شيء يعمل."),
+    ("Please enter a valid http://, https:// or ftp:// address", "من فضلك أدخل رابطًا صحيحًا يبدأ بـ http:// أو https:// أو ftp://"),
+    ("This is not a checksum: paste its MD5, SHA-1, SHA-256, SHA-384 or SHA-512 value", "هذا ليس رمز تحقق: الصق قيمة MD5 أو SHA-1 أو SHA-256 أو SHA-384 أو SHA-512"),
+    ("The torrent goes on with the files checked.", "التورنت يكمل بالملفات المحددة."),
+    ("Tracker added.", "تمت إضافة المتتبع."),
+    ("This is not a tracker address (udp://, http:// or https://).", "هذا ليس عنوان متتبع (udp:// أو http:// أو https://)."),
+    ("Every piece on the disk is checked again, then it goes on.", "يُعاد فحص كل جزء على القرص، ثم يكمل."),
+    ("The magnet link was copied.", "تم نسخ رابط magnet."),
+    ("The magnet link could not be made.", "تعذر إنشاء رابط magnet."),
+    ("Sent to others: {} (ratio {})", "تم الإرسال للآخرين: {} (النسبة {})"),
+    ("Checking the file", "جارٍ فحص الملف"),
+    ("The downloaded file is damaged: its checksum is not the one it should have. Click Redownload.", "الملف الذي تم تحميله تالف: رمز التحقق الخاص به ليس هو المطلوب. اضغط إعادة التحميل."),
+    ("The file on the server changed since the download began, so its parts would not fit together. Click Redownload.", "الملف على الخادم تغيّر منذ بدء التحميل، فأجزاؤه لن تتطابق معًا. اضغط إعادة التحميل."),
+    ("The link opens one web page after another, not a file. Open it in the browser and download it from there.", "الرابط يفتح صفحة ويب بعد أخرى وليس ملفًا. افتحه في المتصفح وحمّله من هناك."),
+    ("This torrent has file names that lead out of its folder, so it was stopped to keep your other files safe.", "هذا التورنت فيه أسماء ملفات تخرج خارج مجلده، لذلك تم إيقافه لحماية ملفاتك الأخرى."),
+    ("Keyboard shortcuts\n\nCtrl+N or Ctrl+V: add a download (a copied address)\nCtrl+B: add several addresses\nEnter: open the download (its window, or the file)\nAlt+Enter: properties\nF2: rename / move the file\nCtrl+R: resume\nCtrl+S: stop\nCtrl+O: open the file\nCtrl+E: open its folder\nCtrl+C: copy the address\nDelete: delete\nUp / Down, Home / End: move in the list (with Shift: select)\nCtrl+A: select all\nCtrl+F, F3: find, find the next", "اختصارات لوحة المفاتيح\n\nCtrl+N أو Ctrl+V: إضافة تحميل (رابط منسوخ)\nCtrl+B: إضافة عدة روابط\nEnter: فتح التحميل (نافذته أو الملف)\nAlt+Enter: الخصائص\nF2: إعادة تسمية / نقل الملف\nCtrl+R: استئناف\nCtrl+S: إيقاف\nCtrl+O: فتح الملف\nCtrl+E: فتح مجلده\nCtrl+C: نسخ الرابط\nDelete: حذف\nأعلى / أسفل، Home / End: التنقل في القائمة (مع Shift: تحديد)\nCtrl+A: تحديد الكل\nCtrl+F و F3: بحث، البحث عن التالي"),
+    ("FTP and FTPS links download like web links: in parts, with resume, and with the user name and password kept apart from the address.", "روابط FTP و FTPS تُحمَّل مثل روابط الويب: على أجزاء، مع الاستكمال، واسم المستخدم وكلمة المرور محفوظان بعيدًا عن الرابط."),
+    ("Checksum: paste an MD5, SHA-1 or SHA-256 value in Download File Info (or the site gives one) and the file is checked when it finishes.", "رمز التحقق: الصق قيمة MD5 أو SHA-1 أو SHA-256 في معلومات ملف التحميل (أو يعطيها الموقع) ويُفحص الملف عند انتهائه."),
+    ("Torrents have their own tab in Properties: the files (choose them while it runs), the people, the trackers and the pieces. Add a tracker, check the files again, copy the magnet link, first and last pieces first, and stop sharing at a ratio you choose.", "للتورنت تبويب خاص في الخصائص: الملفات (اخترها أثناء التحميل)، والأجهزة المتصلة، والمتتبعات، والأجزاء. أضف متتبعًا، وأعد فحص الملفات، وانسخ رابط magnet، وحمّل الجزء الأول والأخير أولًا، وأوقف المشاركة عند النسبة التي تختارها."),
+    ("Safer resume: a file that changed on the server is noticed instead of being joined with the old parts, links that lead through a few pages to the file are followed, and downloads that need a form sent from the browser work.", "استكمال أكثر أمانًا: الملف الذي تغيّر على الخادم يُكتشف بدل أن يُدمج مع الأجزاء القديمة، والروابط التي تمر بعدة صفحات قبل الملف تُتابع، والتحميلات التي تحتاج إرسال نموذج من المتصفح تعمل."),
+    ("The speed limit can work only while you use the computer, and a scheduled queue can wake the computer from sleep to start.", "حد السرعة يمكن أن يعمل فقط أثناء استخدامك للكمبيوتر، وقائمة الانتظار المجدولة يمكنها إيقاظ الكمبيوتر من وضع السكون لتبدأ."),
+    ("Keyboard shortcuts for the list (F1 shows them), a command line for other programs and scripts, and Help > Add Ezoo Download to my browser > Test the link checks the add-in step by step.", "اختصارات لوحة المفاتيح للقائمة (F1 يعرضها)، وسطر أوامر للبرامج والسكربتات الأخرى، ومساعدة > إضافة Ezoo Download إلى متصفحي > اختبار الربط يفحص الإضافة خطوة بخطوة."),
+    ("The add-in works in private windows too (allow it there in the browser), keeps the browser's own download when the program is closed, and its video button can be moved or hidden on a site.", "الإضافة تعمل في النوافذ الخاصة أيضًا (اسمح لها بذلك من المتصفح)، وتترك التحميل للمتصفح نفسه إذا كان البرنامج مغلقًا، وزر الفيديو يمكن نقله أو إخفاؤه في أي موقع."),
+    ("Torrents are shared by the program itself now, with no helper program: they start sooner, use less of the computer, and a stopped torrent goes on after a restart without checking all its pieces again.", "التورنت أصبح يعمل من داخل البرنامج نفسه دون برنامج مساعد: يبدأ أسرع، ويستهلك موارد أقل من الكمبيوتر، والتورنت المتوقف يكمل بعد إعادة التشغيل دون إعادة فحص كل أجزائه."),
+    ("Asking the server about the links: {} left", "جارٍ سؤال الخادم عن الروابط: متبقٍ {}"),
+    ("{} files", "{} ملف"),
+    ("{} finished, {} could not be downloaded", "انتهى {}، وتعذر تحميل {}"),
+    ("All {} finished", "انتهت كلها ({})"),
+    ("Waiting for \"{}\" to be finished first (its parts are being put together).", "في انتظار انتهاء \"{}\" أولًا (يتم تجميع أجزائه الآن)."),
+    ("The Site Grabber finds the files behind download links that show no file name and asks the server for their real names and sizes, a playlist shows one \"Download complete\" window at the end instead of one for every file, and the computer is never shut down or put to sleep while a file is still being put together.", "أداة جمع الملفات تجد الملفات خلف روابط التحميل التي لا يظهر فيها اسم ملف، وتسأل الخادم عن أسمائها وأحجامها الحقيقية، وقائمة التشغيل تُظهر نافذة \"اكتمل التحميل\" واحدة في النهاية بدل نافذة لكل ملف، والكمبيوتر لا يُغلق ولا يدخل السكون أبدًا وملف ما زال يتم تجميعه."),
 ];
 
 #[cfg(test)]
@@ -694,5 +791,55 @@ mod tests {
         }
         assert_eq!(index_of("xx"), 0);
         assert_eq!(effective("es"), "es");
+    }
+
+    #[test]
+    fn whats_new_and_shortcuts_in_every_language() {
+        let texts: Vec<&str> = crate::extra::WHATS_NEW.iter().copied().chain([crate::SHORTCUTS, "Checking the file"]).collect();
+        for en in texts {
+            assert!(lookup(en).is_some(), "ar: {en}");
+            for (code, _) in LANGS.iter().skip(2) {
+                assert!(table(code).expect("table").contains_key(en), "{code}: {en}");
+            }
+        }
+    }
+}
+
+/// A name written right to left (Arabic, Hebrew, Persian…): its first
+/// letter decides, as in a text editor.
+pub fn rtl_text(s: &str) -> bool {
+    for c in s.chars() {
+        let u = c as u32;
+        if matches!(u, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF | 0x10800..=0x10FFF | 0x1E800..=0x1EFFF) {
+            return true;
+        }
+        if c.is_alphabetic() {
+            return false;
+        }
+    }
+    false
+}
+
+/// The name as it is shown in a list: a right-to-left one starts with the
+/// invisible right-to-left mark, so numbers and Latin words in it keep
+/// their place.
+pub fn shown_name(s: &str) -> String {
+    if rtl_text(s) {
+        format!("\u{200F}{s}")
+    } else {
+        s.to_string()
+    }
+}
+
+#[cfg(test)]
+mod rtl_tests {
+    #[test]
+    fn first_letter_decides() {
+        assert!(super::rtl_text("07 - طريقة عمل الأرز"));
+        assert!(super::rtl_text("שלום world"));
+        assert!(!super::rtl_text("How to — طريقة"));
+        assert!(!super::rtl_text("123"));
+        assert_eq!(super::shown_name("abc"), "abc");
+        assert_eq!(super::shown_name("أ"), "\u{200F}أ");
     }
 }

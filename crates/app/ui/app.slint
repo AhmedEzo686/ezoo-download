@@ -3,7 +3,7 @@
 // queue tree, detailed list, one progress window per download. Nine themes.
 
 import { Button, LineEdit, SpinBox, ComboBox, ListView, TabWidget, TextEdit, Palette } from "std-widgets.slint";
-import { ToolTip, DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, CaptionButton, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph, HRow, CheckBox } from "common.slint";
+import { ToolTip, DownloadRow, QueueRow, SegView, TFileRow, TPeerRow, PieceRun, Cols, ColDef, CatRow, PairRow, LinkRow, Theme, ThemedWindow, CaptionButton, P, Icon, G, TypeIcon, BigTypeIcon, ToolBtn, ToolSeparator, TreeItem, HeaderCell, Cell, MenuEntry, MenuSep, MenuLabel, Glyph, HRow, CheckBox } from "common.slint";
 export { DownloadRow, QueueRow, SegView, Cols, ColDef, CatRow, PairRow, LinkRow, Theme }
 export { BrowserRow } from "dialogs.slint";
 export { ConfirmDialog, ColumnsDialog, CategoryDialog, FindDialog, PropertiesDialog, DuplicateDialog, CountdownDialog, SchedulerDialog, GrabberDialog, TipDialog, RefreshDialog, SettingsDialog, PlaylistDialog, TorrentDialog, BrowserDialog, AboutDialog, UpdateDialog, WhatsNewDialog, SupportDialog, ClipDialog } from "dialogs.slint";
@@ -20,27 +20,48 @@ component DownloadItem inherits Rectangle {
     callback pick(bool, bool);
     // right click: keep a multiple selection that includes this row
     callback right-pick();
+    // Windows: the menu is a real Windows menu (made by the program)
+    in property <bool> native-menu;
+    callback open-native-menu();
     // dragging with the mouse held down: rows below (+) or above (-) this one
     callback drag(int);
     property <int> drag-last;
+    // the left button went down on this row and is still held
+    property <bool> left-down;
     callback activated();
     callback action(string);
     callback move-to-queue(int);
     // dragging a finished file out of the program (onto the desktop, a folder…)
     callback drag-out();
     property <bool> dragged-out;
-    height: max(24px, 24px * Theme.font-scale);
+    height: Theme.depth ? max(40px, 34px * Theme.font-scale) : max(24px, 24px * Theme.font-scale);
     // as wide as all the columns (the list then scrolls sideways)
     out property <length> content-w: cells.min-width;
     // wide columns: the row is wider than the list. The look and the mouse
     // cover all of it (in Arabic the name is on the far right side of it)
-    Rectangle {
+    if !Theme.depth: Rectangle {
         x: 0px;
         width: cells.width;
         height: parent.height;
         background: root.selected ? Theme.select : ta.has-hover ? Theme.hover : transparent;
         border-width: root.selected ? 1px : 0px;
         border-color: Theme.select-line;
+    }
+    // the 3D look: every download is a card that floats over the list
+    if Theme.depth: Rectangle {
+        x: 4px;
+        y: 3px;
+        width: cells.width - 8px;
+        height: parent.height - 6px;
+        border-radius: Theme.card-radius;
+        background: root.selected ? @linear-gradient(Theme.look == 1 ? 90deg : 180deg, Theme.sel-top 0%, Theme.sel-bottom 100%)
+            : ta.has-hover ? @linear-gradient(180deg, Theme.card-hover-top 0%, Theme.card-bottom 100%)
+            : @linear-gradient(180deg, Theme.card-top 0%, Theme.card-bottom 100%);
+        border-width: 1px;
+        border-color: root.selected ? Theme.sel-line : Theme.card-line;
+        drop-shadow-blur: root.selected ? 12px : 7px;
+        drop-shadow-offset-y: root.selected ? 4px : Theme.look == 3 ? 4px : 2px;
+        drop-shadow-color: root.selected ? Theme.sel-shadow : Theme.card-shadow;
     }
     ta := TouchArea {
         x: 0px;
@@ -52,7 +73,11 @@ component DownloadItem inherits Rectangle {
         moved => {
             // a finished file pulled sideways: hand it to Windows to drop elsewhere
             // (only a clearly sideways pull on its own row: moving up or down
-            // over other rows selects them instead)
+            // over other rows selects them instead). Only while the left button
+            // is really held (never after a right click and its menu)
+            if (!root.left-down) {
+                return;
+            }
             if (self.pressed && root.done && !root.dragged-out && root.drag-last == 0 && self.mouse-y >= 0 && self.mouse-y < root.height
                 && abs(self.mouse-x - self.pressed-x) > 24px && abs(self.mouse-x - self.pressed-x) > 2 * abs(self.mouse-y - self.pressed-y)) {
                 root.dragged-out = true;
@@ -66,21 +91,36 @@ component DownloadItem inherits Rectangle {
         }
         pointer-event(ev) => {
             if (ev.button == PointerEventButton.left && ev.kind == PointerEventKind.down) {
+                root.left-down = true;
                 root.drag-last = 0;
                 root.dragged-out = false;
                 root.pick(ev.modifiers.control, ev.modifiers.shift);
             }
-            // right click: select the row and open the menu where the mouse is
+            if (ev.kind == PointerEventKind.cancel || (ev.kind == PointerEventKind.up && ev.button == PointerEventButton.left)) {
+                root.left-down = false;
+            }
+            // right click, as in Explorer: the row is selected the moment the
+            // button goes down (seen at once), the menu opens when it is let go
+            if (ev.button == PointerEventButton.right && ev.kind == PointerEventKind.down) {
+                root.right-pick();
+            }
             if (ev.button == PointerEventButton.right && ev.kind == PointerEventKind.up) {
                 root.right-pick();
-                root.menu-x = self.mouse-x;
-                root.menu-y = self.mouse-y;
-                menu.show();
+                if (root.native-menu) {
+                    root.open-native-menu();
+                } else {
+                    root.menu-x = self.mouse-x;
+                    root.menu-y = self.mouse-y;
+                    menu.show();
+                }
             }
         }
     }
     property <length> menu-x;
     property <length> menu-y;
+    property <color> kind-color: root.data.kind == "video" ? #a56bff : root.data.kind == "audio" ? #2fc76c
+        : root.data.kind == "archive" ? #fb8a2e : root.data.kind == "exe" || root.data.kind == "apk" ? #3d8bf5
+        : root.data.kind == "pdf" ? #ec4652 : root.data.kind == "image" ? #2ec4b6 : root.data.kind == "torrent" ? #f472b6 : #f0b323;
     property <bool> done: root.data.state == 3;
     property <bool> can-resume: root.data.state == 2 || root.data.state == 4;
     property <bool> can-stop: root.data.state == 0 || root.data.state == 1;
@@ -277,10 +317,23 @@ component DownloadItem inherits Rectangle {
         padding-right: Theme.rtl ? (6px) : (0px);
         spacing: 0px;
         Rectangle {
-            width: 32px;
+            width: Theme.depth ? 42px : 32px;
+            // the 3D looks: the file's picture on a tile of its color
+            if Theme.depth: Rectangle {
+                x: 6px;
+                y: (parent.height - 28px) / 2;
+                width: 28px;
+                height: 28px;
+                border-radius: Theme.tile-style == 2 ? 7px : 9px;
+                background: Theme.tile-style == 2 ? root.kind-color.transparentize(20%) : root.kind-color.transparentize(Theme.dark ? 78% : 82%);
+                border-width: 1px;
+                border-color: root.kind-color.transparentize(Theme.tile-style == 1 ? 10% : 55%);
+                drop-shadow-blur: Theme.tile-style == 0 ? 0px : 9px;
+                drop-shadow-color: root.kind-color.transparentize(55%);
+            }
             TypeIcon {
                 kind: root.data.kind;
-                x: 4px;
+                x: Theme.depth ? 11px : 4px;
                 y: (parent.height - 18px) / 2;
             }
         }
@@ -294,7 +347,7 @@ component DownloadItem inherits Rectangle {
                 width: parent.width - 4px;
                 height: parent.height;
                 text: root.data.name;
-                horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                horizontal-alignment: root.data.name-rtl || Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
             }
             if c.key == "q": Cell {
                 width: parent.width;
@@ -313,17 +366,19 @@ component DownloadItem inherits Rectangle {
                 // thin progress line under the status, for running downloads
                 if root.data.state == 1 || (root.data.state == 2 && root.data.progress > 0): Rectangle {
                     x: 10px;
-                    y: parent.height - 5px;
+                    y: parent.height - (Theme.depth ? 10px : 5px);
                     width: parent.width - 20px;
-                    height: 3px;
-                    border-radius: 1.5px;
+                    height: Theme.depth ? 5px : 3px;
+                    border-radius: Theme.depth ? 2.5px : 1.5px;
                     background: Theme.bar-bg;
                     Rectangle {
                         x: Theme.rtl ? parent.width - self.width : 0;
                         width: parent.width * root.data.progress;
                         height: parent.height;
-                        border-radius: 1.5px;
-                        background: root.data.state == 1 ? Theme.accent : Theme.warn;
+                        border-radius: parent.border-radius;
+                        background: Theme.depth
+                            ? (root.data.state == 1 ? @linear-gradient(90deg, Theme.bar-a 0%, Theme.bar-b 100%) : @linear-gradient(90deg, #ffc24a 0%, #e08a00 100%))
+                            : root.data.state == 1 ? Theme.accent : Theme.warn;
                         animate width {
                             duration: 250ms;
                             easing: linear;
@@ -510,7 +565,9 @@ export component MainWindow inherits ThemedWindow {
     // set for a moment so the window comes in front of the browser
     in property <bool> front;
     always-on-top: root.front;
-    title: @tr("Ezoo Download");
+    // the program's name with its version, in the bar at the top
+    in property <string> app-version;
+    title: @tr("Ezoo Download") + (root.app-version == "" ? "" : " " + root.app-version);
     // Options > General > Background picture (shows through the panels)
     in property <image> bg-image;
     in property <bool> has-bg-image;
@@ -577,6 +634,9 @@ export component MainWindow inherits ThemedWindow {
     callback row-activated(int);
     callback row-clicked(int, bool, bool);
     callback row-right(int);
+    // the right-click menu as a Windows menu
+    in property <bool> native-menu;
+    callback row-menu(int);
     callback row-drag(int, int);
     callback row-drag-out(int);
     // the list's columns (order + widths); dragging in the header changes them
@@ -606,6 +666,9 @@ export component MainWindow inherits ThemedWindow {
     }
     callback select-all();
     callback row-action(int, string);
+    // the keyboard: the next / earlier row (-1 / 1), the first / last (-2 / 2)
+    callback move-selection(int, bool);
+    callback show-shortcuts();
     callback row-to-queue(int, int);
     callback open-download-folder();
     callback export-list(string);
@@ -632,7 +695,6 @@ export component MainWindow inherits ThemedWindow {
     callback about();
     callback quit();
 
-    // ------------------------------------------------------------ menu bar
     // Slint's own MenuBar always starts at the left (its layout is fixed to
     // "start") and has no right-to-left support, so in Arabic the menus stayed
     // on the left. The bar is built here instead and uses the same Menu
@@ -1470,6 +1532,30 @@ export component MainWindow inherits ThemedWindow {
                                 root.set-theme(8);
                             }
                         }
+                        MenuEntry {
+                            text: (Theme.mode == 9 ? "● " : "○ ") + @tr("3D");
+                            clicked => {
+                                root.set-theme(9);
+                            }
+                        }
+                        MenuEntry {
+                            text: (Theme.mode == 10 ? "● " : "○ ") + @tr("Aurora glass");
+                            clicked => {
+                                root.set-theme(10);
+                            }
+                        }
+                        MenuEntry {
+                            text: (Theme.mode == 11 ? "● " : "○ ") + @tr("Soft clay");
+                            clicked => {
+                                root.set-theme(11);
+                            }
+                        }
+                        MenuEntry {
+                            text: (Theme.mode == 12 ? "● " : "○ ") + @tr("Cyber neon");
+                            clicked => {
+                                root.set-theme(12);
+                            }
+                        }
                         MenuSep { }
                         MenuEntry {
                             text: @tr("Appearance…");
@@ -1739,8 +1825,54 @@ export component MainWindow inherits ThemedWindow {
                 root.delete(root.selected-id);
                 return accept;
             }
+            // Alt+Enter: the download's properties
+            if (event.text == Key.Return && event.modifiers.alt && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "properties");
+                return accept;
+            }
             if (event.text == Key.Return && root.selected-id >= 0) {
                 root.row-activated(root.selected-id);
+                return accept;
+            }
+            if (event.text == Key.UpArrow) {
+                root.move-selection(-1, event.modifiers.shift);
+                return accept;
+            }
+            if (event.text == Key.DownArrow) {
+                root.move-selection(1, event.modifiers.shift);
+                return accept;
+            }
+            if (event.text == Key.Home) {
+                root.move-selection(-2, event.modifiers.shift);
+                return accept;
+            }
+            if (event.text == Key.End) {
+                root.move-selection(2, event.modifiers.shift);
+                return accept;
+            }
+            // F2: rename / move the file
+            if (event.text == Key.F2 && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "move");
+                return accept;
+            }
+            if (event.text == Key.F1) {
+                root.show-shortcuts();
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "r" || event.text == "R" || event.text == "ق") && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "resume");
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "s" || event.text == "S" || event.text == "س") && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "stop");
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "o" || event.text == "O" || event.text == "خ") && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "open");
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "e" || event.text == "E" || event.text == "ث") && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "folder");
                 return accept;
             }
             if (event.text == Key.F3) {
@@ -1749,6 +1881,15 @@ export component MainWindow inherits ThemedWindow {
             }
             if (event.modifiers.control && (event.text == "f" || event.text == "F" || event.text == "ب")) {
                 root.find();
+                return accept;
+            }
+            // the selected downloads' addresses / a copied link to download
+            if (event.modifiers.control && (event.text == "c" || event.text == "C") && root.selected-id >= 0) {
+                root.row-action(root.selected-id, "copy");
+                return accept;
+            }
+            if (event.modifiers.control && (event.text == "v" || event.text == "V")) {
+                root.add-url();
                 return accept;
             }
             if (event.modifiers.control && (event.text == "n" || event.text == "N" || event.text == "ى")) {
@@ -1763,14 +1904,25 @@ export component MainWindow inherits ThemedWindow {
         }
 
         VerticalLayout {
-            // ---- toolbar (buttons that don't fit a narrow window are cut off)
-            Rectangle {
+            // ---- toolbar: when the buttons with their names don't fit (bigger
+            // text, a narrow window), they show their pictures only; what still
+            // does not fit is cut at the end (the left in Arabic), never the
+            // first buttons
+            tb := Rectangle {
+                // 13 + 2 wider buttons, 5 lines between them, the filter box
+                property <length> full-need: 13 * max(56px, 56px * Theme.font-scale) + 2 * max(62px, 62px * Theme.font-scale) + 5 * 7px + 14px + 96px + 16px;
+                property <length> small-need: 15 * 34px + 5 * 7px + 14px + 96px + 16px;
+                // only with bigger text (at the usual size the last buttons
+                // are cut in a narrow window, as before)
+                property <bool> small-now: root.toolbar-small || (Theme.font-scale > 1.05 && self.width < self.full-need);
                 // bigger text (Options > Appearance): a taller bar, the names are never cut
-                height: root.toolbar-small ? 42px : max(64px, 38px + 26px * Theme.font-scale);
+                height: tb.small-now ? 42px : max(64px, 38px + 26px * Theme.font-scale);
                 min-width: 0px;
                 clip: true;
                 background: @linear-gradient(180deg, Theme.toolbar-top 0%, Theme.toolbar-bottom 100%);
                 HRow {
+                    width: max(parent.width, tb.small-now ? tb.small-need : tb.full-need);
+                    x: Theme.rtl ? parent.width - self.width : 0;
                     padding: 4px;
                     padding-left: Theme.rtl ? (10px) : (6px);
                     padding-right: Theme.rtl ? (6px) : (10px);
@@ -1778,7 +1930,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "add";
                         text: @tr("Add URL");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.add-url();
                         }
@@ -1786,7 +1938,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "batch";
                         text: @tr("Add Batch");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.add-batch();
                         }
@@ -1795,7 +1947,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "resume";
                         text: @tr("Resume");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         enabled: root.can-resume;
                         clicked => {
                             root.resume(root.selected-id);
@@ -1804,7 +1956,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "stop";
                         text: @tr("Stop");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         enabled: root.can-stop;
                         clicked => {
                             root.pause(root.selected-id);
@@ -1813,7 +1965,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "stopall";
                         text: @tr("Stop All");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.stop-all();
                         }
@@ -1822,7 +1974,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "delete";
                         text: @tr("Delete");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         enabled: root.selected-id >= 0;
                         clicked => {
                             root.delete(root.selected-id);
@@ -1831,7 +1983,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "deletedone";
                         text: @tr("Delete Done");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.delete-completed();
                         }
@@ -1840,7 +1992,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "options";
                         text: @tr("Options");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.open-settings(0);
                         }
@@ -1848,7 +2000,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "scheduler";
                         text: @tr("Scheduler");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.open-scheduler();
                         }
@@ -1856,7 +2008,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "limiter";
                         text: root.limiter-on ? @tr("Limiter: On") : @tr("Limiter: Off");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.toggle-limiter();
                         }
@@ -1865,8 +2017,8 @@ export component MainWindow inherits ThemedWindow {
                     start-q := ToolBtn {
                         icon: "startqueue";
                         text: @tr("Start Queue");
-                        small: root.toolbar-small;
-                        width: root.toolbar-small ? 34px : max(62px, 62px * Theme.font-scale);
+                        small: tb.small-now;
+                        width: tb.small-now ? 34px : max(62px, 62px * Theme.font-scale);
                         clicked => {
                             root.qmenu-start = true;
                             root.qmenu-x = self.x;
@@ -1876,8 +2028,8 @@ export component MainWindow inherits ThemedWindow {
                     stop-q := ToolBtn {
                         icon: "stopqueue";
                         text: @tr("Stop Queue");
-                        small: root.toolbar-small;
-                        width: root.toolbar-small ? 34px : max(62px, 62px * Theme.font-scale);
+                        small: tb.small-now;
+                        width: tb.small-now ? 34px : max(62px, 62px * Theme.font-scale);
                         clicked => {
                             root.qmenu-start = false;
                             root.qmenu-x = self.x;
@@ -1888,7 +2040,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "grabber";
                         text: @tr("Grabber");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.grabber();
                         }
@@ -1896,7 +2048,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "playlist";
                         text: @tr("Playlist");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.playlist();
                         }
@@ -1904,7 +2056,7 @@ export component MainWindow inherits ThemedWindow {
                     ToolBtn {
                         icon: "torrent";
                         text: @tr("Torrent");
-                        small: root.toolbar-small;
+                        small: tb.small-now;
                         clicked => {
                             root.torrent();
                         }
@@ -2131,8 +2283,8 @@ export component MainWindow inherits ThemedWindow {
                             clip: true;
                             // scrolls sideways together with the list (wide columns)
                             hdr := HRow {
-                                x: lv.viewport-x;
-                                width: max(parent.width, lv.viewport-width);
+                                x: lv.content-x;
+                                width: max(parent.width, lv.content-width);
                                 padding-left: Theme.rtl ? (0px) : (6px);
                                 padding-right: Theme.rtl ? (6px) : (0px);
                                 HeaderCell {
@@ -2177,12 +2329,12 @@ export component MainWindow inherits ThemedWindow {
                             vertical-stretch: 1;
                             // Arabic: wide columns start at the right edge, so
                             // the list first shows its right side
-                            property <length> rtl-start: Theme.rtl ? min(0px, self.visible-width - self.viewport-width) : 0px;
+                            property <length> rtl-start: Theme.rtl ? min(0px, self.visible-width - self.content-width) : 0px;
                             changed rtl-start => {
-                                self.viewport-x = self.rtl-start;
+                                self.content-x = self.rtl-start;
                             }
                             init => {
-                                self.viewport-x = self.rtl-start;
+                                self.content-x = self.rtl-start;
                             }
                             for r in root.rows: DownloadItem {
                                 // every row as wide as its columns: the mouse and
@@ -2194,6 +2346,10 @@ export component MainWindow inherits ThemedWindow {
                                 columns: root.columns;
                                 selected: r.sel;
                                 sel-count: root.sel-count;
+                                native-menu: root.native-menu;
+                                open-native-menu => {
+                                    root.row-menu(r.id);
+                                }
                                 pick(ctrl, shift) => {
                                     root.row-clicked(r.id, ctrl, shift);
                                     keys.focus();
@@ -2356,6 +2512,7 @@ export component AddDialog inherits ThemedWindow {
     // full path: folder + file name
     in-out property <string> save-as;
     in-out property <string> description;
+    in-out property <string> checksum;
     in-out property <int> connections: 32;
     in-out property <int> category-index: 0;
     in-out property <bool> remember-path;
@@ -2384,6 +2541,21 @@ export component AddDialog inherits ThemedWindow {
     callback start-now();
     callback later();
     callback cancel();
+    // the file's name alone (the end of "Save As"), to change it easily
+    pure callback name-of(string) -> string;
+    pure callback with-name(string, string) -> string;
+    // a file of the chosen name is in the folder: the user says what to do
+    // here (no message box over the window)
+    in-out property <string> taken-name;
+    in-out property <bool> taken-start;
+    callback replace-taken();
+    callback number-taken();
+    changed save-as => {
+        if (name-box.text != root.name-of(root.save-as)) {
+            name-box.text = root.name-of(root.save-as);
+        }
+        root.taken-name = "";
+    }
 
     VerticalLayout {
         padding: 14px;
@@ -2447,13 +2619,32 @@ export component AddDialog inherits ThemedWindow {
                     col: Theme.rtl ? 1 : 0;
                     row: 2;
                     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: @tr("File name");
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+                name-box := LineEdit {
+                    col: Theme.rtl ? 0 : 1;
+                    row: 2;
+                    placeholder-text: @tr("The name the file gets");
+                    init => {
+                        self.text = root.name-of(root.save-as);
+                    }
+                    edited(t) => {
+                        root.save-as = root.with-name(root.save-as, t);
+                    }
+                }
+                Text {
+                    col: Theme.rtl ? 1 : 0;
+                    row: 3;
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: @tr("Save As");
                     vertical-alignment: center;
                     color: Theme.text;
                 }
                 HRow {
                     col: Theme.rtl ? 0 : 1;
-                    row: 2;
+                    row: 3;
                     spacing: 6px;
                     LineEdit {
                         text <=> root.save-as;
@@ -2468,17 +2659,17 @@ export component AddDialog inherits ThemedWindow {
                 }
                 Rectangle {
                     col: Theme.rtl ? 1 : 0;
-                    row: 3;
+                    row: 4;
                 }
                 CheckBox {
                     col: Theme.rtl ? 0 : 1;
-                    row: 3;
+                    row: 4;
                     text: @tr("Remember this path for \"{}\" category", root.category-name);
                     checked <=> root.remember-path;
                 }
                 Text {
                     col: Theme.rtl ? 1 : 0;
-                    row: 4;
+                    row: 5;
                     horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                     text: @tr("Description");
                     vertical-alignment: center;
@@ -2486,9 +2677,23 @@ export component AddDialog inherits ThemedWindow {
                 }
                 LineEdit {
                     col: Theme.rtl ? 0 : 1;
-                    row: 4;
+                    row: 5;
                     text <=> root.description;
                     placeholder-text: @tr("optional note");
+                }
+                Text {
+                    col: Theme.rtl ? 1 : 0;
+                    row: 6;
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: @tr("Checksum");
+                    vertical-alignment: center;
+                    color: Theme.text;
+                }
+                LineEdit {
+                    col: Theme.rtl ? 0 : 1;
+                    row: 6;
+                    text <=> root.checksum;
+                    placeholder-text: @tr("MD5 / SHA-1 / SHA-256 (optional)");
                 }
             }
             VerticalLayout {
@@ -2560,6 +2765,49 @@ export component AddDialog inherits ThemedWindow {
                 horizontal-stretch: 1;
             }
         }
+        if root.taken-name != "": Rectangle {
+            border-width: 1px;
+            border-color: Theme.warn;
+            background: Theme.panel;
+            VerticalLayout {
+                padding: 8px;
+                spacing: 6px;
+                GridLayout {
+                    spacing: 6px;
+                    Glyph {
+                        col: Theme.rtl ? 1 : 0;
+                        row: 0;
+                        kind: "warn";
+                    }
+                    Text {
+                        col: Theme.rtl ? 0 : 1;
+                        row: 0;
+                        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                        text: @tr("A file named \"{}\" is already in this folder. Replace it, save the new one with a numbered name, or change the name above.", root.taken-name);
+                        color: Theme.text;
+                        wrap: word-wrap;
+                        font-size: 12px * Theme.font-scale;
+                        horizontal-stretch: 1;
+                    }
+                }
+                HRow {
+                    spacing: 8px;
+                    alignment: end;
+                    Button {
+                        text: @tr("Replace it");
+                        clicked => {
+                            root.replace-taken();
+                        }
+                    }
+                    Button {
+                        text: @tr("New name (numbered)");
+                        clicked => {
+                            root.number-taken();
+                        }
+                    }
+                }
+            }
+        }
         Rectangle {
             height: 32px;
             border-width: 1px;
@@ -2588,7 +2836,7 @@ export component AddDialog inherits ThemedWindow {
             SpinBox {
                 width: 110px;
                 minimum: 1;
-                maximum: 32;
+                maximum: 64;
                 value <=> root.connections;
             }
             Rectangle {
@@ -2969,6 +3217,47 @@ export component BatchDialog inherits ThemedWindow {
 }
 
 // The per-download progress window (tabs like a classic download manager).
+// A floating card of the 3D looks (the download window).
+component DCard inherits Rectangle {
+    border-radius: Theme.card-radius;
+    background: @linear-gradient(180deg, Theme.card-top 0%, Theme.card-bottom 100%);
+    border-width: 1px;
+    border-color: Theme.card-line;
+    drop-shadow-blur: 8px;
+    drop-shadow-offset-y: Theme.look == 3 ? 3px : 2px;
+    drop-shadow-color: Theme.card-shadow;
+}
+
+// One number of the download window in the 3D looks.
+component StatCard inherits DCard {
+    horizontal-stretch: 1;
+    in property <string> label;
+    in property <string> value;
+    in property <color> tint: Theme.text;
+    min-width: 0px;
+    VerticalLayout {
+        padding: 9px;
+        padding-left: 11px;
+        padding-right: 11px;
+        spacing: 2px;
+        Text {
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            text: root.label;
+            font-size: 10.5px * Theme.font-scale;
+            color: Theme.muted;
+        }
+        Text {
+            min-width: 0px;
+            horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+            text: root.value;
+            font-size: 13px * Theme.font-scale;
+            font-weight: 700;
+            color: root.tint;
+            overflow: elide;
+        }
+    }
+}
+
 export component DetailsDialog inherits ThemedWindow {
     // set for a moment so the window comes in front of the browser
     in property <bool> front;
@@ -2997,11 +3286,15 @@ export component DetailsDialog inherits ThemedWindow {
     in property <float> step-progress;
     in property <int> state;
     in property <[SegView]> segs;
+    // the 3D looks: the progress ring and the speed of the last minute, as
+    // drawings (made by the program)
+    in property <string> ring-path;
+    in property <string> speed-line;
+    in property <string> speed-area;
     in-out property <bool> show-details: false;
     in-out property <int> tab: 0;
-    // speed limiter tab
+    // speed limiter tab (megabytes per second; the settings keep KB/s)
     in-out property <bool> limit-on;
-    // megabytes per second (the settings keep KB/s)
     in-out property <int> limit-mb: 1;
     // options on completion tab
     in-out property <int> when-done: 0;
@@ -3018,6 +3311,22 @@ export component DetailsDialog inherits ThemedWindow {
     // "Hide details" / "Show details": the window takes the size it needs
     out property <length> content-height: outer.preferred-height;
     callback details-toggled();
+    // a torrent: its files, people, trackers and pieces
+    in property <bool> is-torrent;
+    in property <[TFileRow]> t-files;
+    in property <[TPeerRow]> t-peers;
+    in property <[string]> t-trackers;
+    in property <[PieceRun]> t-pieces;
+    in property <string> t-summary;
+    in-out property <int> t-view: 0;
+    in-out property <bool> t-first-last;
+    in-out property <string> t-new-tracker;
+    in-out property <string> t-note;
+    callback t-file-toggled(int);
+    callback t-add-tracker();
+    callback t-recheck();
+    callback t-copy-magnet();
+    callback t-first-last-changed();
 
     outer := VerticalLayout {
       padding: 0px;
@@ -3048,16 +3357,204 @@ export component DetailsDialog inherits ThemedWindow {
                     root.tab = 2;
                 }
             }
+            if root.is-torrent: TabButton {
+                text: @tr("Torrent");
+                active: root.tab == 3;
+                clicked => {
+                    root.tab = 3;
+                }
+            }
             Rectangle {
                 horizontal-stretch: 1;
             }
         }
         Rectangle {
-            background: Theme.panel;
-            border-width: 1px;
+            background: Theme.depth && root.tab == 0 ? transparent : Theme.panel;
+            border-width: Theme.depth && root.tab == 0 ? 0px : 1px;
             border-color: Theme.line;
-            min-height: 150px;
-            if root.tab == 0: VerticalLayout {
+            border-radius: Theme.depth ? Theme.card-radius : 0px;
+            // its own size: a taller window gives the room to the connections
+            vertical-stretch: root.show-details ? 0 : 1;
+            // the 3D looks: the ring, the cards and the numbers
+            min-height: Theme.depth && root.tab == 0 ? (root.error != "" ? 330px : 300px) * max(1, Theme.font-scale)
+                : root.tab == 3 && root.is-torrent ? 330px * max(1, Theme.font-scale) : 150px;
+            // nothing of a tab is ever drawn over the progress and the buttons
+            clip: true;
+            if root.tab == 0 && Theme.depth: VerticalLayout {
+                padding: 10px;
+                spacing: 10px;
+                alignment: start;
+                HRow {
+                    spacing: 14px;
+                    // how much is here, as a ring
+                    Rectangle {
+                        width: 150px;
+                        height: 150px;
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 100;
+                            viewbox-height: 100;
+                            fill: transparent;
+                            stroke: Theme.bar-bg;
+                            stroke-width: 11px;
+                            commands: "M 50 7 A 43 43 0 1 1 49.99 7";
+                        }
+                        Path {
+                            width: 100%;
+                            height: 100%;
+                            viewbox-width: 100;
+                            viewbox-height: 100;
+                            fill: transparent;
+                            stroke: @linear-gradient(135deg, Theme.bar-a 0%, Theme.bar-b 100%);
+                            stroke-width: 11px;
+                            commands: root.ring-path;
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 0px;
+                            Text {
+                                text: root.percent;
+                                horizontal-alignment: center;
+                                font-size: 30px * Theme.font-scale;
+                                font-weight: 800;
+                                color: Theme.text;
+                            }
+                            Text {
+                                text: root.speed;
+                                horizontal-alignment: center;
+                                font-size: 11px * Theme.font-scale;
+                                color: Theme.muted;
+                            }
+                        }
+                    }
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 8px;
+                        DCard {
+                            HRow {
+                                padding: 10px;
+                                spacing: 10px;
+                                Rectangle {
+                                    width: 30px;
+                                    TypeIcon {
+                                        kind: root.kind;
+                                        x: 3px;
+                                        y: (parent.height - 22px) / 2;
+                                        width: 22px;
+                                        height: 22px;
+                                    }
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    Text {
+                                        min-width: 0px;
+                                        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                                        text: root.name;
+                                        font-weight: 700;
+                                        font-size: 13px * Theme.font-scale;
+                                        color: Theme.text;
+                                        overflow: elide;
+                                    }
+                                    Text {
+                                        min-width: 0px;
+                                        horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                                        text: root.url;
+                                        font-size: 10.5px * Theme.font-scale;
+                                        color: Theme.muted;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+                        }
+                        // the speed of the last minute
+                        DCard {
+                            vertical-stretch: 1;
+                            min-height: 84px;
+                            Text {
+                                x: Theme.rtl ? parent.width - self.width - 10px : 10px;
+                                y: 6px;
+                                text: @tr("Transfer rate");
+                                font-size: 10.5px * Theme.font-scale;
+                                color: Theme.muted;
+                            }
+                            Path {
+                                x: 8px;
+                                y: 22px;
+                                width: parent.width - 16px;
+                                height: parent.height - 28px;
+                                viewbox-width: 200;
+                                viewbox-height: 30;
+                                fill: @linear-gradient(180deg, Theme.bar-a.transparentize(45%) 0%, Theme.bar-a.transparentize(100%) 100%);
+                                stroke: transparent;
+                                commands: root.speed-area;
+                            }
+                            Path {
+                                x: 8px;
+                                y: 22px;
+                                width: parent.width - 16px;
+                                height: parent.height - 28px;
+                                viewbox-width: 200;
+                                viewbox-height: 30;
+                                fill: transparent;
+                                stroke: Theme.bar-a;
+                                stroke-width: 2px;
+                                commands: root.speed-line;
+                            }
+                        }
+                    }
+                }
+                GridLayout {
+                    spacing: 8px;
+                    StatCard {
+                        row: 0;
+                        col: Theme.rtl ? 2 : 0;
+                        label: @tr("Status");
+                        value: root.status;
+                        tint: root.state == 4 ? Theme.err : Theme.text;
+                    }
+                    StatCard {
+                        row: 0;
+                        col: 1;
+                        label: @tr("File size");
+                        value: root.size;
+                    }
+                    StatCard {
+                        row: 0;
+                        col: Theme.rtl ? 0 : 2;
+                        label: @tr("Downloaded");
+                        value: root.downloaded;
+                    }
+                    StatCard {
+                        row: 1;
+                        col: Theme.rtl ? 2 : 0;
+                        label: @tr("Transfer rate");
+                        value: root.speed;
+                    }
+                    StatCard {
+                        row: 1;
+                        col: 1;
+                        label: @tr("Time left");
+                        value: root.eta;
+                    }
+                    StatCard {
+                        row: 1;
+                        col: Theme.rtl ? 0 : 2;
+                        label: @tr("Resume capability");
+                        value: root.resumable;
+                        tint: root.resumable-ok ? Theme.ok : Theme.err;
+                    }
+                }
+                if root.error != "": Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: root.error;
+                    color: Theme.err;
+                    wrap: word-wrap;
+                    font-size: 11px * Theme.font-scale;
+                }
+            }
+            if root.tab == 0 && !Theme.depth: VerticalLayout {
                 padding: 8px;
                 spacing: 4px;
                 alignment: start;
@@ -3315,14 +3812,186 @@ export component DetailsDialog inherits ThemedWindow {
                     wrap: word-wrap;
                 }
             }
+            // ---- a torrent: its pieces, files, people and trackers
+            if root.tab == 3 && root.is-torrent: VerticalLayout {
+                padding: 10px;
+                spacing: 8px;
+                Text {
+                    horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+                    text: root.t-summary;
+                    color: Theme.muted;
+                    font-size: 11px * Theme.font-scale;
+                }
+                // which pieces are here
+                Rectangle {
+                    height: 12px;
+                    background: Theme.bar-bg;
+                    border-width: 1px;
+                    border-color: Theme.line;
+                    clip: true;
+                    for run in root.t-pieces: Rectangle {
+                        y: 0px;
+                        height: parent.height;
+                        x: (Theme.rtl ? 1 - run.to : run.from) * parent.width;
+                        width: max(1px, (run.to - run.from) * parent.width);
+                        background: run.here ? Theme.accent : transparent;
+                    }
+                }
+                HRow {
+                    spacing: 2px;
+                    TabButton {
+                        text: @tr("Files");
+                        active: root.t-view == 0;
+                        clicked => {
+                            root.t-view = 0;
+                        }
+                    }
+                    TabButton {
+                        text: @tr("People");
+                        active: root.t-view == 1;
+                        clicked => {
+                            root.t-view = 1;
+                        }
+                    }
+                    TabButton {
+                        text: @tr("Trackers");
+                        active: root.t-view == 2;
+                        clicked => {
+                            root.t-view = 2;
+                        }
+                    }
+                }
+                if root.t-view == 0: ListView {
+                    // the room that is left (a taller window: a longer list)
+                    vertical-stretch: 1;
+                    min-height: 96px;
+                    for f[i] in root.t-files: HRow {
+                        spacing: 8px;
+                        padding: 2px;
+                        CheckBox {
+                            text: "";
+                            checked: f.selected;
+                            toggled => {
+                                root.t-file-toggled(i);
+                            }
+                        }
+                        Text {
+                            text: f.name;
+                            color: Theme.text;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: f.size;
+                            color: Theme.muted;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: round(f.done * 100) + "%";
+                            color: Theme.muted;
+                            vertical-alignment: center;
+                            width: 44px;
+                        }
+                    }
+                }
+                if root.t-view == 1: ListView {
+                    vertical-stretch: 1;
+                    min-height: 96px;
+                    for p in root.t-peers: HRow {
+                        spacing: 8px;
+                        padding: 2px;
+                        Text {
+                            text: p.address + (p.seeder ? "  ★" : "");
+                            color: Theme.text;
+                            horizontal-stretch: 1;
+                            min-width: 0px;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: "↓ " + p.down;
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: "↑ " + p.up;
+                            color: Theme.muted;
+                        }
+                        Text {
+                            text: p.have;
+                            color: Theme.muted;
+                            width: p.have == "" ? 0px : 44px;
+                        }
+                    }
+                }
+                if root.t-view == 2: VerticalLayout {
+                    spacing: 6px;
+                    vertical-stretch: 1;
+                    ListView {
+                        vertical-stretch: 1;
+                        min-height: 64px;
+                        for tr in root.t-trackers: Text {
+                            text: tr;
+                            color: Theme.text;
+                            overflow: elide;
+                        }
+                    }
+                    HRow {
+                        spacing: 6px;
+                        LineEdit {
+                            text <=> root.t-new-tracker;
+                            placeholder-text: "udp://… / https://…";
+                            horizontal-stretch: 1;
+                        }
+                        Button {
+                            text: @tr("Add tracker");
+                            clicked => {
+                                root.t-add-tracker();
+                            }
+                        }
+                    }
+                }
+                HRow {
+                    spacing: 8px;
+                    CheckBox {
+                        text: @tr("First and last pieces first");
+                        checked <=> root.t-first-last;
+                        toggled => {
+                            root.t-first-last-changed();
+                        }
+                    }
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+                    Button {
+                        text: @tr("Check the files again");
+                        clicked => {
+                            root.t-recheck();
+                        }
+                    }
+                    Button {
+                        text: @tr("Copy magnet link");
+                        clicked => {
+                            root.t-copy-magnet();
+                        }
+                    }
+                }
+                if root.t-note != "": Text {
+                    text: root.t-note;
+                    color: Theme.muted;
+                    font-size: 11px * Theme.font-scale;
+                    wrap: word-wrap;
+                }
+            }
         }
         Rectangle {
             height: 8px;
         }
         Rectangle {
-            height: 18px;
-            border-width: 1px;
+            height: Theme.depth ? 12px : 18px;
+            border-width: Theme.depth ? 0px : 1px;
             border-color: Theme.line;
+            border-radius: Theme.depth ? 6px : 0px;
             background: Theme.bar-bg;
             clip: true;
             Rectangle {
@@ -3330,7 +3999,8 @@ export component DetailsDialog inherits ThemedWindow {
                 y: 1px;
                 height: parent.height - 2px;
                 width: (parent.width - 2px) * root.progress;
-                background: @linear-gradient(180deg, #4fd06a 0%, #1f9d3e 100%);
+                border-radius: Theme.depth ? 5px : 0px;
+                background: Theme.depth ? @linear-gradient(90deg, Theme.bar-a 0%, Theme.bar-b 100%) : @linear-gradient(180deg, #4fd06a 0%, #1f9d3e 100%);
                 animate width {
                     duration: 100ms;
                     easing: linear;
@@ -3412,10 +4082,14 @@ export component DetailsDialog inherits ThemedWindow {
                 }
             }
         }
+        // a taller window gives its room to the list of connections (never
+        // as empty space between the parts)
         if root.show-details: VerticalLayout {
             spacing: 6px;
             padding-top: 8px;
+            vertical-stretch: 1;
             Text {
+                vertical-stretch: 0;
                 horizontal-alignment: Theme.rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
                 text: @tr("Start positions and download progress by connections");
                 font-size: 11px * Theme.font-scale;
@@ -3423,6 +4097,7 @@ export component DetailsDialog inherits ThemedWindow {
             }
             Rectangle {
                 height: 20px;
+                vertical-stretch: 0;
                 border-width: 1px;
                 border-color: Theme.line;
                 background: Theme.panel;
@@ -3447,7 +4122,8 @@ export component DetailsDialog inherits ThemedWindow {
                 }
             }
             Rectangle {
-                height: 150px;
+                min-height: 150px;
+                vertical-stretch: 1;
                 background: Theme.panel;
                 border-width: 1px;
                 border-color: Theme.line;

@@ -36,7 +36,7 @@ pub fn parse(text: &str) -> Vec<Ef2Item> {
         }
         let Some(item) = cur.as_mut() else {
             // a plain text list: one address per line
-            if line.starts_with("http://") || line.starts_with("https://") {
+            if line.starts_with("http://") || line.starts_with("https://") || crate::ftp::is_ftp(line) {
                 out.push(Ef2Item { url: line.to_string(), ..Default::default() });
             }
             continue;

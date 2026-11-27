@@ -96,6 +96,7 @@ async fn segmented_download_with_pause_and_resume() {
         progress_base: 0,
         max_request: None,
         limiter: Arc::new(SpeedLimiter::new(0)),
+        check: Default::default(),
     };
     let segs = Arc::new(Mutex::new(Vec::new()));
     let progress = Arc::new(Progress::default());
@@ -154,6 +155,7 @@ async fn chunked_requests_with_32_connections() {
         progress_base: 0,
         max_request: Some(40 * 1024),
         limiter: Arc::new(SpeedLimiter::new(0)),
+        check: Default::default(),
     };
     let segs = Arc::new(Mutex::new(Vec::new()));
     let progress = Arc::new(Progress::default());
@@ -244,6 +246,7 @@ async fn waits_through_a_long_outage_and_resumes() {
         progress_base: 0,
         max_request: None,
         limiter: Arc::new(SpeedLimiter::new(0)),
+        check: Default::default(),
     };
     let segs = Arc::new(Mutex::new(Vec::new()));
     let progress = Arc::new(Progress::default());
@@ -499,6 +502,7 @@ async fn connections_changed_while_downloading() {
         progress_base: 0,
         max_request: None,
         limiter: Arc::new(SpeedLimiter::new(0)),
+        check: Default::default(),
     };
     let segs = Arc::new(Mutex::new(Vec::new()));
     let progress = Arc::new(Progress::default());
@@ -1199,6 +1203,99 @@ async fn a_site_that_allows_fewer_connections() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// A site that takes only 4 connections at a time and answers "forbidden"
+/// (HTTP 403, as pixeldrain does) to the others: not an expired link. The
+/// download goes on with fewer connections and finishes, without an error.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_site_that_forbids_extra_connections() {
+    use std::sync::atomic::AtomicUsize;
+    let data: Arc<Vec<u8>> = Arc::new((0..6_000_000u32).map(|i| (i % 253) as u8).collect());
+    let open = Arc::new(AtomicUsize::new(0));
+    let refused = Arc::new(AtomicUsize::new(0));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    {
+        let (data, open, refused) = (data.clone(), open.clone(), refused.clone());
+        tokio::spawn(async move {
+            loop {
+                let (sock, _) = listener.accept().await.unwrap();
+                let (data, open, refused) = (data.clone(), open.clone(), refused.clone());
+                tokio::spawn(async move {
+                    let (r, mut w) = sock.into_split();
+                    let mut r = BufReader::new(r);
+                    let mut range: Option<(usize, Option<usize>)> = None;
+                    loop {
+                        let mut line = String::new();
+                        if r.read_line(&mut line).await.unwrap_or(0) == 0 || line.trim().is_empty() {
+                            break;
+                        }
+                        if let Some(v) = line.to_ascii_lowercase().strip_prefix("range: bytes=") {
+                            let (a, b) = v.trim().split_once('-').unwrap();
+                            range = Some((a.parse().unwrap(), b.parse().ok()));
+                        }
+                    }
+                    if open.fetch_add(1, Ordering::SeqCst) >= 4 {
+                        open.fetch_sub(1, Ordering::SeqCst);
+                        refused.fetch_add(1, Ordering::SeqCst);
+                        let _ = w.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await;
+                        return;
+                    }
+                    let (a, b) = match range {
+                        Some((a, b)) => (a, b.unwrap_or(data.len() - 1).min(data.len() - 1)),
+                        None => (0, data.len() - 1),
+                    };
+                    let head = format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {a}-{b}/{}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        data.len(),
+                        b - a + 1
+                    );
+                    if w.write_all(head.as_bytes()).await.is_ok() {
+                        for chunk in data[a..=b].chunks(32768) {
+                            if w.write_all(chunk).await.is_err() {
+                                break;
+                            }
+                            tokio::time::sleep(Duration::from_millis(5)).await;
+                        }
+                    }
+                    open.fetch_sub(1, Ordering::SeqCst);
+                });
+            }
+        });
+    }
+    let root = std::env::temp_dir().join(format!("ezoo-403-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let mgr = swiftget_engine::Manager::new(tokio::runtime::Handle::current(), root.join("app")).unwrap();
+    let url = format!("http://localhost:{port}/big.bin");
+    let id = mgr.add(swiftget_engine::NewDownload {
+        url: url.clone(),
+        save_dir: Some(root.join("dl")),
+        connections: Some(16),
+        start: true,
+        ..Default::default()
+    });
+    let mut errors = std::collections::HashSet::new();
+    let mut status = swiftget_engine::Status::Queued;
+    for _ in 0..3000 {
+        let v = mgr.get(id).unwrap();
+        status = v.status;
+        if let Some(e) = v.error {
+            errors.insert(e);
+        }
+        if matches!(status, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(status, swiftget_engine::Status::Completed, "{errors:?}");
+    assert!(errors.is_empty(), "no error was shown: {errors:?}");
+    assert!(refused.load(Ordering::SeqCst) > 0, "the site did refuse some");
+    let got = std::fs::read(mgr.get(id).unwrap().save_path).unwrap();
+    assert!(got == *data);
+    let learned = swiftget_engine::http_download::learned_limit(&url).unwrap();
+    assert!(learned <= 8, "the site's next downloads start with fewer: {learned}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// A site that cuts off connections when more than 4 are open (it answers
 /// them, then drops them after a little): the download goes on with fewer
 /// connections and finishes.
@@ -1276,5 +1373,153 @@ async fn a_site_that_drops_extra_connections() {
     }
     assert_eq!(status, swiftget_engine::Status::Completed, "{:?}", mgr.get(id).unwrap().error);
     assert!(std::fs::read(mgr.get(id).unwrap().save_path).unwrap() == *data);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The last part goes to a connection that brings almost nothing (the server
+/// keeps it alive, so it never times out): the download must not stand at
+/// 90-99 % for ever. The trickle happens once; a new connection is fast.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_slow_last_connection_does_not_hold_the_end() {
+    let data = test_data(3 * 1024 * 1024);
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let trickled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let data = data.clone();
+        tokio::spawn(async move {
+            loop {
+                let (sock, _) = listener.accept().await.unwrap();
+                let (data, trickled) = (data.clone(), trickled.clone());
+                tokio::spawn(async move {
+                    let (r, mut w) = sock.into_split();
+                    let mut r = BufReader::new(r);
+                    let mut range = (0usize, data.len() - 1);
+                    loop {
+                        let mut line = String::new();
+                        if r.read_line(&mut line).await.unwrap_or(0) == 0 || line.trim().is_empty() {
+                            break;
+                        }
+                        if let Some(v) = line.to_ascii_lowercase().strip_prefix("range: bytes=") {
+                            let (a, b) = v.trim().split_once('-').unwrap();
+                            let b = if b.is_empty() { data.len() - 1 } else { b.parse().unwrap() };
+                            range = (a.parse().unwrap(), b.min(data.len() - 1));
+                        }
+                    }
+                    let (a, b) = range;
+                    let head = format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {a}-{b}/{}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        data.len(),
+                        b - a + 1
+                    );
+                    if w.write_all(head.as_bytes()).await.is_err() {
+                        return;
+                    }
+                    // the first request for the last part: a trickle
+                    let slow = a >= data.len() * 3 / 4 && !trickled.swap(true, Ordering::Relaxed);
+                    for chunk in data[a..=b].chunks(if slow { 512 } else { 16384 }) {
+                        if w.write_all(chunk).await.is_err() {
+                            return;
+                        }
+                        tokio::time::sleep(Duration::from_millis(if slow { 1000 } else { 2 })).await;
+                    }
+                });
+            }
+        });
+    }
+    let url = format!("http://127.0.0.1:{port}/slow-end.bin");
+    let dir = std::env::temp_dir().join(format!("swiftget-slowend-{port}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let part = dir.join("out.sgpart");
+    let job = HttpJob {
+        url,
+        headers: RequestHeaders::default(),
+        user_agent: "test".into(),
+        total_size: Some(data.len() as u64),
+        resumable: true,
+        part_path: part.clone(),
+        connections: 4,
+        min_split: 256 * 1024,
+        retries: 3,
+        progress_base: 0,
+        max_request: None,
+        limiter: Arc::new(SpeedLimiter::new(0)),
+        check: Default::default(),
+    };
+    let shared = Arc::new(Shared::new(build_client().unwrap(), SpeedLimiter::new(0)));
+    let started = std::time::Instant::now();
+    let (segs, progress) = (Arc::new(Mutex::new(Vec::new())), Arc::new(Progress::default()));
+    if std::env::var_os("SLOWEND_DEBUG").is_some() {
+        let (segs, progress) = (segs.clone(), progress.clone());
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(4)).await;
+                let t: Vec<String> = segs.lock().unwrap().iter().map(|s: &swiftget_engine::segments::Segment| format!("{}..{}..{}{}", s.start, s.pos, s.end, if s.active { "*" } else { "" })).collect();
+                eprintln!("{} conns={} {:?}", progress.bytes.load(Ordering::Relaxed), progress.connections.load(Ordering::Relaxed), t);
+            }
+        });
+    }
+    let run = http_download::run(shared, job, segs, progress, CancellationToken::new());
+    tokio::time::timeout(Duration::from_secs(60), run).await.expect("held at the end").unwrap();
+    assert!(started.elapsed() < Duration::from_secs(45), "took {:?}", started.elapsed());
+    assert!(std::fs::read(&part).unwrap() == *data);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// "Replace it": the old file stays until the new one is complete, then the
+/// new one takes its name (no "(1)"). And removing an old finished download
+/// "with its file" never deletes a newer file that took the same place.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn replace_keeps_the_old_file_until_the_new_one_is_done() {
+    let data: Arc<Vec<u8>> = Arc::new((0..500_000u32).map(|i| (i % 249) as u8).collect());
+    let port = serve_files(vec![("/f.bin", data.clone())]).await;
+    let root = std::env::temp_dir().join(format!("ezoo-replace-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = root.join("dl");
+    std::fs::create_dir_all(&dir).unwrap();
+    let mgr = swiftget_engine::Manager::new(tokio::runtime::Handle::current(), root.join("app")).unwrap();
+    let wait = |id| {
+        let mgr = mgr.clone();
+        async move {
+            for _ in 0..1500 {
+                let s = mgr.get(id).unwrap().status;
+                if matches!(s, swiftget_engine::Status::Completed | swiftget_engine::Status::Failed) {
+                    return s;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            swiftget_engine::Status::Failed
+        }
+    };
+    let first = mgr.add(swiftget_engine::NewDownload {
+        url: format!("http://127.0.0.1:{port}/f.bin"),
+        file_name: Some("f.bin".into()),
+        save_dir: Some(dir.clone()),
+        start: true,
+        ..Default::default()
+    });
+    assert_eq!(wait(first).await, swiftget_engine::Status::Completed);
+    // the user's own older file of that name
+    std::fs::write(dir.join("f.bin"), b"old").unwrap();
+    let new = mgr.add(swiftget_engine::NewDownload {
+        url: format!("http://127.0.0.1:{port}/f.bin"),
+        file_name: Some("f.bin".into()),
+        save_dir: Some(dir.clone()),
+        replace: true,
+        start: false,
+        ..Default::default()
+    });
+    assert_eq!(mgr.get(new).unwrap().file_name, "f.bin");
+    assert_eq!(std::fs::read(dir.join("f.bin")).unwrap(), b"old", "not touched before it is complete");
+    mgr.start(new);
+    assert_eq!(wait(new).await, swiftget_engine::Status::Completed);
+    assert_eq!(mgr.get(new).unwrap().file_name, "f.bin");
+    assert!(std::fs::read(dir.join("f.bin")).unwrap() == *data);
+    // the first download, removed "with its file": its file was replaced
+    // since, by the new download's own: it stays
+    std::fs::write(dir.join("f.bin"), b"newer and different").unwrap();
+    mgr.remove(first, true);
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    assert!(dir.join("f.bin").exists(), "a newer file at the same place is never deleted");
     let _ = std::fs::remove_dir_all(&root);
 }
