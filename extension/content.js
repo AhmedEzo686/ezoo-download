@@ -264,6 +264,8 @@
 
   let lastPage = "";
   function watchVideos() {
+    // a hidden tab is not looked at: nothing to draw or find there now
+    if (document.hidden) return;
     // A page with no video at all is the common case: do not walk its DOM
     // every 1.5 s just to find that out again (place() still looks now and
     // then for players that appear later).
@@ -1313,6 +1315,7 @@
 
   let probedAt = 0;
   function place() {
+    if (document.hidden) return;
     if (!panelAllowed()) return;
     // This runs in every frame of every tab, several times a second. A page
     // with no video and no panel has nothing to place, so look now and then
@@ -1626,8 +1629,15 @@
 
   addEventListener("scroll", place, { passive: true, capture: true });
   addEventListener("resize", place, { passive: true });
-  setInterval(place, 700);
-  setInterval(watchVideos, 1500);
+  setInterval(place, 800);
+  setInterval(watchVideos, 1600);
+  // back to a tab: find the player and its button at once
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      watchVideos();
+      place();
+    }
+  });
   document.addEventListener("play", () => setTimeout(() => (watchVideos(), place()), 300), true);
   addEventListener("popstate", () => setTimeout(watchVideos, 500));
 })();
