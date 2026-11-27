@@ -167,7 +167,7 @@ mod imp {
     impl Tray {
         pub fn new() -> Option<Tray> {
             let menu = Menu::new();
-            let show = MenuItem::new(crate::i18n::t("Restore Ezoo Download"), true, None);
+            let show = MenuItem::new(crate::i18n::t("Restore EDM"), true, None);
             let add = MenuItem::new(crate::i18n::t("Add new download…"), true, None);
             let resume = MenuItem::new(crate::i18n::t("Resume all downloads"), true, None);
             let stop = MenuItem::new(crate::i18n::t("Stop all downloads"), true, None);
@@ -191,7 +191,7 @@ mod imp {
             let icon = Icon::from_rgba(include_bytes!("../ui/tray32.rgba").to_vec(), 32, 32).ok()?;
             let tray = TrayIconBuilder::new()
                 .with_id(MAIN_ID)
-                .with_tooltip("Ezoo Download")
+                .with_tooltip("EDM")
                 .with_icon(icon)
                 .with_menu(Box::new(menu))
                 // the menu on a right click only; a double click opens the window
@@ -344,7 +344,7 @@ mod imp {
         }
 
         fn title(&self) -> String {
-            "Ezoo Download".into()
+            "EDM".into()
         }
 
         fn icon_pixmap(&self) -> Vec<Icon> {
@@ -353,7 +353,7 @@ mod imp {
 
         fn tool_tip(&self) -> ToolTip {
             ToolTip {
-                title: "Ezoo Download".into(),
+                title: "EDM".into(),
                 icon_pixmap: self.icon_pixmap(),
                 ..Default::default()
             }
@@ -366,7 +366,7 @@ mod imp {
         fn menu(&self) -> Vec<MenuItem<Self>> {
             use crate::i18n::t;
             vec![
-                item(t("Restore Ezoo Download"), || push(TrayAction::Show)),
+                item(t("Restore EDM"), || push(TrayAction::Show)),
                 MenuItem::Separator,
                 item(t("Add new download…"), || push(TrayAction::AddUrl)),
                 item(t("Resume all downloads"), || push(TrayAction::ResumeAll)),

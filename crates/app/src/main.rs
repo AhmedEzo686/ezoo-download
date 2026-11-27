@@ -1,4 +1,4 @@
-// Ezoo Download — desktop app.
+// EDM — desktop app.
 // No console window in release builds on Windows.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
@@ -44,7 +44,7 @@ use swiftget_engine::{
     ProbeResult, RequestHeaders, Settings, Status,
 };
 
-pub(crate) const APP: &str = "Ezoo Download";
+pub(crate) const APP: &str = "EDM";
 
 /// What the browser extension sends along with a video link.
 #[derive(Default, Clone)]
@@ -264,10 +264,10 @@ fn main() {
             let _ = s.save(&path);
         }
         let _ = rfd::MessageDialog::new()
-            .set_title("Ezoo Download")
+            .set_title("EDM")
             .set_level(rfd::MessageLevel::Error)
             .set_description(format!(
-                "Ezoo Download could not start:\n\n{text}\n\nتعذّر تشغيل Ezoo Download. أعد تشغيل الجهاز ثم جرّب مرة أخرى."
+                "EDM could not start:\n\n{text}\n\nتعذّر تشغيل EDM. أعد تشغيل الجهاز ثم جرّب مرة أخرى."
             ))
             .show();
         std::process::exit(1);
@@ -375,7 +375,7 @@ fn run() -> anyhow::Result<()> {
             }
         }
     }
-    // a .torrent file / magnet link opened with Ezoo Download (double click)
+    // a .torrent file / magnet link opened with EDM (double click)
     let open_torrent = std::env::args().skip(1).find(|a| api::torrent_source_ok(a));
     // a download handed over on the command line ("/d address ...")
     let cli_ask = cli::parse(std::env::args().skip(1)).filter(|c| !c.is_empty());
@@ -406,8 +406,8 @@ fn run() -> anyhow::Result<()> {
                             .set_title(APP)
                             .set_level(rfd::MessageLevel::Warning)
                             .set_description(
-                                "Ezoo Download is already open but does not answer.\nClose it and open it again?\n\n\
-                                 Ezoo Download مفتوح بالفعل لكنه لا يستجيب.\nهل تريد إغلاقه وفتحه من جديد؟",
+                                "EDM is already open but does not answer.\nClose it and open it again?\n\n\
+                                 EDM مفتوح بالفعل لكنه لا يستجيب.\nهل تريد إغلاقه وفتحه من جديد؟",
                             )
                             .set_buttons(rfd::MessageButtons::YesNo)
                             .show(),
@@ -1355,7 +1355,7 @@ fn wire_main(ui: &Ui) {
         std::thread::spawn(|| {
             let text = match swiftget_engine::ytdlp::update_now() {
                 Ok(out) => tf(
-                    "Ezoo Download {}\n\nThe video downloader (yt-dlp) is up to date.\n\n{}",
+                    "EDM {}\n\nThe video downloader (yt-dlp) is up to date.\n\n{}",
                     &[&env!("CARGO_PKG_VERSION"), &out],
                 ),
                 Err(e) => tf("Could not update yt-dlp:\n\n{}", &[&format!("{e:#}")]),
@@ -1720,7 +1720,7 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
             confirm(
                 &ui.ctx,
                 &t("Connect a browser?"),
-                &t("A browser add-in asks to connect to Ezoo Download (to send it the downloads and videos of the browser).\n\nSay yes only if you just installed or updated the Ezoo Download add-in in your browser."),
+                &t("A browser add-in asks to connect to EDM (to send it the downloads and videos of the browser).\n\nSay yes only if you just installed or updated the EDM add-in in your browser."),
                 move || {
                     let _ = answer.send(true);
                 },
@@ -1731,7 +1731,7 @@ fn handle_api(ui: &Ui, event: api::ApiEvent) {
             confirm(
                 &ui.ctx,
                 &t("Update the Firefox add-on"),
-                &t("The Ezoo Download add-on in Firefox is an older version than the program, so videos and downloads may not work in Firefox.\n\nClick OK: Firefox opens the new add-on. Then click \"Add\" in the message Firefox shows."),
+                &t("The EDM add-on in Firefox is an older version than the program, so videos and downloads may not work in Firefox.\n\nClick OK: Firefox opens the new add-on. Then click \"Add\" in the message Firefox shows."),
                 {
                     let ui = ui.clone();
                     move || browser::update_firefox_addon(&ui)
@@ -2554,7 +2554,7 @@ pub(crate) fn change_language(ui: &Ui, lang: &str) {
     if was_rtl != i18n::is_rtl() {
         // after the menu / Options window is gone
         Timer::single_shot(Duration::from_millis(200), move || {
-            if ask(&t("Ezoo Download will restart now to show its windows in the direction of the new language. Downloads continue after it opens.\n\nRestart now?")) {
+            if ask(&t("EDM will restart now to show its windows in the direction of the new language. Downloads continue after it opens.\n\nRestart now?")) {
                 RESTART.store(true, std::sync::atomic::Ordering::SeqCst);
                 let _ = slint::quit_event_loop();
             }
@@ -3707,7 +3707,7 @@ pub(crate) fn open_download(path: &std::path::Path) {
 /// Windows 7 / 8 / 8.1 without the Universal C Runtime: video downloads
 /// (yt-dlp, run by Python) need it.
 #[cfg(feature = "legacy")]
-const UCRT_NEEDED: &str = "Downloading videos on this Windows needs an update from Microsoft (KB2999226, the Universal C Runtime). Ezoo Download offers it now: click Yes in its window (or install it from Windows Update).";
+const UCRT_NEEDED: &str = "Downloading videos on this Windows needs an update from Microsoft (KB2999226, the Universal C Runtime). EDM offers it now: click Yes in its window (or install it from Windows Update).";
 
 /// Windows 7 / 8 / 8.1 without the Universal C Runtime: a few seconds after
 /// the start, the program offers Microsoft's own update for this Windows
@@ -3778,11 +3778,11 @@ pub(crate) fn err_text(e: &str) -> String {
     if e.contains(swiftget_engine::ytdlp::TOO_MANY) {
         t("YouTube is refusing subtitles for a moment (too many requests). Try again in a few minutes.")
     } else if e.contains("needs a login or an age check") {
-        t("This video needs a login or an age check. Open it once in the browser where you are signed in (with the Ezoo Download extension), then try again.")
+        t("This video needs a login or an age check. Open it once in the browser where you are signed in (with the EDM extension), then try again.")
     } else if e.contains("BitLocker") || e.contains("-2144272384") {
         t("The drive of the download folder is locked by BitLocker. Unlock it in Windows, or choose another folder (right-click the download > Properties).")
     } else if e.contains("is already registered") {
-        t("This torrent is already running (it may still be sharing its files). Wait a little, or exit Ezoo Download and open it again.")
+        t("This torrent is already running (it may still be sharing its files). Wait a little, or exit EDM and open it again.")
     } else if let Some(rest) = e.split("the link stopped working - getting a new one in ").nth(1) {
         let secs = rest.split(' ').next().unwrap_or("?");
         tf("The link stopped working. A new one is fetched in {} s and checked before the download goes on.", &[&secs])
@@ -3792,15 +3792,15 @@ pub(crate) fn err_text(e: &str) -> String {
     } else if e.contains(swiftget_engine::http::CAPTCHA) {
         t("The site asks to confirm you are not a robot. Open the link in the browser, confirm there, then click Resume.")
     } else if e.contains(swiftget_engine::TORRENT_DRY_TEXT) {
-        t("Connected to people who send nothing yet (they don't have the missing pieces, or they are busy). Ezoo Download keeps looking for others who have the file.")
+        t("Connected to people who send nothing yet (they don't have the missing pieces, or they are busy). EDM keeps looking for others who have the file.")
     } else if e.contains("server answered HTTP 403") || e.contains("server answered HTTP 401") {
-        t("The server refused Ezoo Download (it lets only the browser in). The link was opened in the browser, which hands it back with the site's sign-in; if the site still refuses, the browser downloads it itself.")
+        t("The server refused EDM (it lets only the browser in). The link was opened in the browser, which hands it back with the site's sign-in; if the site still refuses, the browser downloads it itself.")
     } else if e.contains("DRM") {
         t("This video is protected by its site (DRM): no download program can save it. It can only be watched on the site.")
     } else if e.contains("nobody shares this torrent right now") {
         t("Nobody shares this torrent right now. It keeps looking and starts by itself as soon as someone does. If it stays like this, the torrent has no sharers left, or your internet provider or firewall blocks torrents.")
     } else if e.contains("ffmpeg.exe is missing") {
-        t("ffmpeg.exe (it joins the video and the sound) is missing and could not be downloaded again. Allow it in your antivirus or install Ezoo Download again, then click Resume: nothing downloaded is lost.")
+        t("ffmpeg.exe (it joins the video and the sound) is missing and could not be downloaded again. Allow it in your antivirus or install EDM again, then click Resume: nothing downloaded is lost.")
     } else if let Some(rest) = e.split("Not enough free space on the disk ").nth(1) {
         // "C:: the file needs 148 GB more, only 83 GB free."
         let (disk, rest) = rest.split_once(": the file needs ").unwrap_or(("", rest));
@@ -3811,7 +3811,7 @@ pub(crate) fn err_text(e: &str) -> String {
             &[&disk, &need, &free],
         )
     } else if e.contains("the site gave a list of pieces of a video stream") || e.contains("the site gave a web page, not the video") {
-        t("The site gave a page instead of the video (it protects its videos, or the link expired), so no broken file was kept. Play the video on its page and use the Ezoo Download button that appears on it.")
+        t("The site gave a page instead of the video (it protects its videos, or the link expired), so no broken file was kept. Play the video on its page and use the EDM button that appears on it.")
     } else if e.contains("the downloaded data is gone") {
         t("The downloaded data is gone: its temporary file was removed while it downloaded (an antivirus or a cleaning program?). Click Redownload; if it happens again, allow the download folder in the antivirus.")
     } else if e.contains("ffmpeg could not cut the part") {

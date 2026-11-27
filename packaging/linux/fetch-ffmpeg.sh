@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ezoo Download — the ffmpeg that goes inside the Linux packages.
+# EDM — the ffmpeg that goes inside the Linux packages.
 #
 #   ./packaging/linux/fetch-ffmpeg.sh <out-dir>
 #   -> <out-dir>/ffmpeg, ffmpeg-version.txt, ffmpeg-LICENSE.txt

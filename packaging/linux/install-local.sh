@@ -40,6 +40,6 @@ if command -v xdg-desktop-menu >/dev/null; then
 fi
 
 echo
-echo "Installed. Start it from the menu (Ezoo Download) or with: $prefix/bin/EzooDownload"
+echo "Installed. Start it from the menu (EDM) or with: $prefix/bin/EzooDownload"
 echo "To remove it again:"
 echo "  rm -rf \"$lib\" \"$prefix/bin/EzooDownload\" \"$prefix/share/applications/ezoodownload.desktop\" \"$prefix/share/icons/hicolor\"/*/apps/ezoodownload.png"

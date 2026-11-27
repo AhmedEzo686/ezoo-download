@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ezoo Download — the .rpm, built in a Fedora container.
+# EDM — the .rpm, built in a Fedora container.
 #
 #   ./packaging/linux/build-rpm.sh
 #

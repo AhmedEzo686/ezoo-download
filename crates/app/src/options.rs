@@ -514,9 +514,9 @@ pub(crate) fn wire(ui: &Ui) {
                     refresh(&ui2);
                     if port_changed || drawing_changed {
                         let text = if port_changed {
-                            t("Ezoo Download needs to restart to use the new port (set the same port in the browser add-in too). Downloads continue after it opens.\n\nRestart now?")
+                            t("EDM needs to restart to use the new port (set the same port in the browser add-in too). Downloads continue after it opens.\n\nRestart now?")
                         } else {
-                            t("Ezoo Download needs to restart to draw its windows the new way. Downloads continue after it opens.\n\nRestart now?")
+                            t("EDM needs to restart to draw its windows the new way. Downloads continue after it opens.\n\nRestart now?")
                         };
                         crate::ask_restart(text);
                     }

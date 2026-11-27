@@ -1,4 +1,4 @@
-// Ezoo Download – user interface (Slint)
+// EDM – user interface (Slint)
 // Classic download-manager layout: menu bar, big icon toolbar, category and
 // queue tree, detailed list, one progress window per download. Nine themes.
 
@@ -567,7 +567,7 @@ export component MainWindow inherits ThemedWindow {
     always-on-top: root.front;
     // the program's name with its version, in the bar at the top
     in property <string> app-version;
-    title: @tr("Ezoo Download") + (root.app-version == "" ? "" : " " + root.app-version);
+    title: @tr("EDM") + (root.app-version == "" ? "" : " " + root.app-version);
     // Options > General > Background picture (shows through the panels)
     in property <image> bg-image;
     in property <bool> has-bg-image;
@@ -1244,7 +1244,7 @@ export component MainWindow inherits ThemedWindow {
                             }
                         }
                         MenuEntry {
-                            text: (root.all-done == 3 ? "● " : "○ ") + @tr("Exit Ezoo Download");
+                            text: (root.all-done == 3 ? "● " : "○ ") + @tr("Exit EDM");
                             clicked => {
                                 root.set-all-done(3);
                             }
@@ -1589,7 +1589,7 @@ export component MainWindow inherits ThemedWindow {
                 padding: 4px;
                 spacing: 0px;
                 MenuEntry {
-                    text: @tr("Add Ezoo Download to my browser…");
+                    text: @tr("Add EDM to my browser…");
                     clicked => {
                         root.browsers();
                     }
@@ -1614,7 +1614,7 @@ export component MainWindow inherits ThemedWindow {
                 }
                 MenuSep { }
                 MenuEntry {
-                    text: @tr("About Ezoo Download");
+                    text: @tr("About EDM");
                     clicked => {
                         root.about();
                     }
@@ -2528,7 +2528,7 @@ export component AddDialog inherits ThemedWindow {
     in-out property <string> password;
     // a warning about the address (web page, duplicate...)
     in property <string> warning;
-    // the server refused Ezoo Download: offer the browser instead
+    // the server refused EDM: offer the browser instead
     in property <bool> can-use-browser;
     callback use-browser();
 
@@ -3777,7 +3777,7 @@ export component DetailsDialog inherits ThemedWindow {
                 }
                 ComboBox {
                     width: 300px;
-                    model: [@tr("Do nothing (keep the computer on)"), @tr("Shut down the computer"), @tr("Sleep"), @tr("Exit Ezoo Download"), @tr("Hibernate")];
+                    model: [@tr("Do nothing (keep the computer on)"), @tr("Shut down the computer"), @tr("Sleep"), @tr("Exit EDM"), @tr("Hibernate")];
                     current-index <=> root.when-done;
                     selected(v) => {
                         root.completion-changed();

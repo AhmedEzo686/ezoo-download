@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ezoo Download for Linux: builds the .deb and a portable folder with an
+# EDM for Linux: builds the .deb and a portable folder with an
 # install script that needs no root.
 #
 #   ./packaging/linux/build-linux.sh            # build everything into dist/
@@ -232,7 +232,7 @@ Installed-Size: $installed_size
 Depends: $deps
 Recommends: aria2, yt-dlp, xdg-desktop-portal
 Homepage: https://github.com/AhmedEzo686/ezoo-download
-Description: Ezoo Download - download manager
+Description: EDM - download manager
  Downloads files and videos over several connections, with pause, resume,
  queues, a scheduler, a speed limiter, torrents (through aria2) and a browser
  extension. Eight languages, including Arabic.

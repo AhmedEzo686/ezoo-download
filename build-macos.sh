@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Ezoo Download — the macOS app: an .app bundle, a .dmg and a .zip.
+# EDM — the macOS app: an .app bundle, a .dmg and a .zip.
 #
 #   ./build-macos.sh [--target aarch64-apple-darwin|x86_64-apple-darwin] [--skip-build]
 #
 # Build this on macOS (a real machine or a GitHub macOS runner): it needs
 # Apple's toolchain (xcrun, sips, iconutil, codesign, hdiutil). The bundle is
 # signed ad-hoc, which is enough for anyone to run it after the first
-# right-click > Open (or: xattr -d com.apple.quarantine "Ezoo Download.app").
+# right-click > Open (or: xattr -d com.apple.quarantine "EDM.app").
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -47,7 +47,7 @@ fi
 binary="target/$target/release/EzooDownload"
 [[ -x "$binary" ]] || { echo "the build made no $binary" >&2; exit 1; }
 
-app="dist/macos-$arch/Ezoo Download.app"
+app="dist/macos-$arch/EDM.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 install -m755 "$binary" "$app/Contents/MacOS/EzooDownload"
@@ -86,7 +86,7 @@ if [[ -f "extension-signed/ezoo-download-firefox-$extver.xpi" ]]; then
     cp "extension-signed/ezoo-download-firefox-$extver.xpi" "$app/Contents/Resources/ezoo-download-firefox.xpi"
 fi
 cat > "$app/Contents/Resources/THIRD-PARTY-NOTICES.txt" <<'EOF'
-Ezoo Download bundles no third-party media tools on macOS: it uses the
+EDM bundles no third-party media tools on macOS: it uses the
 system's own tooling or the tools you install (ffmpeg, yt-dlp, aria2).
 The browser extension and the Rust dependencies keep their own licences;
 see the repository's THIRD-PARTY-NOTICES.txt and Cargo.lock.
@@ -96,8 +96,8 @@ cat > "$app/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>CFBundleName</key><string>Ezoo Download</string>
-  <key>CFBundleDisplayName</key><string>Ezoo Download</string>
+  <key>CFBundleName</key><string>EDM</string>
+  <key>CFBundleDisplayName</key><string>EDM</string>
   <key>CFBundleIdentifier</key><string>io.github.aelrased.ezoo-download</string>
   <key>CFBundleExecutable</key><string>EzooDownload</string>
   <key>CFBundleIconFile</key><string>EzooDownload</string>
@@ -118,7 +118,7 @@ codesign --verify --deep --strict "$app"
 
 mkdir -p dist
 ditto -c -k --keepParent "$app" "dist/EzooDownload-macos-$arch.zip"
-hdiutil create -volname "Ezoo Download" -srcfolder "$app" -ov -format UDZO \
+hdiutil create -volname "EDM" -srcfolder "$app" -ov -format UDZO \
     "dist/EzooDownload-macos-$arch.dmg" >/dev/null
 (cd dist && shasum -a 256 "EzooDownload-macos-$arch.zip" > "EzooDownload-macos-$arch.zip.sha256")
 (cd dist && shasum -a 256 "EzooDownload-macos-$arch.dmg" > "EzooDownload-macos-$arch.dmg.sha256")

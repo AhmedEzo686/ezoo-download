@@ -21,7 +21,7 @@ Requires:       fontconfig, freetype, libxkbcommon, libX11, libxcb, zlib, dbus-l
 Recommends:     xdg-desktop-portal, aria2, yt-dlp
 
 %description
-Ezoo Download is a desktop download manager written in Rust (Slint UI).
+EDM is a desktop download manager written in Rust (Slint UI).
 It splits files over up to 32 simultaneous connections, resumes
 interrupted downloads, saves video and audio through yt-dlp + ffmpeg,
 and ships a browser extension that sends links from Chrome and Firefox.

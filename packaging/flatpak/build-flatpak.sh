@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ezoo Download — the Flatpak (dist/EzooDownload-x86_64.flatpak).
+# EDM — the Flatpak (dist/EzooDownload-x86_64.flatpak).
 #
 #   ./packaging/flatpak/build-flatpak.sh <version> <stage-dir> [ffmpeg-dir]
 #

@@ -91,7 +91,7 @@ mod imp {
             "[Desktop Entry]\n\
              Type=Application\n\
              Version=1.0\n\
-             Name=Ezoo Download\n\
+             Name=EDM\n\
              Comment=Download manager\n\
              Exec={} --background\n\
              TryExec={}\n\

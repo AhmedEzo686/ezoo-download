@@ -3,7 +3,7 @@ name = "swiftget"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Ezoo Download – download manager (desktop app)"
+description = "EDM – download manager (desktop app)"
 build = "build.rs"
 
 [features]

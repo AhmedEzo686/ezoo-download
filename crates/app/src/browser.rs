@@ -1,4 +1,4 @@
-//! "Add Ezoo Download to my browser": opens the browser on the right page
+//! "Add EDM to my browser": opens the browser on the right page
 //! (its store page once the extension is published there, otherwise its
 //! extensions page with the folder path ready in the clipboard).
 
@@ -414,7 +414,7 @@ async fn fetch_firefox_xpi(proxy: swiftget_engine::http::ProxyConfig) -> anyhow:
     Ok(path)
 }
 
-/// Firefox opens the signed add-on ("Add Ezoo Download?"); fetched first
+/// Firefox opens the signed add-on ("Add EDM?"); fetched first
 /// when this program has none. `done` gets what to show (`Err`: why not).
 fn open_signed_in_firefox(ui: &Ui, exe: PathBuf, done: impl FnOnce(Result<PathBuf, String>) + Send + 'static) {
     if let Some(xpi) = firefox_xpi() {
@@ -432,7 +432,7 @@ fn open_signed_in_firefox(ui: &Ui, exe: PathBuf, done: impl FnOnce(Result<PathBu
 }
 
 /// "Update the Firefox add-on": Firefox opens the signed add-on of this
-/// program and asks "Add Ezoo Download?" (the new one takes the old one's
+/// program and asks "Add EDM?" (the new one takes the old one's
 /// place). Without the file (a build without it): the browsers window.
 pub(crate) fn update_firefox_addon(ui: &Ui) {
     let Some(exe) = detect().into_iter().find(|b| b.firefox).and_then(|b| b.exe) else { return open(ui) };
@@ -495,7 +495,7 @@ fn add(ui: &Ui, i: usize) {
     }
     if b.firefox {
         // the signed add-on (fetched from the official page when this
-        // program has none): Firefox asks "Add Ezoo Download?" and keeps it.
+        // program has none): Firefox asks "Add EDM?" and keeps it.
         // Never the temporary add-on, which Firefox drops when it closes
         if firefox_xpi().is_none() {
             d.set_steps(t("Getting the signed Firefox add-on from the official page…").into());
@@ -507,7 +507,7 @@ fn add(ui: &Ui, i: usize) {
                 match r {
                     Ok(xpi) => {
                         d.set_folder(xpi.display().to_string().into());
-                        d.set_steps(t("Firefox opened the Ezoo Download add-on.\n1. Click \"Add\" in the message Firefox shows.\n2. Then click \"OK\".\n\nThe add-on is signed by Mozilla, so it stays in Firefox after you close it and updates by itself.").into());
+                        d.set_steps(t("Firefox opened the EDM add-on.\n1. Click \"Add\" in the message Firefox shows.\n2. Then click \"OK\".\n\nThe add-on is signed by Mozilla, so it stays in Firefox after you close it and updates by itself.").into());
                     }
                     Err(e) => d.set_steps(
                         tf("The Firefox add-on could not be fetched ({}). Check the internet and click Firefox again.", &[&crate::err_text(&e)]).into(),
@@ -518,7 +518,7 @@ fn add(ui: &Ui, i: usize) {
         return;
     }
     let Some(dir) = extension_dir(b.firefox) else {
-        d.set_steps(t("The extension folder was not found next to EzooDownload.exe. Install Ezoo Download again.").into());
+        d.set_steps(t("The extension folder was not found next to EzooDownload.exe. Install EDM again.").into());
         return;
     };
     // A folder in Downloads is easy to pick in the browser's "Load unpacked"
@@ -534,7 +534,7 @@ fn add(ui: &Ui, i: usize) {
     let steps = if b.firefox {
         t("Firefox opened its add-ons debugging page.\n1. Click \"Load Temporary Add-on…\".\n2. Paste the folder path (Ctrl+V, it is already copied) and open the file \"manifest.json\" in it.\n\nFirefox removes add-ons loaded this way when it closes. To keep it for good the extension must be signed by Mozilla (free) – ask for the signed version.")
     } else {
-        tf("{} opened its extensions page.\n1. Turn on \"Developer mode\" (a switch on that page).\n2. Click \"Load unpacked\".\n3. Paste the folder path (Ctrl+V – it is already copied) and click \"Select folder\".\n\nThat's all: the Ezoo Download icon appears next to the address bar. You do this only once.", &[&b.name])
+        tf("{} opened its extensions page.\n1. Turn on \"Developer mode\" (a switch on that page).\n2. Click \"Load unpacked\".\n3. Paste the folder path (Ctrl+V – it is already copied) and click \"Select folder\".\n\nThat's all: the EDM icon appears next to the address bar. You do this only once.", &[&b.name])
     };
     d.set_steps(steps.into());
 }
@@ -600,7 +600,7 @@ pub(crate) fn link_report() -> String {
     let now = crate::api::now_secs();
     let ago = |at: u64| at > 0 && now.saturating_sub(at) < 15 * 60;
     let mark = |ok: bool| if ok { "✔" } else { "✖" };
-    let mut lines = vec![t("Link between the browsers and Ezoo Download:"), String::new()];
+    let mut lines = vec![t("Link between the browsers and EDM:"), String::new()];
     let main = crate::api::MAIN_PORT.load(Ordering::Relaxed);
     lines.push(format!("{} {}", mark(main != 0), t("The program answers the add-in")));
     if !crate::api::FRONT_OPEN.load(Ordering::Relaxed) {
@@ -617,7 +617,7 @@ pub(crate) fn link_report() -> String {
     lines.push(format!("{} {}", mark(ago(helped)), t("...through the browsers' helper")));
     lines.push(String::new());
     if !ago(seen) {
-        lines.push(t("No add-in talked lately: open the browser, make sure the Ezoo Download add-in is on (Extensions page), then click a download link and test again."));
+        lines.push(t("No add-in talked lately: open the browser, make sure the EDM add-in is on (Extensions page), then click a download link and test again."));
     } else if !ago(helped) {
         lines.push(t("The add-in talks through the port only. In Firefox: the add-in's window > \"Connect directly\". In other browsers: reload the add-in once (Extensions page)."));
     } else {
