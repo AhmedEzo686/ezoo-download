@@ -1,0 +1,173 @@
+<div align="center">
+
+# Ezoo Download — نسخة لينكس
+
+نفس برنامج **Ezoo Download** (Rust + واجهة Slint) مبنيًّا ليعمل على لينكس.
+</div>
+
+---
+
+## ✅ ما يعمل على لينكس
+
+| الميزة | الحالة |
+|---|---|
+| التحميل متعدد الاتصالات (حتى 32 اتصالًا) والاستئناف بعد الإغلاق | يعمل |
+| الإيقاف المؤقت/الاستئناف، قوائم الانتظار، الجدولة، إيقاف السرعة، التصنيف التلقائي | يعمل |
+| Grabber، قائمة التشغيل (Playlist)، تحميل الفيديو عبر yt-dlp | يعمل |
+| التورنت والمغناطيس (عبر `aria2c`) | يعمل عند تثبيت `aria2` |
+| إضافة المتصفح والمنفذ المحلي (127.0.0.1:9614) | يعمل |
+| أيقونة بجانب الساعة + إخفاء النوافذ إليها | يعمل (StatusNotifierItem) |
+| التشغيل عند تسجيل الدخول | يعمل (ملف XDG في `~/.config/autostart`) |
+| أصوات الانتهاء (WAV) | يعمل (paplay / pw-play / ffplay / aplay) |
+| فتح المجلد، «فتح باستخدام…»، معاينة أثناء التحميل | يعمل (xdg-open) |
+| إفلات ملف `.torrent` على النافذة | يعمل |
+| ثماني لغات، منها العربية (RTL) | يعمل |
+| التحديث الذاتي | لا يوجد مثبّت ويندوز على لينكس: يخبرك بالإصدار الجديد ويوجّهك لصفحة الإصدارات |
+
+### أشياء لا تُوجد على لينكس (كما في نسخة ويندوز فقط)
+
+- شفافية النافذة (Opacity) — لا تُطبَّق على لينكس.
+- شريط التقدّم على زر شريط المهام (Taskbar progress).
+- سحب الملف النهائي من القائمة إلى سطح المكتب (Drag out).
+- فحص الفيروسات عبر برنامج ويندوز (اختياري أصلًا).
+
+---
+
+## 📦 التثبيت
+
+### 1) حزمة Debian (مستحسن)
+
+```bash
+sudo apt install ./dist/ezoodownload_1.1.6_amd64.deb
+# أو
+sudo dpkg -i dist/ezoodownload_1.1.6_amd64.deb && sudo apt -f install
+```
+
+ثم ابحث عن **Ezoo Download** في قائمة التطبيقات.
+
+### 2) AppImage (ملف واحد، بدون تثبيت)
+
+```bash
+chmod +x EzooDownload-1.1.6-x86_64.AppImage
+./EzooDownload-1.1.6-x86_64.AppImage
+```
+
+- يحتوي البرنامج + مجلدات الإضافة + الأيقونة + المكتبات التي يحتاجها، ويعمل على معظم التوزيعات.
+- على نظام بدون FUSE (بعض الحاويات) شغّله بـ: `./EzooDownload-*.AppImage --appimage-extract-and-run`.
+- لا يضيف مدخلًا في قائمة التطبيقات؛ لو أردت ذلك استخدم حزمة `.deb` أو النسخة المحمولة بالأسفل.
+
+### 3) حزمة RPM (فيدورا / RHEL / openSUSE)
+
+```bash
+sudo dnf install ./dist/ezoo-download-1.1.5-1.fc41.x86_64.rpm
+```
+
+### 4) Flatpak
+
+```bash
+flatpak install --user ./dist/EzooDownload-x86_64.flatpak
+flatpak run io.github.aelrased.ezoo-download
+```
+
+- يحتاج وقت التثبيت runtime من Flathub: `flatpak install flathub org.freedesktop.Platform//26.08` (بيتنزّل تلقائيًا في أغلب الحالات لو Flathub مضاف).
+- الصلاحيات المطلوبة: الشبكة، X11/Wayland، الصوت، بطاقة الرسوميات، والمجلد الرئيسي (عشان التنزيلات).
+- عشان إضافة المتصفح توصل للبرنامج، الساندبوكس بيشارك شبكة النظام فالمنفذ `127.0.0.1:9614` شغال زي العادي.
+
+### 5) نسخة محمولة بدون صلاحيات مدير
+
+```bash
+tar xzf dist/EzooDownload-1.1.6-linux-x86_64.tar.gz
+./EzooDownload-1.1.6-linux-x86_64/install.sh
+```
+
+تُثبَّت في `~/.local` (البرنامج + أيقونة القائمة + الأيقونات). للإزالة:
+
+```bash
+rm -rf ~/.local/lib/ezoodownload ~/.local/bin/EzooDownload \
+       ~/.local/share/applications/ezoodownload.desktop \
+       ~/.local/share/icons/hicolor/*/apps/ezoodownload.png
+```
+
+---
+
+## 🧰 ما يُستحسن تثبيته
+
+```bash
+sudo apt install aria2 yt-dlp xdg-desktop-portal
+```
+
+| الحزمة | لماذا |
+|---|---|
+| `aria2` | التورنت والمغناطيس (البرنامج يستدعي `aria2c`) |
+| `yt-dlp` | روابط الفيديو من المواقع (وإلا ينزّله البرنامج تلقائيًا مرة واحدة) |
+| `xdg-desktop-portal` | نوافذ اختيار الملفات والمجلدات |
+
+> **ffmpeg مدمج** في كل حزم لينكس (`.deb`، `.rpm`، AppImage، Flatpak، والنسخة المحمولة):
+> نسخة ثابتة (static) بتوضع في:
+> - `.deb`/`.rpm`: `/usr/lib/ezoodownload/ffmpeg`
+> - AppImage: `usr/bin/ffmpeg` جوّه الصورة
+> - المحمولة: `tools/ffmpeg` جنب البرنامج
+>
+> مش محتاج تثبّت ffmpeg بنفسك، ولو ثبّتته النظام بيبقى للبرامج التانية. النسخة المدمجة GPLv3
+> وملف ترخيصها معاها (`ffmpeg-LICENSE.txt`) ومذكورة في `THIRD-PARTY-NOTICES.txt`.
+
+> على GNOME تحتاج إضافة **AppIndicator and KStatusNotifierItem Support** ليظهر رمز البرنامج بجانب الساعة.
+> على KDE وXfce وCinnamon وBudgie يعمل مباشرة.
+
+---
+
+## 🏗️ البناء من الشيفرة
+
+```bash
+sudo apt install build-essential pkg-config libfontconfig1-dev libfreetype-dev \
+                 libxkbcommon-dev libwayland-dev libx11-dev libegl-dev libgl1-mesa-dev \
+                 libdbus-1-dev imagemagick
+cargo build --release
+./packaging/linux/build-linux.sh      # ينتج dist/*.deb و dist/*.tar.gz
+```
+
+OpenSSL يُبنى داخل البرنامج (vendored)، لذلك لا يعتمد على إصدار OpenSSL المثبّت على الجهاز.
+
+---
+
+## 🗂️ أماكن الملفات
+
+| ما | أين |
+|---|---|
+| الإعدادات وقائمة التحميلات والسجل | `~/.local/share/ezoodownload/` (`settings.json`, `downloads.json`, `events.log`) |
+| أدوات نزّلها البرنامج (yt-dlp) | `~/.local/share/ezoodownload/tools/` |
+| مجلد الإضافة (Chrome/Chromium) | `~/.local/share/ezoodownload/extension/` |
+| مجلد الإضافة (Firefox) | `~/.local/share/ezoodownload/extension-firefox/` |
+| التشغيل مع تسجيل الدخول | `~/.config/autostart/ezoodownload.desktop` |
+| ملفات الحزمة | `/usr/bin/EzooDownload` و`/usr/share/ezoodownload/` |
+
+---
+
+## 🖱️ إضافة المتصفح
+
+من داخل البرنامج: **Options ← General ← Add Ezoo Download to my browser…**
+- **Chrome / Chromium / Edge / Brave / Opera:** `chrome://extensions` ← فعّل *Developer mode* ← *Load unpacked* ← اختر مجلد `~/.local/share/ezoodownload/extension` (البرنامج ينسخ مساره إلى الحافظة ويفتح الصفحة).
+- **Firefox:** إن وُجد ملف `ezoo-download-firefox.xpi` تُثبَّت الإضافة الموقّعة مباشرةً، وإلا فمن `about:debugging`.
+
+> **بخصوص `.crx`:** كروم الحديث (156 وما قبله) **يرفض تثبيت ملف `.crx` من خارج Chrome Web Store** حتى بوجوده على القرص؛ الطريقة المعتمدة هي *Load unpacked* من المجلد أو النشر في المتجر. لذلك البرنامج يعطيك المجلد جاهزًا. الإصدارات تنزّل أيضًا `ezoo-download-chrome-<version>.zip` (نفس المجلد مضغوطًا) و`.crx` للمتصفحات/سياسات الشركات التي ما زالت تقبل التوقيع المحلي.
+
+> **توقيع نسخة فايرفوكس:** فايرفوكس الرسمي لا يقبل إلا إضافة موقّعة من Mozilla. لازم يكون ملف `extension-signed/ezoo-download-firefox-<version>.xpi` بنفس إصدار `extension/manifest.firefox.json`؛ سكربت البناء يتحقق من ذلك ويحذّر بدل أن يشحن `.xpi` قديمًا (كان يحدث قبل 1.1.1). للتوقيع:
+>
+> ```bash
+> npx web-ext sign --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET" \
+>   --source-dir build/extension-firefox --artifacts-dir build/signed
+> cp build/signed/*.xpi extension-signed/ezoo-download-firefox-<version>.xpi
+> ```
+>
+> حيث `build/extension-firefox` هو مجلد `extension/` بعد تسمية `manifest.firefox.json` باسم `manifest.json`.
+
+المنفذ الافتراضي `9614` ويمكن تغييره من الإعدادات (أعد التشغيل بعدها).
+
+---
+
+## ⚠️ ملاحظات
+
+- **شريط العنوان من سطح المكتب:** البرنامج يشتغل عبر X11 (XWayland) حتى يرسم مدير النوافذ شريط العنوان: شريط Wayland في winit لا يشكّل العربية (تظهر مربعات) ولا يبلّغ البرنامج بالتصغير. النتيجة شريط مثل أي تطبيق GTK. للعودة إلى Wayland الأصلي: `EZOO_WAYLAND=1 EzooDownload`.
+- البرنامج يسجّل نفسه للتشغيل عند الدخول مرة واحدة عند أول تشغيل لنسخة محمولة (يمكن إيقافه من الإعدادات). نسخة `.deb` لا تفعل ذلك تلقائيًا.
+- «السرعة» و«عدد الاتصالات» و«الوكيل» كلها تعمل كما في ويندوز.
+- سجل الأحداث في `events.log` مفيد عند الإبلاغ عن مشكلة.

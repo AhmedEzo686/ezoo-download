@@ -174,6 +174,24 @@ pub mod string {
     }
 }
 
+/// A map of secrets (one token per provider), every value sealed on the disk.
+pub mod map {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::BTreeMap;
+    pub fn serialize<S: Serializer>(v: &BTreeMap<String, String>, s: S) -> Result<S::Ok, S::Error> {
+        let sealed: BTreeMap<String, String> = v.iter().map(|(k, val)| (k.clone(), super::seal(val))).collect();
+        sealed.serialize(s)
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeMap<String, String>, D::Error> {
+        let raw = BTreeMap::<String, String>::deserialize(d)?;
+        Ok(raw
+            .into_iter()
+            .map(|(k, v)| (k, super::open(&v)))
+            .filter(|(_, v)| !v.is_empty())
+            .collect())
+    }
+}
+
 pub mod opt {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     pub fn serialize<S: Serializer>(v: &Option<String>, s: S) -> Result<S::Ok, S::Error> {

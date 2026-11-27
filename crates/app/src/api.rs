@@ -17,6 +17,38 @@ use tiny_http::{Header, Method, Request, Response, Server};
 /// refused Ezoo Download): the extension leaves them to the browser once.
 static FOR_BROWSER: std::sync::Mutex<Vec<(String, std::time::Instant)>> = std::sync::Mutex::new(Vec::new());
 
+/// The manager of this program, shared with the command line and MCP.
+static MANAGER: std::sync::OnceLock<std::sync::Arc<swiftget_engine::manager::Manager>> = std::sync::OnceLock::new();
+
+pub fn set_manager(m: std::sync::Arc<swiftget_engine::manager::Manager>) {
+    let _ = MANAGER.set(m);
+}
+
+fn manager() -> Option<std::sync::Arc<swiftget_engine::manager::Manager>> {
+    MANAGER.get().cloned()
+}
+
+fn download_json(v: &swiftget_engine::model::DownloadView) -> serde_json::Value {
+    serde_json::json!({
+        "id": v.id,
+        "name": v.file_name,
+        "url": v.url,
+        "path": v.save_path.display().to_string(),
+        "status": format!("{:?}", v.status),
+        "size": v.total_size,
+        "downloaded": v.downloaded,
+        "speed": v.speed,
+        "eta": v.eta_secs,
+        "error": v.error,
+    })
+}
+
+fn read_body_json(req: &mut Request) -> Option<serde_json::Value> {
+    let mut body = String::new();
+    req.as_reader().take(1 << 20).read_to_string(&mut body).ok()?;
+    serde_json::from_str(&body).ok()
+}
+
 /// Version of the browser add-in that ships with this program.
 pub fn bundled_extension_version() -> String {
     serde_json::from_str::<serde_json::Value>(include_str!("../../../extension/manifest.json"))
@@ -610,6 +642,108 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
             reply(req, 200, &body)
         }
         (Method::Get, "/config") => reply(req, 200, &config()),
+        // ---- the command line and MCP (signed requests only, like the rest)
+        (Method::Get, "/v1/list") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let items: Vec<_> = mgr.snapshot().iter().map(download_json).collect();
+            reply(req, 200, &serde_json::json!({ "ok": true, "downloads": items }).to_string())
+        }
+        (Method::Get, "/v1/status") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let all = mgr.snapshot();
+            let active = all
+                .iter()
+                .filter(|v| matches!(format!("{:?}", v.status).as_str(), "Connecting" | "Downloading" | "Assembling"))
+                .count();
+            let body = serde_json::json!({
+                "ok": true,
+                "version": env!("CARGO_PKG_VERSION"),
+                "downloads": all.len(),
+                "active": active,
+            });
+            reply(req, 200, &body.to_string())
+        }
+        (Method::Post, "/v1/pause") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let Some(v) = read_body_json(&mut req) else { return reply(req, 400, r#"{"error":"bad body"}"#) };
+            if v["all"].as_bool() == Some(true) {
+                mgr.pause_all();
+            } else if let Some(id) = v["id"].as_u64() {
+                mgr.pause(id);
+            } else {
+                return reply(req, 400, r#"{"error":"id or all"}"#);
+            }
+            reply(req, 200, r#"{"ok":true}"#)
+        }
+        (Method::Post, "/v1/resume") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let Some(v) = read_body_json(&mut req) else { return reply(req, 400, r#"{"error":"bad body"}"#) };
+            if v["all"].as_bool() == Some(true) {
+                mgr.start_all();
+            } else if let Some(id) = v["id"].as_u64() {
+                mgr.start(id);
+            } else {
+                return reply(req, 400, r#"{"error":"id or all"}"#);
+            }
+            reply(req, 200, r#"{"ok":true}"#)
+        }
+        (Method::Get, "/v1/debrid") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let s = mgr.settings();
+            let accounts: Vec<&str> = swiftget_engine::debrid::PROVIDERS
+                .iter()
+                .copied()
+                .filter(|p| !s.debrid_token(p).is_empty())
+                .collect();
+            let body = serde_json::json!({
+                "ok": true,
+                "providers": swiftget_engine::debrid::PROVIDERS,
+                "provider": s.debrid_provider,
+                "configured": !s.debrid_token(&s.debrid_provider).is_empty(),
+                "accounts": accounts,
+            });
+            reply(req, 200, &body.to_string())
+        }
+        (Method::Post, "/v1/debrid") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let Some(v) = read_body_json(&mut req) else { return reply(req, 400, r#"{"error":"bad body"}"#) };
+            let provider = v["provider"].as_str().unwrap_or("").trim().to_string();
+            let token = v["token"].as_str().unwrap_or("").trim().to_string();
+            let mut s = mgr.settings();
+            if provider.is_empty() || token.is_empty() {
+                let gone = if provider.is_empty() { s.debrid_provider.clone() } else { provider.clone() };
+                s.debrid_tokens.remove(&gone);
+                if s.debrid_provider == gone {
+                    s.debrid_provider.clear();
+                }
+                let _ = mgr.set_settings(s);
+                return reply(req, 200, r#"{"ok":true,"configured":false}"#);
+            }
+            if !swiftget_engine::debrid::known(&provider) {
+                return reply(req, 400, r#"{"error":"unknown provider"}"#);
+            }
+            let rt = mgr.runtime().clone();
+            match rt.block_on(swiftget_engine::debrid::check(&mgr.client(), &provider, &token)) {
+                Ok(user) => {
+                    s.debrid_tokens.insert(provider.clone(), token);
+                    s.debrid_provider = provider;
+                    let _ = mgr.set_settings(s);
+                    let body = serde_json::json!({ "ok": true, "configured": true, "user": user });
+                    reply(req, 200, &body.to_string())
+                }
+                Err(e) => {
+                    let body = serde_json::json!({ "error": format!("{e:#}") });
+                    reply(req, 400, &body.to_string())
+                }
+            }
+        }
+        (Method::Post, "/v1/remove") => {
+            let Some(mgr) = manager() else { return reply(req, 503, r#"{"error":"not ready"}"#) };
+            let Some(v) = read_body_json(&mut req) else { return reply(req, 400, r#"{"error":"bad body"}"#) };
+            let Some(id) = v["id"].as_u64() else { return reply(req, 400, r#"{"error":"id"}"#) };
+            mgr.remove(id, v["deleteFile"].as_bool().unwrap_or(false));
+            reply(req, 200, r#"{"ok":true}"#)
+        }
         (Method::Post, "/links") => {
             let mut body = String::new();
             if req.as_reader().take(16 << 20).read_to_string(&mut body).is_err() {
@@ -711,10 +845,61 @@ fn handle(mut req: Request, door: Door, config: &impl Fn() -> String, on_event: 
                 return reply(req, 400, r#"{"error":"bad body"}"#);
             }
             match serde_json::from_str::<AddRequest>(&body) {
-                Ok(add)
+                Ok(mut add)
                     if (is_http(&add.url) || swiftget_engine::torrent::is_magnet(&add.url))
                         && add.audio_url.as_deref().map(is_http).unwrap_or(true) =>
                 {
+                    // a debrid account: resolve the host link before saving
+                    if let Some(mgr) = manager() {
+                        let s = mgr.settings();
+                        if s.debrid_provider == "torbox" && !s.debrid_token("torbox").is_empty() && is_http(&add.url) {
+                            // TorBox fetches the file itself first: answer now,
+                            // add the download when its direct link is ready
+                            let token = s.debrid_token("torbox");
+                            let url = add.url.clone();
+                            let file_name = add.file_name.clone();
+                            let headers = swiftget_engine::model::RequestHeaders {
+                                referer: add.referrer.clone(),
+                                cookies: add.cookies.clone(),
+                                user_agent: add.user_agent.clone(),
+                                extra: Vec::new(),
+                                auth: None,
+                                ..Default::default()
+                            };
+                            let mgr2 = mgr.clone();
+                            mgr.runtime().spawn(async move {
+                                match swiftget_engine::debrid::torbox_fetch(
+                                    &mgr2.client(), &token, &url, std::time::Duration::from_secs(900),
+                                ).await {
+                                    Ok(direct) => {
+                                        mgr2.add(swiftget_engine::model::NewDownload {
+                                            url: direct,
+                                            file_name,
+                                            headers,
+                                            start: true,
+                                            ..Default::default()
+                                        });
+                                    }
+                                    Err(e) => {
+                                        let text = format!("TorBox: {e:#}");
+                                        eprintln!("{text}");
+                                        let _ = slint::invoke_from_event_loop(move || crate::message(&text));
+                                    }
+                                }
+                            });
+                            return reply(req, 200, r#"{"ok":true,"queued":true}"#);
+                        }
+                        let token = s.debrid_token(&s.debrid_provider);
+                        if !s.debrid_provider.is_empty() && !token.is_empty() && is_http(&add.url) {
+                            let rt = mgr.runtime().clone();
+                            let client = mgr.client();
+                            if let Ok(direct) =
+                                rt.block_on(swiftget_engine::debrid::unrestrict(&client, &s.debrid_provider, &token, &add.url))
+                            {
+                                add.url = direct;
+                            }
+                        }
+                    }
                     on_event(ApiEvent::Add(add));
                     reply(req, 200, r#"{"ok":true}"#)
                 }

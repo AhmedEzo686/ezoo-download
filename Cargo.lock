@@ -1745,8 +1745,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ezoo-cli"
+version = "1.2.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "swiftget-engine",
+]
+
+[[package]]
 name = "ezoo-host"
-version = "1.0.13"
+version = "1.2.0"
 dependencies = [
  "ring",
  "serde_json",
@@ -6715,11 +6724,12 @@ dependencies = [
 
 [[package]]
 name = "swiftget"
-version = "1.0.13"
+version = "1.2.0"
 dependencies = [
  "anyhow",
  "arboard",
  "chrono",
+ "ksni",
  "open",
  "raw-window-handle",
  "rfd",
@@ -6741,7 +6751,7 @@ dependencies = [
 
 [[package]]
 name = "swiftget-engine"
-version = "1.0.13"
+version = "1.2.0"
 dependencies = [
  "aes",
  "anyhow",
@@ -6751,6 +6761,7 @@ dependencies = [
  "directories 5.0.1",
  "filetime",
  "flate2",
+ "libc",
  "librqbit",
  "librqbit-core",
  "librqbit-sha1-wrapper",

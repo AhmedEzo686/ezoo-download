@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.aelrased.ezoo-download</id>
+  <launchable type="desktop-id">io.github.aelrased.ezoo-download.desktop</launchable>
+  <name>Ezoo Download</name>
+  <summary>Download manager for HTTP, HLS, DASH, video and torrents</summary>
+  <summary xml:lang="ar">مدير تحميلات يدعم HTTP و HLS و DASH والفيديو والتورنت</summary>
+  <developer id="io.github.aelrased">
+    <name>Ezoo Download contributors</name>
+  </developer>
+  <metadata_license>FSFAP</metadata_license>
+  <project_license>MIT</project_license>
+  <url type="homepage">https://github.com/aelrased/ezoo-download</url>
+  <url type="bugtracker">https://github.com/aelrased/ezoo-download/issues</url>
+  <description>
+    <p>
+      Ezoo Download is a desktop download manager written in Rust with a Slint
+      interface. It splits files over up to 32 connections, resumes after an
+      interruption, and keeps running next to the clock when its window is
+      closed.
+    </p>
+    <p xml:lang="ar">
+      Ezoo Download مدير تحميلات مكتوب بلغة Rust بواجهة Slint: يقسّم الملف على
+      عدة اتصالات، يستأنف بعد الانقطاع، ويبقى بجوار الساعة عند إغلاق النافذة.
+    </p>
+    <ul>
+      <li>Multi-connection downloads with resume</li>
+      <li>HLS (.m3u8) and DASH (.mpd) streams</li>
+      <li>Video and audio from the browser through its extension</li>
+      <li>Torrents and magnets (aria2), video sites via yt-dlp</li>
+      <li>System tray, queues, scheduler, speed limits, site grabber</li>
+      <li>Eight languages, right-to-left interface in Arabic</li>
+      <li>The Linux packages bundle a static ffmpeg</li>
+    </ul>
+  </description>
+  <releases>
+    <release version="1.1.5" date="2026-11-03" type="stable">
+      <description>
+        <p>Linux packaging: .deb, .rpm, AppImage and Flatpak, each with a
+        bundled ffmpeg; the desktop draws the window frame.</p>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>EzooDownload</binary>
+  </provides>
+</component>

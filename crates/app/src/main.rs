@@ -8,6 +8,7 @@ mod api;
 mod assoc;
 mod winmenu;
 mod nativehost;
+mod awake;
 mod autostart;
 mod winreg;
 mod browser;
@@ -215,6 +216,13 @@ fn install_crash_log() {
 }
 
 fn main() {
+    // On Wayland winit draws its own title bar a character at a time: Arabic
+    // and Cyrillic come out as boxes. Through X11 the window manager draws
+    // it, with proper shaping and font fallback.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("DISPLAY").is_some() && std::env::var_os("EZOO_WAYLAND").is_none() {
+        std::env::remove_var("WAYLAND_DISPLAY");
+    }
     install_crash_log();
     // a mark the setup looks for (it waits for the program to close before
     // it copies the new files): kept until the program ends
@@ -468,6 +476,8 @@ fn run() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
     let mgr = Manager::new(rt.handle().clone(), data_dir.clone())?;
+    // the CLI and MCP talk to this copy through the local API
+    api::set_manager(mgr.clone());
     // yt-dlp and ffmpeg: put back if missing, update silently once a day
     swiftget_engine::tools::spawn_updater(rt.handle(), mgr.client(), data_dir.clone());
     #[cfg(feature = "legacy")]
@@ -773,6 +783,8 @@ fn run() -> anyhow::Result<()> {
         let ui = ui.clone();
         power_timer.start(TimerMode::Repeated, Duration::from_secs(1), move || {
             extra::tick_countdown(&ui);
+            // a queue waiting to start at night: keep the computer awake
+            awake::update(&ui);
             follow_sizes(&ui);
             // the window may have been shown again from the icon next to the clock
             if let Some(m) = ui.ctx.main.upgrade() {
@@ -3602,6 +3614,11 @@ pub(crate) fn reveal_in_folder(v: &DownloadView) {
             return;
         }
     }
+    #[cfg(target_os = "macos")]
+    if v.status == Status::Completed && v.save_path.exists() {
+        let _ = std::process::Command::new("/usr/bin/open").arg("-R").arg(&v.save_path).spawn();
+        return;
+    }
     let _ = std::fs::create_dir_all(&dir);
     let _ = open::that_detached(&dir);
 }
@@ -4044,7 +4061,11 @@ pub(crate) fn refresh(ui: &Ui) {
     w.set_status_text(text.into());
     w.set_limiter_on(settings.speed_limit_on);
     let limiter_text = if settings.speed_limit_on {
-        tf("Speed limiter: on ({} KB/s)", &[&settings.speed_limit_kb])
+        if settings.speed_limit_kb >= 1024 {
+            tf("Speed limiter: on ({} MB/s)", &[&format!("{:.1}", settings.speed_limit_kb as f64 / 1024.0)])
+        } else {
+            tf("Speed limiter: on ({} KB/s)", &[&settings.speed_limit_kb])
+        }
     } else {
         t("Speed limiter: off")
     };
@@ -4081,7 +4102,7 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
     }
     // the tabs' controls are set once, so typing in them isn't overwritten
     d.set_limit_on(v.speed_limit_kb.is_some());
-    d.set_limit_kb(v.speed_limit_kb.unwrap_or(500).min(1_000_000) as i32);
+    d.set_limit_mb(((v.speed_limit_kb.unwrap_or(1024).min(1_000_000) as f64 / 1024.0).round().max(1.0)) as i32);
     d.set_when_done(completion_index(v.on_complete));
     d.set_complete_dialog(settings.show_complete_dialog);
     d.set_force_close(settings.force_shutdown);
@@ -4089,7 +4110,7 @@ pub(crate) fn open_progress(ui: &Ui, id: u64) {
         let (mgr, w) = (ui.ctx.mgr.clone(), d.as_weak());
         d.on_limit_changed(move || {
             if let Some(d) = w.upgrade() {
-                let kb = d.get_limit_kb().max(1) as u64;
+                let kb = d.get_limit_mb().max(1) as u64 * 1024;
                 mgr.set_download_limit(id, d.get_limit_on().then_some(kb));
             }
         });

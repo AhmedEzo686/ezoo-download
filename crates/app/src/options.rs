@@ -51,6 +51,15 @@ fn show_lists(ui: &Ui, d: &SettingsDialog) {
     d.set_login_rows(ModelRc::new(VecModel::from(logins)));
 }
 
+fn debrid_name(provider: &str) -> String {
+    match provider {
+        "alldebrid" => t("AllDebrid").to_string(),
+        "torbox" => "TorBox".to_string(),
+        "realdebrid" => t("Real-Debrid").to_string(),
+        _ => String::new(),
+    }
+}
+
 fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     // General
     d.set_language(crate::i18n::index_of(crate::i18n::effective(&s.language)) as i32);
@@ -70,6 +79,26 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_port(s.browser_port as i32);
     d.set_skip_key(key_index(&s.skip_key));
     d.set_force_key(key_index(&s.force_key));
+    // Debrid account
+    d.set_debrid_provider(match s.debrid_provider.as_str() {
+        "alldebrid" => 1,
+        "torbox" => 2,
+        _ => 0,
+    });
+    let shown_provider = if s.debrid_provider.is_empty() { "realdebrid" } else { s.debrid_provider.as_str() };
+    let shown_token = s.debrid_token(shown_provider);
+    d.set_debrid_token(shown_token.clone().into());
+    let provider_name = debrid_name(shown_provider);
+    d.set_debrid_state(
+        if shown_token.is_empty() {
+            t("No account for this provider yet")
+        } else if s.debrid_provider == shown_provider {
+            tf("Connected: {}", &[&provider_name])
+        } else {
+            tf("Saved, but {} is not the provider in use", &[&provider_name])
+        }
+        .into(),
+    );
     // File types
     d.set_capture_exts(s.capture_exts.clone().into());
     d.set_skip_sites(s.skip_sites.clone().into());
@@ -136,7 +165,7 @@ fn fill(ui: &Ui, d: &SettingsDialog, s: &Settings) {
     d.set_sound_qdone(s.sound_queue_done.clone().into());
     // Speed limiter
     d.set_limiter_on(s.speed_limit_on);
-    d.set_speed_limit(s.speed_limit_kb.clamp(1, 1_000_000) as i32);
+    d.set_speed_limit(((s.speed_limit_kb.clamp(1, 1_000_000) as f64 / 1024.0).round().max(1.0)) as i32);
     d.set_limiter_startup(s.limiter_on_startup);
     d.set_limit_only_active(s.limit_only_active);
     d.set_seed_minutes(s.torrent_seed_minutes.min(10080) as i32);
@@ -241,7 +270,7 @@ fn read(ui: &Ui, d: &SettingsDialog, mut s: Settings) -> Result<Settings, String
     s.sound_queue_done = d.get_sound_qdone().trim().to_string();
     // Speed limiter
     s.speed_limit_on = d.get_limiter_on();
-    s.speed_limit_kb = d.get_speed_limit().max(1) as u64;
+    s.speed_limit_kb = d.get_speed_limit().max(1) as u64 * 1024;
     s.limiter_on_startup = d.get_limiter_startup();
     s.limit_only_active = d.get_limit_only_active();
     s.torrent_seed_minutes = d.get_seed_minutes().max(0) as u32;
@@ -494,6 +523,99 @@ pub(crate) fn wire(ui: &Ui) {
                 }
                 Err(msg) => d.set_message(msg.into()),
             }
+        });
+    }
+    {
+        let ui = ui.clone();
+        d.on_debrid_connect(move || {
+            let Some(d) = ui.settings_dlg.upgrade() else { return };
+            let provider = match d.get_debrid_provider() {
+                1 => "alldebrid",
+                2 => "torbox",
+                _ => "realdebrid",
+            };
+            let token = d.get_debrid_token().trim().to_string();
+            if token.is_empty() {
+                d.set_debrid_state(t("Give the API token first").into());
+                return;
+            }
+            d.set_debrid_state(t("Checking…").into());
+            let w = d.as_weak();
+            let mgr = ui.ctx.mgr.clone();
+            let provider_saved = provider.to_string();
+            ui.ctx.rt.spawn(async move {
+                let result = swiftget_engine::debrid::check(&mgr.client(), provider, &token).await;
+                if result.is_ok() {
+                    let mut s = mgr.settings();
+                    s.debrid_tokens.insert(provider_saved.clone(), token);
+                    s.debrid_provider = provider_saved.clone();
+                    let _ = mgr.set_settings(s);
+                }
+                let _ = slint::invoke_from_event_loop(move || {
+                    let Some(d) = w.upgrade() else { return };
+                    match result {
+                        Ok(user) => d.set_debrid_state(tf("Connected: {}", &[&user]).into()),
+                        Err(e) => d.set_debrid_state(tf("Could not connect: {}", &[&format!("{e:#}")]).into()),
+                    }
+                });
+            });
+        });
+    }
+    {
+        let ui = ui.clone();
+        d.on_debrid_provider_changed(move || {
+            let Some(d) = ui.settings_dlg.upgrade() else { return };
+            let provider = match d.get_debrid_provider() {
+                1 => "alldebrid",
+                2 => "torbox",
+                _ => "realdebrid",
+            };
+            let s = ui.ctx.mgr.settings();
+            let token = s.debrid_token(provider);
+            d.set_debrid_token(token.clone().into());
+            d.set_debrid_state(
+                if token.is_empty() {
+                    t("No account for this provider yet")
+                } else if s.debrid_provider == provider {
+                    tf("Connected: {}", &[&debrid_name(provider)])
+                } else {
+                    tf("Saved, but {} is not the provider in use", &[&debrid_name(provider)])
+                }
+                .into(),
+            );
+        });
+    }
+    {
+        let ui = ui.clone();
+        d.on_debrid_paste(move || {
+            let Some(d) = ui.settings_dlg.upgrade() else { return };
+            let text = arboard::Clipboard::new().and_then(|mut c| c.get_text()).unwrap_or_default();
+            let text = text.trim().to_string();
+            if text.is_empty() {
+                d.set_debrid_state(t("The clipboard is empty").into());
+            } else {
+                d.set_debrid_token(text.into());
+                d.set_debrid_state(t("Pasted: press Connect").into());
+            }
+        });
+    }
+    {
+        let ui = ui.clone();
+        d.on_debrid_remove(move || {
+            let Some(d) = ui.settings_dlg.upgrade() else { return };
+            let provider = match d.get_debrid_provider() {
+                1 => "alldebrid",
+                2 => "torbox",
+                _ => "realdebrid",
+            };
+            let mut s = ui.ctx.mgr.settings();
+            s.debrid_tokens.remove(provider);
+            if s.debrid_provider == provider {
+                s.debrid_provider.clear();
+            }
+            let _ = ui.ctx.mgr.set_settings(s);
+            d.set_debrid_token(Default::default());
+            d.set_debrid_state(t("No account for this provider yet").into());
         });
     }
     {
