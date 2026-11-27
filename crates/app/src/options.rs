@@ -22,16 +22,13 @@ fn key_index(k: &str) -> i32 {
 }
 
 pub(crate) fn open(ui: &Ui, tab: i32) {
-    let Some(d) = crate::ensure_settings(ui) else { return };
+    let Some(d) = ui.settings_dlg.upgrade() else { return };
     let s = ui.ctx.mgr.settings();
     {
         let mut l = ui.options_lists.borrow_mut();
         l.servers = s.server_limits.clone();
         l.logins = s.logins.clone();
     }
-    // made now: the theme of this window is set here (it did not exist when
-    // the theme was last applied, so it stayed light in a dark program)
-    crate::set_theme_of(d.global::<crate::Theme>(), &crate::Look::of(&s));
     fill(ui, &d, &s);
     d.set_tab(tab);
     d.set_message(SharedString::new());

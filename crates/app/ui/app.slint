@@ -1771,7 +1771,7 @@ export component MainWindow inherits ThemedWindow {
     property <bool> qmenu-start: true;
     queue-menu := PopupWindow {
         x: Theme.rtl ? max(0px, root.qmenu-x + max(62px, 62px * Theme.font-scale) - 220px) : root.qmenu-x;
-        y: max(106px, 80px + 26px * Theme.font-scale);
+        y: max(66px, 40px + 26px * Theme.font-scale);
         width: 220px;
         height: qm-list.preferred-height;
         Rectangle {
@@ -1807,15 +1807,13 @@ export component MainWindow inherits ThemedWindow {
 
     if root.has-bg-image: Image {
         x: 0;
-        y: 40px;
+        y: 0;
         width: root.width;
-        height: root.height - 40px;
+        height: root.height;
         source: root.bg-image;
         image-fit: cover;
     }
     keys := FocusScope {
-        y: 40px;
-        height: root.height - 40px;
         key-pressed(event) => {
             if (event.modifiers.control && (event.text == "a" || event.text == "A" || event.text == "ش")) {
                 root.select-all();
@@ -2505,8 +2503,7 @@ export component AddDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: @tr("Download File Info");
     preferred-width: 640px;
-    // the window is opened as small as its layout allows; that was too small
-    min-width: 640px;
+    min-width: 540px;
 
     in-out property <string> url;
     // full path: folder + file name
@@ -2935,9 +2932,6 @@ export component BatchDialog inherits ThemedWindow {
     title: @tr("Add batch download");
     preferred-width: 640px;
     preferred-height: 520px;
-    // the window is opened as small as its layout allows (too small here)
-    min-width: 640px;
-    min-height: 460px;
 
     // 0: list of links, 1: address with a * pattern
     in-out property <int> mode: 0;
@@ -4247,8 +4241,6 @@ export component CompleteDialog inherits ThemedWindow {
     always-on-top: root.front;
     title: @tr("Download complete");
     preferred-width: 540px;
-    // the window is opened as small as its layout allows
-    min-width: 540px;
 
     in property <string> name;
     in property <string> size;

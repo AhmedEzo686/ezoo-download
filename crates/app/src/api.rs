@@ -90,9 +90,6 @@ pub struct AddRequest {
     pub user_agent: Option<String>,
     #[serde(default)]
     pub file_name: Option<String>,
-    /// the command line: add it and start, without asking in a window
-    #[serde(default)]
-    pub quiet: bool,
     /// YouTube style: separate audio stream to merge with `url`
     #[serde(default)]
     pub audio_url: Option<String>,

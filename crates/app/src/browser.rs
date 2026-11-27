@@ -32,7 +32,6 @@ fn env_path(var: &str, rest: &str) -> Option<PathBuf> {
     std::env::var_os(var).map(|v| PathBuf::from(v).join(rest))
 }
 
-#[cfg_attr(not(windows), allow(dead_code))]
 fn first_existing(list: Vec<Option<PathBuf>>) -> Option<PathBuf> {
     list.into_iter().flatten().find(|p| p.exists())
 }
@@ -379,20 +378,7 @@ pub(crate) fn firefox_addon_id() -> String {
         .unwrap_or_default()
 }
 
-/// The same extension in a folder the browser's file window opens at.
-fn in_downloads(dir: &Path, firefox: bool) -> PathBuf {
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else { return dir.to_path_buf() };
-    let base = if home.join("Downloads").is_dir() { home.join("Downloads") } else { home };
-    let target = base.join(if firefox { "EzooDownload-extension-firefox" } else { "EzooDownload-extension" });
-    if put_extension(&target, firefox) {
-        target
-    } else {
-        dir.to_path_buf()
-    }
-}
-
-/// The signed Firefox add-on next to the program, when the release has one
-/// (a package puts it in /usr/share/ezoodownload instead).
+/// The signed Firefox add-on next to the program, when the release has one.
 fn firefox_xpi() -> Option<PathBuf> {
     let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
     let mut candidates = vec![dir.join(FIREFOX_XPI)];
@@ -462,7 +448,7 @@ pub(crate) fn update_firefox_addon(ui: &Ui) {
 }
 
 pub(crate) fn open(ui: &Ui) {
-    let Some(d) = crate::ensure_browsers(ui) else { return };
+    let Some(d) = ui.browsers.upgrade() else { return };
     let list = detect();
     let rows: Vec<BrowserRow> = list
         .iter()

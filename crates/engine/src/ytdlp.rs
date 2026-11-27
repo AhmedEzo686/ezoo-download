@@ -16,15 +16,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
 
-/// What "yt-dlp is not there" says, on each system.
-fn missing_ytdlp() -> anyhow::Error {
-    anyhow!(if cfg!(windows) {
-        "yt-dlp.exe is missing. Ezoo Download gets it by itself in a minute (internet needed), then try again"
-    } else {
-        "yt-dlp is missing: install it with your package manager (for example \"sudo apt install yt-dlp\"), or wait a minute - Ezoo Download gets it by itself (internet needed)"
-    })
-}
-
 /// One choice in the "Download this video" menu.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -957,7 +948,7 @@ fn with_cookies<T>(
 /// the video as "<name>.<language>.<ext>". `langs`: "ar en" (yt-dlp's own
 /// automatic translations are used when there are no real ones). Blocking.
 pub fn fetch_subtitles(page_url: &str, dir: &Path, stem: &str, langs: &str) -> anyhow::Result<()> {
-    let tool = find_tool("yt-dlp").ok_or_else(missing_ytdlp)?;
+    let tool = find_tool("yt-dlp").ok_or_else(|| anyhow!("yt-dlp.exe is missing"))?;
     let langs: Vec<String> = langs
         .split(|c: char| c == ',' || c.is_whitespace())
         .map(|l| l.trim().to_ascii_lowercase())

@@ -1260,7 +1260,7 @@ async function itemsForTab(tabId) {
     if (res.resolved && res.resolved.options.length) {
       items.push(...optionItems(res.resolved, res.page));
     } else if (res.resolving) {
-      items.push({ label: tr("Getting video qualities…"), sub: tr("This takes a few seconds"), disabled: true });
+      items.push({ label: "Getting video qualities…", sub: "This takes a few seconds", disabled: true });
     } else if (res.resolveError && !media.length) {
       // the page itself is no video page the app knows: the streams the
       // player opens show up here as soon as it plays
@@ -1270,7 +1270,7 @@ async function itemsForTab(tabId) {
           ? { label: drmText(), sub: "", disabled: true, drm: true }
           : unknown
             ? { label: "Play the video for a moment", sub: "Its qualities appear here as soon as it plays", disabled: true }
-            : { label: tr("Can't get this video"), sub: res.resolveError, disabled: true }
+            : { label: "Can't get this video", sub: res.resolveError, disabled: true }
       );
     }
   }
@@ -1283,9 +1283,9 @@ async function itemsForTab(tabId) {
       for (const o of buildOptions(yt.streams, appConfig && appConfig.mp3Kbps)) items.push({ label: o.label, sub: o.sub, yt: o });
       if (!items.length) {
         if (yt.resolving) {
-          items.push({ label: tr("Getting video qualities…"), sub: tr("This takes a few seconds"), disabled: true });
+          items.push({ label: "Getting video qualities…", sub: "This takes a few seconds", disabled: true });
         } else if (yt.resolveError) {
-          items.push({ label: tr("Can't get this video"), sub: yt.resolveError, disabled: true });
+          items.push({ label: "Can't get this video", sub: yt.resolveError, disabled: true });
         } else if (yt.sabr) {
           items.push({
             label: "This video needs Ezoo Download",
@@ -1303,7 +1303,7 @@ async function itemsForTab(tabId) {
     if (resolvedFound && /HLS|DASH|video/i.test(m.type)) continue;
     if (m.dash) {
       // its qualities are read by the app when it is clicked
-      items.push({ label: tr("Video stream (DASH) · choose a quality"), sub: m.url, resolve: m.url, ext: "mp4" });
+      items.push({ label: "Video stream (DASH) · choose a quality", sub: m.url, resolve: m.url, ext: "mp4" });
       continue;
     }
     if (m.type === "HLS stream") {
@@ -1330,7 +1330,7 @@ async function itemsForTab(tabId) {
       items.push({ label: `${qualityOf(m.url) || "Video"} · MP4 · stream`, sub: m.url, url: m.url, ext: "ts" });
       if (!hlsAsked && !m.media) {
         hlsAsked = true;
-        items.push({ label: tr("Other qualities of this stream…"), sub: m.url, resolve: m.url, ext: "mp4" });
+        items.push({ label: "Other qualities of this stream…", sub: m.url, resolve: m.url, ext: "mp4" });
       }
       continue;
     }
@@ -1756,7 +1756,7 @@ async function resolveOneVideo(msg, tab) {
     return { error: "Open the video first (click the time next to the name above the video), then press the button again." };
   }
   if (msg.src && /^https?:/i.test(msg.src)) {
-    items.push({ label: tr("Video file"), sub: msg.src, url: msg.src, ext: (/\.(\w{2,4})(\?|$)/.exec(msg.src) || [])[1] || "mp4" });
+    items.push({ label: "Video file", sub: msg.src, url: msg.src, ext: (/\.(\w{2,4})(\?|$)/.exec(msg.src) || [])[1] || "mp4" });
   }
   const page = msg.page || (msg.src && !msg.frame ? "" : tab && tab.url);
   let problem = "";

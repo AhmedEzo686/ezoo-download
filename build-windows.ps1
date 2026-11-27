@@ -157,7 +157,6 @@ if (-not (Test-Path "$cache\yt-dlp.exe")) {
         Assert-Sha256 "$cache\yt-dlp.exe" $ytSums.browser_download_url "yt-dlp.exe"
     } catch {
         Write-Host "Could not download yt-dlp now. Ezoo Download gets it by itself later." -ForegroundColor Yellow
-        Write-Host "  $($_.Exception.Message)" -ForegroundColor DarkYellow
     }
 }
 # Visual C++ runtime: the program already carries it (static CRT, see
@@ -194,27 +193,10 @@ if ((Test-Path $signedXpi) -and ((Get-XpiVersion $signedXpi) -eq $extVersion)) {
     Copy-Item $signedXpi $xpiOut -Force
 } else {
     try {
-        Invoke-WebRequest "https://github.com/aelrased/ezoo-download/releases/latest/download/ezoo-download-firefox.xpi" -OutFile $xpiOut
+        Invoke-WebRequest "https://github.com/AhmedEzo686/ezoo-download/releases/latest/download/ezoo-download-firefox.xpi" -OutFile $xpiOut
         if ((Get-XpiVersion $xpiOut) -ne $extVersion) { Remove-Item $xpiOut -Force }
     } catch {
         Remove-Item $xpiOut -Force -ErrorAction SilentlyContinue
-    }
-}
-# A signed add-on of another version is a stop-gap, not the release: say so,
-# so a build is not shipped with an add-on that lacks the fixes in extension\.
-if (Test-Path $xpiOut) {
-    try {
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $xpiOut))
-        $entry = $zip.Entries | Where-Object { $_.FullName -eq "manifest.json" } | Select-Object -First 1
-        $reader = New-Object IO.StreamReader($entry.Open())
-        $xpiVersion = ($reader.ReadToEnd() | ConvertFrom-Json).version
-        $reader.Close(); $zip.Dispose()
-        if ($xpiVersion -ne $extVersion) {
-            Write-Warning "The signed add-on is $xpiVersion, extension\ is $extVersion - run 'web-ext sign' for $extVersion before releasing"
-        }
-    } catch {
-        Write-Warning "Could not read the version of $xpiOut"
     }
 }
 if (-not (Test-Path $xpiOut)) {
@@ -288,25 +270,7 @@ if ($iscc) {
         # version.json: the program reads it from the latest GitHub release
         # to update itself (version + SHA-256 of the installer)
         $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
-        # the Ed25519 signature the program checks before it installs an
-        # update: UPDATE_SIGNING_KEY (BUILD-WINDOWS.cmd reads signing-key.txt)
-        # or signing-key.txt next to this script; without it the setup is
-        # complete but installed copies refuse it as an update
-        $key = $env:UPDATE_SIGNING_KEY
-        if (-not $key) {
-            $keyFile = Join-Path $PSScriptRoot "signing-key.txt"
-            if (Test-Path $keyFile) { $key = (Get-Content $keyFile -Raw).Trim() }
-        }
-        $sig = ""
-        if ($key) {
-            $env:UPDATE_SIGNING_KEY = $key
-            $sig = (cargo run --quiet --release -p swiftget-engine --example sign_update -- $version $hash).Trim()
-            if ($LASTEXITCODE -ne 0 -or $sig.Length -ne 128) { Fail "Could not sign version.json. Is signing-key.txt the right key?" }
-            Write-Host "Signed version.json"
-        } else {
-            Write-Warning "No signing-key.txt: version.json has no signature and the self-updater refuses it."
-        }
-        $json = "{`n  ""version"": ""$version"",`n  ""url"": ""https://github.com/aelrased/ezoo-download/releases/download/v$version/EzooDownload-Setup.exe"",`n  ""sha256"": ""$hash"",`n  ""sig"": ""$sig""`n}`n"
+        $json = "{`n  ""version"": ""$version"",`n  ""url"": ""https://github.com/AhmedEzo686/ezoo-download/releases/download/v$version/EzooDownload-Setup.exe"",`n  ""sha256"": ""$hash""`n}`n"
         [IO.File]::WriteAllText((Join-Path $dist "version.json"), $json)
     } else {
         Fail "Could not create the setup. Tip: move this folder out of Desktop/OneDrive (e.g. to C:\Ezoo) and run BUILD.bat again."

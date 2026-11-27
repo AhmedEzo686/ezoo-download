@@ -226,7 +226,7 @@ fn reset(ui: &Ui, d: &GrabberDialog, links_mode: bool) {
 
 /// Tasks > Run site grabber.
 pub(crate) fn open_grabber(ui: &Ui) {
-    let Some(d) = crate::ensure_grabber(ui) else { return };
+    let Some(d) = ui.grabber.upgrade() else { return };
     if d.window().is_visible() && !d.get_links_mode() {
         open_window!(d);
         return;

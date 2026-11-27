@@ -4,7 +4,3 @@ build-cache/
 signing/
 __pycache__/
 tools/ffmpeg/win64/
-
-# Linux build output
-build-linux/
-dist/

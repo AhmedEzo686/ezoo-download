@@ -1,7 +1,6 @@
 //! User settings, stored as JSON in the app data folder.
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub const DEFAULT_PORT: u16 = 9614;
