@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Ezoo Download
+Name[ar]=إيزو داونلود
+GenericName=Download Manager
+GenericName[ar]=مدير التنزيلات
+Comment=Download files and videos: pause, resume, queue them
+Comment[ar]=نزّل الملفات والفيديوهات: أوقفها واستأنفها وضعها في قوائم
+Exec=EzooDownload %U
+TryExec=EzooDownload
+Icon=ezoodownload
+Terminal=false
+Categories=Network;FileTransfer;
+Keywords=download;manager;torrent;video;youtube;
+Keywords[ar]=تنزيل;تحميل;مدير;تورنت;فيديو;
+MimeType=application/x-bittorrent;x-scheme-handler/magnet;x-scheme-handler/ezoo-download;
+StartupWMClass=EzooDownload
+StartupNotify=true
