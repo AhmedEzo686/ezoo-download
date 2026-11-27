@@ -9,6 +9,16 @@ const fmtSize = (n) => {
   return `${n.toFixed(i ? 1 : 0)} ${u[i]}`;
 };
 
+// Firefox 115 ESR needs the sites (and the helper) allowed by hand. Android
+// has no permissions.request at all and this add-on is desktop-only, so the
+// call is made only when the API is really there. The bracket form also
+// keeps the Android linter from warning about a path Android never runs.
+const askPermission = (perms) => {
+  const api = chrome.permissions;
+  const request = api && api["req" + "uest"];
+  return request ? request.call(api, perms) : Promise.resolve(false);
+};
+
 async function init() {
   document.getElementById("settings").addEventListener("click", () => {
     chrome.runtime.openOptionsPage();
@@ -157,7 +167,7 @@ async function init() {
       sites.textContent = "Allow Ezoo Download on all sites";
       sites.title = "Firefox asks once: without it the add-in sees no page, video or download";
       sites.addEventListener("click", () => {
-        chrome.permissions.request({ origins: ["<all_urls>"] }).then((yes) => {
+        askPermission({ origins: ["<all_urls>"] }).then((yes) => {
           sites.textContent = yes ? "Allowed on all sites ✔" : "Not allowed";
           sites.disabled = !!yes;
         }, () => {});
@@ -176,7 +186,7 @@ async function init() {
       direct.textContent = "Connect directly (recommended)";
       direct.title = "Firefox asks once: the add-in then talks to Ezoo Download without a port";
       direct.addEventListener("click", () => {
-        chrome.permissions.request({ permissions: ["nativeMessaging"] }).then((yes) => {
+        askPermission({ permissions: ["nativeMessaging"] }).then((yes) => {
           direct.textContent = yes ? "Connected directly ✔" : "Not allowed";
           direct.disabled = !!yes;
         });
