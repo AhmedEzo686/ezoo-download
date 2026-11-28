@@ -44,6 +44,8 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.ezoo.download.engine.Engine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -84,6 +86,14 @@ fun AddSheet(first: Adding, onClose: () -> Unit) {
             found = if (url.isEmpty()) Found.Empty else Found.Problem("ده مش رابط تحميل")
             return@LaunchedEffect
         }
+        val same = url == first.link.trim()
+        // the browser knows this download already (name, size): no need
+        // to ask the server again (its link may work only once)
+        if (same && first.fileName != null) {
+            if (!nameEdited) name = first.fileName
+            found = Found.File(first.fileName, first.size, Engine.categoryOf(first.fileName))
+            return@LaunchedEffect
+        }
         delay(500)
         if (url.startsWith("magnet:", ignoreCase = true)) {
             found = Found.File("", null, "General")
@@ -97,10 +107,17 @@ fun AddSheet(first: Adding, onClose: () -> Unit) {
                     picked = p.qualities.firstOrNull()?.key
                     Found.Video(p)
                 },
-                onFailure = { Found.Problem("مالقيتش فيديو في الرابط ده: ${it.message}") },
+                onFailure = {
+                    if (same && first.media.isNotEmpty()) {
+                        picked = "media:0"
+                        Found.Problem("مالقيتش جودات للفيديو ده، بس فيه ملفات في الصفحة تحت")
+                    } else {
+                        Found.Problem("مالقيتش فيديو في الرابط ده: ${it.message}")
+                    }
+                },
             )
         }
-        if (Video.isVideoSite(url)) {
+        if (Video.isVideoSite(url) || (same && first.videoPage)) {
             asVideo()
             return@LaunchedEffect
         }
@@ -120,7 +137,10 @@ fun AddSheet(first: Adding, onClose: () -> Unit) {
     fun add(start: Boolean) {
         val url = link.trim()
         val f = found
+        val same = url == first.link.trim()
+        val pickedMedia = picked?.takeIf { it.startsWith("media:") }?.removePrefix("media:")?.toIntOrNull()?.let { first.media.getOrNull(it) }
         val id = when {
+            pickedMedia != null -> Engine.add(pickedMedia.url, null, pickedMedia.referer, first.cookies, first.userAgent, connections, start)
             !Files.isLink(url) -> 0L
             f is Found.Video -> {
                 val key = picked ?: return
@@ -132,7 +152,11 @@ fun AddSheet(first: Adding, onClose: () -> Unit) {
                     Toast.makeText(ctx, "الرابط ده موجود في القائمة", Toast.LENGTH_SHORT).show()
                     return
                 }
-                Engine.add(url, name.trim().ifEmpty { null }, null, null, null, connections, start)
+                Engine.add(
+                    url, name.trim().ifEmpty { null },
+                    if (same) first.referer else null, if (same) first.cookies else null, if (same) first.userAgent else null,
+                    connections, start,
+                )
             }
         }
         if (id == 0L) {
@@ -144,24 +168,16 @@ fun AddSheet(first: Adding, onClose: () -> Unit) {
         onClose()
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onClose,
-        sheetState = state,
-        containerColor = Color.White,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        dragHandle = {
-            Box(Modifier.padding(top = 14.dp, bottom = 6.dp).size(46.dp, 5.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFFD5D8EA)))
-        },
-    ) {
+    val body: @Composable () -> Unit = {
         Column(
             Modifier
                 .padding(horizontal = 18.dp)
-                .padding(bottom = 18.dp)
-                .navigationBarsPadding()
+                .padding(bottom = 18.dp, top = if (first.dialog) 18.dp else 0.dp)
+                .then(if (first.dialog) Modifier else Modifier.navigationBarsPadding())
                 .imePadding()
                 .verticalScroll(rememberScrollState()),
         ) {
-            Text("تحميل جديد", fontWeight = FontWeight.ExtraBold, fontSize = 21.sp, color = Ui.Ink)
+            Text(if (first.dialog) "تفاصيل التحميل" else "تحميل جديد", fontWeight = FontWeight.ExtraBold, fontSize = 21.sp, color = Ui.Ink)
 
             Label(if (fromClipboard) "الرابط (اتلقط من الحافظة)" else "الرابط")
             Field(link, { link = it; fromClipboard = false }, placeholder = "https://…", trailing = {
@@ -208,8 +224,41 @@ fun AddSheet(first: Adding, onClose: () -> Unit) {
                 }
             }
 
+            if (first.media.isNotEmpty() && link.trim() == first.link.trim()) {
+                Label("ملفات تانية في الصفحة")
+                first.media.forEachIndexed { i, m ->
+                    val key = "media:$i"
+                    val on = picked == key
+                    Row(
+                        Modifier
+                            .padding(top = 6.dp)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (on) Ui.Violet.copy(alpha = 0.07f) else Color.White)
+                            .border(if (on) 2.dp else 1.dp, if (on) Ui.Violet else Ui.Line, RoundedCornerShape(14.dp))
+                            .clickable { picked = key }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(if (m.kind in setOf("m3u8", "mpd")) "📡" else if (m.kind in setOf("mp3", "m4a", "aac", "flac", "ogg", "opus", "wav")) "🎵" else "🎬", fontSize = 18.sp)
+                        Text(
+                            m.url.substringBefore('?').substringAfterLast('/').ifBlank { m.url },
+                            fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Ui.Ink, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                            style = TextStyle(textDirection = TextDirection.Ltr),
+                        )
+                        Text(
+                            if (m.kind in setOf("m3u8", "mpd")) "بث" else m.kind.uppercase(),
+                            fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = Ui.Label,
+                            modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Ui.Chip).padding(horizontal = 8.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
-            val ready = found is Found.File || (found is Found.Video && picked != null)
+            val ready = found is Found.File || (found is Found.Video && picked != null) || picked?.startsWith("media:") == true
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(
                     Modifier
@@ -231,6 +280,30 @@ fun AddSheet(first: Adding, onClose: () -> Unit) {
                 ) { Text("بعدين", color = Ui.Label, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) }
             }
         }
+    }
+
+    if (first.dialog) {
+        // a small window, like the computer's "download file info"
+        Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(
+                Modifier
+                    .padding(horizontal = 20.dp)
+                    .fillMaxWidth()
+                    .heightIn(max = 640.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.White),
+            ) { body() }
+        }
+    } else {
+        ModalBottomSheet(
+            onDismissRequest = onClose,
+            sheetState = state,
+            containerColor = Color.White,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            dragHandle = {
+                Box(Modifier.padding(top = 14.dp, bottom = 6.dp).size(46.dp, 5.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFFD5D8EA)))
+            },
+        ) { body() }
     }
 }
 

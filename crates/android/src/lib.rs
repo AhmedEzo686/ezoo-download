@@ -4,6 +4,8 @@
 //! The app's `com.ezoo.download.engine.Engine` object declares these
 //! functions (`external fun`). Lists come back as JSON text.
 
+mod adblock;
+
 use jni::objects::{JObject, JString};
 use jni::sys::{jboolean, jint, jlong, jlongArray, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
@@ -367,4 +369,104 @@ pub extern "system" fn Java_com_ezoo_download_engine_Engine_addVideo<'l>(
         ..Default::default()
     };
     m.add(req) as jlong
+}
+
+// ------------------------------------------------------------ ad blocking
+// (com.ezoo.download.engine.AdBlock)
+
+/// Fetch the filter lists (all of them) into `dir`. JSON {ok, failed}.
+/// Slow: off the main thread.
+#[no_mangle]
+pub extern "system" fn Java_com_ezoo_download_engine_AdBlock_update<'l>(
+    mut env: JNIEnv<'l>,
+    _this: JObject<'l>,
+    dir: JString<'l>,
+) -> jstring {
+    let Some(dir) = text(&mut env, &dir) else { return jtext(&mut env, "{}") };
+    let Some(m) = mgr() else { return jtext(&mut env, r#"{"ok":0,"failed":0}"#) };
+    let client = m.client();
+    let (ok, failed) = m.runtime().block_on(adblock::update(&client, std::path::Path::new(&dir)));
+    jtext(&mut env, &json!({ "ok": ok, "failed": failed }).to_string())
+}
+
+/// Build the blocker of these groups ("ads,privacy,cookies"): lists read.
+#[no_mangle]
+pub extern "system" fn Java_com_ezoo_download_engine_AdBlock_load<'l>(
+    mut env: JNIEnv<'l>,
+    _this: JObject<'l>,
+    dir: JString<'l>,
+    groups: JString<'l>,
+) -> jint {
+    let Some(dir) = text(&mut env, &dir) else { return 0 };
+    let groups: Vec<String> = text(&mut env, &groups)
+        .unwrap_or_default()
+        .split(',')
+        .map(|g| g.trim().to_string())
+        .filter(|g| !g.is_empty())
+        .collect();
+    if groups.is_empty() {
+        adblock::unload();
+        return 0;
+    }
+    adblock::load(std::path::Path::new(&dir), &groups) as jint
+}
+
+/// When the lists were last fetched (seconds since 1970; 0: never).
+#[no_mangle]
+pub extern "system" fn Java_com_ezoo_download_engine_AdBlock_listsTime<'l>(
+    mut env: JNIEnv<'l>,
+    _this: JObject<'l>,
+    dir: JString<'l>,
+) -> jlong {
+    let Some(dir) = text(&mut env, &dir) else { return 0 };
+    adblock::lists_time(std::path::Path::new(&dir)) as jlong
+}
+
+/// A request of a page: "" let it go, "B" block it, "R<data:...>" answer
+/// with this stand-in.
+#[no_mangle]
+pub extern "system" fn Java_com_ezoo_download_engine_AdBlock_check<'l>(
+    mut env: JNIEnv<'l>,
+    _this: JObject<'l>,
+    url: JString<'l>,
+    source: JString<'l>,
+    kind: JString<'l>,
+) -> jstring {
+    let url = text(&mut env, &url).unwrap_or_default();
+    let source = text(&mut env, &source).unwrap_or_default();
+    let kind = text(&mut env, &kind).unwrap_or_else(|| "other".into());
+    let r = adblock::check(&url, &source, &kind);
+    jtext(&mut env, &r)
+}
+
+/// What a page gets at its start (JSON: css, script, generichide).
+#[no_mangle]
+pub extern "system" fn Java_com_ezoo_download_engine_AdBlock_cosmetic<'l>(
+    mut env: JNIEnv<'l>,
+    _this: JObject<'l>,
+    url: JString<'l>,
+) -> jstring {
+    let url = text(&mut env, &url).unwrap_or_default();
+    let r = adblock::cosmetic(&url).to_string();
+    jtext(&mut env, &r)
+}
+
+/// The generic hiding for the classes and ids of a page (CSS). The lists
+/// come space-separated.
+#[no_mangle]
+pub extern "system" fn Java_com_ezoo_download_engine_AdBlock_generic<'l>(
+    mut env: JNIEnv<'l>,
+    _this: JObject<'l>,
+    url: JString<'l>,
+    classes: JString<'l>,
+    ids: JString<'l>,
+) -> jstring {
+    let url = text(&mut env, &url).unwrap_or_default();
+    let split = |s: Option<String>| -> Vec<String> {
+        s.unwrap_or_default().split_whitespace().take(5000).map(str::to_string).collect()
+    };
+    let classes = split(text(&mut env, &classes));
+    let ids = split(text(&mut env, &ids));
+    let r = adblock::generic(&url, &classes, &ids);
+    jtext(&mut env, &r)
 }

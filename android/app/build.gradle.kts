@@ -76,4 +76,6 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
+    // the browser: page fixes that run before the page's own scripts
+    implementation("androidx.webkit:webkit:1.13.0")
 }

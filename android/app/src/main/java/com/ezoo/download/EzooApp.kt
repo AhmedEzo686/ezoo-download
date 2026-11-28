@@ -26,6 +26,8 @@ class EzooApp : Application() {
         } catch (e: Throwable) {
             e.toString()
         }
+        // the browser's protection: its lists, kept fresh
+        if (engineError == null) Shield.start(this)
         // downloads that were running when the app was closed go on
         if (engineError == null && Engine.busy()) DownloadService.start(this)
     }

@@ -48,6 +48,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -121,8 +123,24 @@ private enum class Page(val icon: String, val label: String) {
     Downloads("⬇️", "التحميلات"), Browser("🌐", "المتصفح"), Torrent("🧲", "تورنت"), Settings("⚙️", "الإعدادات")
 }
 
-/** A link the add sheet opens with, and whether it came from the clipboard. */
-data class Adding(val link: String, val fromClipboard: Boolean)
+/**
+ * A link the add sheet opens with: whether it came from the clipboard, and
+ * what the browser knows of it (the page it came from, its cookies, name,
+ * size). [dialog]: a small window (a download the browser started);
+ * [videoPage]: look for the video at once, with what the page played.
+ */
+data class Adding(
+    val link: String,
+    val fromClipboard: Boolean,
+    val referer: String? = null,
+    val cookies: String? = null,
+    val userAgent: String? = null,
+    val fileName: String? = null,
+    val size: Long? = null,
+    val dialog: Boolean = false,
+    val videoPage: Boolean = false,
+    val media: List<Media> = emptyList(),
+)
 
 @Composable
 private fun Shell(shared: String?, onSharedTaken: () -> Unit) {
@@ -130,6 +148,11 @@ private fun Shell(shared: String?, onSharedTaken: () -> Unit) {
     var page by remember { mutableStateOf(Page.Downloads) }
     var list by remember { mutableStateOf(emptyList<Download>()) }
     var adding by remember { mutableStateOf<Adding?>(null) }
+    var shield by remember { mutableStateOf(false) }
+    val activity = LocalContext.current as ComponentActivity
+    val browser = remember { Browser(activity) { adding = it } }
+    DisposableEffect(Unit) { onDispose { browser.destroy() } }
+    LaunchedEffect(page) { if (page == Page.Browser) browser.resume() else browser.pause() }
 
     // the list, fresh every half second while the screen shows
     LaunchedEffect(Unit) {
@@ -150,17 +173,20 @@ private fun Shell(shared: String?, onSharedTaken: () -> Unit) {
             Toast.makeText(ctx, "محرك التحميل ماشتغلش: $err", Toast.LENGTH_LONG).show()
         }
     }
-    BackHandler(enabled = page != Page.Downloads) { page = Page.Downloads }
+    BackHandler(enabled = page != Page.Downloads && !shield) { page = Page.Downloads }
+    BackHandler(enabled = browser.fullscreen != null) { browser.exitFullscreen() }
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(Ui.Page)) {
         Box(Modifier.weight(1f)) {
-            when (page) {
-                Page.Downloads -> DownloadsScreen(list, torrentsOnly = false, onSettings = { page = Page.Settings })
-                Page.Torrent -> DownloadsScreen(list, torrentsOnly = true, onSettings = { page = Page.Settings })
-                Page.Browser -> SoonScreen()
-                Page.Settings -> SettingsScreen()
+            when {
+                shield -> ShieldSettings(onBack = { shield = false })
+                page == Page.Downloads -> DownloadsScreen(list, torrentsOnly = false, onSettings = { page = Page.Settings })
+                page == Page.Torrent -> DownloadsScreen(list, torrentsOnly = true, onSettings = { page = Page.Settings })
+                page == Page.Browser -> BrowserScreen(browser, onShieldSettings = { shield = true }, onAdd = { adding = it })
+                else -> SettingsScreen(onShield = { shield = true })
             }
-            if (page == Page.Downloads || page == Page.Torrent) {
+            if (!shield && (page == Page.Downloads || page == Page.Torrent)) {
                 Box(
                     Modifier
                         .align(Alignment.BottomEnd)
@@ -174,7 +200,33 @@ private fun Shell(shared: String?, onSharedTaken: () -> Unit) {
                 ) { Text("+", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Bold) }
             }
         }
-        BottomBar(page) { page = it }
+        if (browser.fullscreen == null) BottomBar(page) { shield = false; page = it }
+    }
+
+    // a video of the page in full screen (its own player)
+    browser.fullscreen?.let { v ->
+        AndroidView(
+            factory = {
+                (v.parent as? android.view.ViewGroup)?.removeView(v)
+                android.widget.FrameLayout(it).apply {
+                    setBackgroundColor(android.graphics.Color.BLACK)
+                    addView(v, android.widget.FrameLayout.LayoutParams(-1, -1))
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+    }
+    // the system bars go away while a video is in full screen
+    val view = androidx.compose.ui.platform.LocalView.current
+    LaunchedEffect(browser.fullscreen) {
+        val bars = androidx.core.view.WindowCompat.getInsetsController(activity.window, view)
+        if (browser.fullscreen != null) {
+            bars.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            bars.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        } else {
+            bars.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        }
     }
 
     adding?.let { a -> AddSheet(first = a, onClose = { adding = null }) }
@@ -498,24 +550,7 @@ fun Field(
 }
 
 @Composable
-private fun SoonScreen() {
-    Column(Modifier.fillMaxSize()) {
-        TopBar("المتصفح")
-        Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("🌐", fontSize = 48.sp)
-                Text("المتصفح الداخلي جاي في التحديث الجاي", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = Ui.Ink, textAlign = TextAlign.Center)
-                Text(
-                    "متصفح من غير إعلانات، بيلقط الفيديوهات والملفات من أي صفحة.\nلحد ما ييجي: شارك الرابط لـ Ezoo من أي تطبيق.",
-                    color = Ui.Muted, textAlign = TextAlign.Center, fontSize = 15.sp,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SettingsScreen() {
+private fun SettingsScreen(onShield: () -> Unit) {
     val ctx = LocalContext.current
     var ytdlp by remember { mutableStateOf("…") }
     LaunchedEffect(Unit) {
@@ -529,6 +564,9 @@ private fun SettingsScreen() {
     Column(Modifier.fillMaxSize()) {
         TopBar("الإعدادات")
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.clickable(onClick = onShield)) {
+                SettingCard("🛡", "منع الإعلانات في المتصفح", "${"%,d".format(Shield.adsBlocked)} إعلان اتمنع · القوائم والمواقع المسموحة ‹")
+            }
             SettingCard("📁", "مكان الحفظ", "Download / Ezoo — كل نوع في فولدر (Video، Music، Programs…)")
             SettingCard("⚡", "الاتصالات", "لحد 16 اتصال للملف الواحد، وتقدر تغيرها في كل تحميل")
             SettingCard("🎬", "الفيديوهات", "yt-dlp $ytdlp")
