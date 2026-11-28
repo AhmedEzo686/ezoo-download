@@ -9,6 +9,7 @@ data class Download(
     val name: String,
     val path: String,
     val category: String,
+    val kind: String,
     val status: String,
     val error: String?,
     val total: Long?,
@@ -24,6 +25,7 @@ data class Download(
     val completed get() = status == "Completed"
     val failed get() = status == "Failed"
     val paused get() = status == "Paused"
+    val torrent get() = kind == "Torrent"
     val progress: Float
         get() = when {
             completed -> 1f
@@ -44,6 +46,7 @@ data class Download(
                     name = o.optString("name"),
                     path = o.optString("path"),
                     category = o.optString("category", "General"),
+                    kind = o.optString("kind"),
                     status = o.optString("status"),
                     error = o.optTextOrNull("error"),
                     total = o.optLongOrNull("total"),

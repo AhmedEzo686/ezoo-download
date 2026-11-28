@@ -10,10 +10,25 @@ object Engine {
     }
 
     /** Starts it once. Null when it runs, else what went wrong. */
-    external fun init(dataDir: String, downloadDir: String): String?
+    external fun init(dataDir: String, downloadDir: String, nativeDir: String): String?
 
-    /** A new download, started at once: its number (0 = not added). */
-    external fun add(url: String, fileName: String?, referer: String?, cookies: String?, userAgent: String?): Long
+    /** A new download (started at once when [start]): its number (0 = not added). */
+    external fun add(
+        url: String, fileName: String?, referer: String?, cookies: String?, userAgent: String?,
+        connections: Int, start: Boolean,
+    ): Long
+
+    /** What the link gives (JSON: page, name, size, category / error). Waits for the server. */
+    external fun probe(url: String): String
+
+    /** The folder (kind) of a file name: Video, Music, Programs ... */
+    external fun categoryOf(name: String): String
+
+    /** yt-dlp's JSON for a page made into the qualities (JSON: title, site, options / error). */
+    external fun videoOptions(page: String, info: String): String
+
+    /** Download a quality given by [videoOptions]: its number (0 = not added). */
+    external fun addVideo(page: String, key: String, title: String?, start: Boolean): Long
 
     /** The number of the download of this link already in the list, else 0. */
     external fun find(url: String): Long

@@ -9,6 +9,12 @@ use std::process::Command;
 /// A helper program (ffmpeg, yt-dlp): the copy in the app's "tools"
 /// folder wins, then one next to EzooDownload.exe, then PATH.
 pub fn find_tool(name: &str) -> Option<PathBuf> {
+    // the app said where its own copy is (Android: EZOO_FFMPEG, the ffmpeg
+    // inside the app, set by crates/android)
+    let env_name = format!("EZOO_{}", name.to_ascii_uppercase().replace('-', "_"));
+    if let Some(p) = std::env::var_os(&env_name).map(PathBuf::from).filter(|p| p.is_file()) {
+        return Some(p);
+    }
     let exe_name = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
     // yt-dlp: its folder build first (it starts much faster)
     if name == "yt-dlp" {

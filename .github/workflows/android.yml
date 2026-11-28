@@ -14,6 +14,12 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-24.04
+    env:
+      # the same ffmpeg sources as the Windows program (build.yml)
+      FFMPEG_TAG: n8.0.3
+      FFMPEG_COMMIT: 8ae0b34901ba60a802f183ee75a250a9fc3e09a5
+      LAME_URL: https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz
+      LAME_SHA256: ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
@@ -34,6 +40,33 @@ jobs:
           export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
           echo "NDK: $ANDROID_NDK_HOME"
           android/build-rust.sh
+      # the app's own ffmpeg (tools/ffmpeg/build-android.sh), kept in the
+      # cache until the script or a version changes
+      - id: ffcache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ffmpeg-android
+          key: ffmpeg-android-${{ env.FFMPEG_COMMIT }}-lame-${{ env.LAME_SHA256 }}-${{ hashFiles('tools/ffmpeg/build-android.sh') }}
+      - name: ffmpeg (Android)
+        if: steps.ffcache.outputs.cache-hit != 'true'
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          git clone -q --depth 1 --branch "$FFMPEG_TAG" https://github.com/FFmpeg/FFmpeg ffmpeg-src
+          test "$(git -C ffmpeg-src rev-parse HEAD)" = "$FFMPEG_COMMIT" || { echo "::error::ffmpeg source is not the expected commit"; exit 1; }
+          curl -sSfL -o lame.tar.gz "$LAME_URL"
+          echo "$LAME_SHA256  lame.tar.gz" | sha256sum -c -
+          tar xzf lame.tar.gz
+          tools/ffmpeg/build-android.sh ffmpeg-src lame-3.100 ffmpeg-android arm64-v8a armeabi-v7a
+      - name: ffmpeg into the app
+        run: |
+          for abi in arm64-v8a armeabi-v7a; do
+            cp ffmpeg-android/$abi/libffmpeg.so android/app/src/main/jniLibs/$abi/
+          done
+          ls -la android/app/src/main/jniLibs/*
+      # Python for yt-dlp inside the app: the same version as the app's
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
       # the same test signature every build, so a new test APK installs over
       # the old one (made once by the build, kept in the cache)
       - name: Test signature

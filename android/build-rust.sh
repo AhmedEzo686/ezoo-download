@@ -9,9 +9,9 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 OUT="$ROOT/android/app/src/main/jniLibs"
-rm -rf "$OUT"
+rm -rf "$OUT"/*/libezoo.so
 # arm64-v8a: nearly every phone of the last years; armeabi-v7a: older and
-# cheaper ones; x86_64: the emulator and a few tablets
-(cd "$ROOT" && cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -P 24 -o "$OUT" \
+# cheaper ones (the ABIs of app/build.gradle.kts)
+(cd "$ROOT" && cargo ndk -t arm64-v8a -t armeabi-v7a -P 24 -o "$OUT" \
   build --release --locked -p ezoo-android)
 ls -la "$OUT"/*

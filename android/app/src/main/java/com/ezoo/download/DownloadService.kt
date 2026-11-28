@@ -121,7 +121,7 @@ class DownloadService : Service() {
             .setSilent(true)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .addAction(
-                0, getString(R.string.pause_all),
+                0, "إيقاف الكل",
                 PendingIntent.getService(
                     this, 1, Intent(this, DownloadService::class.java).setAction(ACTION_PAUSE_ALL),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
@@ -131,9 +131,9 @@ class DownloadService : Service() {
         val total = active.sumOf { it.total ?: 0L }
         val done = active.sumOf { if (it.total != null) it.done else 0L }
         val speed = active.sumOf { it.speed }
-        val title = if (active.size == 1) active[0].name else getString(R.string.n_running, active.size)
+        val title = if (active.size == 1) active[0].name else "${active.size} تحميلات شغالة"
         b.setContentTitle(title)
-            .setContentText(Format.progressLine(this, done, total.takeIf { it > 0 }, speed, null))
+            .setContentText(Format.progressLine(done, total.takeIf { it > 0 }, speed, null))
         if (total > 0) b.setProgress(1000, (done * 1000 / total).toInt(), false) else b.setProgress(0, 0, true)
         return b.build()
     }
@@ -144,7 +144,7 @@ class DownloadService : Service() {
         } else null
         return NotificationCompat.Builder(this, EzooApp.CH_DONE)
             .setSmallIcon(R.drawable.ic_notify)
-            .setContentTitle(getString(if (ok) R.string.n_done else R.string.n_failed))
+            .setContentTitle(if (ok) "✓ التحميل خلص" else "التحميل فشل")
             .setContentText(if (ok) d.name else listOfNotNull(d.name, d.error).joinToString(" - "))
             .setContentIntent(tap ?: openApp())
             .setAutoCancel(true)

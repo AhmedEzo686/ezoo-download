@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.chaquo.python")
 }
 
 // the version of the whole program (the workspace's Cargo.toml)
@@ -20,6 +21,10 @@ android {
         targetSdk = 35
         versionCode = ezooCode
         versionName = ezooVersion
+        // nearly every phone (arm64) and the older ones (32-bit arm)
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {
@@ -38,8 +43,26 @@ android {
         compose = true
     }
     packaging {
-        // the engine (libezoo.so) is loaded straight from the APK
-        jniLibs.useLegacyPackaging = false
+        // the libraries are put in the app's folder on the phone: ffmpeg
+        // (libffmpeg.so) is a program, run from there
+        jniLibs.useLegacyPackaging = true
+    }
+}
+
+// yt-dlp (it finds the video and its qualities on video pages), with
+// Python 3.12; the newest yt-dlp of the day of the build
+chaquopy {
+    defaultConfig {
+        version = "3.12"
+        pip {
+            install("yt-dlp")
+            install("yt-dlp-ejs")
+            install("certifi")
+            install("requests")
+            install("urllib3")
+            install("websockets")
+            install("mutagen")
+        }
     }
 }
 
