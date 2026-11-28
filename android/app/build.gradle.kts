@@ -50,10 +50,10 @@ android {
 }
 
 // yt-dlp (it finds the video and its qualities on video pages), with
-// Python 3.12; the newest yt-dlp of the day of the build
+// Python 3.11 (the newest one that also runs on 32-bit phones); the newest yt-dlp of the day of the build
 chaquopy {
     defaultConfig {
-        version = "3.12"
+        version = "3.11"
         pip {
             install("yt-dlp")
             install("yt-dlp-ejs")
