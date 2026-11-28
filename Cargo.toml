@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/engine", "crates/app", "crates/host"]
+members = ["crates/engine", "crates/app", "crates/host", "crates/android"]
+# a plain `cargo build` is the Windows program; the Android library is
+# built by android/build-rust.sh (cargo-ndk)
+default-members = ["crates/engine", "crates/app", "crates/host"]
 
 [workspace.package]
 version = "1.0.13"

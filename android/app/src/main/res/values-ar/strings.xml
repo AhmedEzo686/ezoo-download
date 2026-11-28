@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ezoo Download</string>
+    <string name="share_label">تحميل بـ Ezoo</string>
+    <string name="downloads">التحميلات</string>
+    <string name="tab_all">الكل</string>
+    <string name="tab_running">شغال</string>
+    <string name="tab_done">خلص</string>
+    <string name="tab_failed">متوقف</string>
+    <string name="empty">مفيش تحميلات لسه.\nدوس + أو شارك أي رابط لـ Ezoo من أي تطبيق.</string>
+    <string name="new_download">تحميل جديد</string>
+    <string name="link">الرابط</string>
+    <string name="paste">لصق</string>
+    <string name="file_name">اسم الملف (اختياري)</string>
+    <string name="save_to">مكان الحفظ</string>
+    <string name="start">ابدأ التحميل</string>
+    <string name="cancel">إلغاء</string>
+    <string name="bad_link">ده مش رابط تحميل</string>
+    <string name="already">الرابط ده موجود في القائمة</string>
+    <string name="added">التحميل بدأ</string>
+    <string name="of">من</string>
+    <string name="left">فاضل</string>
+    <string name="st_Queued">في الانتظار</string>
+    <string name="st_Connecting">بيتصل…</string>
+    <string name="st_Downloading">بيحمل</string>
+    <string name="st_Assembling">بيجهز الملف…</string>
+    <string name="st_Paused">متوقف</string>
+    <string name="st_Completed">خلص</string>
+    <string name="st_Failed">فشل</string>
+    <string name="waiting_net">مستني النت</string>
+    <string name="pause">إيقاف</string>
+    <string name="resume">استكمال</string>
+    <string name="retry">حاول تاني</string>
+    <string name="open">فتح</string>
+    <string name="remove">حذف من القائمة</string>
+    <string name="remove_file">حذف مع الملف</string>
+    <string name="pause_all">إيقاف الكل</string>
+    <string name="resume_all">استكمال الكل</string>
+    <string name="no_app">مفيش تطبيق يفتح الملف ده</string>
+    <string name="engine_error">محرك التحميل مااشتغلش: %1$s</string>
+    <string name="storage_needed">اسمح بالتخزين علشان الملفات تتحفظ في Download/Ezoo</string>
+    <string name="ch_progress">التحميلات الشغالة</string>
+    <string name="ch_done">التحميلات اللي خلصت</string>
+    <string name="n_running">%1$d بيحمل</string>
+    <string name="n_done">التحميل خلص</string>
+    <string name="n_failed">التحميل فشل</string>
+</resources>

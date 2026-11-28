@@ -23,7 +23,8 @@ tokio-util = "0.7"
 # native-tls-alpn: the connection says which protocol it speaks (ALPN), as
 # browsers do. Without it Cloudflare's protection refuses the program
 # (HTTP 403, "challenge") however the request itself looks
-reqwest = { version = "0.12", features = ["native-tls-alpn"] }
+# (Android: the program's own TLS, rustls - below)
+reqwest = { version = "0.12", default-features = false, features = ["charset", "http2", "system-proxy"] }
 chrono = { version = "0.4", features = ["serde"] }
 directories = "5"
 url = "2"
@@ -42,9 +43,25 @@ ring = "0.17"
 # trackers use the system's (SChannel on Windows) and SHA-1 comes from the
 # system too, so building needs nothing more than Rust
 librqbit = { version = "9.1", default-features = false }
+librqbit-core = { version = "9.1", default-features = false }
+librqbit-sha1-wrapper = { version = "9.1", default-features = false }
+reqwest-bt = { package = "reqwest", version = "0.13", default-features = false }
+
+# every system but Android: the system's TLS (SChannel on Windows)
+[target.'cfg(not(target_os = "android"))'.dependencies]
+reqwest = { version = "0.12", features = ["default-tls", "native-tls-alpn"] }
+reqwest-bt = { package = "reqwest", version = "0.13", default-features = false, features = ["native-tls"] }
 librqbit-core = { version = "9.1", default-features = false, features = ["sha1-crypto-hash"] }
 librqbit-sha1-wrapper = { version = "9.1", default-features = false, features = ["sha1-crypto-hash"] }
-reqwest-bt = { package = "reqwest", version = "0.13", default-features = false, features = ["native-tls"] }
+
+# Android has no system TLS for programs like this one: rustls with Mozilla's
+# root certificates. The torrent trackers over HTTPS are left out there (the
+# other trackers and DHT work)
+[target.'cfg(target_os = "android")'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots"] }
+# SHA-1 of the torrent pieces: there is no system library for it either
+librqbit-core = { version = "9.1", default-features = false, features = ["sha1-ring"] }
+librqbit-sha1-wrapper = { version = "9.1", default-features = false, features = ["sha1-ring"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

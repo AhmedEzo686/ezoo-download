@@ -1,0 +1,7 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+# made by build-rust.sh
+app/src/main/jniLibs/

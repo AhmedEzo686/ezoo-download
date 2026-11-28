@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ezoo Download</string>
+    <string name="share_label">Download with Ezoo</string>
+    <string name="downloads">Downloads</string>
+    <string name="tab_all">All</string>
+    <string name="tab_running">Running</string>
+    <string name="tab_done">Done</string>
+    <string name="tab_failed">Stopped</string>
+    <string name="empty">No downloads yet.\nTap + or share a link to Ezoo from any app.</string>
+    <string name="new_download">New download</string>
+    <string name="link">Link</string>
+    <string name="paste">Paste</string>
+    <string name="file_name">File name (optional)</string>
+    <string name="save_to">Saved to</string>
+    <string name="start">Start download</string>
+    <string name="cancel">Cancel</string>
+    <string name="bad_link">This is not a download link</string>
+    <string name="already">This link is in the list already</string>
+    <string name="added">Download started</string>
+    <string name="of">of</string>
+    <string name="left">left</string>
+    <string name="st_Queued">Waiting</string>
+    <string name="st_Connecting">Connecting…</string>
+    <string name="st_Downloading">Downloading</string>
+    <string name="st_Assembling">Finishing…</string>
+    <string name="st_Paused">Paused</string>
+    <string name="st_Completed">Done</string>
+    <string name="st_Failed">Failed</string>
+    <string name="waiting_net">Waiting for the internet</string>
+    <string name="pause">Pause</string>
+    <string name="resume">Resume</string>
+    <string name="retry">Try again</string>
+    <string name="open">Open</string>
+    <string name="remove">Remove from list</string>
+    <string name="remove_file">Remove with the file</string>
+    <string name="pause_all">Pause all</string>
+    <string name="resume_all">Resume all</string>
+    <string name="no_app">No app here opens this file</string>
+    <string name="engine_error">The download engine did not start: %1$s</string>
+    <string name="storage_needed">Allow storage so the files can be saved in Download/Ezoo</string>
+    <string name="ch_progress">Downloads in progress</string>
+    <string name="ch_done">Finished downloads</string>
+    <string name="n_running">%1$d downloading</string>
+    <string name="n_done">Download finished</string>
+    <string name="n_failed">Download failed</string>
+</resources>

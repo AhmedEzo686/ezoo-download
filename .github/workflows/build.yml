@@ -8,6 +8,9 @@ name: Build Ezoo Download for Windows
 
 on:
   push:
+    # the Android work has its own build (android.yml)
+    branches-ignore:
+      - android
     paths-ignore:
       - "README.md"
       - "docs/**"

@@ -391,7 +391,8 @@ fn build_client_family(proxy: &ProxyConfig, ipv4_only: bool) -> anyhow::Result<C
         .redirect(reqwest::redirect::Policy::none());
     // Windows 7 / 8 / 8.1: the program's own TLS (TLS 1.3 and today's
     // ciphers); the system's one there is refused by many sites
-    #[cfg(feature = "legacy")]
+    // (Android: the only TLS the program has there)
+    #[cfg(any(feature = "legacy", target_os = "android"))]
     {
         b = b.use_rustls_tls();
     }
